@@ -110,6 +110,9 @@ class MedicalDictationApp(ttk.Window):
         self.appended_chunks: list[str] = []
         self.capitalize_next: bool = False
 
+        # NEW: List to store audio segments for saving later.
+        self.audio_segments: list[AudioSegment] = []
+
         self.create_menu()
         self.create_widgets()
         self.bind_shortcuts()
@@ -208,7 +211,7 @@ class MedicalDictationApp(ttk.Window):
         ToolTip(self.copy_button, "Copy the transcription to the clipboard.")
         self.save_button = ttk.Button(main_controls, text="Save Text", width=10, command=self.save_text)
         self.save_button.grid(row=0, column=5, padx=5, pady=5)
-        ToolTip(self.save_button, "Save the transcription to a file.")
+        ToolTip(self.save_button, "Save the transcription and recorded audio to files.")
 
         # AI Assist Section:
         ai_assist_label = ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold"))
@@ -240,7 +243,7 @@ class MedicalDictationApp(ttk.Window):
 
     def show_about(self) -> None:
         """Displays the About dialog."""
-        messagebox.showinfo("About", "Medical Dictation App\n\nVersion 0.1\n\nDeveloped with Python and Tkinter (ttkbootstrap).")
+        messagebox.showinfo("About", "Medical Dictation App\nImproved version with additional features.\n\nDeveloped with Python and Tkinter (ttkbootstrap).")
 
     def show_shortcuts(self) -> None:
         """Displays a dialog with keyboard shortcuts and voice commands."""
@@ -390,17 +393,23 @@ class MedicalDictationApp(ttk.Window):
     # Text Management Methods
     # -------------------------
     def new_session(self) -> None:
-        """Starts a new dictation session, clearing unsaved text."""
+        """Starts a new dictation session, clearing unsaved text and audio."""
         if messagebox.askyesno("New Dictation", "Start a new dictation? Unsaved changes will be lost."):
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
+            self.audio_segments.clear()  # Clear stored audio segments
 
     def save_text(self) -> None:
-        """Saves the transcribed text to a file."""
+        """
+        Saves the transcribed text to a file and exports the recorded audio to a WAV file.
+        The audio file is saved with the same base name as the text file.
+        """
         text: str = self.text_area.get("1.0", tk.END).strip()
         if not text:
             messagebox.showwarning("Save Text", "No text to save.")
             return
+
+        # Save the text file.
         file_path: str = filedialog.asksaveasfilename(
             defaultextension=".txt",
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
@@ -409,6 +418,19 @@ class MedicalDictationApp(ttk.Window):
             try:
                 with open(file_path, "w", encoding="utf-8") as file:
                     file.write(text)
+                
+                # If audio segments exist, combine them and save to an audio file.
+                if self.audio_segments:
+                    combined_audio = self.audio_segments[0]
+                    for seg in self.audio_segments[1:]:
+                        combined_audio += seg
+
+                    # Save with the same base name as the text file and a .wav extension.
+                    base, _ = os.path.splitext(file_path)
+                    audio_file_path = base + ".wav"
+                    combined_audio.export(audio_file_path, format="wav")
+                    messagebox.showinfo("Save Audio", f"Audio saved successfully as:\n{audio_file_path}")
+                
                 messagebox.showinfo("Save Text", "Text saved successfully.")
             except Exception as e:
                 messagebox.showerror("Save Text", f"Error saving file: {e}")
@@ -421,10 +443,11 @@ class MedicalDictationApp(ttk.Window):
         self.update_status("Text copied to clipboard.")
 
     def clear_text(self) -> None:
-        """Clears the transcribed text."""
+        """Clears the transcribed text and any stored audio."""
         if messagebox.askyesno("Clear Text", "Are you sure you want to clear the text?"):
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
+            self.audio_segments.clear()  # Clear the stored audio segments
 
     def append_text(self, text: str) -> None:
         """
@@ -506,14 +529,19 @@ class MedicalDictationApp(ttk.Window):
         Dynamically determines the number of channels for the audio segment.
         """
         try:
+            # Determine channel count (defaulting to 1 if not available)
+            channels = getattr(audio, "channels", 1)
+            # Create an AudioSegment from the raw audio data
+            audio_segment = AudioSegment(
+                data=audio.get_raw_data(),
+                sample_width=audio.sample_width,
+                frame_rate=audio.sample_rate,
+                channels=channels
+            )
+            # Save this audio segment for later export
+            self.audio_segments.append(audio_segment)
+            
             if self.deepgram_client:
-                channels = getattr(audio, "channels", 1)  # Use dynamic channel count if available
-                audio_segment = AudioSegment(
-                    data=audio.get_raw_data(),
-                    sample_width=audio.sample_width,
-                    frame_rate=audio.sample_rate,
-                    channels=channels
-                )
                 audio_buffer = BytesIO()
                 audio_segment.export(audio_buffer, format="wav")
                 audio_buffer.seek(0)
