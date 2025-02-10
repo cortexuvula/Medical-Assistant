@@ -4,32 +4,74 @@ import string
 import logging
 import concurrent.futures
 from io import BytesIO
-
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog, scrolledtext
-
+from tkinter import messagebox, filedialog, scrolledtext
 import speech_recognition as sr
 from pydub import AudioSegment
 from deepgram import DeepgramClient, PrerecordedOptions
-
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 import openai
+from typing import Callable, Optional
+
+# --------------- Settings management -----------------
+SETTINGS_FILE = "settings.json"
+
+DEFAULT_SETTINGS = {
+    "refine_text": {
+        "prompt": (
+            "Refine the punctuation and capitalization of the following text so that any voice command cues "
+            "like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter."
+        ),
+        "model": "gpt-3.5-turbo"
+    },
+    "improve_text": {
+        "prompt": (
+            "Improve the clarity, readability, and overall quality of the following transcript text."
+        ),
+        "model": "gpt-3.5-turbo"
+    }
+}
+
+def load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading settings: {e}", exc_info=True)
+    return DEFAULT_SETTINGS.copy()
+
+def save_settings(settings: dict) -> None:
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4)
+    except Exception as e:
+        logging.error(f"Error saving settings: {e}", exc_info=True)
+
+# Global settings variable
+SETTINGS = load_settings()
 
 # -------------------------
-# Environment Variables
+# Configuration Constants
+# -------------------------
+OPENAI_TEMPERATURE_REFINEMENT: float = 0.0
+OPENAI_MAX_TOKENS_REFINEMENT: int = 4000
+OPENAI_TEMPERATURE_IMPROVEMENT: float = 1.0
+OPENAI_MAX_TOKENS_IMPROVEMENT: int = 4000
+
+# Tooltip delay in milliseconds.
+TOOLTIP_DELAY_MS: int = 500
+
+# -------------------------
+# API Keys and Logging
 # -------------------------
 openai.api_key = os.getenv("OPENAI_API_KEY")
-# Fetch the Deepgram API key once and store it in a module-level variable.
-deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
 
-# -------------------------
-# Logging Configuration
-# -------------------------
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
@@ -39,7 +81,13 @@ logging.basicConfig(
 # Main Application Class
 # -------------------------
 class MedicalDictationApp(ttk.Window):
-    def __init__(self):
+    """
+    Main application window for the Medical Dictation App.
+    Supports voice-activated transcription, audio processing (via Deepgram or Google),
+    and text refinement/improvement using OpenAI.
+    """
+
+    def __init__(self) -> None:
         super().__init__(themename="flatly")
         self.title("Medical Dictation App")
         self.geometry("1200x800")
@@ -47,33 +95,34 @@ class MedicalDictationApp(ttk.Window):
         self.config(bg="#f0f0f0")
 
         # Load configuration from environment variables.
-        self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
-        # Use the module-level deepgram_api_key instead of calling os.getenv() again.
-        self.deepgram_api_key = deepgram_api_key
+        self.recognition_language: str = os.getenv("RECOGNITION_LANGUAGE", "en-US")
+        self.deepgram_api_key: str = deepgram_api_key
 
         # Thread pool for background tasks.
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        self.executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         # Initialize Deepgram client if API key is provided.
-        self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
+        self.deepgram_client: Optional[DeepgramClient] = (
+            DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
+        )
 
         # For managing appended text chunks and capitalization.
-        self.appended_chunks = []
-        self.capitalize_next = False
+        self.appended_chunks: list[str] = []
+        self.capitalize_next: bool = False
 
         self.create_menu()
         self.create_widgets()
+        self.bind_shortcuts()
 
-        # Disable the Refine and Improve Text buttons if no OpenAI API key is provided.
+        # Warn if OpenAI API key is missing.
         if not openai.api_key:
             self.refine_button.config(state=DISABLED)
             self.improve_button.config(state=DISABLED)
-
-        self.bind_shortcuts()
+            self.update_status("Warning: OpenAI API key not provided. AI features disabled.")
 
         # Setup Speech Recognizer.
-        self.recognizer = sr.Recognizer()
-        self.listening = False
+        self.recognizer: sr.Recognizer = sr.Recognizer()
+        self.listening: bool = False
         self.stop_listening_function = None
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -81,9 +130,11 @@ class MedicalDictationApp(ttk.Window):
     # -------------------------
     # UI Creation Methods
     # -------------------------
-    def create_menu(self):
+    def create_menu(self) -> None:
+        """Creates the application menu."""
         menubar = tk.Menu(self)
-
+        
+        # File Menu
         filemenu = tk.Menu(menubar, tearoff=0)
         filemenu.add_command(label="New", command=self.new_session, accelerator="Ctrl+N")
         filemenu.add_command(label="Save", command=self.save_text, accelerator="Ctrl+S")
@@ -91,6 +142,15 @@ class MedicalDictationApp(ttk.Window):
         filemenu.add_command(label="Exit", command=self.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
 
+        # Settings Menu with a sub-menu for Text Settings
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        text_settings_menu = tk.Menu(settings_menu, tearoff=0)
+        text_settings_menu.add_command(label="Refine Text Settings", command=self.show_refine_settings_dialog)
+        text_settings_menu.add_command(label="Improve Text Settings", command=self.show_improve_settings_dialog)
+        settings_menu.add_cascade(label="Text Settings", menu=text_settings_menu)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+
+        # Help Menu
         helpmenu = tk.Menu(menubar, tearoff=0)
         helpmenu.add_command(label="About", command=self.show_about)
         helpmenu.add_command(label="Shortcuts & Voice Commands", command=self.show_shortcuts)
@@ -98,18 +158,20 @@ class MedicalDictationApp(ttk.Window):
 
         self.config(menu=menubar)
 
-    def create_widgets(self):
+    def create_widgets(self) -> None:
+        """Creates the UI widgets."""
         # Microphone Selection Frame
         mic_frame = ttk.Frame(self, padding=10)
         mic_frame.pack(side=TOP, fill=tk.X, padx=20, pady=(20, 10))
         mic_label = ttk.Label(mic_frame, text="Select Microphone:")
         mic_label.pack(side=LEFT, padx=(0, 10))
-
         self.mic_names = sr.Microphone.list_microphone_names()
         self.mic_combobox = ttk.Combobox(mic_frame, values=self.mic_names, state="readonly", width=50)
         self.mic_combobox.pack(side=LEFT)
-        self.mic_combobox.current(0) if self.mic_names else self.mic_combobox.set("No microphone found")
-
+        if self.mic_names:
+            self.mic_combobox.current(0)
+        else:
+            self.mic_combobox.set("No microphone found")
         refresh_btn = ttk.Button(mic_frame, text="Refresh", command=self.refresh_microphones, bootstyle="info")
         refresh_btn.pack(side=LEFT, padx=10)
         ToolTip(refresh_btn, "Refresh the list of available microphones.")
@@ -126,66 +188,62 @@ class MedicalDictationApp(ttk.Window):
         controls_label = ttk.Label(control_frame, text="Controls", font=("Segoe UI", 11, "bold"))
         controls_label.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
 
-        # Main Controls Frame (Record, Stop, New Dictation, Clear Text, Copy Text, Save Text)
+        # Main Controls Frame
         main_controls = ttk.Frame(control_frame)
         main_controls.grid(row=1, column=0, sticky="w")
-
         self.record_button = ttk.Button(main_controls, text="Record", width=10, command=self.start_recording, bootstyle="success")
         self.record_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_button, "Start recording audio.")
-
         self.stop_button = ttk.Button(main_controls, text="Stop", width=10, command=self.stop_recording, state=DISABLED, bootstyle="danger")
         self.stop_button.grid(row=0, column=1, padx=5, pady=5)
         ToolTip(self.stop_button, "Stop recording audio.")
-
         self.new_session_button = ttk.Button(main_controls, text="New Dictation", width=12, command=self.new_session)
         self.new_session_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.new_session_button, "Start a new dictation session.")
-
         self.clear_button = ttk.Button(main_controls, text="Clear Text", width=10, command=self.clear_text)
         self.clear_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.clear_button, "Clear the transcription text.")
-
         self.copy_button = ttk.Button(main_controls, text="Copy Text", width=10, command=self.copy_text)
         self.copy_button.grid(row=0, column=4, padx=5, pady=5)
         ToolTip(self.copy_button, "Copy the transcription to the clipboard.")
-
         self.save_button = ttk.Button(main_controls, text="Save Text", width=10, command=self.save_text)
         self.save_button.grid(row=0, column=5, padx=5, pady=5)
         ToolTip(self.save_button, "Save the transcription to a file.")
 
         # AI Assist Section:
-        # Place the AI Assist label on its own row below the main controls and above the refine text button.
         ai_assist_label = ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold"))
         ai_assist_label.grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
-
-        # AI Buttons Frame for Refine and Improve buttons
         ai_buttons = ttk.Frame(control_frame)
         ai_buttons.grid(row=3, column=0, sticky="w")
-
         self.refine_button = ttk.Button(ai_buttons, text="Refine Text", width=15, command=self.refine_text)
         self.refine_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.refine_button, "Refine text punctuation and capitalization using OpenAI API.")
-
         self.improve_button = ttk.Button(ai_buttons, text="Improve Text", width=15, command=self.improve_text)
         self.improve_button.grid(row=0, column=1, padx=5, pady=5)
         ToolTip(self.improve_button, "Improve text clarity using OpenAI API.")
 
-        # Status Bar
+        # Status Bar with Progress Bar
         status_frame = ttk.Frame(self, padding=(10, 5))
         status_frame.pack(side=BOTTOM, fill=tk.X)
         self.status_label = ttk.Label(status_frame, text="Status: Idle", anchor="w")
-        self.status_label.pack(fill=tk.X)
+        self.status_label.pack(side=LEFT, fill=tk.X, expand=True)
+        self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()  # Hide progress bar initially
 
-    def bind_shortcuts(self):
+    def bind_shortcuts(self) -> None:
+        """Binds keyboard shortcuts to application commands."""
         self.bind("<Control-n>", lambda event: self.new_session())
         self.bind("<Control-s>", lambda event: self.save_text())
         self.bind("<Control-c>", lambda event: self.copy_text())
 
-    def show_about(self):
-        messagebox.showinfo("About", "Medical Dictation App\nImproved version with additional features.\n\nDeveloped with Python and Tkinter (ttkbootstrap).")
+    def show_about(self) -> None:
+        """Displays the About dialog."""
+        messagebox.showinfo("About", "Medical Dictation App\n\nVersion 0.1\n\nDeveloped with Python and Tkinter (ttkbootstrap).")
 
-    def show_shortcuts(self):
+    def show_shortcuts(self) -> None:
+        """Displays a dialog with keyboard shortcuts and voice commands."""
         dialog = tk.Toplevel(self)
         dialog.title("Shortcuts & Voice Commands")
         dialog.geometry("700x500")
@@ -250,19 +308,100 @@ class MedicalDictationApp(ttk.Window):
         close_btn.pack(pady=10)
 
     # -------------------------
+    # Settings Dialogs (Split into Sub-menus)
+    # -------------------------
+    def show_refine_settings_dialog(self) -> None:
+        """Displays the Refine Text Settings dialog."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Refine Text Settings")
+        dialog.geometry("800x500")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        refine_frame = ttk.LabelFrame(dialog, text="Refine Text Settings", padding=10)
+        refine_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        refine_prompt_label = ttk.Label(refine_frame, text="Prompt:")
+        refine_prompt_label.grid(row=0, column=0, sticky="nw")
+        refine_prompt_text = tk.Text(refine_frame, width=60, height=5)
+        refine_prompt_text.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        refine_prompt_text.insert(tk.END, SETTINGS.get("refine_text", {}).get("prompt", DEFAULT_SETTINGS["refine_text"]["prompt"]))
+
+        refine_model_label = ttk.Label(refine_frame, text="Model:")
+        refine_model_label.grid(row=1, column=0, sticky="nw")
+        refine_model_entry = ttk.Entry(refine_frame, width=60)
+        refine_model_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        refine_model_entry.insert(0, SETTINGS.get("refine_text", {}).get("model", DEFAULT_SETTINGS["refine_text"]["model"]))
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def save_and_close():
+            SETTINGS["refine_text"]["prompt"] = refine_prompt_text.get("1.0", tk.END).strip()
+            SETTINGS["refine_text"]["model"] = refine_model_entry.get().strip()
+            save_settings(SETTINGS)
+            self.update_status("Refine text settings saved.")
+            dialog.destroy()
+
+        save_btn = ttk.Button(button_frame, text="Save", command=save_and_close, bootstyle="primary")
+        save_btn.pack(side=tk.RIGHT, padx=5)
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy, bootstyle="secondary")
+        cancel_btn.pack(side=tk.RIGHT, padx=5)
+
+    def show_improve_settings_dialog(self) -> None:
+        """Displays the Improve Text Settings dialog."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Improve Text Settings")
+        dialog.geometry("800x500")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        improve_frame = ttk.LabelFrame(dialog, text="Improve Text Settings", padding=10)
+        improve_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        improve_prompt_label = ttk.Label(improve_frame, text="Prompt:")
+        improve_prompt_label.grid(row=0, column=0, sticky="nw")
+        improve_prompt_text = tk.Text(improve_frame, width=60, height=5)
+        improve_prompt_text.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        improve_prompt_text.insert(tk.END, SETTINGS.get("improve_text", {}).get("prompt", DEFAULT_SETTINGS["improve_text"]["prompt"]))
+
+        improve_model_label = ttk.Label(improve_frame, text="Model:")
+        improve_model_label.grid(row=1, column=0, sticky="nw")
+        improve_model_entry = ttk.Entry(improve_frame, width=60)
+        improve_model_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        improve_model_entry.insert(0, SETTINGS.get("improve_text", {}).get("model", DEFAULT_SETTINGS["improve_text"]["model"]))
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def save_and_close():
+            SETTINGS["improve_text"]["prompt"] = improve_prompt_text.get("1.0", tk.END).strip()
+            SETTINGS["improve_text"]["model"] = improve_model_entry.get().strip()
+            save_settings(SETTINGS)
+            self.update_status("Improve text settings saved.")
+            dialog.destroy()
+
+        save_btn = ttk.Button(button_frame, text="Save", command=save_and_close, bootstyle="primary")
+        save_btn.pack(side=tk.RIGHT, padx=5)
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy, bootstyle="secondary")
+        cancel_btn.pack(side=tk.RIGHT, padx=5)
+
+    # -------------------------
     # Text Management Methods
     # -------------------------
-    def new_session(self):
+    def new_session(self) -> None:
+        """Starts a new dictation session, clearing unsaved text."""
         if messagebox.askyesno("New Dictation", "Start a new dictation? Unsaved changes will be lost."):
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
 
-    def save_text(self):
-        text = self.text_area.get("1.0", tk.END).strip()
+    def save_text(self) -> None:
+        """Saves the transcribed text to a file."""
+        text: str = self.text_area.get("1.0", tk.END).strip()
         if not text:
             messagebox.showwarning("Save Text", "No text to save.")
             return
-        file_path = filedialog.asksaveasfilename(
+        file_path: str = filedialog.asksaveasfilename(
             defaultextension=".txt",
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
         )
@@ -274,35 +413,39 @@ class MedicalDictationApp(ttk.Window):
             except Exception as e:
                 messagebox.showerror("Save Text", f"Error saving file: {e}")
 
-    def copy_text(self):
-        text = self.text_area.get("1.0", tk.END)
+    def copy_text(self) -> None:
+        """Copies the transcribed text to the clipboard."""
+        text: str = self.text_area.get("1.0", tk.END)
         self.clipboard_clear()
         self.clipboard_append(text)
-        # Update the status bar instead of showing a pop-up.
         self.update_status("Text copied to clipboard.")
 
-    def clear_text(self):
+    def clear_text(self) -> None:
+        """Clears the transcribed text."""
         if messagebox.askyesno("Clear Text", "Are you sure you want to clear the text?"):
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
 
-    def append_text(self, text):
-        current_content = self.text_area.get("1.0", "end-1c")
-        # Capitalize first letter if required.
+    def append_text(self, text: str) -> None:
+        """
+        Appends recognized text to the text area, handling punctuation and capitalization.
+        """
+        current_content: str = self.text_area.get("1.0", "end-1c")
         if (self.capitalize_next or not current_content or current_content[-1] in ".!?") and text:
             text = text[0].upper() + text[1:]
             self.capitalize_next = False
-        text_to_insert = (" " if current_content and current_content[-1] != "\n" else "") + text
-        tag_name = f"chunk_{len(self.appended_chunks)}"
+        text_to_insert: str = (" " if current_content and current_content[-1] != "\n" else "") + text
+        tag_name: str = f"chunk_{len(self.appended_chunks)}"
         self.text_area.insert(tk.END, text_to_insert, tag_name)
         self.appended_chunks.append(tag_name)
         self.text_area.see(tk.END)
 
-    def scratch_that(self):
+    def scratch_that(self) -> None:
+        """Removes the last appended text chunk."""
         if not self.appended_chunks:
             self.update_status("Nothing to scratch.")
             return
-        tag_name = self.appended_chunks.pop()
+        tag_name: str = self.appended_chunks.pop()
         ranges = self.text_area.tag_ranges(tag_name)
         if ranges:
             self.text_area.delete(ranges[0], ranges[1])
@@ -311,8 +454,9 @@ class MedicalDictationApp(ttk.Window):
         else:
             self.update_status("No tagged text found.")
 
-    def delete_last_word(self):
-        current_content = self.text_area.get("1.0", "end-1c")
+    def delete_last_word(self) -> None:
+        """Deletes the last word from the transcribed text."""
+        current_content: str = self.text_area.get("1.0", "end-1c")
         if current_content:
             words = current_content.split()
             new_text = " ".join(words[:-1])
@@ -320,13 +464,15 @@ class MedicalDictationApp(ttk.Window):
             self.text_area.insert(tk.END, new_text)
             self.text_area.see(tk.END)
 
-    def update_status(self, message):
+    def update_status(self, message: str) -> None:
+        """Updates the status bar with a given message."""
         self.status_label.config(text=f"Status: {message}")
 
     # -------------------------
     # Audio Processing Methods
     # -------------------------
-    def start_recording(self):
+    def start_recording(self) -> None:
+        """Starts recording audio using the selected microphone."""
         if not self.listening:
             self.update_status("Listening...")
             mic_index = self.mic_combobox.current()
@@ -341,7 +487,8 @@ class MedicalDictationApp(ttk.Window):
             self.record_button.config(state=DISABLED)
             self.stop_button.config(state=NORMAL)
 
-    def stop_recording(self):
+    def stop_recording(self) -> None:
+        """Stops the audio recording."""
         if self.listening and self.stop_listening_function:
             self.stop_listening_function(wait_for_stop=False)
             self.listening = False
@@ -349,18 +496,23 @@ class MedicalDictationApp(ttk.Window):
             self.record_button.config(state=NORMAL)
             self.stop_button.config(state=DISABLED)
 
-    def callback(self, recognizer, audio):
+    def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+        """Callback for processing audio in the background."""
         self.executor.submit(self.process_audio, recognizer, audio)
 
-    def process_audio(self, recognizer, audio):
+    def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+        """
+        Processes the recorded audio using Deepgram (if available) or Google Speech Recognition.
+        Dynamically determines the number of channels for the audio segment.
+        """
         try:
             if self.deepgram_client:
-                # Create AudioSegment for Deepgram processing.
+                channels = getattr(audio, "channels", 1)  # Use dynamic channel count if available
                 audio_segment = AudioSegment(
                     data=audio.get_raw_data(),
                     sample_width=audio.sample_width,
                     frame_rate=audio.sample_rate,
-                    channels=1
+                    channels=channels
                 )
                 audio_buffer = BytesIO()
                 audio_segment.export(audio_buffer, format="wav")
@@ -369,9 +521,8 @@ class MedicalDictationApp(ttk.Window):
                 options = PrerecordedOptions(model="nova-2-medical", language="en-US")
                 response = self.deepgram_client.listen.rest.v("1").transcribe_file(payload, options)
                 result_data = json.loads(response.to_json(indent=4))
-                text = result_data["results"]["channels"][0]["alternatives"][0]["transcript"]
+                text: str = result_data["results"]["channels"][0]["alternatives"][0]["transcript"]
             else:
-                # Use the original audio for Google recognition.
                 text = recognizer.recognize_google(audio, language=self.recognition_language)
             self.after(0, self.handle_recognized_text, text)
         except sr.UnknownValueError:
@@ -384,13 +535,15 @@ class MedicalDictationApp(ttk.Window):
             logging.error(f"Processing error: {e}", exc_info=True)
             self.after(0, self.update_status, f"Error: {e}")
 
-    def handle_recognized_text(self, text):
-        # Ignore input that is only whitespace
+    def handle_recognized_text(self, text: str) -> None:
+        """
+        Handles the recognized text from speech recognition.
+        Checks for voice command cues and either executes a command or appends the text.
+        """
         if not text.strip():
             return
 
-        # Define a helper to insert punctuation with optional capitalization.
-        def insert_punctuation(symbol, capitalize=False):
+        def insert_punctuation(symbol: str, capitalize: bool = False) -> None:
             self.text_area.insert(tk.END, symbol + " ")
             if capitalize:
                 self.capitalize_next = True
@@ -417,7 +570,6 @@ class MedicalDictationApp(ttk.Window):
             "copy text": self.copy_text,
             "save text": self.save_text,
         }
-        # Normalize the recognized text.
         cleaned = text.lower().strip().translate(str.maketrans('', '', string.punctuation))
         if cleaned in commands:
             commands[cleaned]()
@@ -425,60 +577,63 @@ class MedicalDictationApp(ttk.Window):
             self.append_text(text)
 
     # -------------------------
-    # Refine Text Methods Using OpenAI
+    # Refine/Improve Text Methods Using OpenAI
     # -------------------------
-    def refine_text(self):
-        text = self.text_area.get("1.0", tk.END).strip()
+    def _process_text_with_ai(self, api_func: Callable[[str], str], success_message: str, button: ttk.Button) -> None:
+        """
+        Generic helper to process text with an AI API call.
+        
+        :param api_func: Function that processes text using OpenAI.
+        :param success_message: Message to display upon successful processing.
+        :param button: The button widget to disable/enable during processing.
+        """
+        text: str = self.text_area.get("1.0", tk.END).strip()
         if not text:
-            messagebox.showwarning("Refine Text", "There is no text to refine.")
+            messagebox.showwarning("Process Text", "There is no text to process.")
             return
+        
+        self.update_status("Processing text...")
+        button.config(state=DISABLED)
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
 
-        self.update_status("Refining text...")
-        self.refine_button.config(state=DISABLED)
-
-        def task():
-            refined = adjust_text_with_openai(text)
-            self.after(0, self.set_refined_text, refined)
-
+        def task() -> None:
+            result = api_func(text)
+            self.after(0, lambda: self._update_text_area(result, success_message, button))
         self.executor.submit(task)
 
-    def set_refined_text(self, refined_text):
+    def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button) -> None:
+        """Updates the text area with new text and resets UI elements after an AI task."""
         self.text_area.delete("1.0", tk.END)
-        self.text_area.insert(tk.END, refined_text)
-        self.update_status("Text refined.")
-        self.refine_button.config(state=NORMAL)
+        self.text_area.insert(tk.END, new_text)
+        self.update_status(success_message)
+        button.config(state=NORMAL)
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()
 
-    def improve_text(self):
-        text = self.text_area.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showwarning("Improve Text", "There is no text to improve.")
-            return
+    def refine_text(self) -> None:
+        """Refines the transcribed text using OpenAI to adjust punctuation and capitalization."""
+        self._process_text_with_ai(adjust_text_with_openai, "Text refined.", self.refine_button)
 
-        self.update_status("Improving text...")
-        self.improve_button.config(state=DISABLED)
-
-        def task():
-            improved = improve_text_with_openai(text)
-            self.after(0, self.set_improved_text, improved)
-
-        self.executor.submit(task)
-
-    def set_improved_text(self, improved_text):
-        self.text_area.delete("1.0", tk.END)
-        self.text_area.insert(tk.END, improved_text)
-        self.update_status("Text improved.")
-        self.improve_button.config(state=NORMAL)
+    def improve_text(self) -> None:
+        """Improves the clarity and readability of the transcribed text using OpenAI."""
+        self._process_text_with_ai(improve_text_with_openai, "Text improved.", self.improve_button)
 
     # -------------------------
     # Utility Methods
     # -------------------------
-    def refresh_microphones(self):
+    def refresh_microphones(self) -> None:
+        """Refreshes the list of available microphones."""
         self.mic_names = sr.Microphone.list_microphone_names()
         self.mic_combobox['values'] = self.mic_names
-        self.mic_combobox.current(0) if self.mic_names else self.mic_combobox.set("No microphone found")
+        if self.mic_names:
+            self.mic_combobox.current(0)
+        else:
+            self.mic_combobox.set("No microphone found")
         self.update_status("Microphone list refreshed.")
 
-    def on_closing(self):
+    def on_closing(self) -> None:
+        """Handles application shutdown and cleans up background tasks."""
         try:
             self.executor.shutdown(wait=False)
             logging.info("Thread pool shutdown.")
@@ -490,14 +645,29 @@ class MedicalDictationApp(ttk.Window):
 # Tooltip Implementation
 # -------------------------
 class ToolTip:
-    def __init__(self, widget, text):
+    """
+    Creates a tooltip for a given widget.
+    The tooltip appears after a short delay when the mouse hovers over the widget.
+    """
+    def __init__(self, widget: tk.Widget, text: str) -> None:
         self.widget = widget
         self.text = text
-        self.tipwindow = None
-        widget.bind("<Enter>", self.showtip)
-        widget.bind("<Leave>", self.hidetip)
+        self.tipwindow: Optional[tk.Toplevel] = None
+        self.after_id: Optional[str] = None
+        self.widget.bind("<Enter>", self.schedule_showtip)
+        self.widget.bind("<Leave>", self.cancel_showtip)
 
-    def showtip(self, event=None):
+    def schedule_showtip(self, event: Optional[tk.Event] = None) -> None:
+        self.after_id = self.widget.after(TOOLTIP_DELAY_MS, self.showtip)
+
+    def cancel_showtip(self, event: Optional[tk.Event] = None) -> None:
+        if self.after_id:
+            self.widget.after_cancel(self.after_id)
+            self.after_id = None
+        self.hidetip()
+
+    def showtip(self) -> None:
+        """Displays the tooltip."""
         if self.tipwindow or not self.text:
             return
         x = self.widget.winfo_rootx() + 20
@@ -516,64 +686,72 @@ class ToolTip:
         )
         label.pack(ipadx=1)
 
-    def hidetip(self, event=None):
+    def hidetip(self) -> None:
+        """Hides the tooltip."""
         if self.tipwindow:
             self.tipwindow.destroy()
             self.tipwindow = None
 
 # -------------------------
-# OpenAI Text Refinement Helper Function
+# OpenAI API Helper Functions
 # -------------------------
-def adjust_text_with_openai(text: str) -> str:
-    prompt = (
-        "Refine the punctuation and capitalization of the following text so that any voice command cues "
-        "like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter. "
-        "Return only the corrected text.\n\n"
-        f"Original: {text}\n\nCorrected:"
-    )
+def call_openai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    """
+    Calls the OpenAI API with the given parameters.
+    
+    :param model: OpenAI model to use.
+    :param system_message: System prompt message.
+    :param prompt: User prompt.
+    :param temperature: Temperature setting for the API call.
+    :param max_tokens: Maximum tokens for the response.
+    :return: The AI-generated text.
+    """
     try:
         response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=model,
             messages=[
-                {"role": "system", "content": "You are an assistant that corrects punctuation and capitalization."},
+                {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0,
-            max_tokens=500,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"OpenAI API error: {e}", exc_info=True)
-        return text
+        return prompt  # Return original prompt as fallback
 
-# -------------------------
-# OpenAI Text Improvement Helper Function
-# -------------------------
+def adjust_text_with_openai(text: str) -> str:
+    """
+    Refines text punctuation and capitalization using OpenAI.
+    
+    :param text: The original text.
+    :return: The refined text.
+    """
+    prompt_base = SETTINGS.get("refine_text", {}).get("prompt", DEFAULT_SETTINGS["refine_text"]["prompt"])
+    model = SETTINGS.get("refine_text", {}).get("model", DEFAULT_SETTINGS["refine_text"]["model"])
+    full_prompt = f"{prompt_base}\n\nOriginal: {text}\n\nCorrected:"
+    system_message = "You are an assistant that corrects punctuation and capitalization."
+    return call_openai(model, system_message, full_prompt, OPENAI_TEMPERATURE_REFINEMENT, OPENAI_MAX_TOKENS_REFINEMENT)
+
 def improve_text_with_openai(text: str) -> str:
-    prompt = (
-        "Improve the clarity, readability, and overall quality of the following transcript text. "
-        "Return only the improved text.\n\n"
-        f"Original: {text}\n\nImproved:"
-    )
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an assistant that enhances the clarity and readability of text."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=1,
-            max_tokens=500,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"OpenAI API error (improve): {e}", exc_info=True)
-        return text
+    """
+    Improves text clarity and readability using OpenAI.
+    
+    :param text: The original text.
+    :return: The improved text.
+    """
+    prompt_base = SETTINGS.get("improve_text", {}).get("prompt", DEFAULT_SETTINGS["improve_text"]["prompt"])
+    model = SETTINGS.get("improve_text", {}).get("model", DEFAULT_SETTINGS["improve_text"]["model"])
+    full_prompt = f"{prompt_base}\n\nOriginal: {text}\n\nImproved:"
+    system_message = "You are an assistant that enhances the clarity and readability of text."
+    return call_openai(model, system_message, full_prompt, OPENAI_TEMPERATURE_IMPROVEMENT, OPENAI_MAX_TOKENS_IMPROVEMENT)
 
 # -------------------------
 # Application Entry Point
 # -------------------------
-def main():
+def main() -> None:
+    """Application entry point."""
     app = MedicalDictationApp()
     app.mainloop()
 
