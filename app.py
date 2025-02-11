@@ -44,6 +44,9 @@ class MedicalDictationApp(ttk.Window):
         self.appended_chunks = []
         self.capitalize_next = False
         self.audio_segments = []
+        self.soap_recording = False
+        self.soap_audio_segments = []
+        self.soap_stop_listening_function = None
 
         self.create_menu()
         self.create_widgets()
@@ -192,6 +195,9 @@ class MedicalDictationApp(ttk.Window):
         self.soap_button = ttk.Button(ai_buttons, text="SOAP Note", width=15, command=self.create_soap_note, bootstyle="SECONDARY")
         self.soap_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.soap_button, "Create a SOAP note using OpenAI.")
+        self.record_soap_button = ttk.Button(ai_buttons, text="Record SOAP Note", width=15, command=self.toggle_soap_recording, bootstyle="SECONDARY")
+        self.record_soap_button.grid(row=0, column=3, padx=5, pady=5)
+        ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
 
         # Status Bar
         status_frame = ttk.Frame(self, padding=(10, 5))
@@ -564,6 +570,70 @@ class MedicalDictationApp(ttk.Window):
         else:
             self.mic_combobox.set("No microphone found")
         self.update_status("Microphone list refreshed.")
+
+    def toggle_soap_recording(self) -> None:
+        if not self.soap_recording:
+            self.soap_recording = True
+            self.soap_audio_segments = []
+            self.record_soap_button.config(text="Stop", bootstyle="danger")
+            self.update_status("Recording SOAP note...")
+            try:
+                mic = sr.Microphone(device_index=self.mic_combobox.current())
+            except Exception as e:
+                messagebox.showerror("Microphone Error", f"Error accessing microphone: {e}")
+                self.soap_recording = False
+                self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
+                return
+            self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
+        else:
+            if self.soap_stop_listening_function:
+                self.soap_stop_listening_function(wait_for_stop=False)
+            self.soap_recording = False
+            self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
+            self.update_status("Transcribing SOAP note...")
+            self.process_soap_recording()
+
+    def soap_callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+        try:
+            channels = getattr(audio, "channels", 1)
+            segment = AudioSegment(
+                data=audio.get_raw_data(),
+                sample_width=audio.sample_width,
+                frame_rate=audio.sample_rate,
+                channels=channels
+            )
+            self.soap_audio_segments.append(segment)
+        except Exception as e:
+            logging.error("Error recording SOAP note chunk", exc_info=True)
+
+    def process_soap_recording(self) -> None:
+        def task() -> None:
+            try:
+                if not self.soap_audio_segments:
+                    transcript = ""
+                else:
+                    combined = self.soap_audio_segments[0]
+                    for seg in self.soap_audio_segments[1:]:
+                        combined += seg
+                    if self.deepgram_client:
+                        buf = BytesIO()
+                        combined.export(buf, format="wav")
+                        buf.seek(0)
+                        options = PrerecordedOptions(model="nova-2-medical", language="en-US")
+                        response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
+                        transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
+                    else:
+                        temp_file = "temp_soap.wav"
+                        combined.export(temp_file, format="wav")
+                        with sr.AudioFile(temp_file) as source:
+                            audio_data = self.recognizer.record(source)
+                        transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+                        os.remove(temp_file)
+                soap_note = create_soap_note_with_openai(transcript)
+            except Exception as e:
+                soap_note = f"Error processing SOAP note: {e}"
+            self.after(0, lambda: self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button))
+        self.executor.submit(task)
 
     def on_closing(self) -> None:
         try:
