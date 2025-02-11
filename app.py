@@ -32,8 +32,8 @@ class MedicalDictationApp(ttk.Window):
     def __init__(self) -> None:
         super().__init__(themename="flatly")
         self.title("Medical Assistant")
-        self.geometry("1200x800")
-        self.minsize(1200, 800)
+        self.geometry("1200x900")
+        self.minsize(1200, 900)
         self.config(bg="#f0f0f0")
 
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
@@ -152,12 +152,12 @@ class MedicalDictationApp(ttk.Window):
 
         # Transcription Text Area
         self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11))
-        self.text_area.pack(padx=20, pady=10, fill=tk.X)
+        self.text_area.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)  # modified to expand with window
 
         # Control Buttons
         control_frame = ttk.Frame(self, padding=10)
         control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
-        ttk.Label(control_frame, text="Controls", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
         main_controls = ttk.Frame(control_frame)
         main_controls.grid(row=1, column=0, sticky="w")
         self.record_button = ttk.Button(main_controls, text="Record", width=10, command=self.start_recording, bootstyle="success")
@@ -184,8 +184,9 @@ class MedicalDictationApp(ttk.Window):
 
         # AI Assist Section
         ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
+        ttk.Label(control_frame, text="Individual Control", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub label
         ai_buttons = ttk.Frame(control_frame)
-        ai_buttons.grid(row=3, column=0, sticky="w")
+        ai_buttons.grid(row=4, column=0, sticky="w")
         self.refine_button = ttk.Button(ai_buttons, text="Refine Text", width=15, command=self.refine_text, bootstyle="SECONDARY")
         self.refine_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.refine_button, "Refine text using OpenAI.")
@@ -195,8 +196,13 @@ class MedicalDictationApp(ttk.Window):
         self.soap_button = ttk.Button(ai_buttons, text="SOAP Note", width=15, command=self.create_soap_note, bootstyle="SECONDARY")
         self.soap_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.soap_button, "Create a SOAP note using OpenAI.")
-        self.record_soap_button = ttk.Button(ai_buttons, text="Record SOAP Note", width=15, command=self.toggle_soap_recording, bootstyle="SECONDARY")
-        self.record_soap_button.grid(row=0, column=3, padx=5, pady=5)
+        
+        # Automation Controls Section
+        ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub-label
+        automation_frame = ttk.Frame(control_frame)
+        automation_frame.grid(row=6, column=0, sticky="w")
+        self.record_soap_button = ttk.Button(automation_frame, text="Record SOAP Note", width=15, command=self.toggle_soap_recording, bootstyle="SECONDARY")
+        self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
 
         # Status Bar
@@ -646,6 +652,7 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
 
 
 
