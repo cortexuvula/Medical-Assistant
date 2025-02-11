@@ -75,6 +75,9 @@ class MedicalDictationApp(ttk.Window):
         text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
         text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)  # new submenu for SOAP note settings
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
+        # New command to export prompts and models as JSON
+        settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
+        settings_menu.add_command(label="Import Prompts", command=self.import_prompts)  # new import command
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -83,6 +86,50 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
+
+    def export_prompts(self) -> None:
+        from settings import SETTINGS, _DEFAULT_SETTINGS
+        data = {}
+        for key in ("refine_text", "improve_text", "soap_note"):
+            default = _DEFAULT_SETTINGS.get(key, {})
+            current = SETTINGS.get(key, {})
+            entry = {}
+            if key == "soap_note":
+                entry["prompt"] = current.get("system_message", default.get("system_message", ""))
+            else:
+                entry["prompt"] = current.get("prompt", default.get("prompt", ""))
+            entry["model"] = current.get("model", default.get("model", ""))
+            data[key] = entry
+        file_path = filedialog.asksaveasfilename(
+            title="Export Prompts and Models",
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4)
+                messagebox.showinfo("Export Prompts", f"Prompts and models exported to {file_path}")
+            except Exception as e:
+                messagebox.showerror("Export Prompts", f"Error exporting prompts: {e}")
+
+    def import_prompts(self) -> None:
+        file_path = filedialog.askopenfilename(
+            title="Import Prompts and Models",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                from settings import SETTINGS, save_settings
+                for key in ("refine_text", "improve_text", "soap_note"):
+                    if key in data:
+                        SETTINGS[key] = data[key]
+                save_settings(SETTINGS)
+                messagebox.showinfo("Import Prompts", "Prompts and models updated successfully.")
+            except Exception as e:
+                messagebox.showerror("Import Prompts", f"Error importing prompts: {e}")
 
     def create_widgets(self) -> None:
         # Microphone Selection
@@ -529,6 +576,9 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
+
+
 
 
 
