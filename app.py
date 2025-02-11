@@ -222,7 +222,7 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-l>", lambda event: self.load_audio_file())  # added shortcut for loading a file
 
     def show_about(self) -> None:
-        messagebox.showinfo("About", "Medical Dictation App\nDeveloped with Python and Tkinter (ttkbootstrap).")
+        messagebox.showinfo("About", "Medical Assistant App\nDeveloped with Python and Tkinter (ttkbootstrap).")
 
     def show_shortcuts(self) -> None:
         dialog = tk.Toplevel(self)
