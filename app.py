@@ -184,7 +184,7 @@ class MedicalDictationApp(ttk.Window):
 
         # AI Assist Section
         ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
-        ttk.Label(control_frame, text="Individual Control", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub label
+        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub label
         ai_buttons = ttk.Frame(control_frame)
         ai_buttons.grid(row=4, column=0, sticky="w")
         self.refine_button = ttk.Button(ai_buttons, text="Refine Text", width=15, command=self.refine_text, bootstyle="SECONDARY")
