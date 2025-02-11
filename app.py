@@ -71,9 +71,10 @@ class MedicalDictationApp(ttk.Window):
 
         settings_menu = tk.Menu(menubar, tearoff=0)
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
-        text_settings_menu.add_command(label="Refine Text Settings", command=self.show_refine_settings_dialog)
-        text_settings_menu.add_command(label="Improve Text Settings", command=self.show_improve_settings_dialog)
-        settings_menu.add_cascade(label="Text Settings", menu=text_settings_menu)
+        text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
+        text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
+        text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)  # new submenu for SOAP note settings
+        settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -159,6 +160,7 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-n>", lambda event: self.new_session())
         self.bind("<Control-s>", lambda event: self.save_text())
         self.bind("<Control-c>", lambda event: self.copy_text())
+        self.bind("<Control-l>", lambda event: self.load_audio_file())  # added shortcut for loading a file
 
     def show_about(self) -> None:
         messagebox.showinfo("About", "Medical Dictation App\nDeveloped with Python and Tkinter (ttkbootstrap).")
@@ -179,7 +181,7 @@ class MedicalDictationApp(ttk.Window):
         kb_tree.column("Command", width=150, anchor="w")
         kb_tree.column("Description", width=500, anchor="w")
         kb_tree.pack(expand=True, fill="both", padx=10, pady=10)
-        for cmd, desc in {"Ctrl+N": "New dictation", "Ctrl+S": "Save text", "Ctrl+C": "Copy text"}.items():
+        for cmd, desc in {"Ctrl+N": "New dictation", "Ctrl+S": "Save", "Ctrl+C": "Copy text", "Ctrl+L": "Load Audio File"}.items():
             kb_tree.insert("", tk.END, values=(cmd, desc))
         vc_frame = ttk.Frame(notebook)
         notebook.add(vc_frame, text="Voice Commands")
@@ -207,7 +209,11 @@ class MedicalDictationApp(ttk.Window):
         frame = ttk.LabelFrame(dialog, text=title, padding=10)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
-        prompt_text = tk.Text(frame, width=60, height=5)
+        if title in ("SOAP Note Settings", "Improve Text Settings", "Refine Text Settings"):
+            import tkinter.scrolledtext as scrolledtext
+            prompt_text = scrolledtext.ScrolledText(frame, width=60, height=10)
+        else:
+            prompt_text = tk.Text(frame, width=60, height=5)
         prompt_text.grid(row=0, column=1, padx=5, pady=5)
         prompt_text.insert(tk.END, current_prompt)
         ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="nw")
@@ -218,7 +224,7 @@ class MedicalDictationApp(ttk.Window):
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
         ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-    
+
     def show_refine_settings_dialog(self) -> None:
         from settings import SETTINGS
         cfg = SETTINGS.get("refine_text", {})
@@ -241,6 +247,19 @@ class MedicalDictationApp(ttk.Window):
             save_callback=self.save_improve_settings
         )
 
+    def show_soap_settings_dialog(self) -> None:
+        from settings import SETTINGS, _DEFAULT_SETTINGS
+        cfg = SETTINGS.get("soap_note", {})
+        default_prompt = _DEFAULT_SETTINGS["soap_note"]["system_message"]
+        default_model = _DEFAULT_SETTINGS["soap_note"]["model"]
+        self.show_settings_dialog(
+            title="SOAP Note Settings",
+            config_key="soap_note",
+            current_prompt=cfg.get("system_message") or default_prompt,
+            current_model=cfg.get("model") or default_model,  # fallback to default model if missing
+            save_callback=self.save_soap_settings
+        )
+
     def save_refine_settings(self, prompt: str, model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["refine_text"] = {"prompt": prompt, "model": model}
@@ -252,6 +271,12 @@ class MedicalDictationApp(ttk.Window):
         SETTINGS["improve_text"] = {"prompt": prompt, "model": model}
         save_settings(SETTINGS)
         self.update_status("Improve settings saved.")
+
+    def save_soap_settings(self, prompt: str, model: str) -> None:
+        from settings import save_settings, SETTINGS
+        SETTINGS["soap_note"] = {"system_message": prompt, "model": model}
+        save_settings(SETTINGS)
+        self.update_status("SOAP note settings saved.")
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new dictation? Unsaved changes will be lost."):
@@ -504,3 +529,6 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
+
+
