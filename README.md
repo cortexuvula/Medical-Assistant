@@ -12,6 +12,7 @@ Medical Dictation App is a Python-based application that leverages speech recogn
 - **User-Friendly Interface:** Built with Tkinter and ttkbootstrap for a modern GUI.
 - **Multiple Microphone Support:** Easily refresh and select from available microphones.
 - **Clipboard & File Operations:** Copy transcribed text to the clipboard and save it as a text file.
+- **Responsive Layout:** All widgets expand with the window to maintain an optimal layout.
 
 ## Requirements
 
@@ -28,4 +29,13 @@ You can install the required packages using pip:
 
 ```bash
 pip install SpeechRecognition pydub deepgram-sdk ttkbootstrap python-dotenv openai
+```
+
+## Usage
+
+- Record audio through a selected microphone.
+- Use voice commands to insert punctuation and formatting.
+- Refine and improve text using AI assistance.
+- Copy transcribed text to the clipboard or save it as a text file.
+- Note: The application adjusts its layout when expanded or set to full screen.
 
