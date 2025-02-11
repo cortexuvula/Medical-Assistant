@@ -198,77 +198,58 @@ class MedicalDictationApp(ttk.Window):
             vc_tree.insert("", tk.END, values=(cmd, act))
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
-    def show_refine_settings_dialog(self) -> None:
+    def show_settings_dialog(self, title: str, config_key: str, current_prompt: str, current_model: str, save_callback: callable) -> None:
         dialog = tk.Toplevel(self)
-        dialog.title("Refine Text Settings")
+        dialog.title(title)
         dialog.geometry("800x500")
         dialog.transient(self)
         dialog.grab_set()
-        frame = ttk.LabelFrame(dialog, text="Refine Text Settings", padding=10)
+        frame = ttk.LabelFrame(dialog, text=title, padding=10)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
         prompt_text = tk.Text(frame, width=60, height=5)
         prompt_text.grid(row=0, column=1, padx=5, pady=5)
-        prompt_text.insert(tk.END, SETTINGS.get("refine_text", {}).get("prompt", ""))
+        prompt_text.insert(tk.END, current_prompt)
         ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="nw")
         model_entry = ttk.Entry(frame, width=60)
         model_entry.grid(row=1, column=1, padx=5, pady=5)
-        model_entry.insert(0, SETTINGS.get("refine_text", {}).get("model", ""))
+        model_entry.insert(0, current_model)
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        ttk.Button(
-            btn_frame,
-            text="Save",
-            command=lambda: [
-                self.save_refine_settings(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()),
-                dialog.destroy()
-            ]
-        ).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def show_refine_settings_dialog(self) -> None:
+        from settings import SETTINGS
+        cfg = SETTINGS.get("refine_text", {})
+        self.show_settings_dialog(
+            title="Refine Text Settings",
+            config_key="refine_text",
+            current_prompt=cfg.get("prompt", ""),
+            current_model=cfg.get("model", ""),
+            save_callback=self.save_refine_settings
+        )
+
+    def show_improve_settings_dialog(self) -> None:
+        from settings import SETTINGS
+        cfg = SETTINGS.get("improve_text", {})
+        self.show_settings_dialog(
+            title="Improve Text Settings",
+            config_key="improve_text",
+            current_prompt=cfg.get("prompt", ""),
+            current_model=cfg.get("model", ""),
+            save_callback=self.save_improve_settings
+        )
 
     def save_refine_settings(self, prompt: str, model: str) -> None:
-        from settings import save_settings
-        SETTINGS["refine_text"] = {
-            "prompt": prompt,
-            "model": model
-        }
+        from settings import save_settings, SETTINGS
+        SETTINGS["refine_text"] = {"prompt": prompt, "model": model}
         save_settings(SETTINGS)
         self.update_status("Refine settings saved.")
 
-    def show_improve_settings_dialog(self) -> None:
-        dialog = tk.Toplevel(self)
-        dialog.title("Improve Text Settings")
-        dialog.geometry("800x500")
-        dialog.transient(self)
-        dialog.grab_set()
-        frame = ttk.LabelFrame(dialog, text="Improve Text Settings", padding=10)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
-        prompt_text = tk.Text(frame, width=60, height=5)
-        prompt_text.grid(row=0, column=1, padx=5, pady=5)
-        prompt_text.insert(tk.END, SETTINGS.get("improve_text", {}).get("prompt", ""))
-        ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="nw")
-        model_entry = ttk.Entry(frame, width=60)
-        model_entry.grid(row=1, column=1, padx=5, pady=5)
-        model_entry.insert(0, SETTINGS.get("improve_text", {}).get("model", ""))
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        ttk.Button(
-            btn_frame,
-            text="Save",
-            command=lambda: [
-                self.save_improve_settings(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()),
-                dialog.destroy()
-            ]
-        ).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
     def save_improve_settings(self, prompt: str, model: str) -> None:
-        from settings import save_settings
-        SETTINGS["improve_text"] = {
-            "prompt": prompt,
-            "model": model
-        }
+        from settings import save_settings, SETTINGS
+        SETTINGS["improve_text"] = {"prompt": prompt, "model": model}
         save_settings(SETTINGS)
         self.update_status("Improve settings saved.")
 
