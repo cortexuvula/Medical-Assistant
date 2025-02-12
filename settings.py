@@ -4,6 +4,10 @@ import logging
 
 SETTINGS_FILE = "settings.json"
 DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
+
+# NEW: Default AI Provider setting (default is OpenAI)
+DEFAULT_AI_PROVIDER = "openai"
+
 _DEFAULT_SETTINGS = {
     "refine_text": {
         "model": "gpt-3.5-turbo"
@@ -91,6 +95,10 @@ Follow up:
 ** Always return your response in plain text without markdown **
 
 """
+    },
+    "referral": {
+        "prompt": "Write a referral paragraph using the SOAP Note given to you",
+        "model": "gpt-4o"
     }
 }
 

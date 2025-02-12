@@ -77,12 +77,16 @@ class MedicalDictationApp(ttk.Window):
         text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
         text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
         text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)  # new submenu for SOAP note settings
+        # NEW: Add Referral Prompt Settings option
+        text_settings_menu.add_command(label="Referral Prompt Settings", command=self.show_referral_settings_dialog)
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
         # New command to export prompts and models as JSON
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)  # new import command
         # NEW: Command to set default storage folder
         settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
+        # NEW: Command to set AI Provider
+        settings_menu.add_command(label="Set AI Provider", command=self.set_ai_provider)
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -91,6 +95,25 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
+
+    # NEW: Function to select AI Provider
+    def set_ai_provider(self) -> None:
+        from settings import SETTINGS, save_settings
+        dialog = tk.Toplevel(self)
+        dialog.title("Select AI Provider")
+        dialog.geometry("400x200")
+        dialog.transient(self)
+        dialog.grab_set()
+        ai_var = tk.StringVar(value=SETTINGS.get("ai_provider", "openai"))
+        ttk.Label(dialog, text="Select AI Provider:").pack(pady=10)
+        for text, value in [("OpenAI", "openai"), ("Perplexity", "perplexity")]:
+            ttk.Radiobutton(dialog, text=text, variable=ai_var, value=value).pack(anchor="w", padx=20)
+        def save():
+            SETTINGS["ai_provider"] = ai_var.get()
+            save_settings(SETTINGS)
+            self.update_status(f"AI Provider set to {ai_var.get().capitalize()}.")
+            dialog.destroy()
+        ttk.Button(dialog, text="Save", command=save).pack(pady=10)
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -338,6 +361,27 @@ class MedicalDictationApp(ttk.Window):
             current_model=cfg.get("model") or default_model,  # fallback to default model if missing
             save_callback=self.save_soap_settings
         )
+
+    # NEW: Function to show Referral Settings dialog
+    def show_referral_settings_dialog(self) -> None:
+        from settings import SETTINGS, _DEFAULT_SETTINGS
+        cfg = SETTINGS.get("referral", {})
+        default_prompt = _DEFAULT_SETTINGS["referral"]["prompt"]
+        default_model = _DEFAULT_SETTINGS["referral"]["model"]
+        self.show_settings_dialog(
+            title="Referral Prompt Settings",
+            config_key="referral",
+            current_prompt=cfg.get("prompt", default_prompt),
+            current_model=cfg.get("model", default_model),
+            save_callback=self.save_referral_settings
+        )
+
+    # NEW: Function to save Referral Settings
+    def save_referral_settings(self, prompt: str, model: str) -> None:
+        from settings import SETTINGS, save_settings
+        SETTINGS["referral"] = {"prompt": prompt, "model": model}
+        save_settings(SETTINGS)
+        self.update_status("Referral settings saved.")
 
     def save_refine_settings(self, prompt: str, model: str) -> None:
         from settings import save_settings, SETTINGS
@@ -708,10 +752,3 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
-
-
-
-
-
-
-
