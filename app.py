@@ -209,6 +209,10 @@ class MedicalDictationApp(ttk.Window):
         self.soap_button = ttk.Button(ai_buttons, text="SOAP Note", width=15, command=self.create_soap_note, bootstyle="SECONDARY")
         self.soap_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.soap_button, "Create a SOAP note using OpenAI.")
+        # NEW: Referral button
+        self.referral_button = ttk.Button(ai_buttons, text="Referral", width=15, command=self.create_referral, bootstyle="SECONDARY")
+        self.referral_button.grid(row=0, column=3, padx=5, pady=5)
+        ToolTip(self.referral_button, "Generate a referral paragraph using OpenAI.")
         
         # Automation Controls Section
         ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub-label
@@ -539,6 +543,13 @@ class MedicalDictationApp(ttk.Window):
 
     def create_soap_note(self) -> None:
         self._process_text_with_ai(create_soap_note_with_openai, "SOAP note created.", self.soap_button)
+
+    def create_referral(self) -> None:
+        self._process_text_with_ai(
+            api_func = lambda text: __import__("ai").create_referral_with_openai(text),
+            success_message = "Referral created.",
+            button = self.referral_button
+        )
 
     def load_audio_file(self) -> None:
         file_path = filedialog.askopenfilename(

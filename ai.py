@@ -43,3 +43,8 @@ def create_soap_note_with_openai(text: str) -> str:
     full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
     # Assuming "gpt-4o" is the intended model for SOAP note generation
     return call_openai("gpt-4o", SOAP_SYSTEM_MESSAGE, full_prompt, 0.7, 4000)
+
+def create_referral_with_openai(text: str) -> str:
+    new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
+    # Using model "gpt-4o" as in SOAP note generation; adjust temperature and max_tokens as needed.
+    return call_openai("gpt-4o", "You are a physician writing referral letters to other physicians.", new_prompt, 0.7, 250)
