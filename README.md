@@ -9,8 +9,11 @@ Medical Dictation App is a Python-based application that leverages speech recogn
 - **AI Assistance:**  
   - **Refine Text:** Correct punctuation and capitalization using OpenAI GPT-3.5.
   - **Improve Text:** Enhance clarity and readability using OpenAI GPT-4.
+  - **SOAP Note:** Create a detailed SOAP note using OpenAI.
+  - **Referral Generation:** Generate referral paragraphs using AI.
 - **User-Friendly Interface:** Built with Tkinter and ttkbootstrap for a modern GUI.
 - **Multiple Microphone Support:** Easily refresh and select from available microphones.
+- **Default Storage Folder:** Set a default folder for saving transcriptions and audio files.
 - **Clipboard & File Operations:** Copy transcribed text to the clipboard and save it as a text file.
 - **Responsive Layout:** All widgets expand with the window to maintain an optimal layout.
 
@@ -24,6 +27,8 @@ Medical Dictation App is a Python-based application that leverages speech recogn
   - [ttkbootstrap](https://pypi.org/project/ttkbootstrap/)
   - [python-dotenv](https://pypi.org/project/python-dotenv/)
   - [openai](https://pypi.org/project/openai/)
+- **FFmpeg:** Required for audio processing.  
+  For installation instructions on Windows, see [this YouTube video](https://youtu.be/JR36oH35Fgg?si=MoabHE-pi3NrJo4U).
 
 You can install the required packages using pip:
 
@@ -33,9 +38,13 @@ pip install SpeechRecognition pydub deepgram-sdk ttkbootstrap python-dotenv open
 
 ## Usage
 
-- Record audio through a selected microphone.
-- Use voice commands to insert punctuation and formatting.
-- Refine and improve text using AI assistance.
-- Copy transcribed text to the clipboard or save it as a text file.
+- **Recording:** Record audio through a selected microphone.  
+- **Voice Commands:** Use commands such as "full stop" for punctuation, "new paragraph" for line breaks, and others to edit the transcription.  
+- **AI Assistance:**  
+  - Refine or improve text using AI features.
+  - Create SOAP notes or generate referral paragraphs via dedicated buttons.
+- **Default Storage Folder:** Set your preferred folder in the Settings menu to automatically save audio and transcription files.
+- **Shortcuts:** Utilize keyboard shortcuts for common actions (e.g., Ctrl+N for a new session, Ctrl+S to save).
+
 - Note: The application adjusts its layout when expanded or set to full screen.
 
