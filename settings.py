@@ -3,6 +3,7 @@ import json
 import logging
 
 SETTINGS_FILE = "settings.json"
+DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
 _DEFAULT_SETTINGS = {
     "refine_text": {
         "model": "gpt-3.5-turbo"

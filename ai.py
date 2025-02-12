@@ -10,7 +10,7 @@ from settings import SETTINGS, _DEFAULT_SETTINGS
 # Constants for OpenAI API calls
 OPENAI_TEMPERATURE_REFINEMENT = 0.0
 OPENAI_MAX_TOKENS_REFINEMENT = 4000
-OPENAI_TEMPERATURE_IMPROVEMENT = 1.0
+OPENAI_TEMPERATURE_IMPROVEMENT = 0.5
 OPENAI_MAX_TOKENS_IMPROVEMENT = 4000
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:

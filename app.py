@@ -81,6 +81,8 @@ class MedicalDictationApp(ttk.Window):
         # New command to export prompts and models as JSON
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)  # new import command
+        # NEW: Command to set default storage folder
+        settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -89,6 +91,17 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
+
+    def set_default_folder(self) -> None:
+        folder = filedialog.askdirectory(title="Select Storage Folder")
+        if folder:
+            try:
+                from settings import SETTINGS, save_settings  # Assuming save_settings is implemented
+                SETTINGS["default_storage_folder"] = folder
+                save_settings(SETTINGS)
+                self.update_status(f"Default storage folder set to: {folder}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to set folder: {e}")
 
     def export_prompts(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
@@ -201,7 +214,7 @@ class MedicalDictationApp(ttk.Window):
         ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub-label
         automation_frame = ttk.Frame(control_frame)
         automation_frame.grid(row=6, column=0, sticky="w")
-        self.record_soap_button = ttk.Button(automation_frame, text="Record SOAP Note", width=15, command=self.toggle_soap_recording, bootstyle="SECONDARY")
+        self.record_soap_button = ttk.Button(automation_frame, text="Record SOAP Note", width=25, command=self.toggle_soap_recording, bootstyle="SECONDARY")
         self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
 
@@ -579,6 +592,9 @@ class MedicalDictationApp(ttk.Window):
 
     def toggle_soap_recording(self) -> None:
         if not self.soap_recording:
+            # Clear previous text and reset appended chunks before recording
+            self.text_area.delete("1.0", tk.END)
+            self.appended_chunks.clear()
             self.soap_recording = True
             self.soap_audio_segments = []
             self.record_soap_button.config(text="Stop", bootstyle="danger")
@@ -597,6 +613,22 @@ class MedicalDictationApp(ttk.Window):
             self.soap_recording = False
             self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
             self.update_status("Transcribing SOAP note...")
+            # NEW: Save the SOAP audio before transcription
+            import datetime
+            folder = SETTINGS.get("default_storage_folder")
+            if folder and not os.path.exists(folder):
+                os.makedirs(folder)
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+            audio_file_path = os.path.join(folder, f"{now_str}.wav") if folder else f"{now_str}.wav"
+            if self.soap_audio_segments:
+                combined = self.soap_audio_segments[0]
+                for seg in self.soap_audio_segments[1:]:
+                    combined += seg
+                combined.export(audio_file_path, format="wav")
+                self.update_status(f"SOAP audio saved to: {audio_file_path}")
+            # Show progress bar when transcribing SOAP note
+            self.progress_bar.pack(side=RIGHT, padx=10)
+            self.progress_bar.start()
             self.process_soap_recording()
 
     def soap_callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
