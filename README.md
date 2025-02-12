@@ -1,50 +1,60 @@
-# Medical Dictation App
+# Medical Dictation/Assistant
 
-Medical Dictation App is a Python-based application that leverages speech recognition and AI assistance to help users transcribe, refine, and improve audio dictations. The application is designed with a focus on medical transcription, using APIs like Deepgram for specialized speech recognition and OpenAI for text refinement.
+Medical Dictation/Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI and Perplexity) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
 
 ## Features
+- **Real-time transcription:** Convert speech to text using Google Speech Recognition or Deepgram.
+- **AI Assistance:** Generate refined texts, improved clarity, SOAP notes, and referral paragraphs using OpenAI/Perplexity.
+- **Voice Commands:** Control the application via voice commands (e.g., "new paragraph", "full stop").
+- **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation.
+- **Audio Recording:** Record and save audio with options for live transcription and SOAP note extraction.
+- **User-friendly Interface:** Built with Tkinter and ttkbootstrap for a modern UI experience.
 
-- **Audio Transcription:** Record audio through a selected microphone and transcribe it in real-time.
-- **Voice Commands:** Use predefined voice commands (e.g., "full stop", "new paragraph", "delete last word") to insert punctuation and formatting.
-- **AI Assistance:**  
-  - **Refine Text:** Correct punctuation and capitalization using OpenAI GPT-3.5.
-  - **Improve Text:** Enhance clarity and readability using OpenAI GPT-4.
-  - **SOAP Note:** Create a detailed SOAP note using OpenAI.
-  - **Referral Generation:** Generate referral paragraphs using AI.
-- **User-Friendly Interface:** Built with Tkinter and ttkbootstrap for a modern GUI.
-- **Multiple Microphone Support:** Easily refresh and select from available microphones.
-- **Default Storage Folder:** Set a default folder for saving transcriptions and audio files.
-- **Clipboard & File Operations:** Copy transcribed text to the clipboard and save it as a text file.
-- **Responsive Layout:** All widgets expand with the window to maintain an optimal layout.
+## Installation
 
-## Requirements
+1. **Clone or Download the Repository**
+   ```
+   git clone <repository-url>
+   ```
 
-- **Python:** 3.7 or higher
-- **Python Packages:**  
-  - [SpeechRecognition](https://pypi.org/project/SpeechRecognition/)
-  - [pydub](https://pypi.org/project/pydub/)
-  - [deepgram-sdk](https://pypi.org/project/deepgram-sdk/)
-  - [ttkbootstrap](https://pypi.org/project/ttkbootstrap/)
-  - [python-dotenv](https://pypi.org/project/python-dotenv/)
-  - [openai](https://pypi.org/project/openai/)
-- **FFmpeg:** Required for audio processing.  
-  For installation instructions on Windows, see [this YouTube video](https://youtu.be/JR36oH35Fgg?si=MoabHE-pi3NrJo4U).
+2. **Install Dependencies**  
+   Run the following command in the project directory:
+   ```
+   pip install -r requirements.txt
+   ```
 
-You can install the required packages using pip:
+3. **Configuration**  
+   - Create a `.env` file in the project root.
+   - Add your API keys and configuration settings (e.g., `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `DEEPGRAM_API_KEY`, etc.).
 
-```bash
-pip install SpeechRecognition pydub deepgram-sdk ttkbootstrap python-dotenv openai
-```
+4. **FFmpeg Installation**  
+   FFmpeg is required for audio processing. Download FFmpeg from [ffmpeg.org](https://ffmpeg.org) and follow the instructions for Windows.  
+   For a step-by-step guide, watch this YouTube tutorial: [How to Install FFmpeg on Windows](https://youtu.be/JR36oH35Fgg?si=MoabHE-pi3NrJo4U).
 
 ## Usage
 
-- **Recording:** Record audio through a selected microphone.  
-- **Voice Commands:** Use commands such as "full stop" for punctuation, "new paragraph" for line breaks, and others to edit the transcription.  
-- **AI Assistance:**  
-  - Refine or improve text using AI features.
-  - Create SOAP notes or generate referral paragraphs via dedicated buttons.
-- **Default Storage Folder:** Set your preferred folder in the Settings menu to automatically save audio and transcription files.
-- **Shortcuts:** Utilize keyboard shortcuts for common actions (e.g., Ctrl+N for a new session, Ctrl+S to save).
+1. **Launching the Application**  
+   Execute the following command:
+   ```
+   python main.py
+   ```
 
-- Note: The application adjusts its layout when expanded or set to full screen.
+2. **Buttons and Voice Commands**  
+   - **Record/Stop:** Start and stop dictation.
+   - **SOAP Note / Referral:** Generate a SOAP note or referral paragraph without formatting markdown.
+   - **Prompt Settings:** Adjust prompts via the Settings menu.
+
+3. **Editing Prompts**  
+   Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities.
+
+## Contribution
+
+Contributions to the Medical Dictation Assistant are welcome.  
+- Fork the repository.
+- Create a feature branch.
+- Submit a Pull Request with your enhancements.
+
+## License
+
+Distributed under the MIT License.
 
