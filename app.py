@@ -163,8 +163,8 @@ class MedicalDictationApp(ttk.Window):
         refresh_btn.pack(side=LEFT, padx=10)
         ToolTip(refresh_btn, "Refresh the list of available microphones.")
 
-        # Transcription Text Area
-        self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11))
+        # Transcription Text Area with undo enabled and autoseparators disabled
+        self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
         self.text_area.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)  # modified to expand with window
 
         # Control Buttons
@@ -188,11 +188,14 @@ class MedicalDictationApp(ttk.Window):
         self.copy_button = ttk.Button(main_controls, text="Copy Text", width=10, command=self.copy_text, bootstyle="PRIMARY")
         self.copy_button.grid(row=0, column=4, padx=5, pady=5)
         ToolTip(self.copy_button, "Copy the text to the clipboard.")
+        self.undo_button = ttk.Button(main_controls, text="Undo", width=10, command=self.undo_text, bootstyle="SECONDARY")
+        self.undo_button.grid(row=0, column=5, padx=5, pady=5)
+        ToolTip(self.undo_button, "Undo the last change.")
         self.save_button = ttk.Button(main_controls, text="Save", width=10, command=self.save_text, bootstyle="PRIMARY")
-        self.save_button.grid(row=0, column=5, padx=5, pady=5)
+        self.save_button.grid(row=0, column=6, padx=5, pady=5)
         ToolTip(self.save_button, "Save the transcription and audio to files.")
         self.load_button = ttk.Button(main_controls, text="Load", width=10, command=self.load_audio_file, bootstyle="PRIMARY")
-        self.load_button.grid(row=0, column=6, padx=5, pady=5)
+        self.load_button.grid(row=0, column=7, padx=5, pady=5)
         ToolTip(self.load_button, "Load an audio file and transcribe.")
 
         # AI Assist Section
@@ -528,8 +531,11 @@ class MedicalDictationApp(ttk.Window):
         self.executor.submit(task)
 
     def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button) -> None:
+        # Begin a new undo block
+        self.text_area.edit_separator()
         self.text_area.delete("1.0", tk.END)
         self.text_area.insert(tk.END, new_text)
+        self.text_area.edit_separator()  # End undo block
         self.update_status(success_message)
         button.config(state=NORMAL)
         self.progress_bar.stop()
@@ -683,6 +689,13 @@ class MedicalDictationApp(ttk.Window):
                 soap_note = f"Error processing SOAP note: {e}"
             self.after(0, lambda: self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button))
         self.executor.submit(task)
+
+    def undo_text(self) -> None:
+        try:
+            self.text_area.edit_undo()
+            self.update_status("Undo performed.")
+        except Exception as e:
+            self.update_status("Nothing to undo.")
 
     def on_closing(self) -> None:
         try:
