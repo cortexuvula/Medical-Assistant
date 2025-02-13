@@ -91,11 +91,17 @@ def remove_markdown(text: str) -> str:
     text = re.sub(r"(\*|_)(.*?)\1", r"\2", text)
     return text.strip()
 
+# New helper to remove citation markers like [1], [2] etc.
+def remove_citations(text: str) -> str:
+    return re.sub(r'(\[\d+\])+', '', text)
+
 def create_soap_note_with_openai(text: str) -> str:
     full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
     result = call_ai("gpt-4o", SOAP_SYSTEM_MESSAGE, full_prompt, 0.7, 4000)
-    # NEW: Remove markdown formatting from the result
-    return remove_markdown(result)
+    cleaned = remove_markdown(result)
+    # Remove citation markers from the result
+    cleaned = remove_citations(cleaned)
+    return cleaned.strip()
 
 def create_referral_with_openai(text: str) -> str:
     new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
