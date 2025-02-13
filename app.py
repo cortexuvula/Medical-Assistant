@@ -612,10 +612,14 @@ class MedicalDictationApp(ttk.Window):
         self._process_text_with_ai(create_soap_note_with_openai, "SOAP note created.", self.soap_button)
 
     def create_referral(self) -> None:
+        import tkinter.simpledialog  # if not already imported
+        focus = tk.simpledialog.askstring("Referral Focus", "Enter additional focus for the referral:")
+        if focus is None:
+            return
         self._process_text_with_ai(
-            api_func = lambda text: __import__("ai").create_referral_with_openai(text),
-            success_message = "Referral created.",
-            button = self.referral_button
+            api_func=lambda text: __import__("ai").create_referral_with_openai(text, focus),
+            success_message="Referral created.",
+            button=self.referral_button
         )
 
     def load_audio_file(self) -> None:

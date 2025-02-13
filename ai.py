@@ -103,8 +103,11 @@ def create_soap_note_with_openai(text: str) -> str:
     cleaned = remove_citations(cleaned)
     return cleaned.strip()
 
-def create_referral_with_openai(text: str) -> str:
-    new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
+def create_referral_with_openai(text: str, focus_text: str = "") -> str:
+    focus_line = f"\n\nFocus on: {focus_text}" if focus_text else ""
+    new_prompt = "Write a referral paragraph using the SOAP Note given to you" + focus_line + "\n\n" + text
     result = call_ai("gpt-4o", "You are a physician writing referral letters to other physicians.", new_prompt, 0.7, 250)
-    # NEW: Remove markdown formatting from the result
-    return remove_markdown(result)
+    # Remove markdown formatting and citations from the result
+    cleaned = remove_markdown(result)
+    cleaned = remove_citations(cleaned)
+    return cleaned.strip()
