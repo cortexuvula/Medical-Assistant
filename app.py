@@ -111,6 +111,8 @@ class MedicalDictationApp(ttk.Window):
         def save():
             SETTINGS["ai_provider"] = ai_var.get()
             save_settings(SETTINGS)
+            # Update provider label to reflect the new provider
+            self.provider_label.config(text=f"Provider: {ai_var.get().capitalize()}")
             self.update_status(f"AI Provider set to {ai_var.get().capitalize()}.")
             dialog.destroy()
         ttk.Button(dialog, text="Save", command=save).pack(pady=10)
@@ -185,6 +187,11 @@ class MedicalDictationApp(ttk.Window):
         refresh_btn = ttk.Button(mic_frame, text="Refresh", command=self.refresh_microphones, bootstyle="PRIMARY")
         refresh_btn.pack(side=LEFT, padx=10)
         ToolTip(refresh_btn, "Refresh the list of available microphones.")
+        # NEW: Display current AI provider next to the refresh button
+        from settings import SETTINGS
+        provider = SETTINGS.get("ai_provider", "openai")
+        self.provider_label = ttk.Label(mic_frame, text=f"Provider: {provider.capitalize()}")
+        self.provider_label.pack(side=LEFT, padx=10)
 
         # Transcription Text Area with undo enabled and autoseparators disabled
         self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
