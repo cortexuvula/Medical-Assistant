@@ -303,6 +303,14 @@ class MedicalDictationApp(ttk.Window):
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
     def show_settings_dialog(self, title: str, config_key: str, current_prompt: str, current_model: str, save_callback: callable) -> None:
+        from settings import _DEFAULT_SETTINGS
+        # Determine default values based on config_key
+        if config_key in _DEFAULT_SETTINGS:
+            default = _DEFAULT_SETTINGS[config_key]
+            default_prompt = default.get("system_message", default.get("prompt", ""))
+            default_model = default.get("model", "")
+        else:
+            default_prompt, default_model = "", ""
         dialog = tk.Toplevel(self)
         dialog.title(title)
         dialog.geometry("800x500")
@@ -317,13 +325,23 @@ class MedicalDictationApp(ttk.Window):
         else:
             prompt_text = tk.Text(frame, width=60, height=5)
         prompt_text.grid(row=0, column=1, padx=5, pady=5)
-        prompt_text.insert(tk.END, current_prompt)
+        prompt_text.insert("1.0", current_prompt)
         ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="nw")
         model_entry = ttk.Entry(frame, width=60)
         model_entry.grid(row=1, column=1, padx=5, pady=5)
         model_entry.insert(0, current_model)
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Define a separate function to reset the fields
+        def reset_fields():
+            prompt_text.delete("1.0", tk.END)
+            # Use a fallback message if default_prompt is empty
+            insertion_text = default_prompt if default_prompt else "Default prompt not set in _DEFAULT_SETTINGS"
+            prompt_text.insert("1.0", insertion_text)
+            model_entry.delete(0, tk.END)
+            model_entry.insert(0, default_model)
+            prompt_text.focus()  # Ensure the text area shows the inserted text
+        ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
@@ -479,10 +497,13 @@ class MedicalDictationApp(ttk.Window):
         if not self.listening:
             self.update_status("Listening...")
             try:
-                mic = sr.Microphone(device_index=self.mic_combobox.current())
+                # NEW: create microphone from selected input
+                import speech_recognition as sr
+                selected_index = self.mic_combobox.current()
+                mic = sr.Microphone(device_index=selected_index)
             except Exception as e:
-                messagebox.showerror("Microphone Error", f"Error accessing microphone: {e}")
-                logging.error("Microphone access error", exc_info=True)
+                logging.error("Error creating microphone", exc_info=True)
+                self.update_status("Error accessing microphone.")
                 return
             self.stop_listening_function = self.recognizer.listen_in_background(mic, self.callback, phrase_time_limit=10)
             self.listening = True
@@ -661,11 +682,13 @@ class MedicalDictationApp(ttk.Window):
             self.record_soap_button.config(text="Stop", bootstyle="danger")
             self.update_status("Recording SOAP note...")
             try:
-                mic = sr.Microphone(device_index=self.mic_combobox.current())
+                # NEW: create microphone for SOAP recording from selected input
+                import speech_recognition as sr
+                selected_index = self.mic_combobox.current()
+                mic = sr.Microphone(device_index=selected_index)
             except Exception as e:
-                messagebox.showerror("Microphone Error", f"Error accessing microphone: {e}")
-                self.soap_recording = False
-                self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
+                logging.error("Error creating microphone for SOAP recording", exc_info=True)
+                self.update_status("Error accessing microphone for SOAP note.")
                 return
             self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
         else:
