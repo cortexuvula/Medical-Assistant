@@ -611,13 +611,119 @@ class MedicalDictationApp(ttk.Window):
     def create_soap_note(self) -> None:
         self._process_text_with_ai(create_soap_note_with_openai, "SOAP note created.", self.soap_button)
 
+    def _get_possible_conditions(self, text: str) -> str:
+        from ai import call_ai, remove_markdown, remove_citations
+        prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. Keep the condition names simple and specific and not longer that 3 words. "
+                  "Return them as a comma-separated list. Text: " + text)
+        result = call_ai("gpt-4o", "You are a physician specialized in referrals.", prompt, 0.7, 100)
+        conditions = remove_markdown(result).strip()
+        conditions = remove_citations(conditions)
+        return conditions
+
+    # NEW: Custom input dialog with minimum size of 400x300 updated to include self
+    def askstring_min(self, title: str, prompt: str, initialvalue: str = "") -> Optional[str]:
+        dialog = tk.Toplevel()
+        dialog.title(title)
+        dialog.minsize(400, 300)
+        dialog.grab_set()
+        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=20)
+        entry = tk.Entry(dialog, width=50)
+        entry.insert(0, initialvalue)
+        entry.pack(padx=20)
+        result = [None]
+        def on_ok():
+            result[0] = entry.get()
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=20)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        return result[0]
+
     def create_referral(self) -> None:
-        import tkinter.simpledialog  # if not already imported
-        focus = tk.simpledialog.askstring("Referral Focus", "Enter additional focus for the referral:")
+        # New: Immediately update status and display progress bar on referral click
+        self.update_status("Referral button clicked - preparing referral...")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        
+        text = self.text_area.get("1.0", tk.END).strip()
+        # New: Get suggested conditions asynchronously
+        def get_conditions() -> str:
+            return self._get_possible_conditions(text)
+        future = self.executor.submit(get_conditions)
+        def on_conditions_done(future_result):
+            try:
+                suggestions = future_result.result() or ""
+            except Exception as e:
+                suggestions = ""
+            # Continue on the main thread
+            self.after(0, lambda: self._create_referral_continued(suggestions))
+        future.add_done_callback(on_conditions_done)
+
+    def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.geometry("500x500")
+        dialog.grab_set()
+        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
+        # Set custom style for ttk.Checkbutton to show green background when selected
+        style = ttk.Style()
+        style.map("Green.TCheckbutton",
+                  background=[("selected", "green")],
+                  foreground=[("selected", "white")])
+        checkbox_frame = tk.Frame(dialog)
+        checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+        vars_list = []
+        for cond in conditions:
+            var = tk.BooleanVar()
+            ttk.Checkbutton(
+                checkbox_frame, text=cond, variable=var, style="Green.TCheckbutton"
+            ).pack(anchor="w")
+            vars_list.append((cond, var))
+        # NEW: Optional text area for additional conditions
+        tk.Label(dialog, text="Additional conditions (optional):", wraplength=380).pack(padx=20, pady=(10,0))
+        optional_text = tk.Text(dialog, width=50, height=3)
+        optional_text.pack(padx=20, pady=(0,10))
+        selected = []
+        def on_ok():
+            for cond, var in vars_list:
+                if var.get():
+                    selected.append(cond)
+            extra = optional_text.get("1.0", tk.END).strip()
+            if extra:
+                selected.append(extra)
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        if selected:
+            return ", ".join(selected)
+        return None
+
+    def _create_referral_continued(self, suggestions: str) -> None:
+        # Stop progress bar before showing dialog
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()
+        # Parse suggestions into a list of conditions
+        conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
+        # Show the tickbox dialog and return selected conditions as a comma-separated string
+        focus = self.ask_conditions_dialog("Select Conditions", "Select conditions to focus on:", conditions_list)
         if focus is None:
+            self.update_status("Referral cancelled.")
             return
+        # Update status and show progress bar for processing referral
+        self.update_status("Processing referral...")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
         self._process_text_with_ai(
-            api_func=lambda text: __import__("ai").create_referral_with_openai(text, focus),
+            api_func=lambda t: __import__("ai").create_referral_with_openai(t, focus),
             success_message="Referral created.",
             button=self.referral_button
         )
