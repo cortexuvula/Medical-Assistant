@@ -669,11 +669,16 @@ class MedicalDictationApp(ttk.Window):
         dialog.geometry("500x500")
         dialog.grab_set()
         tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
-        # Set custom style for ttk.Checkbutton to show green background when selected
+        # Updated style configuration for ttk.Checkbutton
         style = ttk.Style()
+        style.configure("Green.TCheckbutton",
+            background="white",
+            foreground="grey20",
+            indicatorcolor="blue")
         style.map("Green.TCheckbutton",
-                  background=[("selected", "green")],
-                  foreground=[("selected", "white")])
+            background=[("active", "gray20"), ("selected", "green")],
+            foreground=[("selected", "white")],
+            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")])
         checkbox_frame = tk.Frame(dialog)
         checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
         vars_list = []
@@ -907,4 +912,4 @@ class MedicalDictationApp(ttk.Window):
 
 def main() -> None:
     app = MedicalDictationApp()
-    app.mainloop()
+    app.mainloop() 
