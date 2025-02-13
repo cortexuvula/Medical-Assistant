@@ -76,16 +76,12 @@ class MedicalDictationApp(ttk.Window):
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
         text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
         text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
-        text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)  # new submenu for SOAP note settings
-        # NEW: Add Referral Prompt Settings option
+        text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)
         text_settings_menu.add_command(label="Referral Prompt Settings", command=self.show_referral_settings_dialog)
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
-        # New command to export prompts and models as JSON
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
-        settings_menu.add_command(label="Import Prompts", command=self.import_prompts)  # new import command
-        # NEW: Command to set default storage folder
+        settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
         settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
-        # NEW: Command to set AI Provider
         settings_menu.add_command(label="Set AI Provider", command=self.set_ai_provider)
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
@@ -96,7 +92,6 @@ class MedicalDictationApp(ttk.Window):
 
         self.config(menu=menubar)
 
-    # NEW: Function to select AI Provider
     def set_ai_provider(self) -> None:
         from settings import SETTINGS, save_settings
         dialog = tk.Toplevel(self)
@@ -111,7 +106,6 @@ class MedicalDictationApp(ttk.Window):
         def save():
             SETTINGS["ai_provider"] = ai_var.get()
             save_settings(SETTINGS)
-            # Update provider label to reflect the new provider
             self.provider_label.config(text=f"Provider: {ai_var.get().capitalize()}")
             self.update_status(f"AI Provider set to {ai_var.get().capitalize()}.")
             dialog.destroy()
@@ -121,7 +115,7 @@ class MedicalDictationApp(ttk.Window):
         folder = filedialog.askdirectory(title="Select Storage Folder")
         if folder:
             try:
-                from settings import SETTINGS, save_settings  # Assuming save_settings is implemented
+                from settings import SETTINGS, save_settings
                 SETTINGS["default_storage_folder"] = folder
                 save_settings(SETTINGS)
                 self.update_status(f"Default storage folder set to: {folder}")
@@ -173,7 +167,6 @@ class MedicalDictationApp(ttk.Window):
                 messagebox.showerror("Import Prompts", f"Error importing prompts: {e}")
 
     def create_widgets(self) -> None:
-        # Microphone Selection
         mic_frame = ttk.Frame(self, padding=10)
         mic_frame.pack(side=TOP, fill=tk.X, padx=20, pady=(20, 10))
         ttk.Label(mic_frame, text="Select Microphone:").pack(side=LEFT, padx=(0, 10))
@@ -187,17 +180,14 @@ class MedicalDictationApp(ttk.Window):
         refresh_btn = ttk.Button(mic_frame, text="Refresh", command=self.refresh_microphones, bootstyle="PRIMARY")
         refresh_btn.pack(side=LEFT, padx=10)
         ToolTip(refresh_btn, "Refresh the list of available microphones.")
-        # NEW: Display current AI provider next to the refresh button
         from settings import SETTINGS
         provider = SETTINGS.get("ai_provider", "openai")
         self.provider_label = ttk.Label(mic_frame, text=f"Provider: {provider.capitalize()}")
         self.provider_label.pack(side=LEFT, padx=10)
 
-        # Transcription Text Area with undo enabled and autoseparators disabled
         self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
-        self.text_area.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)  # modified to expand with window
+        self.text_area.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
 
-        # Control Buttons
         control_frame = ttk.Frame(self, padding=10)
         control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
         ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
@@ -228,9 +218,8 @@ class MedicalDictationApp(ttk.Window):
         self.load_button.grid(row=0, column=7, padx=5, pady=5)
         ToolTip(self.load_button, "Load an audio file and transcribe.")
 
-        # AI Assist Section
         ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
-        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub label
+        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))
         ai_buttons = ttk.Frame(control_frame)
         ai_buttons.grid(row=4, column=0, sticky="w")
         self.refine_button = ttk.Button(ai_buttons, text="Refine Text", width=15, command=self.refine_text, bootstyle="SECONDARY")
@@ -242,20 +231,17 @@ class MedicalDictationApp(ttk.Window):
         self.soap_button = ttk.Button(ai_buttons, text="SOAP Note", width=15, command=self.create_soap_note, bootstyle="SECONDARY")
         self.soap_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.soap_button, "Create a SOAP note using OpenAI.")
-        # NEW: Referral button
         self.referral_button = ttk.Button(ai_buttons, text="Referral", width=15, command=self.create_referral, bootstyle="SECONDARY")
         self.referral_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.referral_button, "Generate a referral paragraph using OpenAI.")
         
-        # Automation Controls Section
-        ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))  # new sub-label
+        ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))
         automation_frame = ttk.Frame(control_frame)
         automation_frame.grid(row=6, column=0, sticky="w")
         self.record_soap_button = ttk.Button(automation_frame, text="Record SOAP Note", width=25, command=self.toggle_soap_recording, bootstyle="SECONDARY")
         self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
 
-        # Status Bar
         status_frame = ttk.Frame(self, padding=(10, 5))
         status_frame.pack(side=BOTTOM, fill=tk.X)
         self.status_label = ttk.Label(status_frame, text="Status: Idle", anchor="w")
@@ -269,7 +255,7 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-n>", lambda event: self.new_session())
         self.bind("<Control-s>", lambda event: self.save_text())
         self.bind("<Control-c>", lambda event: self.copy_text())
-        self.bind("<Control-l>", lambda event: self.load_audio_file())  # added shortcut for loading a file
+        self.bind("<Control-l>", lambda event: self.load_audio_file())
 
     def show_about(self) -> None:
         messagebox.showinfo("About", "Medical Assistant App\nDeveloped with Python and Tkinter (ttkbootstrap).")
@@ -311,7 +297,6 @@ class MedicalDictationApp(ttk.Window):
 
     def show_settings_dialog(self, title: str, config_key: str, current_prompt: str, current_model: str, save_callback: callable) -> None:
         from settings import _DEFAULT_SETTINGS
-        # Determine default values based on config_key
         if config_key in _DEFAULT_SETTINGS:
             default = _DEFAULT_SETTINGS[config_key]
             default_prompt = default.get("system_message", default.get("prompt", ""))
@@ -339,15 +324,13 @@ class MedicalDictationApp(ttk.Window):
         model_entry.insert(0, current_model)
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        # Define a separate function to reset the fields
         def reset_fields():
             prompt_text.delete("1.0", tk.END)
-            # Use a fallback message if default_prompt is empty
             insertion_text = default_prompt if default_prompt else "Default prompt not set in _DEFAULT_SETTINGS"
             prompt_text.insert("1.0", insertion_text)
             model_entry.delete(0, tk.END)
             model_entry.insert(0, default_model)
-            prompt_text.focus()  # Ensure the text area shows the inserted text
+            prompt_text.focus()
         ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
@@ -383,11 +366,10 @@ class MedicalDictationApp(ttk.Window):
             title="SOAP Note Settings",
             config_key="soap_note",
             current_prompt=cfg.get("system_message") or default_prompt,
-            current_model=cfg.get("model") or default_model,  # fallback to default model if missing
+            current_model=cfg.get("model") or default_model,
             save_callback=self.save_soap_settings
         )
 
-    # NEW: Function to show Referral Settings dialog
     def show_referral_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("referral", {})
@@ -401,7 +383,6 @@ class MedicalDictationApp(ttk.Window):
             save_callback=self.save_referral_settings
         )
 
-    # NEW: Function to save Referral Settings
     def save_referral_settings(self, prompt: str, model: str) -> None:
         from settings import SETTINGS, save_settings
         SETTINGS["referral"] = {"prompt": prompt, "model": model}
@@ -504,7 +485,6 @@ class MedicalDictationApp(ttk.Window):
         if not self.listening:
             self.update_status("Listening...")
             try:
-                # NEW: create microphone from selected input
                 import speech_recognition as sr
                 selected_index = self.mic_combobox.current()
                 mic = sr.Microphone(device_index=selected_index)
@@ -603,11 +583,10 @@ class MedicalDictationApp(ttk.Window):
         self.executor.submit(task)
 
     def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button) -> None:
-        # Begin a new undo block
         self.text_area.edit_separator()
         self.text_area.delete("1.0", tk.END)
         self.text_area.insert(tk.END, new_text)
-        self.text_area.edit_separator()  # End undo block
+        self.text_area.edit_separator()
         self.update_status(success_message)
         button.config(state=NORMAL)
         self.progress_bar.stop()
@@ -681,7 +660,6 @@ class MedicalDictationApp(ttk.Window):
 
     def toggle_soap_recording(self) -> None:
         if not self.soap_recording:
-            # Clear previous text and reset appended chunks before recording
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
             self.soap_recording = True
@@ -689,7 +667,6 @@ class MedicalDictationApp(ttk.Window):
             self.record_soap_button.config(text="Stop", bootstyle="danger")
             self.update_status("Recording SOAP note...")
             try:
-                # NEW: create microphone for SOAP recording from selected input
                 import speech_recognition as sr
                 selected_index = self.mic_combobox.current()
                 mic = sr.Microphone(device_index=selected_index)
@@ -704,7 +681,6 @@ class MedicalDictationApp(ttk.Window):
             self.soap_recording = False
             self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
             self.update_status("Transcribing SOAP note...")
-            # NEW: Save the SOAP audio before transcription
             import datetime
             folder = SETTINGS.get("default_storage_folder")
             if folder and not os.path.exists(folder):
@@ -717,7 +693,6 @@ class MedicalDictationApp(ttk.Window):
                     combined += seg
                 combined.export(audio_file_path, format="wav")
                 self.update_status(f"SOAP audio saved to: {audio_file_path}")
-            # Show progress bar when transcribing SOAP note
             self.progress_bar.pack(side=RIGHT, padx=10)
             self.progress_bar.start()
             self.process_soap_recording()
@@ -778,7 +753,6 @@ class MedicalDictationApp(ttk.Window):
             logging.error("Error shutting down executor", exc_info=True)
         self.destroy()
 
-# If this module is run directly, start the app
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
