@@ -238,9 +238,19 @@ class MedicalDictationApp(ttk.Window):
         ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))
         automation_frame = ttk.Frame(control_frame)
         automation_frame.grid(row=6, column=0, sticky="w")
-        self.record_soap_button = ttk.Button(automation_frame, text="Record SOAP Note", width=25, command=self.toggle_soap_recording, bootstyle="SECONDARY")
+        self.record_soap_button = ttk.Button(
+            automation_frame, text="Record SOAP Note", width=25,
+            command=self.toggle_soap_recording, bootstyle="SECONDARY"
+        )
         self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
+        # New pause/resume button for SOAP Note recording
+        self.pause_soap_button = ttk.Button(
+            automation_frame, text="Pause", width=15,
+            command=self.toggle_soap_pause, bootstyle="SECONDARY", state=tk.DISABLED
+        )
+        self.pause_soap_button.grid(row=0, column=1, padx=5, pady=5)
+        ToolTip(self.pause_soap_button, "Pause/Resume the SOAP note recording.")
 
         status_frame = ttk.Frame(self, padding=(10, 5))
         status_frame.pack(side=BOTTOM, fill=tk.X)
@@ -660,11 +670,14 @@ class MedicalDictationApp(ttk.Window):
 
     def toggle_soap_recording(self) -> None:
         if not self.soap_recording:
+            # Starting SOAP recording
             self.text_area.delete("1.0", tk.END)
             self.appended_chunks.clear()
             self.soap_recording = True
+            self.soap_paused = False  # NEW: reset pause state
             self.soap_audio_segments = []
             self.record_soap_button.config(text="Stop", bootstyle="danger")
+            self.pause_soap_button.config(state=tk.NORMAL, text="Pause")  # enable pause button
             self.update_status("Recording SOAP note...")
             try:
                 import speech_recognition as sr
@@ -676,10 +689,13 @@ class MedicalDictationApp(ttk.Window):
                 return
             self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
         else:
+            # Stopping SOAP recording
             if self.soap_stop_listening_function:
                 self.soap_stop_listening_function(wait_for_stop=False)
             self.soap_recording = False
+            self.soap_paused = False
             self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
+            self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
             self.update_status("Transcribing SOAP note...")
             import datetime
             folder = SETTINGS.get("default_storage_folder")
@@ -696,6 +712,32 @@ class MedicalDictationApp(ttk.Window):
             self.progress_bar.pack(side=RIGHT, padx=10)
             self.progress_bar.start()
             self.process_soap_recording()
+
+    def toggle_soap_pause(self) -> None:
+        if self.soap_paused:
+            self.resume_soap_recording()
+        else:
+            self.pause_soap_recording()
+
+    def pause_soap_recording(self) -> None:
+        if self.soap_recording and not self.soap_paused:
+            if self.soap_stop_listening_function:
+                self.soap_stop_listening_function(wait_for_stop=False)
+            self.soap_paused = True
+            self.pause_soap_button.config(text="Resume")
+            self.update_status("SOAP note recording paused.")
+
+    def resume_soap_recording(self) -> None:
+        if self.soap_recording and self.soap_paused:
+            try:
+                mic = sr.Microphone()  # Adjust as needed for selected mic
+            except Exception as e:
+                self.update_status(f"Error accessing microphone: {e}")
+                return
+            self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
+            self.soap_paused = False
+            self.pause_soap_button.config(text="Pause")
+            self.update_status("SOAP note recording resumed.")
 
     def soap_callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         try:
