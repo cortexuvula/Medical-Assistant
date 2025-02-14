@@ -305,6 +305,14 @@ class MedicalDictationApp(ttk.Window):
             vc_tree.insert("", tk.END, values=(cmd, act))
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
+    def _create_toplevel_dialog(self, title: str, geometry: str = "400x300") -> tk.Toplevel:
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.geometry(geometry)
+        dialog.transient(self)
+        dialog.grab_set()
+        return dialog
+
     def show_settings_dialog(self, title: str, config_key: str, current_prompt: str, current_model: str, save_callback: callable) -> None:
         from settings import _DEFAULT_SETTINGS
         if config_key in _DEFAULT_SETTINGS:
@@ -313,11 +321,7 @@ class MedicalDictationApp(ttk.Window):
             default_model = default.get("model", "")
         else:
             default_prompt, default_model = "", ""
-        dialog = tk.Toplevel(self)
-        dialog.title(title)
-        dialog.geometry("800x500")
-        dialog.transient(self)
-        dialog.grab_set()
+        dialog = self._create_toplevel_dialog(title, "800x500")
         frame = ttk.LabelFrame(dialog, text=title, padding=10)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
@@ -344,6 +348,71 @@ class MedicalDictationApp(ttk.Window):
         ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+
+    def askstring_min(self, title: str, prompt: str, initialvalue: str = "") -> Optional[str]:
+        dialog = self._create_toplevel_dialog(title, "400x300")
+        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=20)
+        entry = tk.Entry(dialog, width=50)
+        entry.insert(0, initialvalue)
+        entry.pack(padx=20)
+        result = [None]
+        def on_ok():
+            result[0] = entry.get()
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=20)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        return result[0]
+
+    def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
+        dialog = self._create_toplevel_dialog(title, "500x500")
+        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
+        # Updated style configuration for ttk.Checkbutton
+        style = ttk.Style()
+        style.configure("Green.TCheckbutton",
+            background="white",
+            foreground="grey20",
+            indicatorcolor="blue")
+        style.map("Green.TCheckbutton",
+            background=[("active", "gray20"), ("selected", "green")],
+            foreground=[("selected", "white")],
+            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")])
+        checkbox_frame = tk.Frame(dialog)
+        checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+        vars_list = []
+        for cond in conditions:
+            var = tk.BooleanVar()
+            ttk.Checkbutton(
+                checkbox_frame, text=cond, variable=var, style="Green.TCheckbutton"
+            ).pack(anchor="w")
+            vars_list.append((cond, var))
+        # NEW: Optional text area for additional conditions
+        tk.Label(dialog, text="Additional conditions (optional):", wraplength=380).pack(padx=20, pady=(10,0))
+        optional_text = tk.Text(dialog, width=50, height=3)
+        optional_text.pack(padx=20, pady=(0,10))
+        selected = []
+        def on_ok():
+            for cond, var in vars_list:
+                if var.get():
+                    selected.append(cond)
+            extra = optional_text.get("1.0", tk.END).strip()
+            if extra:
+                selected.extend([item.strip() for item in extra.split(",") if item.strip()])
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        if selected:
+            return ", ".join(selected)
+        return None
 
     def show_refine_settings_dialog(self) -> None:
         from settings import SETTINGS
@@ -622,10 +691,7 @@ class MedicalDictationApp(ttk.Window):
 
     # NEW: Custom input dialog with minimum size of 400x300 updated to include self
     def askstring_min(self, title: str, prompt: str, initialvalue: str = "") -> Optional[str]:
-        dialog = tk.Toplevel()
-        dialog.title(title)
-        dialog.minsize(400, 300)
-        dialog.grab_set()
+        dialog = self._create_toplevel_dialog(title, "400x300")
         tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=20)
         entry = tk.Entry(dialog, width=50)
         entry.insert(0, initialvalue)
@@ -664,10 +730,7 @@ class MedicalDictationApp(ttk.Window):
         future.add_done_callback(on_conditions_done)
 
     def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
-        dialog = tk.Toplevel(self)
-        dialog.title(title)
-        dialog.geometry("500x500")
-        dialog.grab_set()
+        dialog = self._create_toplevel_dialog(title, "500x500")
         tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
         # Updated style configuration for ttk.Checkbutton
         style = ttk.Style()
@@ -699,7 +762,7 @@ class MedicalDictationApp(ttk.Window):
                     selected.append(cond)
             extra = optional_text.get("1.0", tk.END).strip()
             if extra:
-                selected.append(extra)
+                selected.extend([item.strip() for item in extra.split(",") if item.strip()])
             dialog.destroy()
         def on_cancel():
             dialog.destroy()
