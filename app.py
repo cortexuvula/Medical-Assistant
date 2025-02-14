@@ -371,16 +371,16 @@ class MedicalDictationApp(ttk.Window):
     def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
         dialog = self._create_toplevel_dialog(title, "500x500")
         tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
-        # Updated style configuration for ttk.Checkbutton
+        # Updated style configuration for ttk.Checkbutton with light grey hover and green checkmark when selected
         style = ttk.Style()
         style.configure("Green.TCheckbutton",
             background="white",
             foreground="grey20",
             indicatorcolor="blue")
         style.map("Green.TCheckbutton",
-            background=[("active", "gray20"), ("selected", "green")],
+            background=[("active", "lightgrey"), ("selected", "green")],
             foreground=[("selected", "white")],
-            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")])
+            indicatorcolor=[("selected", "green"), ("pressed", "darkblue")])
         checkbox_frame = tk.Frame(dialog)
         checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
         vars_list = []
@@ -732,16 +732,17 @@ class MedicalDictationApp(ttk.Window):
     def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
         dialog = self._create_toplevel_dialog(title, "500x500")
         tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
-        # Updated style configuration for ttk.Checkbutton
+        # Updated style configuration for ttk.Checkbutton with light grey hover
         style = ttk.Style()
         style.configure("Green.TCheckbutton",
             background="white",
             foreground="grey20",
             indicatorcolor="blue")
         style.map("Green.TCheckbutton",
-            background=[("active", "gray20"), ("selected", "green")],
+            background=[("active", "lightgrey"), ("selected", "green")],
             foreground=[("selected", "white")],
-            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")])
+            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")],
+        )
         checkbox_frame = tk.Frame(dialog)
         checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
         vars_list = []
@@ -978,4 +979,4 @@ class MedicalDictationApp(ttk.Window):
 
 def main() -> None:
     app = MedicalDictationApp()
-    app.mainloop()
+    app.mainloop() 
