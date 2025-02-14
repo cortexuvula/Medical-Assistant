@@ -809,7 +809,8 @@ class MedicalDictationApp(ttk.Window):
                 self.soap_stop_listening_function(wait_for_stop=False)
             self.soap_recording = False
             self.soap_paused = False
-            self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY")
+            # Disable the record SOAP note button for 5 seconds to prevent double click
+            self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
             self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
             self.update_status("Transcribing SOAP note...")
             import datetime
@@ -827,6 +828,8 @@ class MedicalDictationApp(ttk.Window):
             self.progress_bar.pack(side=RIGHT, padx=10)
             self.progress_bar.start()
             self.process_soap_recording()
+            # Re-enable the record button after 5 seconds
+            self.after(5000, lambda: self.record_soap_button.config(state=tk.NORMAL))
 
     def toggle_soap_pause(self) -> None:
         if self.soap_paused:
@@ -912,4 +915,4 @@ class MedicalDictationApp(ttk.Window):
 
 def main() -> None:
     app = MedicalDictationApp()
-    app.mainloop() 
+    app.mainloop()
