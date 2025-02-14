@@ -1,6 +1,6 @@
-# Medical Dictation/Assistant
+# Medical Assistant
 
-Medical Dictation/Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI and Perplexity) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
+Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI and Perplexity) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
 
 ## Features
 - **Real-time transcription:** Convert speech to text using Google Speech Recognition or Deepgram.
@@ -43,6 +43,7 @@ Medical Dictation/Assistant is a desktop application designed to transcribe and 
    - **Record/Stop:** Start and stop dictation.
    - **SOAP Note / Referral:** Generate a SOAP note or referral paragraph without formatting markdown.
    - **Prompt Settings:** Adjust prompts via the Settings menu.
+   - **Record SOAP Note:** Start recording a conversation followed by auto-transcription and SOAP Note creation. 
 
 3. **Editing Prompts**  
    Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities.
