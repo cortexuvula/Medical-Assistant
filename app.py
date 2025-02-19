@@ -211,11 +211,16 @@ class MedicalDictationApp(ttk.Window):
         self.undo_button = ttk.Button(main_controls, text="Undo", width=10, command=self.undo_text, bootstyle="SECONDARY")
         self.undo_button.grid(row=0, column=5, padx=5, pady=5)
         ToolTip(self.undo_button, "Undo the last change.")
+        # NEW: Add redo button next to undo button
+        self.redo_button = ttk.Button(main_controls, text="Redo", width=10, command=self.redo_text, bootstyle="SECONDARY")
+        self.redo_button.grid(row=0, column=6, padx=5, pady=5)
+        ToolTip(self.redo_button, "Redo the last undone change.")
+        # Adjust subsequent buttons' grid columns
         self.save_button = ttk.Button(main_controls, text="Save", width=10, command=self.save_text, bootstyle="PRIMARY")
-        self.save_button.grid(row=0, column=6, padx=5, pady=5)
+        self.save_button.grid(row=0, column=7, padx=5, pady=5)
         ToolTip(self.save_button, "Save the transcription and audio to files.")
         self.load_button = ttk.Button(main_controls, text="Load", width=10, command=self.load_audio_file, bootstyle="PRIMARY")
-        self.load_button.grid(row=0, column=7, padx=5, pady=5)
+        self.load_button.grid(row=0, column=8, padx=5, pady=5)
         ToolTip(self.load_button, "Load an audio file and transcribe.")
 
         ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
@@ -970,6 +975,13 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             self.update_status("Nothing to undo.")
 
+    def redo_text(self) -> None:
+        try:
+            self.text_area.edit_redo()
+            self.update_status("Redo performed.")
+        except Exception as e:
+            self.update_status("Nothing to redo.")
+
     def on_closing(self) -> None:
         try:
             self.executor.shutdown(wait=False)
@@ -979,4 +991,4 @@ class MedicalDictationApp(ttk.Window):
 
 def main() -> None:
     app = MedicalDictationApp()
-    app.mainloop() 
+    app.mainloop()
