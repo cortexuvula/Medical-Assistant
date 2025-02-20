@@ -628,6 +628,37 @@ class MedicalDictationApp(ttk.Window):
     def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         self.executor.submit(self.process_audio, recognizer, audio)
 
+    def _combine_audio_segments(self, segments: list) -> AudioSegment:
+        # Combine list of audio segments into one
+        if not segments:
+            return None
+        combined = segments[0]
+        for seg in segments[1:]:
+            combined += seg
+        return combined
+
+    def _transcribe_audio(self, segment: AudioSegment) -> str:
+        try:
+            if self.deepgram_client:
+                buf = BytesIO()
+                segment.export(buf, format="wav")
+                buf.seek(0)
+                options = PrerecordedOptions(model="nova-2-medical", language="en-US")
+                response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
+                transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
+            else:
+                temp_file = "temp.wav"
+                segment.export(temp_file, format="wav")
+                with sr.AudioFile(temp_file) as source:
+                    audio_data = self.recognizer.record(source)
+                transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+                os.remove(temp_file)
+            return transcript
+        except Exception as e:
+            logging.error("Transcription error", exc_info=True)
+            return ""
+    
+    # Refactor process_audio using the new helper
     def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         try:
             channels = getattr(audio, "channels", 1)
@@ -638,15 +669,7 @@ class MedicalDictationApp(ttk.Window):
                 channels=channels
             )
             self.audio_segments.append(segment)
-            if self.deepgram_client:
-                buf = BytesIO()
-                segment.export(buf, format="wav")
-                buf.seek(0)
-                options = PrerecordedOptions(model="nova-2-medical", language="en-US")
-                response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
-                transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
-            else:
-                transcript = recognizer.recognize_google(audio, language=self.recognition_language)
+            transcript = self._transcribe_audio(segment)
             self.after(0, self.handle_recognized_text, transcript)
         except sr.UnknownValueError:
             logging.info("Audio not understood.")
@@ -657,6 +680,60 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             logging.error("Processing error", exc_info=True)
             self.after(0, self.update_status, f"Error: {e}")
+
+    # Refactor process_soap_recording to use helpers
+    def process_soap_recording(self) -> None:
+        def task() -> None:
+            try:
+                combined = self._combine_audio_segments(self.soap_audio_segments)
+                transcript = self._transcribe_audio(combined) if combined else ""
+                soap_note = create_soap_note_with_openai(transcript)
+            except Exception as e:
+                soap_note = f"Error processing SOAP note: {e}"
+                transcript = ""
+            def update_ui():
+                self.transcript_text.delete("1.0", tk.END)
+                self.transcript_text.insert(tk.END, transcript)
+                self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text)
+                self.notebook.select(1)
+            self.after(0, update_ui)
+        self.executor.submit(task)
+
+    # Refactor load_audio_file to use the transcription helper
+    def load_audio_file(self) -> None:
+        file_path = filedialog.askopenfilename(
+            title="Select Audio File",
+            filetypes=[("Audio Files", "*.wav *.mp3"), ("All Files", "*.*")]
+        )
+        if not file_path:
+            return
+        self.update_status("Transcribing audio...")
+        self.load_button.config(state=DISABLED)
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        def task() -> None:
+            transcript = ""
+            try:
+                if file_path.lower().endswith(".mp3"):
+                    seg = AudioSegment.from_file(file_path, format="mp3")
+                elif file_path.lower().endswith(".wav"):
+                    seg = AudioSegment.from_file(file_path, format="wav")
+                else:
+                    raise ValueError("Unsupported audio format.")
+                transcript = self._transcribe_audio(seg)
+            except Exception as e:
+                logging.error("Error transcribing audio", exc_info=True)
+                self.after(0, lambda: messagebox.showerror("Transcription Error", f"Error: {e}"))
+            else:
+                self.after(0, lambda: [
+                    self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button, self.transcript_text),
+                    self.notebook.select(0)
+                ])
+            finally:
+                self.after(0, lambda: self.load_button.config(state=NORMAL))
+                self.after(0, self.progress_bar.stop)
+                self.after(0, self.progress_bar.pack_forget)
+        self.executor.submit(task)
 
     def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
         current = widget.get("1.0", "end-1c")
@@ -866,50 +943,6 @@ class MedicalDictationApp(ttk.Window):
             ])
         self.executor.submit(task)
 
-    def load_audio_file(self) -> None:
-        file_path = filedialog.askopenfilename(
-            title="Select Audio File",
-            filetypes=[("Audio Files", "*.wav *.mp3"), ("All Files", "*.*")]
-        )
-        if not file_path:
-            return
-        self.update_status("Transcribing audio...")
-        self.load_button.config(state=DISABLED)
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-
-        def task() -> None:
-            transcript = ""
-            try:
-                if file_path.lower().endswith(".mp3"):
-                    seg = AudioSegment.from_file(file_path, format="mp3")
-                elif file_path.lower().endswith(".wav"):
-                    seg = AudioSegment.from_file(file_path, format="wav")
-                else:
-                    raise ValueError("Unsupported audio format.")
-                if self.deepgram_client:
-                    buf = BytesIO()
-                    seg.export(buf, format="wav")
-                    buf.seek(0)
-                    options = PrerecordedOptions(model="nova-2-medical", language="en-US")
-                    response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
-                    transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
-                else:
-                    raise Exception("Deepgram API key not provided.")
-            except Exception as e:
-                logging.error("Error transcribing audio", exc_info=True)
-                self.after(0, lambda: messagebox.showerror("Transcription Error", f"Error: {e}"))
-            else:
-                self.after(0, lambda: [
-                    self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button, self.transcript_text),
-                    self.notebook.select(0)
-                ])
-            finally:
-                self.after(0, lambda: self.load_button.config(state=NORMAL))
-                self.after(0, self.progress_bar.stop)
-                self.after(0, self.progress_bar.pack_forget)
-        self.executor.submit(task)
-
     def refresh_microphones(self) -> None:
         names = get_valid_microphones() or sr.Microphone.list_microphone_names()
         self.mic_combobox['values'] = names
@@ -921,12 +954,15 @@ class MedicalDictationApp(ttk.Window):
 
     def toggle_soap_recording(self) -> None:
         if not self.soap_recording:
-            # Starting SOAP recording
+            # Clear all text areas and reset audio segments before starting a new SOAP recording session
             self.transcript_text.delete("1.0", tk.END)
+            self.soap_text.delete("1.0", tk.END)
+            self.referral_text.delete("1.0", tk.END)   # NEW: clear referral tab
+            self.dictation_text.delete("1.0", tk.END)   # NEW: clear dictation tab
             self.appended_chunks.clear()
+            self.soap_audio_segments.clear()
             self.soap_recording = True
             self.soap_paused = False  # NEW: reset pause state
-            self.soap_audio_segments = []
             self.record_soap_button.config(text="Stop", bootstyle="danger")
             self.pause_soap_button.config(state=tk.NORMAL, text="Pause")  # enable pause button
             self.update_status("Recording SOAP note...")
@@ -1012,23 +1048,8 @@ class MedicalDictationApp(ttk.Window):
                 if not self.soap_audio_segments:
                     transcript = ""
                 else:
-                    combined = self.soap_audio_segments[0]
-                    for seg in self.soap_audio_segments[1:]:
-                        combined += seg
-                    if self.deepgram_client:
-                        buf = BytesIO()
-                        combined.export(buf, format="wav")
-                        buf.seek(0)
-                        options = PrerecordedOptions(model="nova-2-medical", language="en-US")
-                        response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
-                        transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
-                    else:
-                        temp_file = "temp_soap.wav"
-                        combined.export(temp_file, format="wav")
-                        with sr.AudioFile(temp_file) as source:
-                            audio_data = self.recognizer.record(source)
-                        transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
-                        os.remove(temp_file)
+                    combined = self._combine_audio_segments(self.soap_audio_segments)
+                    transcript = self._transcribe_audio(combined) if combined else ""
                 soap_note = create_soap_note_with_openai(transcript)
             except Exception as e:
                 soap_note = f"Error processing SOAP note: {e}"
