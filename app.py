@@ -185,8 +185,38 @@ class MedicalDictationApp(ttk.Window):
         self.provider_label = ttk.Label(mic_frame, text=f"Provider: {provider.capitalize()}")
         self.provider_label.pack(side=LEFT, padx=10)
 
-        self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
-        self.text_area.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+        # NEW: Force use of "clam" theme and configure custom Notebook style
+        style = ttk.Style()
+        # Removed theme_use("clam") to prevent conflict with ttkbootstrap's theme
+        # style.theme_use("clam")
+        style.configure("Green.TNotebook", background="white", borderwidth=0)
+        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey")
+        style.map("Green.TNotebook.Tab",
+            background=[("selected", "green"), ("active", "green"), ("!selected", "lightgrey")])
+        # Create the Notebook using the custom style
+        self.notebook = ttk.Notebook(self, style="Green.TNotebook")
+
+        # NEW: Create notebook with four tabs
+        self.notebook.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+        transcript_frame = ttk.Frame(self.notebook)
+        soap_frame = ttk.Frame(self.notebook)
+        referral_frame = ttk.Frame(self.notebook)
+        dictation_frame = ttk.Frame(self.notebook)  # NEW: Dictation tab
+        self.notebook.add(transcript_frame, text="Transcript")
+        self.notebook.add(soap_frame, text="SOAP Note")
+        self.notebook.add(referral_frame, text="Referral")
+        self.notebook.add(dictation_frame, text="Dictation")  # NEW
+        self.transcript_text = scrolledtext.ScrolledText(transcript_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
+        self.transcript_text.pack(fill=tk.BOTH, expand=True)
+        self.soap_text = scrolledtext.ScrolledText(soap_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
+        self.soap_text.pack(fill=tk.BOTH, expand=True)
+        self.referral_text = scrolledtext.ScrolledText(referral_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
+        self.referral_text.pack(fill=tk.BOTH, expand=True)
+        self.dictation_text = scrolledtext.ScrolledText(dictation_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)  # NEW
+        self.dictation_text.pack(fill=tk.BOTH, expand=True)
+        # NEW: Set initial active text widget and bind tab change event
+        self.active_text_widget = self.transcript_text
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
         control_frame = ttk.Frame(self, padding=10)
         control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
@@ -493,12 +523,12 @@ class MedicalDictationApp(ttk.Window):
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new dictation? Unsaved changes will be lost."):
-            self.text_area.delete("1.0", tk.END)
+            self.transcript_text.delete("1.0", tk.END)
             self.appended_chunks.clear()
             self.audio_segments.clear()
 
     def save_text(self) -> None:
-        text = self.text_area.get("1.0", tk.END).strip()
+        text = self.transcript_text.get("1.0", tk.END).strip()
         if not text:
             messagebox.showwarning("Save Text", "No text to save.")
             return
@@ -522,50 +552,53 @@ class MedicalDictationApp(ttk.Window):
                 messagebox.showerror("Save Text", f"Error: {e}")
 
     def copy_text(self) -> None:
+        active_widget = self.get_active_text_widget()
         self.clipboard_clear()
-        self.clipboard_append(self.text_area.get("1.0", tk.END))
+        self.clipboard_append(active_widget.get("1.0", tk.END))
         self.update_status("Text copied to clipboard.")
 
     def clear_text(self) -> None:
         if messagebox.askyesno("Clear Text", "Clear the text?"):
-            self.text_area.delete("1.0", tk.END)
+            self.transcript_text.delete("1.0", tk.END)
             self.appended_chunks.clear()
             self.audio_segments.clear()
 
     def append_text(self, text: str) -> None:
-        current = self.text_area.get("1.0", "end-1c")
+        current = self.transcript_text.get("1.0", "end-1c")
         if (self.capitalize_next or not current or current[-1] in ".!?") and text:
             text = text[0].upper() + text[1:]
             self.capitalize_next = False
-        self.text_area.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
+        self.transcript_text.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
         self.appended_chunks.append(f"chunk_{len(self.appended_chunks)}")
-        self.text_area.see(tk.END)
+        self.transcript_text.see(tk.END)
 
     def scratch_that(self) -> None:
         if not self.appended_chunks:
             self.update_status("Nothing to scratch.")
             return
         tag = self.appended_chunks.pop()
-        ranges = self.text_area.tag_ranges(tag)
+        ranges = self.transcript_text.tag_ranges(tag)
         if ranges:
-            self.text_area.delete(ranges[0], ranges[1])
-            self.text_area.tag_delete(tag)
+            self.transcript_text.delete(ranges[0], ranges[1])
+            self.transcript_text.tag_delete(tag)
             self.update_status("Last added text removed.")
         else:
             self.update_status("No tagged text found.")
 
     def delete_last_word(self) -> None:
-        current = self.text_area.get("1.0", "end-1c")
+        current = self.transcript_text.get("1.0", "end-1c")
         if current:
             words = current.split()
-            self.text_area.delete("1.0", tk.END)
-            self.text_area.insert(tk.END, " ".join(words[:-1]))
-            self.text_area.see(tk.END)
+            self.transcript_text.delete("1.0", tk.END)
+            self.transcript_text.insert(tk.END, " ".join(words[:-1]))
+            self.transcript_text.see(tk.END)
 
     def update_status(self, message: str) -> None:
         self.status_label.config(text=f"Status: {message}")
 
     def start_recording(self) -> None:
+        # Switch focus to the Dictation tab (index 3)
+        self.notebook.select(3)
         if not self.listening:
             self.update_status("Listening...")
             try:
@@ -622,22 +655,32 @@ class MedicalDictationApp(ttk.Window):
             logging.error("Processing error", exc_info=True)
             self.after(0, self.update_status, f"Error: {e}")
 
+    def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
+        current = widget.get("1.0", "end-1c")
+        if (self.capitalize_next or not current or current[-1] in ".!?") and text:
+            text = text[0].upper() + text[1:]
+            self.capitalize_next = False
+        widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
+        widget.see(tk.END)
+
     def handle_recognized_text(self, text: str) -> None:
         if not text.strip():
             return
+        # Use the active text widget instead of transcript_text directly
+        active_widget = self.get_active_text_widget()
         commands = {
-            "new paragraph": lambda: self.text_area.insert(tk.END, "\n\n"),
-            "new line": lambda: self.text_area.insert(tk.END, "\n"),
-            "full stop": lambda: self.text_area.insert(tk.END, ". "),
-            "comma": lambda: self.text_area.insert(tk.END, ", "),
-            "question mark": lambda: self.text_area.insert(tk.END, "? "),
-            "exclamation point": lambda: self.text_area.insert(tk.END, "! "),
-            "semicolon": lambda: self.text_area.insert(tk.END, "; "),
-            "colon": lambda: self.text_area.insert(tk.END, ": "),
-            "open quote": lambda: self.text_area.insert(tk.END, "\""),
-            "close quote": lambda: self.text_area.insert(tk.END, "\""),
-            "open parenthesis": lambda: self.text_area.insert(tk.END, "("),
-            "close parenthesis": lambda: self.text_area.insert(tk.END, ")"),
+            "new paragraph": lambda: active_widget.insert(tk.END, "\n\n"),
+            "new line": lambda: active_widget.insert(tk.END, "\n"),
+            "full stop": lambda: active_widget.insert(tk.END, ". "),
+            "comma": lambda: active_widget.insert(tk.END, ", "),
+            "question mark": lambda: active_widget.insert(tk.END, "? "),
+            "exclamation point": lambda: active_widget.insert(tk.END, "! "),
+            "semicolon": lambda: active_widget.insert(tk.END, "; "),
+            "colon": lambda: active_widget.insert(tk.END, ": "),
+            "open quote": lambda: active_widget.insert(tk.END, "\""),
+            "close quote": lambda: active_widget.insert(tk.END, "\""),
+            "open parenthesis": lambda: active_widget.insert(tk.END, "("),
+            "close parenthesis": lambda: active_widget.insert(tk.END, ")"),
             "delete last word": self.delete_last_word,
             "scratch that": self.scratch_that,
             "new dictation": self.new_session,
@@ -649,10 +692,10 @@ class MedicalDictationApp(ttk.Window):
         if cleaned in commands:
             commands[cleaned]()
         else:
-            self.append_text(text)
+            self.append_text_to_widget(text, active_widget)
 
-    def _process_text_with_ai(self, api_func: Callable[[str], str], success_message: str, button: ttk.Button) -> None:
-        text = self.text_area.get("1.0", tk.END).strip()
+    def _process_text_with_ai(self, api_func: Callable[[str], str], success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
+        text = target_widget.get("1.0", tk.END).strip()
         if not text:
             messagebox.showwarning("Process Text", "There is no text to process.")
             return
@@ -663,27 +706,46 @@ class MedicalDictationApp(ttk.Window):
 
         def task() -> None:
             result = api_func(text)
-            self.after(0, lambda: self._update_text_area(result, success_message, button))
+            self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
         self.executor.submit(task)
 
-    def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button) -> None:
-        self.text_area.edit_separator()
-        self.text_area.delete("1.0", tk.END)
-        self.text_area.insert(tk.END, new_text)
-        self.text_area.edit_separator()
+    def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
+        target_widget.edit_separator()
+        target_widget.delete("1.0", tk.END)
+        target_widget.insert(tk.END, new_text)
+        target_widget.edit_separator()
         self.update_status(success_message)
         button.config(state=NORMAL)
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
 
+    def get_active_text_widget(self) -> tk.Widget:
+        return self.active_text_widget
+
     def refine_text(self) -> None:
-        self._process_text_with_ai(adjust_text_with_openai, "Text refined.", self.refine_button)
+        active_widget = self.get_active_text_widget()
+        self._process_text_with_ai(adjust_text_with_openai, "Text refined.", self.refine_button, active_widget)
 
     def improve_text(self) -> None:
-        self._process_text_with_ai(improve_text_with_openai, "Text improved.", self.improve_button)
+        active_widget = self.get_active_text_widget()
+        self._process_text_with_ai(improve_text_with_openai, "Text improved.", self.improve_button, active_widget)
 
     def create_soap_note(self) -> None:
-        self._process_text_with_ai(create_soap_note_with_openai, "SOAP note created.", self.soap_button)
+        transcript = self.transcript_text.get("1.0", tk.END).strip()
+        if not transcript:
+            messagebox.showwarning("Process Text", "There is no text to process.")
+            return
+        self.update_status("Processing SOAP note...")
+        self.soap_button.config(state=DISABLED)
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        def task() -> None:
+            result = create_soap_note_with_openai(transcript)
+            self.after(0, lambda: [
+                self._update_text_area(result, "SOAP note created.", self.soap_button, self.soap_text),
+                self.notebook.select(1)  # Switch focus to SOAP Note tab (index 1)
+            ])
+        self.executor.submit(task)
 
     def _get_possible_conditions(self, text: str) -> str:
         from ai import call_ai, remove_markdown, remove_citations
@@ -720,7 +782,7 @@ class MedicalDictationApp(ttk.Window):
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         
-        text = self.text_area.get("1.0", tk.END).strip()
+        text = self.transcript_text.get("1.0", tk.END).strip()
         # New: Get suggested conditions asynchronously
         def get_conditions() -> str:
             return self._get_possible_conditions(text)
@@ -782,25 +844,24 @@ class MedicalDictationApp(ttk.Window):
         return None
 
     def _create_referral_continued(self, suggestions: str) -> None:
-        # Stop progress bar before showing dialog
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
-        # Parse suggestions into a list of conditions
         conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
-        # Show the tickbox dialog and return selected conditions as a comma-separated string
         focus = self.ask_conditions_dialog("Select Conditions", "Select conditions to focus on:", conditions_list)
         if focus is None:
             self.update_status("Referral cancelled.")
             return
-        # Update status and show progress bar for processing referral
         self.update_status("Processing referral...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
-        self._process_text_with_ai(
-            api_func=lambda t: __import__("ai").create_referral_with_openai(t, focus),
-            success_message="Referral created.",
-            button=self.referral_button
-        )
+        def task() -> None:
+            transcript = self.transcript_text.get("1.0", tk.END).strip()
+            result = __import__("ai").create_referral_with_openai(transcript, focus)
+            self.after(0, lambda: [
+                self._update_text_area(result, "Referral created.", self.referral_button, self.referral_text),
+                self.notebook.select(2)  # Switch focus to Referral tab (index 2)
+            ])
+        self.executor.submit(task)
 
     def load_audio_file(self) -> None:
         file_path = filedialog.askopenfilename(
@@ -836,7 +897,10 @@ class MedicalDictationApp(ttk.Window):
                 logging.error("Error transcribing audio", exc_info=True)
                 self.after(0, lambda: messagebox.showerror("Transcription Error", f"Error: {e}"))
             else:
-                self.after(0, lambda: self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button))
+                self.after(0, lambda: [
+                    self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button, self.transcript_text),
+                    self.notebook.select(0)
+                ])
             finally:
                 self.after(0, lambda: self.load_button.config(state=NORMAL))
                 self.after(0, self.progress_bar.stop)
@@ -855,7 +919,7 @@ class MedicalDictationApp(ttk.Window):
     def toggle_soap_recording(self) -> None:
         if not self.soap_recording:
             # Starting SOAP recording
-            self.text_area.delete("1.0", tk.END)
+            self.transcript_text.delete("1.0", tk.END)
             self.appended_chunks.clear()
             self.soap_recording = True
             self.soap_paused = False  # NEW: reset pause state
@@ -898,7 +962,7 @@ class MedicalDictationApp(ttk.Window):
             self.progress_bar.start()
             self.process_soap_recording()
             # Re-enable the record button after 5 seconds
-            self.after(5000, lambda: self.record_soap_button.config(state=tk.NORMAL))
+            self.after(5000, lambda: self.record_soap_button.config(state=NORMAL))
 
     def toggle_soap_pause(self) -> None:
         if self.soap_paused:
@@ -965,19 +1029,19 @@ class MedicalDictationApp(ttk.Window):
                 soap_note = create_soap_note_with_openai(transcript)
             except Exception as e:
                 soap_note = f"Error processing SOAP note: {e}"
-            self.after(0, lambda: self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button))
+            self.after(0, lambda: self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text))
         self.executor.submit(task)
 
     def undo_text(self) -> None:
         try:
-            self.text_area.edit_undo()
+            self.transcript_text.edit_undo()
             self.update_status("Undo performed.")
         except Exception as e:
             self.update_status("Nothing to undo.")
 
     def redo_text(self) -> None:
         try:
-            self.text_area.edit_redo()
+            self.transcript_text.edit_redo()
             self.update_status("Redo performed.")
         except Exception as e:
             self.update_status("Nothing to redo.")
@@ -988,6 +1052,19 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             logging.error("Error shutting down executor", exc_info=True)
         self.destroy()
+
+    def on_tab_changed(self, event: tk.Event) -> None:
+        current = self.notebook.index(self.notebook.select())
+        if current == 0:
+            self.active_text_widget = self.transcript_text
+        elif current == 1:
+            self.active_text_widget = self.soap_text
+        elif current == 2:
+            self.active_text_widget = self.referral_text
+        elif current == 3:  # NEW: Dictation tab
+            self.active_text_widget = self.dictation_text
+        else:
+            self.active_text_widget = self.transcript_text
 
 def main() -> None:
     app = MedicalDictationApp()
