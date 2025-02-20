@@ -229,9 +229,10 @@ class MedicalDictationApp(ttk.Window):
         self.stop_button = ttk.Button(main_controls, text="Stop", width=10, command=self.stop_recording, state=DISABLED, bootstyle="danger")
         self.stop_button.grid(row=0, column=1, padx=5, pady=5)
         ToolTip(self.stop_button, "Stop recording audio.")
-        self.new_session_button = ttk.Button(main_controls, text="New Dictation", width=12, command=self.new_session, bootstyle="warning")
+        # Change button text from "New Dictation" to "New Session"
+        self.new_session_button = ttk.Button(main_controls, text="New Session", width=12, command=self.new_session, bootstyle="warning")
         self.new_session_button.grid(row=0, column=2, padx=5, pady=5)
-        ToolTip(self.new_session_button, "Start a new dictation session.")
+        ToolTip(self.new_session_button, "Start a new session.")
         self.clear_button = ttk.Button(main_controls, text="Clear Text", width=10, command=self.clear_text, bootstyle="warning")
         self.clear_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.clear_button, "Clear the transcription text.")
@@ -522,10 +523,15 @@ class MedicalDictationApp(ttk.Window):
         self.update_status("SOAP note settings saved.")
 
     def new_session(self) -> None:
-        if messagebox.askyesno("New Dictation", "Start a new dictation? Unsaved changes will be lost."):
-            self.transcript_text.delete("1.0", tk.END)
+        if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
+            # Clear text and reset undo/redo history for all tabs
+            for widget in [self.transcript_text, self.soap_text, self.referral_text, self.dictation_text]:
+                widget.delete("1.0", tk.END)
+                widget.edit_reset()  # Clear undo/redo history
+            # Clear audio segments and other stored data
             self.appended_chunks.clear()
             self.audio_segments.clear()
+            self.soap_audio_segments.clear()
 
     def save_text(self) -> None:
         text = self.transcript_text.get("1.0", tk.END).strip()
@@ -1034,14 +1040,16 @@ class MedicalDictationApp(ttk.Window):
 
     def undo_text(self) -> None:
         try:
-            self.transcript_text.edit_undo()
+            widget = self.get_active_text_widget()
+            widget.edit_undo()
             self.update_status("Undo performed.")
         except Exception as e:
             self.update_status("Nothing to undo.")
 
     def redo_text(self) -> None:
         try:
-            self.transcript_text.edit_redo()
+            widget = self.get_active_text_widget()
+            widget.edit_redo()
             self.update_status("Redo performed.")
         except Exception as e:
             self.update_status("Nothing to redo.")
