@@ -1035,7 +1035,16 @@ class MedicalDictationApp(ttk.Window):
                 soap_note = create_soap_note_with_openai(transcript)
             except Exception as e:
                 soap_note = f"Error processing SOAP note: {e}"
-            self.after(0, lambda: self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text))
+                transcript = ""
+            def update_ui():
+                # Update Transcript tab with the obtained transcript
+                self.transcript_text.delete("1.0", tk.END)
+                self.transcript_text.insert(tk.END, transcript)
+                # Update SOAP Note tab with the generated SOAP note
+                self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text)
+                # Switch focus to the SOAP Note tab (index 1)
+                self.notebook.select(1)
+            self.after(0, update_ui)
         self.executor.submit(task)
 
     def undo_text(self) -> None:
