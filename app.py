@@ -20,6 +20,7 @@ from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
 from tooltip import ToolTip
 from settings import SETTINGS
+from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog
 
 load_dotenv()
 
@@ -339,186 +340,113 @@ class MedicalDictationApp(ttk.Window):
             vc_tree.insert("", tk.END, values=(cmd, act))
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
-    def _create_toplevel_dialog(self, title: str, geometry: str = "400x300") -> tk.Toplevel:
-        dialog = tk.Toplevel(self)
-        dialog.title(title)
-        dialog.geometry(geometry)
-        dialog.transient(self)
-        dialog.grab_set()
-        return dialog
-
-    def show_settings_dialog(self, title: str, config_key: str, current_prompt: str, current_model: str, save_callback: callable) -> None:
-        from settings import _DEFAULT_SETTINGS
-        if config_key in _DEFAULT_SETTINGS:
-            default = _DEFAULT_SETTINGS[config_key]
-            default_prompt = default.get("system_message", default.get("prompt", ""))
-            default_model = default.get("model", "")
-        else:
-            default_prompt, default_model = "", ""
-        dialog = self._create_toplevel_dialog(title, "800x500")
-        frame = ttk.LabelFrame(dialog, text=title, padding=10)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
-        if title in ("SOAP Note Settings", "Improve Text Settings", "Refine Text Settings"):
-            import tkinter.scrolledtext as scrolledtext
-            prompt_text = scrolledtext.ScrolledText(frame, width=60, height=10)
-        else:
-            prompt_text = tk.Text(frame, width=60, height=5)
-        prompt_text.grid(row=0, column=1, padx=5, pady=5)
-        prompt_text.insert("1.0", current_prompt)
-        ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="nw")
-        model_entry = ttk.Entry(frame, width=60)
-        model_entry.grid(row=1, column=1, padx=5, pady=5)
-        model_entry.insert(0, current_model)
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        def reset_fields():
-            prompt_text.delete("1.0", tk.END)
-            insertion_text = default_prompt if default_prompt else "Default prompt not set in _DEFAULT_SETTINGS"
-            prompt_text.insert("1.0", insertion_text)
-            model_entry.delete(0, tk.END)
-            model_entry.insert(0, default_model)
-            prompt_text.focus()
-        ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(prompt_text.get("1.0", tk.END).strip(), model_entry.get().strip()), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
-    def askstring_min(self, title: str, prompt: str, initialvalue: str = "") -> Optional[str]:
-        dialog = self._create_toplevel_dialog(title, "400x300")
-        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=20)
-        entry = tk.Entry(dialog, width=50)
-        entry.insert(0, initialvalue)
-        entry.pack(padx=20)
-        result = [None]
-        def on_ok():
-            result[0] = entry.get()
-            dialog.destroy()
-        def on_cancel():
-            dialog.destroy()
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=20)
-        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
-        dialog.wait_window()
-        return result[0]
-
-    def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
-        dialog = self._create_toplevel_dialog(title, "500x500")
-        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
-        # Updated style configuration for ttk.Checkbutton with light grey hover and green checkmark when selected
-        style = ttk.Style()
-        style.configure("Green.TCheckbutton",
-            background="white",
-            foreground="grey20",
-            indicatorcolor="blue")
-        style.map("Green.TCheckbutton",
-            background=[("active", "lightgrey"), ("selected", "green")],
-            foreground=[("selected", "white")],
-            indicatorcolor=[("selected", "green"), ("pressed", "darkblue")])
-        checkbox_frame = tk.Frame(dialog)
-        checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
-        vars_list = []
-        for cond in conditions:
-            var = tk.BooleanVar()
-            ttk.Checkbutton(
-                checkbox_frame, text=cond, variable=var, style="Green.TCheckbutton"
-            ).pack(anchor="w")
-            vars_list.append((cond, var))
-        # NEW: Optional text area for additional conditions
-        tk.Label(dialog, text="Additional conditions (optional):", wraplength=380).pack(padx=20, pady=(10,0))
-        optional_text = tk.Text(dialog, width=50, height=3)
-        optional_text.pack(padx=20, pady=(0,10))
-        selected = []
-        def on_ok():
-            for cond, var in vars_list:
-                if var.get():
-                    selected.append(cond)
-            extra = optional_text.get("1.0", tk.END).strip()
-            if extra:
-                selected.extend([item.strip() for item in extra.split(",") if item.strip()])
-            dialog.destroy()
-        def on_cancel():
-            dialog.destroy()
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
-        dialog.wait_window()
-        if selected:
-            return ", ".join(selected)
-        return None
-
     def show_refine_settings_dialog(self) -> None:
-        from settings import SETTINGS
+        from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("refine_text", {})
-        self.show_settings_dialog(
+        show_settings_dialog(
+            parent=self,
             title="Refine Text Settings",
-            config_key="refine_text",
+            config=cfg,
+            default=_DEFAULT_SETTINGS["refine_text"],
             current_prompt=cfg.get("prompt", ""),
             current_model=cfg.get("model", ""),
+            current_perplexity=cfg.get("perplexity_model", ""),
+            current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_refine_settings
         )
 
     def show_improve_settings_dialog(self) -> None:
-        from settings import SETTINGS
+        from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("improve_text", {})
-        self.show_settings_dialog(
+        show_settings_dialog(
+            parent=self,
             title="Improve Text Settings",
-            config_key="improve_text",
+            config=cfg,
+            default=_DEFAULT_SETTINGS["improve_text"],
             current_prompt=cfg.get("prompt", ""),
             current_model=cfg.get("model", ""),
+            current_perplexity=cfg.get("perplexity_model", ""),
+            current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_improve_settings
         )
 
     def show_soap_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("soap_note", {})
-        default_prompt = _DEFAULT_SETTINGS["soap_note"]["system_message"]
-        default_model = _DEFAULT_SETTINGS["soap_note"]["model"]
-        self.show_settings_dialog(
+        default_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", "")
+        default_model = _DEFAULT_SETTINGS["soap_note"].get("model", "")
+        show_settings_dialog(
+            parent=self,
             title="SOAP Note Settings",
-            config_key="soap_note",
+            config=cfg,
+            default=_DEFAULT_SETTINGS["soap_note"],
             current_prompt=cfg.get("system_message") or default_prompt,
             current_model=cfg.get("model") or default_model,
+            current_perplexity=cfg.get("perplexity_model", ""),
+            current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_soap_settings
         )
 
     def show_referral_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("referral", {})
-        default_prompt = _DEFAULT_SETTINGS["referral"]["prompt"]
-        default_model = _DEFAULT_SETTINGS["referral"]["model"]
-        self.show_settings_dialog(
+        default_prompt = _DEFAULT_SETTINGS["referral"].get("prompt", "")
+        default_model = _DEFAULT_SETTINGS["referral"].get("model", "")
+        show_settings_dialog(
+            parent=self,
             title="Referral Prompt Settings",
-            config_key="referral",
+            config=cfg,
+            default=_DEFAULT_SETTINGS["referral"],
             current_prompt=cfg.get("prompt", default_prompt),
             current_model=cfg.get("model", default_model),
+            current_perplexity=cfg.get("perplexity_model", ""),
+            current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_referral_settings
         )
 
-    def save_referral_settings(self, prompt: str, model: str) -> None:
-        from settings import SETTINGS, save_settings
-        SETTINGS["referral"] = {"prompt": prompt, "model": model}
-        save_settings(SETTINGS)
-        self.update_status("Referral settings saved.")
-
-    def save_refine_settings(self, prompt: str, model: str) -> None:
+    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
         from settings import save_settings, SETTINGS
-        SETTINGS["refine_text"] = {"prompt": prompt, "model": model}
+        SETTINGS["refine_text"] = {
+            "prompt": prompt,
+            "model": openai_model,
+            "perplexity_model": perplexity_model,
+            "grok_model": grok_model
+        }
         save_settings(SETTINGS)
         self.update_status("Refine settings saved.")
 
-    def save_improve_settings(self, prompt: str, model: str) -> None:
+    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
         from settings import save_settings, SETTINGS
-        SETTINGS["improve_text"] = {"prompt": prompt, "model": model}
+        SETTINGS["improve_text"] = {
+            "prompt": prompt,
+            "model": openai_model,
+            "perplexity_model": perplexity_model,
+            "grok_model": grok_model
+        }
         save_settings(SETTINGS)
         self.update_status("Improve settings saved.")
 
-    def save_soap_settings(self, prompt: str, model: str) -> None:
+    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
         from settings import save_settings, SETTINGS
-        SETTINGS["soap_note"] = {"system_message": prompt, "model": model}
+        SETTINGS["soap_note"] = {
+            "system_message": prompt,
+            "model": openai_model,
+            "perplexity_model": perplexity_model,
+            "grok_model": grok_model
+        }
         save_settings(SETTINGS)
         self.update_status("SOAP note settings saved.")
+
+    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
+        from settings import SETTINGS, save_settings
+        SETTINGS["referral"] = {
+            "prompt": prompt,
+            "model": openai_model,
+            "perplexity_model": perplexity_model,
+            "grok_model": grok_model
+        }
+        save_settings(SETTINGS)
+        self.update_status("Referral settings saved.")
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
@@ -850,26 +778,6 @@ class MedicalDictationApp(ttk.Window):
         conditions = remove_citations(conditions)
         return conditions
 
-    # NEW: Custom input dialog with minimum size of 400x300 updated to include self
-    def askstring_min(self, title: str, prompt: str, initialvalue: str = "") -> Optional[str]:
-        dialog = self._create_toplevel_dialog(title, "400x300")
-        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=20)
-        entry = tk.Entry(dialog, width=50)
-        entry.insert(0, initialvalue)
-        entry.pack(padx=20)
-        result = [None]
-        def on_ok():
-            result[0] = entry.get()
-            dialog.destroy()
-        def on_cancel():
-            dialog.destroy()
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=20)
-        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
-        dialog.wait_window()
-        return result[0]
-
     def create_referral(self) -> None:
         # New: Immediately update status and display progress bar on referral click
         self.update_status("Referral button clicked - preparing referral...")
@@ -889,53 +797,6 @@ class MedicalDictationApp(ttk.Window):
             # Continue on the main thread
             self.after(0, lambda: self._create_referral_continued(suggestions))
         future.add_done_callback(on_conditions_done)
-
-    def ask_conditions_dialog(self, title: str, prompt: str, conditions: list) -> Optional[str]:
-        dialog = self._create_toplevel_dialog(title, "500x500")
-        tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
-        # Updated style configuration for ttk.Checkbutton with light grey hover
-        style = ttk.Style()
-        style.configure("Green.TCheckbutton",
-            background="white",
-            foreground="grey20",
-            indicatorcolor="blue")
-        style.map("Green.TCheckbutton",
-            background=[("active", "lightgrey"), ("selected", "green")],
-            foreground=[("selected", "white")],
-            indicatorcolor=[("selected", "blue"), ("pressed", "darkblue")],
-        )
-        checkbox_frame = tk.Frame(dialog)
-        checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
-        vars_list = []
-        for cond in conditions:
-            var = tk.BooleanVar()
-            ttk.Checkbutton(
-                checkbox_frame, text=cond, variable=var, style="Green.TCheckbutton"
-            ).pack(anchor="w")
-            vars_list.append((cond, var))
-        # NEW: Optional text area for additional conditions
-        tk.Label(dialog, text="Additional conditions (optional):", wraplength=380).pack(padx=20, pady=(10,0))
-        optional_text = tk.Text(dialog, width=50, height=3)
-        optional_text.pack(padx=20, pady=(0,10))
-        selected = []
-        def on_ok():
-            for cond, var in vars_list:
-                if var.get():
-                    selected.append(cond)
-            extra = optional_text.get("1.0", tk.END).strip()
-            if extra:
-                selected.extend([item.strip() for item in extra.split(",") if item.strip()])
-            dialog.destroy()
-        def on_cancel():
-            dialog.destroy()
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
-        dialog.wait_window()
-        if selected:
-            return ", ".join(selected)
-        return None
 
     def _create_referral_continued(self, suggestions: str) -> None:
         self.progress_bar.stop()

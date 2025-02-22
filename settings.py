@@ -9,9 +9,16 @@ DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
 DEFAULT_AI_PROVIDER = "openai"
 
 _DEFAULT_SETTINGS = {
-    "refine_text": {"prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""", "model": "gpt-3.5-turbo"},
-    "improve_text": {"prompt": "Improve the clarity, readability, and overall quality of the following transcript text.", "model": "gpt-3.5-turbo"},
-    "soap_note": {"system_message": """You are a supportive general family practice physician tasked with analyzing transcripts from patient consultations with yourself.   
+    "refine_text": {
+        "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
+        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+    },
+    "improve_text": {
+        "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
+        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+    },
+    "soap_note": {
+        "system_message": """You are a supportive general family practice physician tasked with analyzing transcripts from patient consultations with yourself.   
 Your role is to craft detailed SOAP notes using a step-by-step thought process, visualizing your thoughts and adhering to the following guidelines:
 
 ### General prompt:
@@ -88,8 +95,13 @@ Follow up:
 
 ** Always return your response in plain text without markdown **
 
-""", "model": "gpt-4o"},
-    "referral": {"prompt": "Write a referral paragraph using the SOAP Note given to you", "model": "gpt-4o"}
+""",
+        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+    },
+    "referral": {
+        "prompt": "Write a referral paragraph using the SOAP Note given to you",
+        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+    }
 }
 
 def load_settings() -> dict:
