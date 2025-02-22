@@ -57,13 +57,45 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
         logging.error("Perplexity API error: %s", e)
         return prompt
 
+# NEW: Helper function to call Grok API
+def call_grok(system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    grok_api_key = os.getenv("GROK_API_KEY")
+    if not grok_api_key:
+        logging.error("Grok API key not provided")
+        return prompt
+    url = "https://api.x.ai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {grok_api_key}"
+    }
+    data = {
+        "messages": [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ],
+        "model": "grok-2-latest",
+        "stream": False,
+        "temperature": temperature
+    }
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        # Log HTTP request details similar to OpenAI logging
+        logging.info(f"HTTP Request: POST {url} \"HTTP/1.1 {response.status_code} {response.reason}\"")
+        result = response.json()
+        return result["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logging.error("Grok API error", exc_info=True)
+        return prompt
+
 # NEW: Unified API call that uses provider setting
 def call_ai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     provider = SETTINGS.get("ai_provider", "openai")
     if provider == "perplexity":
-        # Use default model for Perplexity API: sonar-reasoning-pro
         model = "sonar-reasoning-pro"
         return call_perplexity(system_message, prompt, temperature, max_tokens)
+    elif provider == "grok":
+        return call_grok(system_message, prompt, temperature, max_tokens)
     else:
         return call_openai(model, system_message, prompt, temperature, max_tokens)
 

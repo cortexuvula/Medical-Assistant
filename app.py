@@ -101,7 +101,8 @@ class MedicalDictationApp(ttk.Window):
         dialog.grab_set()
         ai_var = tk.StringVar(value=SETTINGS.get("ai_provider", "openai"))
         ttk.Label(dialog, text="Select AI Provider:").pack(pady=10)
-        for text, value in [("OpenAI", "openai"), ("Perplexity", "perplexity")]:
+        # NEW: Added Grok option along with OpenAI and Perplexity
+        for text, value in [("OpenAI", "openai"), ("Perplexity", "perplexity"), ("Grok", "grok")]:
             ttk.Radiobutton(dialog, text=text, variable=ai_var, value=value).pack(anchor="w", padx=20)
         def save():
             SETTINGS["ai_provider"] = ai_var.get()
@@ -644,8 +645,20 @@ class MedicalDictationApp(ttk.Window):
                 segment.export(buf, format="wav")
                 buf.seek(0)
                 options = PrerecordedOptions(model="nova-2-medical", language="en-US")
-                response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
-                transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
+                try:
+                    response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
+                    transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
+                    return transcript
+                except Exception as e:
+                    logging.error("Deepgram API timeout, falling back to Google Speech Recognition", exc_info=True)
+                    self.update_status(f"Deepgram API timeout: {str(e)}")
+                    temp_file = "temp.wav"
+                    segment.export(temp_file, format="wav")
+                    with sr.AudioFile(temp_file) as source:
+                        audio_data = self.recognizer.record(source)
+                    transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+                    os.remove(temp_file)
+                    return transcript
             else:
                 temp_file = "temp.wav"
                 segment.export(temp_file, format="wav")
@@ -653,11 +666,12 @@ class MedicalDictationApp(ttk.Window):
                     audio_data = self.recognizer.record(source)
                 transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
                 os.remove(temp_file)
-            return transcript
+                return transcript
         except Exception as e:
             logging.error("Transcription error", exc_info=True)
+            self.update_status(f"Transcription error: {str(e)}")
             return ""
-    
+
     # Refactor process_audio using the new helper
     def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         try:
@@ -1104,3 +1118,4 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
