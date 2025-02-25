@@ -83,7 +83,6 @@ class MedicalDictationApp(ttk.Window):
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
         settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
-        settings_menu.add_command(label="Set AI Provider", command=self.set_ai_provider)
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -92,26 +91,6 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
-
-    def set_ai_provider(self) -> None:
-        from settings import SETTINGS, save_settings
-        dialog = tk.Toplevel(self)
-        dialog.title("Select AI Provider")
-        dialog.geometry("400x200")
-        dialog.transient(self)
-        dialog.grab_set()
-        ai_var = tk.StringVar(value=SETTINGS.get("ai_provider", "openai"))
-        ttk.Label(dialog, text="Select AI Provider:").pack(pady=10)
-        # NEW: Added Grok option along with OpenAI and Perplexity
-        for text, value in [("OpenAI", "openai"), ("Perplexity", "perplexity"), ("Grok", "grok")]:
-            ttk.Radiobutton(dialog, text=text, variable=ai_var, value=value).pack(anchor="w", padx=20)
-        def save():
-            SETTINGS["ai_provider"] = ai_var.get()
-            save_settings(SETTINGS)
-            self.provider_label.config(text=f"Provider: {ai_var.get().capitalize()}")
-            self.update_status(f"AI Provider set to {ai_var.get().capitalize()}.")
-            dialog.destroy()
-        ttk.Button(dialog, text="Save", command=save).pack(pady=10)
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -182,10 +161,50 @@ class MedicalDictationApp(ttk.Window):
         refresh_btn = ttk.Button(mic_frame, text="Refresh", command=self.refresh_microphones, bootstyle="PRIMARY")
         refresh_btn.pack(side=LEFT, padx=10)
         ToolTip(refresh_btn, "Refresh the list of available microphones.")
-        from settings import SETTINGS
+        
+        # Create a frame for the provider selection
+        provider_frame = ttk.Frame(mic_frame)
+        provider_frame.pack(side=LEFT, padx=10)
+        
+        # Add a label for the provider dropdown
+        ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
+        
+        # Create a dropdown for provider selection instead of a button
+        from settings import SETTINGS, save_settings
         provider = SETTINGS.get("ai_provider", "openai")
-        self.provider_label = ttk.Label(mic_frame, text=f"Provider: {provider.capitalize()}")
-        self.provider_label.pack(side=LEFT, padx=10)
+        
+        # Available provider options
+        providers = ["openai", "perplexity", "grok"]
+        provider_display = ["OpenAI", "Perplexity", "Grok"]  # Capitalized display names
+        
+        # Create the provider selection combobox
+        self.provider_combobox = ttk.Combobox(
+            provider_frame, 
+            values=provider_display,
+            state="readonly",
+            width=12
+        )
+        self.provider_combobox.pack(side=LEFT)
+        
+        # Set the current value
+        try:
+            current_index = providers.index(provider.lower())
+            self.provider_combobox.current(current_index)
+        except (ValueError, IndexError):
+            # Default to OpenAI if provider not found in list
+            self.provider_combobox.current(0)
+        
+        # Add callback for when selection changes
+        def on_provider_change(event):
+            selected_index = self.provider_combobox.current()
+            if 0 <= selected_index < len(providers):
+                selected_provider = providers[selected_index]
+                SETTINGS["ai_provider"] = selected_provider
+                save_settings(SETTINGS)
+                self.update_status(f"AI Provider set to {provider_display[selected_index]}")
+        
+        self.provider_combobox.bind("<<ComboboxSelected>>", on_provider_change)
+        ToolTip(self.provider_combobox, "Select which AI provider to use")
 
         # NEW: Force use of "clam" theme and configure custom Notebook style
         style = ttk.Style()
@@ -194,7 +213,7 @@ class MedicalDictationApp(ttk.Window):
         style.configure("Green.TNotebook", background="white", borderwidth=0)
         style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey")
         style.map("Green.TNotebook.Tab",
-            background=[("selected", "green"), ("active", "green"), ("!selected", "lightgrey")])
+            background=[("selected", "teal"), ("active", "teal"), ("!selected", "lightgrey")])
         # Create the Notebook using the custom style
         self.notebook = ttk.Notebook(self, style="Green.TNotebook")
 
