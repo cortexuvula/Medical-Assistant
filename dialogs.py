@@ -1,5 +1,179 @@
+import os
+import logging
+import requests
 import tkinter as tk
+from tkinter import messagebox
 import ttkbootstrap as ttk
+import re
+
+# Function to get OpenAI models
+def get_openai_models() -> list:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        api_key = prompt_for_api_key("OpenAI")
+        if not api_key:
+            return get_fallback_openai_models()
+    
+    try:
+        logging.info("Fetching OpenAI models...")
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = requests.get("https://api.openai.com/v1/models", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Filter models to include only GPT models
+            models = [item["id"] for item in data.get("data", []) 
+                     if any(model_name in item["id"] for model_name in ["gpt", "GPT"])]
+            logging.info(f"Fetched {len(models)} OpenAI models")
+            return sorted(models)
+        else:
+            logging.error(f"Failed to fetch OpenAI models: {response.status_code}, {response.text}")
+            return get_fallback_openai_models()
+    except Exception as e:
+        logging.error(f"Error fetching OpenAI models: {str(e)}")
+        return get_fallback_openai_models()
+
+def get_fallback_openai_models() -> list:
+    """Return a list of common OpenAI models as fallback"""
+    logging.info("Using fallback set of common OpenAI models")
+    return ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
+
+# Function to get Perplexity models
+def get_perplexity_models() -> list:
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        api_key = prompt_for_api_key("Perplexity")
+        if not api_key:
+            return get_fallback_perplexity_models()
+    
+    # Perplexity doesn't have a specific API endpoint to list models
+    # We'll return a manually curated list of known models
+    return get_fallback_perplexity_models()
+
+def get_fallback_perplexity_models() -> list:
+    """Return a list of Perplexity models"""
+    logging.info("Using standard list of Perplexity models")
+    return ["sonar-large", "sonar-reasoning-pro", "sonar-reasoning-medium", "sonar-reasoning-small"]
+
+def get_grok_models() -> list:
+    # Get the Grok API key from the environment
+    api_key = os.getenv("GROK_API_KEY")
+    if not api_key:
+        # Show dialog to input API key if not found in environment variables
+        api_key = prompt_for_api_key()
+        if not api_key:
+            logging.warning("Grok API key not provided by user")
+            return get_fallback_models()
+    
+    # Log partial key for debugging (showing only first 4 chars)
+    key_prefix = api_key[:4] + "..." if api_key else "None"
+    logging.info(f"Using Grok API key starting with: {key_prefix}")
+    
+    try:
+        logging.info("Fetching Grok (X.AI) models...")
+        # Use the correct API endpoint and headers for X.AI (Grok)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get("https://api.x.ai/v1/models", headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                models = [item["id"] for item in data.get("data", [])]
+                logging.info(f"Fetched {len(models)} models from Grok API")
+                return models
+            else:
+                logging.error(f"Failed to fetch Grok models: {response.status_code}, {response.text}")
+                return get_fallback_models()
+        except Exception as e:
+            logging.error(f"Error fetching Grok models: {str(e)}")
+            return get_fallback_models()
+    except Exception as e:
+        logging.error(f"Error in get_grok_models: {str(e)}")
+    return get_fallback_models()
+
+def get_fallback_models() -> list:
+    """Return a list of common Grok models as fallback"""
+    logging.info("Using fallback set of common Grok models")
+    return ["grok-1", "grok-1-mini", "grok-2", "grok-2-mini"]
+
+def prompt_for_api_key(provider: str = "Grok") -> str:
+    """Prompt the user for their API key."""
+    dialog = tk.Toplevel()
+    dialog.title(f"{provider} API Key Required")
+    dialog.geometry("450x200")
+    dialog.grab_set()
+    
+    env_var_name = {
+        "Grok": "GROK_API_KEY",
+        "OpenAI": "OPENAI_API_KEY",
+        "Perplexity": "PERPLEXITY_API_KEY"
+    }.get(provider, "API_KEY")
+    
+    provider_url = {
+        "Grok": "X.AI account",
+        "OpenAI": "https://platform.openai.com/account/api-keys",
+        "Perplexity": "https://www.perplexity.ai/settings/api"
+    }.get(provider, "provider website")
+    
+    ttk.Label(dialog, text=f"Please enter your {provider} API Key:", wraplength=400).pack(pady=(20, 5))
+    ttk.Label(dialog, text=f"You can get your key from your {provider_url}", 
+              font=("Segoe UI", 8), foreground="blue").pack()
+    
+    entry = ttk.Entry(dialog, width=50)
+    entry.pack(pady=10, padx=20)
+    
+    # Add checkbox for saving the key
+    save_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(dialog, text="Save key for future sessions", variable=save_var).pack()
+    
+    result = [None]
+    
+    def on_ok():
+        key = entry.get().strip()
+        if key:
+            result[0] = key
+            # Set environment variable
+            os.environ[env_var_name] = key
+            # Save to .env file if requested
+            if save_var.get():
+                save_api_key_to_env(key, env_var_name)
+        dialog.destroy()
+    
+    def on_cancel():
+        dialog.destroy()
+    
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(pady=20)
+    ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+    ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+    
+    dialog.wait_window()
+    return result[0]
+
+def save_api_key_to_env(key: str, env_var_name: str) -> None:
+    """Save the API key to the .env file."""
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+        env_content = ""
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                env_content = f.read()
+        
+        # Replace existing API key or add new one
+        if f'{env_var_name}=' in env_content:
+            env_content = re.sub(f'{env_var_name}=.*', f'{env_var_name}={key}', env_content)
+        else:
+            env_content += f'\n{env_var_name}={key}'
+        
+        with open(env_path, 'w') as f:
+            f.write(env_content)
+        
+        logging.info(f"{env_var_name} saved to .env file")
+    except Exception as e:
+        logging.error(f"Failed to save {env_var_name}: {e}")
 
 def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "400x300") -> tk.Toplevel:
     dialog = tk.Toplevel(parent)
@@ -20,37 +194,99 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     prompt_text = scrolledtext.ScrolledText(frame, width=60, height=10)
     prompt_text.grid(row=0, column=1, padx=5, pady=5)
     prompt_text.insert("1.0", current_prompt)
+    
+    # OpenAI Model
     ttk.Label(frame, text="OpenAI Model:").grid(row=1, column=0, sticky="nw")
-    model_entry = ttk.Entry(frame, width=60)
-    model_entry.grid(row=1, column=1, padx=5, pady=5)
-    model_entry.insert(0, current_model)
+    openai_frame = ttk.Frame(frame)
+    openai_frame.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+    openai_combobox = ttk.Combobox(openai_frame, width=48)
+    openai_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    if current_model:
+        openai_combobox.set(current_model)
+    # Add fetch button
+    def fetch_openai_models():
+        models = get_openai_models()
+        if models:
+            openai_combobox['values'] = models
+            openai_combobox.config(state="readonly")
+            parent.bell()
+        else:
+            openai_combobox['values'] = ["No models found - check API key"]
+    openai_fetch_button = ttk.Button(openai_frame, text="Fetch Models", command=fetch_openai_models)
+    openai_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    # Perplexity Model
     ttk.Label(frame, text="Perplexity Model:").grid(row=2, column=0, sticky="nw")
-    perplexity_entry = ttk.Entry(frame, width=60)
-    perplexity_entry.grid(row=2, column=1, padx=5, pady=5)
-    perplexity_entry.insert(0, current_perplexity)
+    perplexity_frame = ttk.Frame(frame)
+    perplexity_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+    perplexity_combobox = ttk.Combobox(perplexity_frame, width=48)
+    perplexity_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    if current_perplexity:
+        perplexity_combobox.set(current_perplexity)
+    # Add fetch button
+    def fetch_perplexity_models():
+        models = get_perplexity_models()
+        if models:
+            perplexity_combobox['values'] = models
+            perplexity_combobox.config(state="readonly")
+            parent.bell()
+        else:
+            perplexity_combobox['values'] = ["No models found - check API key"]
+    perplexity_fetch_button = ttk.Button(perplexity_frame, text="Fetch Models", command=fetch_perplexity_models)
+    perplexity_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    # Grok Model - keep existing implementation
     ttk.Label(frame, text="Grok Model:").grid(row=3, column=0, sticky="nw")
-    grok_entry = ttk.Entry(frame, width=60)
-    grok_entry.grid(row=3, column=1, padx=5, pady=5)
-    grok_entry.insert(0, current_grok)
+    grok_frame = ttk.Frame(frame)
+    grok_frame.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+    grok_combobox = ttk.Combobox(grok_frame, width=48)
+    grok_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    if current_grok:
+        grok_combobox.set(current_grok)
+    # Add fetch button
+    def fetch_grok_models():
+        models = get_grok_models()
+        if models:
+            grok_combobox['values'] = models
+            grok_combobox.config(state="readonly")
+            parent.bell()
+        else:
+            grok_combobox['values'] = ["No models found - check API key"]
+    grok_fetch_button = ttk.Button(grok_frame, text="Fetch Models", command=fetch_grok_models)
+    grok_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    # Try to pre-populate all models
+    openai_models = get_openai_models()
+    if openai_models:
+        openai_combobox['values'] = openai_models
+        openai_combobox.config(state="readonly")
+    
+    perplexity_models = get_perplexity_models()
+    if perplexity_models:
+        perplexity_combobox['values'] = perplexity_models
+        perplexity_combobox.config(state="readonly")
+    
+    grok_models = get_grok_models()
+    if grok_models:
+        grok_combobox['values'] = grok_models
+        grok_combobox.config(state="readonly")
+    
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
     def reset_fields():
         prompt_text.delete("1.0", tk.END)
         insertion_text = default.get("system_message", default.get("prompt", "Default prompt not set"))
         prompt_text.insert("1.0", insertion_text)
-        model_entry.delete(0, tk.END)
-        model_entry.insert(0, default.get("model", ""))
-        perplexity_entry.delete(0, tk.END)
-        perplexity_entry.insert(0, default.get("perplexity_model", ""))
-        grok_entry.delete(0, tk.END)
-        grok_entry.insert(0, default.get("grok_model", ""))
+        openai_combobox.set(default.get("model", ""))
+        perplexity_combobox.set(default.get("perplexity_model", ""))
+        grok_combobox.set(default.get("grok_model", ""))
         prompt_text.focus()
     ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
     ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(
         prompt_text.get("1.0", tk.END).strip(),
-        model_entry.get().strip(),
-        perplexity_entry.get().strip(),
-        grok_entry.get().strip()
+        openai_combobox.get().strip(),
+        perplexity_combobox.get().strip(),
+        grok_combobox.get().strip()
     ), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
     ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
