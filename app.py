@@ -211,9 +211,14 @@ class MedicalDictationApp(ttk.Window):
         # Removed theme_use("clam") to prevent conflict with ttkbootstrap's theme
         # style.theme_use("clam")
         style.configure("Green.TNotebook", background="white", borderwidth=0)
-        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey")
+        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey", foreground="black")
+        
+        # Map the foreground (text color) based on tab state
         style.map("Green.TNotebook.Tab",
-            background=[("selected", "teal"), ("active", "teal"), ("!selected", "lightgrey")])
+            background=[("selected", "teal"), ("active", "teal"), ("!selected", "lightgrey")],
+            foreground=[("selected", "white"), ("!selected", "black")]  # White text when selected, black otherwise
+        )
+        
         # Create the Notebook using the custom style
         self.notebook = ttk.Notebook(self, style="Green.TNotebook")
 
@@ -1025,4 +1030,5 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
 
