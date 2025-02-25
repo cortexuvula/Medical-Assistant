@@ -40,20 +40,29 @@ def get_fallback_openai_models() -> list:
 
 # Function to get Perplexity models
 def get_perplexity_models() -> list:
-    api_key = os.getenv("PERPLEXITY_API_KEY")
-    if not api_key:
-        api_key = prompt_for_api_key("Perplexity")
-        if not api_key:
-            return get_fallback_perplexity_models()
-    
-    # Perplexity doesn't have a specific API endpoint to list models
-    # We'll return a manually curated list of known models
-    return get_fallback_perplexity_models()
+    # For Perplexity, we'll use a curated list of models rather than trying to 
+    # query them dynamically, since there's no direct API endpoint for listing models
+    logging.info("Using curated list of Perplexity models")
+    return [
+        # Latest curated Perplexity models with context windows
+        "sonar-reasoning-pro",    # 128k context
+        "sonar-reasoning",        # 128k context
+        "sonar-pro",              # 200k context
+        "sonar",                  # 128k context
+        "r1-1776"                # 128k context
+        
+    ]
 
 def get_fallback_perplexity_models() -> list:
     """Return a list of Perplexity models"""
     logging.info("Using standard list of Perplexity models")
-    return ["sonar-large", "sonar-reasoning-pro", "sonar-reasoning-medium", "sonar-reasoning-small"]
+    return [
+        "sonar-reasoning-pro",    # 128k context
+        "sonar-reasoning",        # 128k context
+        "sonar-pro",              # 200k context
+        "sonar",                  # 128k context
+        "r1-1776"                # 128k context
+    ]
 
 def get_grok_models() -> list:
     # Get the Grok API key from the environment
@@ -337,3 +346,4 @@ def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: li
     tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
     dialog.wait_window()
     return ", ".join(selected) if selected else ""
+

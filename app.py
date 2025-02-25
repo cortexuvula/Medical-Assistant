@@ -802,20 +802,47 @@ class MedicalDictationApp(ttk.Window):
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
         conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
-        focus = self.ask_conditions_dialog("Select Conditions", "Select conditions to focus on:", conditions_list)
-        if focus is None:
-            self.update_status("Referral cancelled.")
+        # Fix: Use ask_conditions_dialog as an imported function, not as a method
+        from dialogs import ask_conditions_dialog
+        focus = ask_conditions_dialog(self, "Select Conditions", "Select conditions to focus on:", conditions_list)
+        if not focus:
+            self.update_status("Referral cancelled or no conditions selected.")
             return
-        self.update_status("Processing referral...")
+        
+        self.update_status(f"Processing referral for conditions: {focus}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
+        self.referral_button.config(state=DISABLED)  # Disable button while processing
+        
         def task() -> None:
-            transcript = self.transcript_text.get("1.0", tk.END).strip()
-            result = __import__("ai").create_referral_with_openai(transcript, focus)
-            self.after(0, lambda: [
-                self._update_text_area(result, "Referral created.", self.referral_button, self.referral_text),
-                self.notebook.select(2)  # Switch focus to Referral tab (index 2)
-            ])
+            try:
+                transcript = self.transcript_text.get("1.0", tk.END).strip()
+                # Import locally to avoid potential circular imports
+                from ai import create_referral_with_openai
+                
+                # Add periodic status updates
+                self.after(3000, lambda: self.update_status(f"Still generating referral for: {focus}..."))
+                self.after(10000, lambda: self.update_status(f"Processing referral (this may take a moment)..."))
+                
+                # Execute the referral creation with conditions
+                result = create_referral_with_openai(transcript, focus)
+                
+                # Update UI when done
+                self.after(0, lambda: [
+                    self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
+                    self.notebook.select(2)  # Switch focus to Referral tab (index 2)
+                ])
+            except Exception as e:
+                error_msg = f"Error creating referral: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.update_status(error_msg),
+                    self.referral_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+        
+        # Execute in thread pool
         self.executor.submit(task)
 
     def refresh_microphones(self) -> None:

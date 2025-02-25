@@ -18,6 +18,7 @@ OPENAI_MAX_TOKENS_IMPROVEMENT = 4000
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     try:
+        logging.info(f"Making OpenAI API call with model: {model}")
         response = openai.chat.completions.create(
             model=model,
             messages=[
@@ -29,10 +30,9 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        logging.error("OpenAI API error", exc_info=True)
+        logging.error(f"OpenAI API error with model {model}: {str(e)}")
         return prompt
 
-# NEW: Updated function to call Perplexity API using OpenAI client with base_url set to https://api.perplexity.ai
 def call_perplexity(system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     from openai import OpenAI
     api_key = os.getenv("PERPLEXITY_API_KEY")
@@ -40,32 +40,85 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
         logging.error("Perplexity API key not provided")
         return prompt
     client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+    
+    # Get model from the appropriate settings based on the task
+    model_key = get_model_key_for_task(system_message, prompt)
+    model = SETTINGS.get(model_key, {}).get("perplexity_model", "sonar-medium-chat")
+    logging.info(f"Making Perplexity API call with model: {model}")
+    
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": prompt}
     ]
     try:
         response = client.chat.completions.create(
-            model="sonar-reasoning-pro",
+            model=model,
             messages=messages,
         )
         result = response.choices[0].message.content.strip()
-        # NEW: Remove text between <think> and </think>
+        # Remove text between <think> and </think>
         result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
         return result
     except Exception as e:
-        logging.error("Perplexity API error: %s", e)
+        logging.error(f"Perplexity API error with model {model}: {str(e)}")
         return prompt
 
-# NEW: Unified API call that uses provider setting
+# Updated call_ai function with more detailed logging
 def call_ai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     provider = SETTINGS.get("ai_provider", "openai")
+    model_key = get_model_key_for_task(system_message, prompt)
+    
+    # Handle different providers and get appropriate model
     if provider == "perplexity":
-        # Use default model for Perplexity API: sonar-reasoning-pro
-        model = "sonar-reasoning-pro"
+        logging.info(f"Using provider: Perplexity for task: {model_key}")
         return call_perplexity(system_message, prompt, temperature, max_tokens)
-    else:
-        return call_openai(model, system_message, prompt, temperature, max_tokens)
+    elif provider == "grok":
+        actual_model = SETTINGS.get(model_key, {}).get("grok_model", "grok-1")
+        logging.info(f"Using provider: Grok with model: {actual_model}")
+        return call_grok(actual_model, system_message, prompt, temperature, max_tokens)
+    else:  # OpenAI is the default
+        actual_model = SETTINGS.get(model_key, {}).get("model", model)
+        logging.info(f"Using provider: OpenAI with model: {actual_model}")
+        return call_openai(actual_model, system_message, prompt, temperature, max_tokens)
+
+# Helper function to determine which model key to use based on the task
+def get_model_key_for_task(system_message: str, prompt: str) -> str:
+    if "SOAP" in system_message or "SOAP" in prompt:
+        return "soap_note"
+    elif "refine" in system_message.lower() or "refine" in prompt.lower():
+        return "refine_text"
+    elif "improve" in system_message.lower() or "improve" in prompt.lower():
+        return "improve_text"
+    elif "referral" in system_message.lower() or "referral" in prompt.lower():
+        return "referral"
+    return "refine_text"  # Default fallback
+
+# NEW: Add Grok API call function
+def call_grok(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    from openai import OpenAI
+    api_key = os.getenv("GROK_API_KEY")
+    if not api_key:
+        logging.error("Grok API key not provided")
+        return prompt
+    
+    logging.info(f"Making Grok API call with model: {model}")
+    
+    client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+    messages = [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": prompt}
+    ]
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"Grok API error with model {model}: {str(e)}")
+        return prompt
 
 def adjust_text_with_openai(text: str) -> str:
     model = SETTINGS.get("refine_text", {}).get("model", _DEFAULT_SETTINGS["refine_text"]["model"])
@@ -103,8 +156,25 @@ def create_soap_note_with_openai(text: str) -> str:
     cleaned = remove_citations(cleaned)
     return cleaned.strip()
 
-def create_referral_with_openai(text: str) -> str:
-    new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
-    result = call_ai("gpt-4o", "You are a physician writing referral letters to other physicians.", new_prompt, 0.7, 250)
-    # NEW: Remove markdown formatting from the result
-    return remove_markdown(result)
+def create_referral_with_openai(text: str, conditions: str = "") -> str:
+    # Add conditions to the prompt if provided
+    if conditions:
+        new_prompt = f"Write a referral paragraph using the following SOAP Note, focusing specifically on these conditions: {conditions}\n\nSOAP Note:\n{text}"
+        logging.info(f"Creating referral with focus on conditions: {conditions}")
+    else:
+        new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
+        logging.info("Creating referral with no specific focus conditions")
+    
+    # Add a shorter timeout and increase max tokens slightly
+    try:
+        result = call_ai(
+            "gpt-4o", 
+            "You are a physician writing referral letters to other physicians. Be concise but thorough.", 
+            new_prompt, 
+            0.7, 
+            500  # Increased from 250 to give more space for the response
+        )
+        return remove_markdown(result)
+    except Exception as e:
+        logging.error(f"Error creating referral: {str(e)}")
+        return f"Error creating referral: {str(e)}"
