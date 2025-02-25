@@ -34,7 +34,7 @@ class MedicalDictationApp(ttk.Window):
         super().__init__(themename="flatly")
         self.title("Medical Assistant")
         self.geometry("1200x900")
-        self.minsize(1200, 900)
+        self.minsize(1400, 1000)
         self.config(bg="#f0f0f0")
 
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
@@ -370,7 +370,7 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-l>", lambda event: self.load_audio_file())
 
     def show_about(self) -> None:
-        messagebox.showinfo("About", "Medical Assistant App\nDeveloped with Python and Tkinter (ttkbootstrap).")
+        messagebox.showinfo("About", "Medical Assistant App\nDeveloped using Vibe Coding.")
 
     def show_shortcuts(self) -> None:
         dialog = tk.Toplevel(self)
