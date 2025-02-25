@@ -63,6 +63,10 @@ class MedicalDictationApp(ttk.Window):
         self.stop_listening_function = None
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Add a list to track all scheduled status updates
+        self.status_timers = []
+        self.status_timer = None
 
     def create_menu(self) -> None:
         menubar = tk.Menu(self)
@@ -219,6 +223,19 @@ class MedicalDictationApp(ttk.Window):
             foreground=[("selected", "white"), ("!selected", "black")]  # White text when selected, black otherwise
         )
         
+        # Get success color from ttkbootstrap theme
+        success_color = style.colors.success
+        
+        # Configure notebook with success color for active tabs
+        style.configure("Green.TNotebook", background="white", borderwidth=0)
+        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey", foreground="black")
+        
+        # Map the foreground (text color) and background based on tab state
+        style.map("Green.TNotebook.Tab",
+            background=[("selected", success_color), ("active", success_color), ("!selected", "lightgrey")],
+            foreground=[("selected", "white"), ("!selected", "black")]
+        )
+        
         # Create the Notebook using the custom style
         self.notebook = ttk.Notebook(self, style="Green.TNotebook")
 
@@ -259,17 +276,18 @@ class MedicalDictationApp(ttk.Window):
         self.new_session_button = ttk.Button(main_controls, text="New Session", width=12, command=self.new_session, bootstyle="warning")
         self.new_session_button.grid(row=0, column=2, padx=5, pady=5)
         ToolTip(self.new_session_button, "Start a new session.")
-        self.copy_button = ttk.Button(main_controls, text="Copy Text", width=10, command=self.copy_text, bootstyle="PRIMARY")
-        self.copy_button.grid(row=0, column=3, padx=5, pady=5)
-        ToolTip(self.copy_button, "Copy the text to the clipboard.")
         self.undo_button = ttk.Button(main_controls, text="Undo", width=10, command=self.undo_text, bootstyle="SECONDARY")
-        self.undo_button.grid(row=0, column=4, padx=5, pady=5)
+        self.undo_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.undo_button, "Undo the last change.")
         # NEW: Add redo button next to undo button
         self.redo_button = ttk.Button(main_controls, text="Redo", width=10, command=self.redo_text, bootstyle="SECONDARY")
-        self.redo_button.grid(row=0, column=5, padx=5, pady=5)
+        self.redo_button.grid(row=0, column=4, padx=5, pady=5)
         ToolTip(self.redo_button, "Redo the last undone change.")
-        # Adjust subsequent buttons' grid columns
+        # Move Copy Text button to column 5 (between Redo and Save)
+        self.copy_button = ttk.Button(main_controls, text="Copy Text", width=10, command=self.copy_text, bootstyle="PRIMARY")
+        self.copy_button.grid(row=0, column=5, padx=5, pady=5)
+        ToolTip(self.copy_button, "Copy the text to the clipboard.")
+        # Adjust Save and Load buttons to columns 6 and 7
         self.save_button = ttk.Button(main_controls, text="Save", width=10, command=self.save_text, bootstyle="PRIMARY")
         self.save_button.grid(row=0, column=6, padx=5, pady=5)
         ToolTip(self.save_button, "Save the transcription and audio to files.")
@@ -299,7 +317,7 @@ class MedicalDictationApp(ttk.Window):
         automation_frame.grid(row=6, column=0, sticky="w")
         self.record_soap_button = ttk.Button(
             automation_frame, text="Record SOAP Note", width=25,
-            command=self.toggle_soap_recording, bootstyle="SECONDARY"
+            command=self.toggle_soap_recording, bootstyle="success"
         )
         self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
         ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
@@ -313,12 +331,37 @@ class MedicalDictationApp(ttk.Window):
 
         status_frame = ttk.Frame(self, padding=(10, 5))
         status_frame.pack(side=BOTTOM, fill=tk.X)
-        self.status_label = ttk.Label(status_frame, text="Status: Idle", anchor="w")
-        self.status_label.pack(side=LEFT, fill=tk.X, expand=True)
+        
+        # Enhanced status indicator with icon and color indicators
+        self.status_icon_label = ttk.Label(status_frame, text="•", font=("Segoe UI", 16), foreground="gray")
+        self.status_icon_label.pack(side=LEFT, padx=(5, 0))
+        
+        self.status_label = ttk.Label(
+            status_frame, 
+            text="Status: Idle", 
+            anchor="w",
+            font=("Segoe UI", 10)
+        )
+        self.status_label.pack(side=LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # Add current AI provider indicator to status bar
+        provider = SETTINGS.get("ai_provider", "openai").capitalize()
+        self.provider_indicator = ttk.Label(
+            status_frame, 
+            text=f"Using: {provider}",
+            anchor="e",
+            font=("Segoe UI", 9),
+            foreground="gray"
+        )
+        self.provider_indicator.pack(side=LEFT, padx=(0, 10))
+        
         self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
+        
+        # For automatic status clearing
+        self.status_timer = None
 
     def bind_shortcuts(self) -> None:
         self.bind("<Control-n>", lambda event: self.new_session())
@@ -549,8 +592,58 @@ class MedicalDictationApp(ttk.Window):
             self.transcript_text.insert(tk.END, " ".join(words[:-1]))
             self.transcript_text.see(tk.END)
 
-    def update_status(self, message: str) -> None:
+    def update_status(self, message: str, status_type="info") -> None:
+        # Cancel any pending status timer
+        if self.status_timer:
+            self.after_cancel(self.status_timer)
+            self.status_timer = None
+        
+        # Cancel all scheduled status updates
+        for timer_id in self.status_timers:
+            if timer_id:
+                try:
+                    self.after_cancel(timer_id)
+                except Exception:
+                    pass
+        self.status_timers = []
+        
+        # Update status text
         self.status_label.config(text=f"Status: {message}")
+        
+        # Color-code the status indicator based on status_type
+        status_colors = {
+            "success": "#28a745",  # Green
+            "info": "#17a2b8",     # Blue
+            "warning": "#ffc107",  # Yellow
+            "error": "#dc3545",    # Red
+            "idle": "gray"         # Gray for idle state
+        }
+        
+        # Status icons - using circle symbol with different colors
+        self.status_icon_label.config(
+            foreground=status_colors.get(status_type, status_colors["info"])
+        )
+        
+        # Make status message more prominent for important messages
+        if status_type in ["error", "warning"]:
+            self.status_label.config(font=("Segoe UI", 10, "bold"))
+        else:
+            self.status_label.config(font=("Segoe UI", 10))
+        
+        # Update AI provider indicator when it changes
+        provider = SETTINGS.get("ai_provider", "openai").capitalize()
+        self.provider_indicator.config(text=f"Using: {provider}")
+        
+        # For non-error messages, set a timer to clear status after a delay
+        if status_type != "error" and status_type != "progress":
+            # Clear status after 8 seconds unless it's an error or progress indicator
+            self.status_timer = self.after(8000, lambda: self.reset_status())
+
+    def reset_status(self) -> None:
+        """Reset status to idle state after timeout"""
+        self.status_label.config(text="Status: Idle", font=("Segoe UI", 10))
+        self.status_icon_label.config(foreground="gray")
+        self.status_timer = None
 
     def start_recording(self) -> None:
         # Switch focus to the Dictation tab (index 3)
@@ -760,7 +853,7 @@ class MedicalDictationApp(ttk.Window):
         target_widget.delete("1.0", tk.END)
         target_widget.insert(tk.END, new_text)
         target_widget.edit_separator()
-        self.update_status(success_message)
+        self.update_status(success_message, status_type="success")
         button.config(state=NORMAL)
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
@@ -830,10 +923,11 @@ class MedicalDictationApp(ttk.Window):
         from dialogs import ask_conditions_dialog
         focus = ask_conditions_dialog(self, "Select Conditions", "Select conditions to focus on:", conditions_list)
         if not focus:
-            self.update_status("Referral cancelled or no conditions selected.")
+            self.update_status("Referral cancelled or no conditions selected.", status_type="warning")
             return
         
-        self.update_status(f"Processing referral for conditions: {focus}...")
+        # Use "progress" status type to prevent auto-clearing for long-running operations
+        self.update_status(f"Processing referral for conditions: {focus}...", status_type="progress")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         self.referral_button.config(state=DISABLED)  # Disable button while processing
@@ -844,9 +938,9 @@ class MedicalDictationApp(ttk.Window):
                 # Import locally to avoid potential circular imports
                 from ai import create_referral_with_openai
                 
-                # Add periodic status updates
-                self.after(3000, lambda: self.update_status(f"Still generating referral for: {focus}..."))
-                self.after(10000, lambda: self.update_status(f"Processing referral (this may take a moment)..."))
+                # Use our custom scheduler instead of direct after() calls
+                self.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
+                self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
                 
                 # Execute the referral creation with conditions
                 result = create_referral_with_openai(transcript, focus)
@@ -860,7 +954,7 @@ class MedicalDictationApp(ttk.Window):
                 error_msg = f"Error creating referral: {str(e)}"
                 logging.error(error_msg, exc_info=True)
                 self.after(0, lambda: [
-                    self.update_status(error_msg),
+                    self.update_status(error_msg, status_type="error"),
                     self.referral_button.config(state=NORMAL),
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
@@ -1027,8 +1121,15 @@ class MedicalDictationApp(ttk.Window):
         else:
             self.active_text_widget = self.transcript_text
 
+    def schedule_status_update(self, delay_ms: int, message: str, status_type: str = "info") -> None:
+        """Schedule a status update that won't be automatically cleared after timeout"""
+        timer_id = self.after(delay_ms, lambda: self.update_status(message, status_type))
+        self.status_timers.append(timer_id)
+        return timer_id
+
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
 
 
