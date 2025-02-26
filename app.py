@@ -266,16 +266,22 @@ class MedicalDictationApp(ttk.Window):
         ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
         main_controls = ttk.Frame(control_frame)
         main_controls.grid(row=1, column=0, sticky="w")
-        self.record_button = ttk.Button(main_controls, text="Record", width=10, command=self.start_recording, bootstyle="success")
+        
+        # Change the record button to be a toggle button that starts/stops recording
+        self.record_button = ttk.Button(main_controls, text="Start Dictation", width=15, 
+                                        command=self.toggle_recording, bootstyle="success")
         self.record_button.grid(row=0, column=0, padx=5, pady=5)
-        ToolTip(self.record_button, "Start recording audio.")
-        self.stop_button = ttk.Button(main_controls, text="Stop", width=10, command=self.stop_recording, state=DISABLED, bootstyle="danger")
-        self.stop_button.grid(row=0, column=1, padx=5, pady=5)
-        ToolTip(self.stop_button, "Stop recording audio.")
+        ToolTip(self.record_button, "Start or stop recording audio.")
+        
+        # Hide the stop button as we'll use the record button for both functions
+        # self.stop_button = ttk.Button(main_controls, text="Stop", width=10, command=self.stop_recording, state=DISABLED, bootstyle="danger")
+        # self.stop_button.grid(row=0, column=1, padx=5, pady=5)
+        # ToolTip(self.stop_button, "Stop recording audio.")
+        
         # Change button text from "New Dictation" to "New Session"
         self.new_session_button = ttk.Button(main_controls, text="New Session", width=12, command=self.new_session, bootstyle="warning")
-        self.new_session_button.grid(row=0, column=2, padx=5, pady=5)
-        ToolTip(self.new_session_button, "Start a new session.")
+        self.new_session_button.grid(row=0, column=1, padx=5, pady=5)  # Adjust column to 1 since stop button is removed
+        
         self.undo_button = ttk.Button(main_controls, text="Undo", width=10, command=self.undo_text, bootstyle="SECONDARY")
         self.undo_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.undo_button, "Undo the last change.")
@@ -645,6 +651,15 @@ class MedicalDictationApp(ttk.Window):
         self.status_icon_label.config(foreground="gray")
         self.status_timer = None
 
+    def toggle_recording(self) -> None:
+        """Toggle between starting and stopping recording"""
+        if not self.listening:
+            # Start recording
+            self.start_recording()
+        else:
+            # Stop recording
+            self.stop_recording()
+
     def start_recording(self) -> None:
         # Switch focus to the Dictation tab (index 3)
         self.notebook.select(3)
@@ -658,18 +673,21 @@ class MedicalDictationApp(ttk.Window):
                 logging.error("Error creating microphone", exc_info=True)
                 self.update_status("Error accessing microphone.")
                 return
+                
             self.stop_listening_function = self.recognizer.listen_in_background(mic, self.callback, phrase_time_limit=10)
             self.listening = True
-            self.record_button.config(state=DISABLED)
-            self.stop_button.config(state=NORMAL)
+            
+            # Update button appearance to indicate recording state
+            self.record_button.config(text="Stop", bootstyle="danger")
 
     def stop_recording(self) -> None:
         if self.listening and self.stop_listening_function:
             self.stop_listening_function(wait_for_stop=False)
             self.listening = False
             self.update_status("Idle")
-            self.record_button.config(state=NORMAL)
-            self.stop_button.config(state=DISABLED)
+            
+            # Reset button appearance
+            self.record_button.config(text="Start Dictation", bootstyle="success")
 
     def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         self.executor.submit(self.process_audio, recognizer, audio)
@@ -896,12 +914,17 @@ class MedicalDictationApp(ttk.Window):
         return conditions
 
     def create_referral(self) -> None:
+        # Check if the transcript is empty before proceeding
+        text = self.transcript_text.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Empty Transcript", "The transcript is empty. Please add content before creating a referral.")
+            return
+            
         # New: Immediately update status and display progress bar on referral click
         self.update_status("Referral button clicked - preparing referral...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         
-        text = self.transcript_text.get("1.0", tk.END).strip()
         # New: Get suggested conditions asynchronously
         def get_conditions() -> str:
             return self._get_possible_conditions(text)
@@ -1020,8 +1043,8 @@ class MedicalDictationApp(ttk.Window):
             self.progress_bar.pack(side=RIGHT, padx=10)
             self.progress_bar.start()
             self.process_soap_recording()
-            # Re-enable the record button after 5 seconds
-            self.after(5000, lambda: self.record_soap_button.config(state=NORMAL))
+            # Re-enable the record button after 5 seconds and restore green color
+            self.after(5000, lambda: self.record_soap_button.config(state=NORMAL, bootstyle="success"))
 
     def toggle_soap_pause(self) -> None:
         if self.soap_paused:
@@ -1130,6 +1153,7 @@ class MedicalDictationApp(ttk.Window):
 def main() -> None:
     app = MedicalDictationApp()
     app.mainloop()
+
 
 
 
