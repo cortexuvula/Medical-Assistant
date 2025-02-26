@@ -16,30 +16,174 @@ import openai
 import pyaudio
 from typing import Callable, Optional
 
+# Add this import for creating .env file
+from pathlib import Path
+
 from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
 from tooltip import ToolTip
 from settings import SETTINGS
 from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog
 
-load_dotenv()
+# Completely revised check_env_file function to handle the tkinter window properly
+def check_env_file():
+    """Check if .env file exists and create it if needed.
+    
+    Returns:
+        bool: True if the app should continue, False if it should exit
+    """
+    env_path = Path(".env")
+    
+    # If .env file exists, just return True to continue
+    if env_path.exists():
+        return True
+    
+    # Setup API key collection using standard Tk approach (not Toplevel)
+    # This avoids window destruction issues
+    import sys
+    
+    def collect_api_keys():
+        # Create a new root window specifically for API key collection
+        api_root = tk.Tk()
+        api_root.title("Medical Dictation App - API Keys Setup")
+        api_root.geometry("500x600")
+        should_continue = [False]  # Use list for mutable reference
+        
+        # Headers
+        tk.Label(api_root, text="Welcome to Medical Dictation App!", 
+                font=("Segoe UI", 14, "bold")).pack(pady=(20, 5))
+        
+        tk.Label(api_root, text="Please enter at least one of the following API keys to continue:",
+                font=("Segoe UI", 11)).pack(pady=(0, 5))
+        
+        tk.Label(api_root, text="OpenAI, Grok, or Perplexity API key is required. Deepgram is optional but recommended.",
+                wraplength=450).pack(pady=(0, 20))
+        
+        # Create frame for keys
+        keys_frame = tk.Frame(api_root)
+        keys_frame.pack(fill="both", expand=True, padx=20)
+        
+        # Create entries for mandatory API keys first
+        tk.Label(keys_frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=5)
+        openai_entry = tk.Entry(keys_frame, width=40)
+        openai_entry.grid(row=0, column=1, sticky="ew", pady=5)
+        
+        tk.Label(keys_frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=5)
+        grok_entry = tk.Entry(keys_frame, width=40)
+        grok_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        
+        tk.Label(keys_frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=5)
+        perplexity_entry = tk.Entry(keys_frame, width=40)
+        perplexity_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        
+        # Create entry for optional API key last
+        tk.Label(keys_frame, text="Deepgram API Key (Optional):").grid(row=3, column=0, sticky="w", pady=5)
+        deepgram_entry = tk.Entry(keys_frame, width=40)
+        deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
+        
+        # Add info about where to find the keys
+        info_text = ("Get your API keys at:\n"
+                    "• OpenAI: https://platform.openai.com/account/api-keys\n"
+                    "• Grok (X.AI): https://x.ai\n"
+                    "• Perplexity: https://docs.perplexity.ai/\n"
+                    "• Deepgram: https://console.deepgram.com/signup")
+        tk.Label(keys_frame, text=info_text, justify="left", wraplength=450).grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=10)
+        
+        error_var = tk.StringVar()
+        error_label = tk.Label(api_root, textvariable=error_var, foreground="red", wraplength=450)
+        error_label.pack(pady=5)
+        
+        def validate_and_save():
+            openai_key = openai_entry.get().strip()
+            deepgram_key = deepgram_entry.get().strip()
+            grok_key = grok_entry.get().strip()
+            perplexity_key = perplexity_entry.get().strip()
+            
+            # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
+            if not (openai_key or grok_key or perplexity_key):
+                error_var.set("Error: At least one of OpenAI, Grok, or Perplexity API keys is required.")
+                return
+            
+            # Create the .env file with the provided keys
+            with open(".env", "w") as f:
+                if openai_key:
+                    f.write(f"OPENAI_API_KEY={openai_key}\n")
+                if deepgram_key:
+                    f.write(f"DEEPGRAM_API_KEY={deepgram_key}\n")
+                if grok_key:
+                    f.write(f"GROK_API_KEY={grok_key}\n")
+                if perplexity_key:
+                    f.write(f"PERPLEXITY_API_KEY={perplexity_key}\n")
+                f.write(f"RECOGNITION_LANGUAGE=en-US\n")
+            
+            should_continue[0] = True
+            api_root.quit()
+        
+        def on_cancel():
+            api_root.quit()
+        
+        # Create a button frame
+        button_frame = tk.Frame(api_root)
+        button_frame.pack(pady=(0, 20))
+        
+        # Add Cancel and Save buttons
+        tk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Save and Continue", command=validate_and_save).pack(side=tk.LEFT, padx=10)
+        
+        # Center the window
+        api_root.update_idletasks()
+        width = api_root.winfo_width()
+        height = api_root.winfo_height()
+        x = (api_root.winfo_screenwidth() // 2) - (width // 2)
+        y = (api_root.winfo_screenheight() // 2) - (height // 2)
+        api_root.geometry(f'{width}x{height}+{x}+{y}')
+        
+        api_root.protocol("WM_DELETE_WINDOW", on_cancel)
+        api_root.mainloop()
+        
+        # Important: destroy the window only after mainloop exits
+        api_root.destroy()
+        return should_continue[0]
+    
+    # Collect API keys and determine whether to continue
+    should_continue = collect_api_keys()
+    
+    # If user cancelled or closed the window without saving, exit the program
+    if not should_continue:
+        sys.exit(0)
+    
+    return True
 
-# API Keys & Logging Setup
-openai.api_key = os.getenv("OPENAI_API_KEY")
-deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+# Modify the main function to only create the app if check_env_file returns True
+def main() -> None:
+    # First check for .env file - only proceed if successful
+    if check_env_file():
+        # Load environment variables
+        load_dotenv()
+        
+        try:
+            # Only create the app if we got past the env check
+            app = MedicalDictationApp()
+            app.mainloop()
+        except Exception as e:
+            logging.error(f"Error in main application: {e}", exc_info=True)
 
 class MedicalDictationApp(ttk.Window):
     def __init__(self) -> None:
+        # Initialize the executor first, before any potential failures
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        
         super().__init__(themename="flatly")
         self.title("Medical Assistant")
         self.geometry("1200x900")
         self.minsize(1400, 1000)
         self.config(bg="#f0f0f0")
 
+        # Move these here from the module level
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
-        self.deepgram_api_key = deepgram_api_key
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
 
         self.appended_chunks = []
@@ -78,6 +222,10 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="File", menu=filemenu)
 
         settings_menu = tk.Menu(menubar, tearoff=0)
+        # Add API Keys option at the top of the settings menu
+        settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
+        settings_menu.add_separator()
+        
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
         text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
         text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
@@ -95,6 +243,148 @@ class MedicalDictationApp(ttk.Window):
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
+
+    def show_api_keys_dialog(self) -> None:
+        """Shows a dialog to update API keys and updates the .env file."""
+        dialog = create_toplevel_dialog(self, "Update API Keys", "500x400")
+        frame = ttk.Frame(dialog, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Get current API keys from environment
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        deepgram_key = os.getenv("DEEPGRAM_API_KEY", "")
+        grok_key = os.getenv("GROK_API_KEY", "")
+        perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
+
+        # Create entry fields with password masking
+        ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=5)
+        openai_entry = ttk.Entry(frame, width=50, show="•")
+        openai_entry.grid(row=0, column=1, sticky="ew", pady=5)
+        openai_entry.insert(0, openai_key)
+
+        ttk.Label(frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=5)
+        grok_entry = ttk.Entry(frame, width=50, show="•")
+        grok_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        grok_entry.insert(0, grok_key)
+
+        ttk.Label(frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=5)
+        perplexity_entry = ttk.Entry(frame, width=50, show="•")
+        perplexity_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        perplexity_entry.insert(0, perplexity_key)
+
+        ttk.Label(frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=5)
+        deepgram_entry = ttk.Entry(frame, width=50, show="•")
+        deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
+        deepgram_entry.insert(0, deepgram_key)
+
+        # Add toggle buttons to show/hide keys
+        def toggle_show_hide(entry):
+            current = entry['show']
+            entry['show'] = '' if current else '•'
+        
+        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=0, column=2, padx=5)
+        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=1, column=2, padx=5)
+        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=2, column=2, padx=5)
+        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=3, column=2, padx=5)
+
+        # Provide info about where to get API keys
+        info_text = ("Get your API keys at:\n"
+                    "• OpenAI: https://platform.openai.com/account/api-keys\n"
+                    "• Grok (X.AI): https://x.ai\n"
+                    "• Perplexity: https://docs.perplexity.ai/\n"
+                    "• Deepgram: https://console.deepgram.com/signup")
+        ttk.Label(frame, text=info_text, justify="left", wraplength=450).grid(
+            row=4, column=0, columnspan=3, sticky="w", pady=10)
+
+        def update_api_keys():
+            new_openai = openai_entry.get().strip()
+            new_deepgram = deepgram_entry.get().strip()
+            new_grok = grok_entry.get().strip()
+            new_perplexity = perplexity_entry.get().strip()
+
+            # Update .env file
+            try:
+                # Read existing content
+                env_content = ""
+                if os.path.exists(".env"):
+                    with open(".env", "r") as f:
+                        env_content = f.read()
+                
+                # Update or add each key
+                env_lines = env_content.split("\n")
+                updated_lines = []
+                keys_updated = set()
+                
+                for line in env_lines:
+                    if line.strip() == "" or line.strip().startswith("#"):
+                        updated_lines.append(line)
+                        continue
+                        
+                    if "OPENAI_API_KEY=" in line:
+                        updated_lines.append(f"OPENAI_API_KEY={new_openai}")
+                        keys_updated.add("OPENAI_API_KEY")
+                    elif "DEEPGRAM_API_KEY=" in line:
+                        updated_lines.append(f"DEEPGRAM_API_KEY={new_deepgram}")
+                        keys_updated.add("DEEPGRAM_API_KEY")
+                    elif "GROK_API_KEY=" in line:
+                        updated_lines.append(f"GROK_API_KEY={new_grok}")
+                        keys_updated.add("GROK_API_KEY")
+                    elif "PERPLEXITY_API_KEY=" in line:
+                        updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
+                        keys_updated.add("PERPLEXITY_API_KEY")
+                    else:
+                        updated_lines.append(line)
+                
+                # Add keys that weren't in the file
+                if "OPENAI_API_KEY" not in keys_updated and new_openai:
+                    updated_lines.append(f"OPENAI_API_KEY={new_openai}")
+                if "DEEPGRAM_API_KEY" not in keys_updated and new_deepgram:
+                    updated_lines.append(f"DEEPGRAM_API_KEY={new_deepgram}")
+                if "GROK_API_KEY" not in keys_updated and new_grok:
+                    updated_lines.append(f"GROK_API_KEY={new_grok}")
+                if "PERPLEXITY_API_KEY" not in keys_updated and new_perplexity:
+                    updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
+                
+                # Make sure we have the RECOGNITION_LANGUAGE line
+                if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
+                    updated_lines.append("RECOGNITION_LANGUAGE=en-US")
+                
+                # Write back to file
+                with open(".env", "w") as f:
+                    f.write("\n".join(updated_lines))
+                
+                # Update environment variables in memory
+                if new_openai:
+                    os.environ["OPENAI_API_KEY"] = new_openai
+                    openai.api_key = new_openai 
+                if new_deepgram:
+                    os.environ["DEEPGRAM_API_KEY"] = new_deepgram
+                    # Update the client if needed
+                    self.deepgram_api_key = new_deepgram
+                    self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
+                if new_grok:
+                    os.environ["GROK_API_KEY"] = new_grok
+                if new_perplexity:
+                    os.environ["PERPLEXITY_API_KEY"] = new_perplexity
+                
+                # Update buttons if needed (enable or disable based on API keys)
+                if new_openai:
+                    self.refine_button.config(state=NORMAL)
+                    self.improve_button.config(state=NORMAL)
+                    self.soap_button.config(state=NORMAL)
+                else:
+                    self.refine_button.config(state=DISABLED)
+                    self.improve_button.config(state=DISABLED)
+                
+                self.update_status("API keys updated successfully", status_type="success")
+                dialog.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
+
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success").pack(side=tk.LEFT, padx=10)
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -173,6 +463,7 @@ class MedicalDictationApp(ttk.Window):
         # Add a label for the provider dropdown
         ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
         
+        # Create a dropdown for provider selection instead of a button
         # Create a dropdown for provider selection instead of a button
         from settings import SETTINGS, save_settings
         provider = SETTINGS.get("ai_provider", "openai")
@@ -1126,9 +1417,11 @@ class MedicalDictationApp(ttk.Window):
 
     def on_closing(self) -> None:
         try:
-            self.executor.shutdown(wait=False)
+            # Check if executor exists and is not None before trying to shut it down
+            if hasattr(self, 'executor') and self.executor is not None:
+                self.executor.shutdown(wait=False)
         except Exception as e:
-            logging.error("Error shutting down executor", exc_info=True)
+            logging.error(f"Error shutting down executor: {str(e)}", exc_info=True)
         self.destroy()
 
     def on_tab_changed(self, event: tk.Event) -> None:
@@ -1150,9 +1443,11 @@ class MedicalDictationApp(ttk.Window):
         self.status_timers.append(timer_id)
         return timer_id
 
-def main() -> None:
-    app = MedicalDictationApp()
-    app.mainloop()
+if __name__ == "__main__":
+    main()
+
+
+
 
 
 

@@ -176,5 +176,8 @@ test_*.py
 *_test_*.py
 test.py
 
+# Application-specific temporary files
+temp.wav
+
 # Setttings
 settings.json
