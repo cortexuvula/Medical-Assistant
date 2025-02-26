@@ -176,8 +176,8 @@ class MedicalDictationApp(ttk.Window):
         
         super().__init__(themename="flatly")
         self.title("Medical Assistant")
-        self.geometry("1200x900")
-        self.minsize(1400, 1000)
+        self.geometry("1400x1000")
+        self.minsize(700, 500)
         self.config(bg="#f0f0f0")
 
         # Move these here from the module level
@@ -246,9 +246,11 @@ class MedicalDictationApp(ttk.Window):
 
     def show_api_keys_dialog(self) -> None:
         """Shows a dialog to update API keys and updates the .env file."""
-        dialog = create_toplevel_dialog(self, "Update API Keys", "500x400")
-        frame = ttk.Frame(dialog, padding=10)
-        frame.pack(fill=tk.BOTH, expand=True)
+        dialog = create_toplevel_dialog(self, "Update API Keys", "800x700")
+        
+        # Increase main frame padding for more spacing around all content
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # Get current API keys from environment
         openai_key = os.getenv("OPENAI_API_KEY", "")
@@ -256,25 +258,25 @@ class MedicalDictationApp(ttk.Window):
         grok_key = os.getenv("GROK_API_KEY", "")
         perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
 
-        # Create entry fields with password masking
-        ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=5)
+        # Create entry fields with password masking - add more vertical spacing
+        ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=10)
         openai_entry = ttk.Entry(frame, width=50, show="•")
-        openai_entry.grid(row=0, column=1, sticky="ew", pady=5)
+        openai_entry.grid(row=0, column=1, sticky="ew", padx=(10, 5), pady=10)
         openai_entry.insert(0, openai_key)
 
-        ttk.Label(frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=10)
         grok_entry = ttk.Entry(frame, width=50, show="•")
-        grok_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        grok_entry.grid(row=1, column=1, sticky="ew", padx=(10, 5), pady=10)
         grok_entry.insert(0, grok_key)
 
-        ttk.Label(frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=10)
         perplexity_entry = ttk.Entry(frame, width=50, show="•")
-        perplexity_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        perplexity_entry.grid(row=2, column=1, sticky="ew", padx=(10, 5), pady=10)
         perplexity_entry.insert(0, perplexity_key)
 
-        ttk.Label(frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=10)
         deepgram_entry = ttk.Entry(frame, width=50, show="•")
-        deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
+        deepgram_entry.grid(row=3, column=1, sticky="ew", padx=(10, 5), pady=10)
         deepgram_entry.insert(0, deepgram_key)
 
         # Add toggle buttons to show/hide keys
@@ -287,14 +289,14 @@ class MedicalDictationApp(ttk.Window):
         ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=2, column=2, padx=5)
         ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=3, column=2, padx=5)
 
-        # Provide info about where to get API keys
+        # Provide info about where to get API keys - add more vertical spacing
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
                     "• Grok (X.AI): https://x.ai\n"
                     "• Perplexity: https://docs.perplexity.ai/\n"
                     "• Deepgram: https://console.deepgram.com/signup")
         ttk.Label(frame, text=info_text, justify="left", wraplength=450).grid(
-            row=4, column=0, columnspan=3, sticky="w", pady=10)
+            row=4, column=0, columnspan=3, sticky="w", pady=20)
 
         def update_api_keys():
             new_openai = openai_entry.get().strip()
@@ -381,10 +383,11 @@ class MedicalDictationApp(ttk.Window):
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
 
+        # Add more padding to the button frame
         btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=10)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success").pack(side=tk.LEFT, padx=10)
+        btn_frame.pack(pady=20, padx=20)
+        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=20)
+        ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success", width=15).pack(side=tk.LEFT, padx=20)
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
