@@ -7,6 +7,8 @@ DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
 
 # NEW: Default AI Provider setting (default is OpenAI)
 DEFAULT_AI_PROVIDER = "openai"
+# NEW: Default Speech-to-Text provider setting (updated to include ElevenLabs)
+DEFAULT_STT_PROVIDER = "deepgram"
 
 _DEFAULT_SETTINGS = {
     "refine_text": {

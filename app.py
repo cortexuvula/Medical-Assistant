@@ -19,6 +19,9 @@ from typing import Callable, Optional
 # Add this import for creating .env file
 from pathlib import Path
 
+# Add to imports
+import requests
+
 from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
 from tooltip import ToolTip
@@ -81,14 +84,20 @@ def check_env_file():
         deepgram_entry = tk.Entry(keys_frame, width=40)
         deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
         
+        # NEW: Add ElevenLabs API Key field
+        tk.Label(keys_frame, text="ElevenLabs API Key (Optional):").grid(row=4, column=0, sticky="w", pady=5)
+        elevenlabs_entry = tk.Entry(keys_frame, width=40)
+        elevenlabs_entry.grid(row=4, column=1, sticky="ew", pady=5)
+        
         # Add info about where to find the keys
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
                     "• Grok (X.AI): https://x.ai\n"
                     "• Perplexity: https://docs.perplexity.ai/\n"
-                    "• Deepgram: https://console.deepgram.com/signup")
+                    "• Deepgram: https://console.deepgram.com/signup\n"
+                    "• ElevenLabs: https://elevenlabs.io/app/speech-to-text")
         tk.Label(keys_frame, text=info_text, justify="left", wraplength=450).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=10)
+            row=5, column=0, columnspan=2, sticky="w", pady=10)
         
         error_var = tk.StringVar()
         error_label = tk.Label(api_root, textvariable=error_var, foreground="red", wraplength=450)
@@ -99,6 +108,7 @@ def check_env_file():
             deepgram_key = deepgram_entry.get().strip()
             grok_key = grok_entry.get().strip()
             perplexity_key = perplexity_entry.get().strip()
+            elevenlabs_key = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
             
             # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
             if not (openai_key or grok_key or perplexity_key):
@@ -115,6 +125,9 @@ def check_env_file():
                     f.write(f"GROK_API_KEY={grok_key}\n")
                 if perplexity_key:
                     f.write(f"PERPLEXITY_API_KEY={perplexity_key}\n")
+                # NEW: Add ElevenLabs key if provided
+                if elevenlabs_key:
+                    f.write(f"ELEVENLABS_API_KEY={elevenlabs_key}\n")
                 f.write(f"RECOGNITION_LANGUAGE=en-US\n")
             
             should_continue[0] = True
@@ -183,6 +196,8 @@ class MedicalDictationApp(ttk.Window):
         # Move these here from the module level
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+        # NEW: Add ElevenLabs API key
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
         self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
 
@@ -257,6 +272,7 @@ class MedicalDictationApp(ttk.Window):
         deepgram_key = os.getenv("DEEPGRAM_API_KEY", "")
         grok_key = os.getenv("GROK_API_KEY", "")
         perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
+        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
 
         # Create entry fields with password masking - add more vertical spacing
         ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=10)
@@ -279,6 +295,12 @@ class MedicalDictationApp(ttk.Window):
         deepgram_entry.grid(row=3, column=1, sticky="ew", padx=(10, 5), pady=10)
         deepgram_entry.insert(0, deepgram_key)
 
+        # NEW: Add ElevenLabs API Key field
+        ttk.Label(frame, text="ElevenLabs API Key:").grid(row=4, column=0, sticky="w", pady=10)
+        elevenlabs_entry = ttk.Entry(frame, width=50, show="•")
+        elevenlabs_entry.grid(row=4, column=1, sticky="ew", padx=(10, 5), pady=10)
+        elevenlabs_entry.insert(0, elevenlabs_key)
+
         # Add toggle buttons to show/hide keys
         def toggle_show_hide(entry):
             current = entry['show']
@@ -288,21 +310,24 @@ class MedicalDictationApp(ttk.Window):
         ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=1, column=2, padx=5)
         ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=2, column=2, padx=5)
         ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=3, column=2, padx=5)
+        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=4, column=2, padx=5)
 
         # Provide info about where to get API keys - add more vertical spacing
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
                     "• Grok (X.AI): https://x.ai\n"
                     "• Perplexity: https://docs.perplexity.ai/\n"
-                    "• Deepgram: https://console.deepgram.com/signup")
+                    "• Deepgram: https://console.deepgram.com/signup\n"
+                    "• ElevenLabs: https://elevenlabs.io/app/speech-to-text")
         ttk.Label(frame, text=info_text, justify="left", wraplength=450).grid(
-            row=4, column=0, columnspan=3, sticky="w", pady=20)
+            row=5, column=0, columnspan=3, sticky="w", pady=20)
 
         def update_api_keys():
             new_openai = openai_entry.get().strip()
             new_deepgram = deepgram_entry.get().strip()
             new_grok = grok_entry.get().strip()
             new_perplexity = perplexity_entry.get().strip()
+            new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
 
             # Update .env file
             try:
@@ -318,6 +343,7 @@ class MedicalDictationApp(ttk.Window):
                 keys_updated = set()
                 
                 for line in env_lines:
+                    # Fix: Change startsWith to startswith (Python string method is lowercase)
                     if line.strip() == "" or line.strip().startswith("#"):
                         updated_lines.append(line)
                         continue
@@ -334,6 +360,9 @@ class MedicalDictationApp(ttk.Window):
                     elif "PERPLEXITY_API_KEY=" in line:
                         updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
                         keys_updated.add("PERPLEXITY_API_KEY")
+                    elif "ELEVENLABS_API_KEY=" in line:  # NEW: Update ElevenLabs key
+                        updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
+                        keys_updated.add("ELEVENLABS_API_KEY")
                     else:
                         updated_lines.append(line)
                 
@@ -346,6 +375,8 @@ class MedicalDictationApp(ttk.Window):
                     updated_lines.append(f"GROK_API_KEY={new_grok}")
                 if "PERPLEXITY_API_KEY" not in keys_updated and new_perplexity:
                     updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
+                if "ELEVENLABS_API_KEY" not in keys_updated and new_elevenlabs:
+                    updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
                 
                 # Make sure we have the RECOGNITION_LANGUAGE line
                 if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
@@ -368,6 +399,9 @@ class MedicalDictationApp(ttk.Window):
                     os.environ["GROK_API_KEY"] = new_grok
                 if new_perplexity:
                     os.environ["PERPLEXITY_API_KEY"] = new_perplexity
+                if new_elevenlabs:
+                    os.environ["ELEVENLABS_API_KEY"] = new_elevenlabs
+                    self.elevenlabs_api_key = new_elevenlabs
                 
                 # Update buttons if needed (enable or disable based on API keys)
                 if new_openai:
@@ -467,7 +501,6 @@ class MedicalDictationApp(ttk.Window):
         ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
         
         # Create a dropdown for provider selection instead of a button
-        # Create a dropdown for provider selection instead of a button
         from settings import SETTINGS, save_settings
         provider = SETTINGS.get("ai_provider", "openai")
         
@@ -503,6 +536,49 @@ class MedicalDictationApp(ttk.Window):
         
         self.provider_combobox.bind("<<ComboboxSelected>>", on_provider_change)
         ToolTip(self.provider_combobox, "Select which AI provider to use")
+        
+        # NEW: Add Speech-to-Text provider selection with ElevenLabs
+        stt_frame = ttk.Frame(mic_frame)
+        stt_frame.pack(side=LEFT, padx=10)
+        
+        # Add label for STT provider dropdown
+        ttk.Label(stt_frame, text="Speech To Text:").pack(side=LEFT, padx=(0, 5))
+        
+        # Available STT provider options - add ElevenLabs
+        stt_providers = ["elevenlabs", "deepgram", "google"]
+        stt_display = ["ElevenLabs", "Deepgram", "Google"]
+        
+        # Get current STT provider from settings
+        stt_provider = SETTINGS.get("stt_provider", "deepgram")
+        
+        # Create the STT provider selection combobox
+        self.stt_combobox = ttk.Combobox(
+            stt_frame,
+            values=stt_display,
+            state="readonly",
+            width=12
+        )
+        self.stt_combobox.pack(side=LEFT)
+        
+        # Set the current value
+        try:
+            stt_index = stt_providers.index(stt_provider.lower())
+            self.stt_combobox.current(stt_index)
+        except (ValueError, IndexError):
+            # Default to Deepgram if provider not found in list
+            self.stt_combobox.current(0)
+        
+        # Add callback for when STT selection changes
+        def on_stt_change(event):
+            selected_index = self.stt_combobox.current()
+            if 0 <= selected_index < len(stt_providers):
+                selected_stt = stt_providers[selected_index]
+                SETTINGS["stt_provider"] = selected_stt
+                save_settings(SETTINGS)
+                self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
+        
+        self.stt_combobox.bind("<<ComboboxSelected>>", on_stt_change)
+        ToolTip(self.stt_combobox, "Select which Speech-to-Text provider to use")
 
         # NEW: Force use of "clam" theme and configure custom Notebook style
         style = ttk.Style()
@@ -932,7 +1008,8 @@ class MedicalDictationApp(ttk.Window):
         
         # Update AI provider indicator when it changes
         provider = SETTINGS.get("ai_provider", "openai").capitalize()
-        self.provider_indicator.config(text=f"Using: {provider}")
+        stt_provider = SETTINGS.get("stt_provider", "deepgram").capitalize()
+        self.provider_indicator.config(text=f"Using: {provider} | STT: {stt_provider}")
         
         # For non-error messages, set a timer to clear status after a delay
         if status_type != "error" and status_type != "progress":
@@ -963,41 +1040,100 @@ class MedicalDictationApp(ttk.Window):
                 import speech_recognition as sr
                 selected_index = self.mic_combobox.current()
                 mic = sr.Microphone(device_index=selected_index)
+                self.stop_listening_function = self.recognizer.listen_in_background(mic, self.callback, phrase_time_limit=10)
+                self.listening = True
+                self.record_button.config(text="Stop", bootstyle="danger")
             except Exception as e:
                 logging.error("Error creating microphone", exc_info=True)
                 self.update_status("Error accessing microphone.")
-                return
-                
-            self.stop_listening_function = self.recognizer.listen_in_background(mic, self.callback, phrase_time_limit=10)
-            self.listening = True
-            
-            # Update button appearance to indicate recording state
-            self.record_button.config(text="Stop", bootstyle="danger")
+        else:
+            self.update_status("Already listening.")
 
     def stop_recording(self) -> None:
         if self.listening and self.stop_listening_function:
             self.stop_listening_function(wait_for_stop=False)
             self.listening = False
-            self.update_status("Idle")
-            
-            # Reset button appearance
             self.record_button.config(text="Start Dictation", bootstyle="success")
+            self.update_status("Stopped listening.")
 
     def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         self.executor.submit(self.process_audio, recognizer, audio)
 
     def _combine_audio_segments(self, segments: list) -> AudioSegment:
-        # Combine list of audio segments into one
         if not segments:
             return None
         combined = segments[0]
-        for seg in segments[1:]:
-            combined += seg
+        for segment in segments[1:]:
+            combined += segment
         return combined
+
+    # NEW: Add method to transcribe with ElevenLabs
+    def _transcribe_with_elevenlabs(self, segment: AudioSegment) -> str:
+        api_key = self.elevenlabs_api_key or os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            self.update_status("ElevenLabs API key not found", status_type="warning")
+            return ""
+        
+        # Create a unique temp filename to avoid conflicts
+        import uuid
+        temp_file = f"temp_{uuid.uuid4().hex}.wav"
+        
+        try:
+            # Export audio segment to temp file
+            segment.export(temp_file, format="wav")
+            
+            url = "https://api.elevenlabs.io/v1/speech-to-text"
+            headers = {
+                "xi-api-key": api_key
+            }
+            
+            # Use a context manager to ensure the file is properly closed
+            with open(temp_file, 'rb') as file_handle:
+                files = {
+                    'file': file_handle
+                }
+                data = {
+                    'model_id': 'scribe_v1'
+                }
+                
+                response = requests.post(url, headers=headers, files=files, data=data)
+            
+            # File handle is closed now, safe to remove the file
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception as e:
+                    logging.warning(f"Failed to remove temp file {temp_file}: {str(e)}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("text", "")
+            else:
+                self.update_status(f"ElevenLabs API error: {response.status_code}", status_type="error")
+                return ""
+                
+        except Exception as e:
+            # Try to clean up, but don't raise another exception if it fails
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+            
+            logging.error(f"Error with ElevenLabs transcription: {str(e)}")
+            self.update_status(f"ElevenLabs error: {str(e)}", status_type="error")
+            return ""
 
     def _transcribe_audio(self, segment: AudioSegment) -> str:
         try:
-            if self.deepgram_client:
+            # Get the selected STT provider from settings
+            from settings import SETTINGS
+            stt_provider = SETTINGS.get("stt_provider", "deepgram")
+            
+            # NEW: Handle ElevenLabs transcription
+            if stt_provider == "elevenlabs":
+                return self._transcribe_with_elevenlabs(segment)
+            elif stt_provider == "deepgram" and self.deepgram_client:
                 buf = BytesIO()
                 segment.export(buf, format="wav")
                 buf.seek(0)
@@ -1007,16 +1143,21 @@ class MedicalDictationApp(ttk.Window):
                     transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
                     return transcript
                 except Exception as e:
-                    logging.error("Deepgram API timeout, falling back to Google Speech Recognition", exc_info=True)
-                    self.update_status(f"Deepgram API timeout: {str(e)}")
-                    temp_file = "temp.wav"
-                    segment.export(temp_file, format="wav")
-                    with sr.AudioFile(temp_file) as source:
-                        audio_data = self.recognizer.record(source)
-                    transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
-                    os.remove(temp_file)
-                    return transcript
+                    logging.error("Deepgram API error, falling back to Google Speech Recognition", exc_info=True)
+                    self.update_status(f"Deepgram API error: {str(e)}", status_type="warning")
+                    if stt_provider == "deepgram":
+                        # Only fall back to Google if Deepgram was selected but failed
+                        temp_file = "temp.wav"
+                        segment.export(temp_file, format="wav")
+                        with sr.AudioFile(temp_file) as source:
+                            audio_data = self.recognizer.record(source)
+                        transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+                        os.remove(temp_file)
+                        return transcript
+                    else:
+                        raise  # Re-raise if user specifically selected Deepgram but it failed
             else:
+                # Use Google Speech Recognition
                 temp_file = "temp.wav"
                 segment.export(temp_file, format="wav")
                 with sr.AudioFile(temp_file) as source:
@@ -1026,10 +1167,9 @@ class MedicalDictationApp(ttk.Window):
                 return transcript
         except Exception as e:
             logging.error("Transcription error", exc_info=True)
-            self.update_status(f"Transcription error: {str(e)}")
+            self.update_status(f"Transcription error: {str(e)}", status_type="error")
             return ""
 
-    # Refactor process_audio using the new helper
     def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         try:
             channels = getattr(audio, "channels", 1)
@@ -1052,7 +1192,6 @@ class MedicalDictationApp(ttk.Window):
             logging.error("Processing error", exc_info=True)
             self.after(0, self.update_status, f"Error: {e}")
 
-    # Refactor process_soap_recording to use helpers
     def process_soap_recording(self) -> None:
         def task() -> None:
             try:
@@ -1070,7 +1209,6 @@ class MedicalDictationApp(ttk.Window):
             self.after(0, update_ui)
         self.executor.submit(task)
 
-    # Refactor load_audio_file to use the transcription helper
     def load_audio_file(self) -> None:
         file_path = filedialog.askopenfilename(
             title="Select Audio File",
@@ -1097,6 +1235,7 @@ class MedicalDictationApp(ttk.Window):
                 self.after(0, lambda: messagebox.showerror("Transcription Error", f"Error: {e}"))
             else:
                 self.after(0, lambda: [
+                    self.transcript_text.delete("1.0", tk.END),
                     self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button, self.transcript_text),
                     self.notebook.select(0)
                 ])
@@ -1154,7 +1293,6 @@ class MedicalDictationApp(ttk.Window):
         button.config(state=DISABLED)
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
-
         def task() -> None:
             result = api_func(text)
             self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
@@ -1202,7 +1340,7 @@ class MedicalDictationApp(ttk.Window):
         from ai import call_ai, remove_markdown, remove_citations
         prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. Keep the condition names simple and specific and not longer that 3 words. "
                   "Return them as a comma-separated list. Text: " + text)
-        result = call_ai("gpt-4o", "You are a physician specialized in referrals.", prompt, 0.7, 100)
+        result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7, 100)
         conditions = remove_markdown(result).strip()
         conditions = remove_citations(conditions)
         return conditions
@@ -1252,16 +1390,13 @@ class MedicalDictationApp(ttk.Window):
         def task() -> None:
             try:
                 transcript = self.transcript_text.get("1.0", tk.END).strip()
-                # Import locally to avoid potential circular imports
+                # Import locally to avoid potential circular import
                 from ai import create_referral_with_openai
-                
                 # Use our custom scheduler instead of direct after() calls
                 self.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
                 self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
-                
                 # Execute the referral creation with conditions
                 result = create_referral_with_openai(transcript, focus)
-                
                 # Update UI when done
                 self.after(0, lambda: [
                     self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
@@ -1276,7 +1411,6 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-        
         # Execute in thread pool
         self.executor.submit(task)
 
@@ -1337,7 +1471,7 @@ class MedicalDictationApp(ttk.Window):
             self.progress_bar.pack(side=RIGHT, padx=10)
             self.progress_bar.start()
             self.process_soap_recording()
-            # Re-enable the record button after 5 seconds and restore green color
+            # Re-enable the record button after 5 seconds and restore green colors
             self.after(5000, lambda: self.record_soap_button.config(state=NORMAL, bootstyle="success"))
 
     def toggle_soap_pause(self) -> None:
@@ -1448,6 +1582,7 @@ class MedicalDictationApp(ttk.Window):
 
 if __name__ == "__main__":
     main()
+
 
 
 
