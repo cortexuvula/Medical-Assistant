@@ -189,7 +189,7 @@ class MedicalDictationApp(ttk.Window):
         
         super().__init__(themename="flatly")
         self.title("Medical Assistant")
-        self.geometry("1400x1000")
+        self.geometry("1400x950")
         self.minsize(700, 500)
         self.config(bg="#f0f0f0")
 
@@ -687,6 +687,11 @@ class MedicalDictationApp(ttk.Window):
         self.referral_button = ttk.Button(ai_buttons, text="Referral", width=15, command=self.create_referral, bootstyle="SECONDARY")
         self.referral_button.grid(row=0, column=3, padx=5, pady=5)
         ToolTip(self.referral_button, "Generate a referral paragraph using OpenAI.")
+        
+        # ADD NEW BUTTON: Letter button
+        self.letter_button = ttk.Button(ai_buttons, text="Letter", width=15, command=self.create_letter, bootstyle="SECONDARY")
+        self.letter_button.grid(row=0, column=4, padx=5, pady=5)
+        ToolTip(self.letter_button, "Generate a professional letter from text.")
         
         ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))
         automation_frame = ttk.Frame(control_frame)
@@ -1580,8 +1585,156 @@ class MedicalDictationApp(ttk.Window):
         self.status_timers.append(timer_id)
         return timer_id
 
+    def show_letter_options_dialog(self) -> tuple:
+        """Show dialog to get letter source and specifications from user"""
+        # Increase dialog size from 600x400 to 700x550 for better fit
+        dialog = create_toplevel_dialog(self, "Letter Options", "700x700")
+        
+        # Add a main frame with padding for better spacing
+        main_frame = ttk.Frame(dialog, padding=(20, 20, 20, 20))
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Select text source for the letter:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
+        
+        # Improve radio button section with a frame
+        source_frame = ttk.Frame(main_frame)
+        source_frame.pack(fill="x", pady=(0, 15), anchor="w")
+        
+        source_var = tk.StringVar(value="transcript")
+        ttk.Radiobutton(source_frame, text="Use text from Transcript tab", variable=source_var, value="transcript").pack(anchor="w", padx=20, pady=5)
+        ttk.Radiobutton(source_frame, text="Use text from Dictation tab", variable=source_var, value="dictation").pack(anchor="w", padx=20, pady=5)
+        
+        ttk.Label(main_frame, text="Letter specifications:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
+        ttk.Label(main_frame, text="Enter any specific requirements for the letter (tone, style, formality, purpose, etc.)", 
+                  wraplength=650, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
+        
+        # Make the text area larger and ensure it fills available width
+        specs_text = scrolledtext.ScrolledText(main_frame, height=8, width=80, font=("Segoe UI", 10))
+        specs_text.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Add some example text to help users
+        example_text = "Examples:\n- Formal letter to a specialist for patient referral\n- Patient instruction letter\n- Response to insurance company\n- Follow-up appointment instructions"
+        specs_text.insert("1.0", example_text)
+        specs_text.tag_add("gray", "1.0", "end")
+        specs_text.tag_config("gray", foreground="gray")
+        
+        # Clear example text when user clicks in the field
+        def clear_example(event):
+            if specs_text.get("1.0", "end-1c").strip() == example_text.strip():
+                specs_text.delete("1.0", "end")
+                specs_text.tag_remove("gray", "1.0", "end")
+            specs_text.unbind("<FocusIn>")  # Only clear once
+        
+        specs_text.bind("<FocusIn>", clear_example)
+        
+        result = [None, None]
+        
+        def on_submit():
+            result[0] = source_var.get()
+            result[1] = specs_text.get("1.0", "end-1c")
+            # If user didn't change example text, provide empty specs
+            if result[1].strip() == example_text.strip():
+                result[1] = ""
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        # Improve button layout
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill="x", padx=20, pady=(0, 20))
+        
+        ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=15).pack(side="left", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Generate Letter", command=on_submit, bootstyle="success", width=15).pack(side="right", padx=10, pady=10)
+        
+        # Center the dialog on the screen
+        dialog.update_idletasks()
+        dialog.geometry("+{}+{}".format(
+            (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2),
+            (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        ))
+        
+        dialog.wait_window()
+        return result[0], result[1]
+
+    def create_letter(self) -> None:
+        """Create a letter from the selected text source with AI assistance"""
+        # Get source and specifications
+        source, specs = self.show_letter_options_dialog()
+        
+        if source is None:  # User cancelled
+            return
+            
+        # Get the text based on selected source
+        if source == "transcript":
+            text = self.transcript_text.get("1.0", tk.END).strip()
+            source_name = "Transcript"
+        else:  # dictation
+            text = self.dictation_text.get("1.0", tk.END).strip()
+            source_name = "Dictation"
+        
+        if not text:
+            messagebox.showwarning("Empty Text", f"The {source_name} tab is empty. Please add content before creating a letter.")
+            return
+        
+        # Show progress
+        self.update_status(f"Generating letter from {source_name} text...", status_type="progress")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        self.letter_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Generate letter using AI
+                letter = self._generate_letter_with_ai(text, specs)
+                
+                # Update UI when done
+                self.after(0, lambda: [
+                    self._update_text_area(letter, f"Letter generated from {source_name}", self.letter_button, self.referral_text),
+                    self.notebook.select(2)  # Show letter in Referral tab
+                ])
+            except Exception as e:
+                error_msg = f"Error creating letter: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.update_status(error_msg, status_type="error"),
+                    self.letter_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+        
+        # Execute in thread pool
+        self.executor.submit(task)
+
+    def _generate_letter_with_ai(self, text: str, specs: str) -> str:
+        """Use the selected AI provider to generate a professional letter"""
+        from ai import call_ai, remove_markdown, remove_citations
+        
+        # Create a prompt for the AI
+        prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
+        if specs.strip():
+            prompt += f"Special instructions: {specs}\n\n"
+        
+        prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
+        
+        # Call the AI with the letter generation prompt
+        system_message = "You are an expert medical professional specializing in writing professional medical letters. Create well-formatted correspondence that is clear, concise, and appropriate for medical communication."
+        
+        # Use the currently selected AI provider
+        from settings import SETTINGS
+        current_provider = SETTINGS.get("ai_provider", "openai")
+        
+        result = call_ai("gpt-4o", system_message, prompt, 0.7, 2000)
+        
+        # Clean up any markdown formatting from the result
+        clean_result = remove_markdown(result)
+        clean_result = remove_citations(clean_result)
+        
+        return clean_result
+
 if __name__ == "__main__":
     main()
+
 
 
 
