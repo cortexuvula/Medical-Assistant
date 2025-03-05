@@ -26,7 +26,7 @@ from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai, get_possible_conditions, create_letter_with_ai
 from tooltip import ToolTip
 from settings import SETTINGS, save_settings  # Add save_settings here
-from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog
+from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog  # Add this import
 
 # Add near the top of the file
 import time
@@ -207,6 +207,16 @@ class MedicalDictationApp(ttk.Window):
         self.geometry("1400x950")
         self.minsize(700, 500)
         self.config(bg="#f0f0f0")
+        
+        # Center the window on the screen
+        self.update_idletasks()  # Ensure window dimensions are calculated
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = 1400
+        window_height = 950
+        x = (screen_width // 2) - (window_width // 2)
+        y = (screen_height // 2) - (window_height // 2)
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
         # Initialize API keys and handlers
         openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -275,8 +285,9 @@ class MedicalDictationApp(ttk.Window):
         settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
         settings_menu.add_separator()
         
-        # Add ElevenLabs settings menu option
+        # Add STT provider settings menu options
         settings_menu.add_command(label="ElevenLabs Settings", command=self.show_elevenlabs_settings)
+        settings_menu.add_command(label="Deepgram Settings", command=self.show_deepgram_settings)  # Add this line
         
         # Update this section to add all prompt settings options to the submenu
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
@@ -351,6 +362,19 @@ class MedicalDictationApp(ttk.Window):
             recognition_language=self.recognition_language
         )
         self.status_manager.success("ElevenLabs settings saved successfully")
+
+    def show_deepgram_settings(self) -> None:
+        """Show dialog to configure Deepgram settings."""
+        # Call the dialog function
+        show_deepgram_settings_dialog(self)
+        
+        # Refresh the audio handler with potentially new settings
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=self.elevenlabs_api_key,
+            deepgram_api_key=self.deepgram_api_key,
+            recognition_language=self.recognition_language
+        )
+        self.status_manager.success("Deepgram settings saved successfully")
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -1179,4 +1203,5 @@ class MedicalDictationApp(ttk.Window):
             SETTINGS["stt_provider"] = selected_stt
             save_settings(SETTINGS)
             self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
+
 

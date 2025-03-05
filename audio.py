@@ -272,6 +272,10 @@ class AudioHandler:
         retry_delay = 2  # seconds
         attempt = 0
         
+        # Get Deepgram settings from SETTINGS
+        from settings import SETTINGS, _DEFAULT_SETTINGS
+        deepgram_settings = SETTINGS.get("deepgram", _DEFAULT_SETTINGS["deepgram"])
+        
         while attempt <= max_retries:
             try:
                 logging.info(f"Deepgram transcription attempt {attempt+1}/{max_retries+1}")
@@ -281,11 +285,15 @@ class AudioHandler:
                 segment.export(buf, format="wav")
                 buf.seek(0)
                 
-                # Set up options
+                # Set up options using the settings
                 options = PrerecordedOptions(
-                    model="nova-2-medical", 
-                    language="en-US",
-                    smart_format=True  # Enable smart formatting for better punctuation
+                    model=deepgram_settings.get("model", "nova-2-medical"), 
+                    language=deepgram_settings.get("language", "en-US"),
+                    smart_format=deepgram_settings.get("smart_format", True),
+                    diarize=deepgram_settings.get("diarize", False),
+                    profanity_filter=deepgram_settings.get("profanity_filter", False),
+                    redact=deepgram_settings.get("redact", False),
+                    alternatives=deepgram_settings.get("alternatives", 1)
                 )
                 
                 # Make API call
@@ -297,11 +305,27 @@ class AudioHandler:
                 # Process response
                 response_json = json.loads(response.to_json(indent=4))
                 
+                # For debugging
+                debug_file = f"deepgram_response_debug_{uuid.uuid4().hex[:8]}.json"
+                with open(debug_file, "w") as f:
+                    json.dump(response_json, f, indent=2)
+                logging.info(f"Saved Deepgram response for debugging to: {debug_file}")
+                
+                # Check if diarization is enabled
+                is_diarized = deepgram_settings.get("diarize", False)
+                
                 # Check for results
                 if "results" in response_json and response_json["results"].get("channels"):
                     alternatives = response_json["results"]["channels"][0].get("alternatives", [])
+                    
                     if alternatives and "transcript" in alternatives[0]:
-                        return alternatives[0]["transcript"]
+                        transcript = alternatives[0]["transcript"]
+                        
+                        # Process diarization if enabled
+                        if is_diarized and "words" in alternatives[0]:
+                            return self._format_deepgram_diarized_transcript(alternatives[0]["words"])
+                        
+                        return transcript
                     
                 # If we get here, response structure wasn't as expected
                 logging.warning(f"Unexpected Deepgram response structure: {response_json}")
@@ -339,6 +363,53 @@ class AudioHandler:
                     return ""
         
         return ""  # Return empty string if all attempts failed
+
+    def _format_deepgram_diarized_transcript(self, words: list) -> str:
+        """Format diarized words from Deepgram into a readable transcript with speaker labels.
+        
+        Args:
+            words: List of words from the Deepgram response
+            
+        Returns:
+            Formatted text with speaker labels
+        """
+        if not words:
+            return ""
+        
+        result = []
+        current_speaker = None
+        current_text = []
+        
+        for word_data in words:
+            # Check if this word has speaker info
+            if "speaker" not in word_data:
+                continue
+                
+            speaker = word_data.get("speaker")
+            word = word_data.get("word", "")
+            
+            # If new speaker, start a new paragraph
+            if speaker != current_speaker:
+                # Add previous paragraph if it exists
+                if current_text:
+                    speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+                    result.append(f"{speaker_label}{''.join(current_text)}")
+                    current_text = []
+                
+                current_speaker = speaker
+            
+            # Add word to current text
+            # Add space before word if needed
+            if current_text and not word.startswith(("'", ".", ",", "!", "?", ":", ";")):
+                current_text.append(" ")
+            current_text.append(word)
+        
+        # Add the last paragraph
+        if current_text:
+            speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+            result.append(f"{speaker_label}{''.join(current_text)}")
+        
+        return "\n\n".join(result)
 
     def _transcribe_with_google(self, segment: AudioSegment) -> str:
         """Transcribe audio using Google Speech Recognition with improved error handling.

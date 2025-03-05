@@ -111,6 +111,15 @@ Follow up:
         "num_speakers": None,  # None means auto-detection
         "timestamps_granularity": "word",
         "diarize": False
+    },
+    "deepgram": {
+        "model": "nova-2-medical",  # Options: nova-2, nova-2-medical, enhanced, etc.
+        "language": "en-US",        # Language code
+        "smart_format": True,       # Enable smart formatting for better punctuation
+        "diarize": False,           # Speaker diarization
+        "profanity_filter": False,  # Filter profanity
+        "redact": False,            # Redact PII (personally identifiable information)
+        "alternatives": 1           # Number of alternative transcriptions
     }
 }
 
