@@ -26,7 +26,7 @@ from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
 from tooltip import ToolTip
 from settings import SETTINGS
-from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog
+from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog
 
 # Add near the top of the file
 import time
@@ -275,167 +275,57 @@ class MedicalDictationApp(ttk.Window):
 
     def show_api_keys_dialog(self) -> None:
         """Shows a dialog to update API keys and updates the .env file."""
-        dialog = create_toplevel_dialog(self, "Update API Keys", "800x700")
+        # Call the refactored function from dialogs.py
+        show_api_keys_dialog(self)
         
-        # Increase main frame padding for more spacing around all content
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-
-        # Get current API keys from environment
-        openai_key = os.getenv("OPENAI_API_KEY", "")
-        deepgram_key = os.getenv("DEEPGRAM_API_KEY", "")
-        grok_key = os.getenv("GROK_API_KEY", "")
-        perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
-        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
-
-        # Create entry fields with password masking - add more vertical spacing
-        ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=10)
-        openai_entry = ttk.Entry(frame, width=50, show="•")
-        openai_entry.grid(row=0, column=1, sticky="ew", padx=(10, 5), pady=10)
-        openai_entry.insert(0, openai_key)
-
-        ttk.Label(frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=10)
-        grok_entry = ttk.Entry(frame, width=50, show="•")
-        grok_entry.grid(row=1, column=1, sticky="ew", padx=(10, 5), pady=10)
-        grok_entry.insert(0, grok_key)
-
-        ttk.Label(frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=10)
-        perplexity_entry = ttk.Entry(frame, width=50, show="•")
-        perplexity_entry.grid(row=2, column=1, sticky="ew", padx=(10, 5), pady=10)
-        perplexity_entry.insert(0, perplexity_key)
-
-        ttk.Label(frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=10)
-        deepgram_entry = ttk.Entry(frame, width=50, show="•")
-        deepgram_entry.grid(row=3, column=1, sticky="ew", padx=(10, 5), pady=10)
-        deepgram_entry.insert(0, deepgram_key)
-
-        # NEW: Add ElevenLabs API Key field
-        ttk.Label(frame, text="ElevenLabs API Key:").grid(row=4, column=0, sticky="w", pady=10)
-        elevenlabs_entry = ttk.Entry(frame, width=50, show="•")
-        elevenlabs_entry.grid(row=4, column=1, sticky="ew", padx=(10, 5), pady=10)
-        elevenlabs_entry.insert(0, elevenlabs_key)
-
-        # Add toggle buttons to show/hide keys
-        def toggle_show_hide(entry):
-            current = entry['show']
-            entry['show'] = '' if current else '•'
+        # Refresh API keys in the application
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         
-        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=0, column=2, padx=5)
-        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=1, column=2, padx=5)
-        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=2, column=2, padx=5)
-        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=3, column=2, padx=5)
-        ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=4, column=2, padx=5)
+        # Update UI components based on API availability
+        if openai.api_key:
+            self.refine_button.config(state=NORMAL)
+            self.improve_button.config(state=NORMAL)
+            self.soap_button.config(state=NORMAL)
+        else:
+            self.refine_button.config(state=DISABLED)
+            self.improve_button.config(state=DISABLED)
+            self.soap_button.config(state=DISABLED)
+            
+        # Reinitialize audio handler with new API keys
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=self.elevenlabs_api_key,
+            deepgram_api_key=self.deepgram_api_key,
+            recognition_language=self.recognition_language
+        )
+        
+        self.update_status("API keys updated successfully", status_type="success")
 
-        # Provide info about where to get API keys - add more vertical spacing
-        info_text = ("Get your API keys at:\n"
-                    "• OpenAI: https://platform.openai.com/account/api-keys\n"
-                    "• Grok (X.AI): https://x.ai\n"
-                    "• Perplexity: https://docs.perplexity.ai/\n"
-                    "• Deepgram: https://console.deepgram.com/signup\n"
-                    "• ElevenLabs: https://elevenlabs.io/app/speech-to-text")
-        ttk.Label(frame, text=info_text, justify="left", wraplength=450).grid(
-            row=5, column=0, columnspan=3, sticky="w", pady=20)
+    def show_about(self) -> None:
+        # Call the refactored function from dialogs.py
+        show_about_dialog(self)
 
-        def update_api_keys():
-            new_openai = openai_entry.get().strip()
-            new_deepgram = deepgram_entry.get().strip()
-            new_grok = grok_entry.get().strip()
-            new_perplexity = perplexity_entry.get().strip()
-            new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
-
-            # Update .env file
-            try:
-                # Read existing content
-                env_content = ""
-                if os.path.exists(".env"):
-                    with open(".env", "r") as f:
-                        env_content = f.read()
-                
-                # Update or add each key
-                env_lines = env_content.split("\n")
-                updated_lines = []
-                keys_updated = set()
-                
-                for line in env_lines:
-                    # Fix: Change startsWith to startswith (Python string method is lowercase)
-                    if line.strip() == "" or line.strip().startswith("#"):
-                        updated_lines.append(line)
-                        continue
-                        
-                    if "OPENAI_API_KEY=" in line:
-                        updated_lines.append(f"OPENAI_API_KEY={new_openai}")
-                        keys_updated.add("OPENAI_API_KEY")
-                    elif "DEEPGRAM_API_KEY=" in line:
-                        updated_lines.append(f"DEEPGRAM_API_KEY={new_deepgram}")
-                        keys_updated.add("DEEPGRAM_API_KEY")
-                    elif "GROK_API_KEY=" in line:
-                        updated_lines.append(f"GROK_API_KEY={new_grok}")
-                        keys_updated.add("GROK_API_KEY")
-                    elif "PERPLEXITY_API_KEY=" in line:
-                        updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
-                        keys_updated.add("PERPLEXITY_API_KEY")
-                    elif "ELEVENLABS_API_KEY=" in line:  # NEW: Update ElevenLabs key
-                        updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
-                        keys_updated.add("ELEVENLABS_API_KEY")
-                    else:
-                        updated_lines.append(line)
-                
-                # Add keys that weren't in the file
-                if "OPENAI_API_KEY" not in keys_updated and new_openai:
-                    updated_lines.append(f"OPENAI_API_KEY={new_openai}")
-                if "DEEPGRAM_API_KEY" not in keys_updated and new_deepgram:
-                    updated_lines.append(f"DEEPGRAM_API_KEY={new_deepgram}")
-                if "GROK_API_KEY" not in keys_updated and new_grok:
-                    updated_lines.append(f"GROK_API_KEY={new_grok}")
-                if "PERPLEXITY_API_KEY" not in keys_updated and new_perplexity:
-                    updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
-                if "ELEVENLABS_API_KEY" not in keys_updated and new_elevenlabs:
-                    updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
-                
-                # Make sure we have the RECOGNITION_LANGUAGE line
-                if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
-                    updated_lines.append("RECOGNITION_LANGUAGE=en-US")
-                
-                # Write back to file
-                with open(".env", "w") as f:
-                    f.write("\n".join(updated_lines))
-                
-                # Update environment variables in memory
-                if new_openai:
-                    os.environ["OPENAI_API_KEY"] = new_openai
-                    openai.api_key = new_openai 
-                if new_deepgram:
-                    os.environ["DEEPGRAM_API_KEY"] = new_deepgram
-                    # Update the client if needed
-                    self.deepgram_api_key = new_deepgram
-                    self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
-                if new_grok:
-                    os.environ["GROK_API_KEY"] = new_grok
-                if new_perplexity:
-                    os.environ["PERPLEXITY_API_KEY"] = new_perplexity
-                if new_elevenlabs:
-                    os.environ["ELEVENLABS_API_KEY"] = new_elevenlabs
-                    self.elevenlabs_api_key = new_elevenlabs
-                
-                # Update buttons if needed (enable or disable based on API keys)
-                if new_openai:
-                    self.refine_button.config(state=NORMAL)
-                    self.improve_button.config(state=NORMAL)
-                    self.soap_button.config(state=NORMAL)
-                else:
-                    self.refine_button.config(state=DISABLED)
-                    self.improve_button.config(state=DISABLED)
-                
-                self.update_status("API keys updated successfully", status_type="success")
-                dialog.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
-
-        # Add more padding to the button frame
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=20, padx=20)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=20)
-        ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success", width=15).pack(side=tk.LEFT, padx=20)
+    def show_shortcuts(self) -> None:
+        # Call the refactored function from dialogs.py
+        show_shortcuts_dialog(self)
+        
+    def show_letter_options_dialog(self) -> tuple:
+        # Call the refactored function from dialogs.py
+        return show_letter_options_dialog(self)
+        
+    def show_elevenlabs_settings(self) -> None:
+        # Call the refactored function from dialogs.py
+        show_elevenlabs_settings_dialog(self)
+        
+        # Refresh the audio handler with potentially new settings
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=self.elevenlabs_api_key,
+            deepgram_api_key=self.deepgram_api_key,
+            recognition_language=self.recognition_language
+        )
+        self.update_status("ElevenLabs settings saved successfully", status_type="success")
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -765,42 +655,12 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-l>", lambda event: self.load_audio_file())
 
     def show_about(self) -> None:
-        messagebox.showinfo("About", "Medical Assistant App\nDeveloped using Vibe Coding.")
+        # Call the refactored function from dialogs.py
+        show_about_dialog(self)
 
     def show_shortcuts(self) -> None:
-        dialog = tk.Toplevel(self)
-        dialog.title("Shortcuts & Voice Commands")
-        dialog.geometry("700x500")
-        dialog.transient(self)
-        dialog.grab_set()
-        notebook = ttk.Notebook(dialog)
-        notebook.pack(expand=True, fill="both", padx=10, pady=10)
-        kb_frame = ttk.Frame(notebook)
-        notebook.add(kb_frame, text="Keyboard Shortcuts")
-        kb_tree = ttk.Treeview(kb_frame, columns=("Command", "Description"), show="headings")
-        kb_tree.heading("Command", text="Command")
-        kb_tree.heading("Description", text="Description")
-        kb_tree.column("Command", width=150, anchor="w")
-        kb_tree.column("Description", width=500, anchor="w")
-        kb_tree.pack(expand=True, fill="both", padx=10, pady=10)
-        for cmd, desc in {"Ctrl+N": "New dictation", "Ctrl+S": "Save", "Ctrl+C": "Copy text", "Ctrl+L": "Load Audio File"}.items():
-            kb_tree.insert("", tk.END, values=(cmd, desc))
-        vc_frame = ttk.Frame(notebook)
-        notebook.add(vc_frame, text="Voice Commands")
-        vc_tree = ttk.Treeview(vc_frame, columns=("Command", "Action"), show="headings")
-        vc_tree.heading("Command", text="Voice Command")
-        vc_tree.heading("Action", text="Action")
-        vc_tree.column("Command", width=200, anchor="w")
-        vc_tree.column("Action", width=450, anchor="w")
-        vc_tree.pack(expand=True, fill="both", padx=10, pady=10)
-        for cmd, act in {
-            "new paragraph": "Insert two newlines",
-            "new line": "Insert a newline",
-            "full stop": "Insert period & capitalize next",
-            "delete last word": "Delete last word"
-        }.items():
-            vc_tree.insert("", tk.END, values=(cmd, act))
-        ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+        # Call the refactored function from dialogs.py
+        show_shortcuts_dialog(self)
 
     def show_refine_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
@@ -1472,76 +1332,8 @@ class MedicalDictationApp(ttk.Window):
         return timer_id
 
     def show_letter_options_dialog(self) -> tuple:
-        """Show dialog to get letter source and specifications from user"""
-        # Increase dialog size from 600x400 to 700x550 for better fit
-        dialog = create_toplevel_dialog(self, "Letter Options", "700x700")
-        
-        # Add a main frame with padding for better spacing
-        main_frame = ttk.Frame(dialog, padding=(20, 20, 20, 20))
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        ttk.Label(main_frame, text="Select text source for the letter:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
-        
-        # Improve radio button section with a frame
-        source_frame = ttk.Frame(main_frame)
-        source_frame.pack(fill="x", pady=(0, 15), anchor="w")
-        
-        source_var = tk.StringVar(value="transcript")
-        ttk.Radiobutton(source_frame, text="Use text from Transcript tab", variable=source_var, value="transcript").pack(anchor="w", padx=20, pady=5)
-        ttk.Radiobutton(source_frame, text="Use text from Dictation tab", variable=source_var, value="dictation").pack(anchor="w", padx=20, pady=5)
-        
-        ttk.Label(main_frame, text="Letter specifications:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
-        ttk.Label(main_frame, text="Enter any specific requirements for the letter (tone, style, formality, purpose, etc.)", 
-                  wraplength=650, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
-        
-        # Make the text area larger and ensure it fills available width
-        specs_text = scrolledtext.ScrolledText(main_frame, height=8, width=80, font=("Segoe UI", 10))
-        specs_text.pack(fill="both", expand=True, pady=(0, 20))
-        
-        # Add some example text to help users
-        example_text = "Examples:\n- Formal letter to a specialist for patient referral\n- Patient instruction letter\n- Response to insurance company\n- Follow-up appointment instructions"
-        specs_text.insert("1.0", example_text)
-        specs_text.tag_add("gray", "1.0", "end")
-        specs_text.tag_config("gray", foreground="gray")
-        
-        # Clear example text when user clicks in the field
-        def clear_example(event):
-            if specs_text.get("1.0", "end-1c").strip() == example_text.strip():
-                specs_text.delete("1.0", "end")
-                specs_text.tag_remove("gray", "1.0", "end")
-            specs_text.unbind("<FocusIn>")  # Only clear once
-        
-        specs_text.bind("<FocusIn>", clear_example)
-        
-        result = [None, None]
-        
-        def on_submit():
-            result[0] = source_var.get()
-            result[1] = specs_text.get("1.0", "end-1c")
-            # If user didn't change example text, provide empty specs
-            if result[1].strip() == example_text.strip():
-                result[1] = ""
-            dialog.destroy()
-        
-        def on_cancel():
-            dialog.destroy()
-        
-        # Improve button layout
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(fill="x", padx=20, pady=(0, 20))
-        
-        ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=15).pack(side="left", padx=10, pady=10)
-        ttk.Button(btn_frame, text="Generate Letter", command=on_submit, bootstyle="success", width=15).pack(side="right", padx=10, pady=10)
-        
-        # Center the dialog on the screen
-        dialog.update_idletasks()
-        dialog.geometry("+{}+{}".format(
-            (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2),
-            (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-        ))
-        
-        dialog.wait_window()
-        return result[0], result[1]
+        # Call the refactored function from dialogs.py
+        return show_letter_options_dialog(self)
 
     def create_letter(self) -> None:
         """Create a letter from the selected text source with AI assistance"""
@@ -1619,106 +1411,14 @@ class MedicalDictationApp(ttk.Window):
         return clean_result
 
     def show_elevenlabs_settings(self) -> None:
-        """Show dialog to configure ElevenLabs speech-to-text settings."""
-        from settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
+        # Call the refactored function from dialogs.py
+        show_elevenlabs_settings_dialog(self)
         
-        # Get current ElevenLabs settings with fallback to defaults
-        elevenlabs_settings = SETTINGS.get("elevenlabs", {})
-        default_settings = _DEFAULT_SETTINGS["elevenlabs"]
-        
-        dialog = create_toplevel_dialog(self, "ElevenLabs Settings", "650x750")
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Create form with current settings
-        ttk.Label(frame, text="ElevenLabs Speech-to-Text Settings", 
-                  font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
-        
-        # Model ID
-        ttk.Label(frame, text="Model ID:").grid(row=1, column=0, sticky="w", pady=10)
-        model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings["model_id"]))
-        model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
-        model_combo['values'] = ["scribe_v1", "scribe_v1_base"]  # Updated to supported models only
-        model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
-        ttk.Label(frame, text="The AI model to use for transcription.", 
-                  wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
-        
-        # Language Code
-        ttk.Label(frame, text="Language Code:").grid(row=3, column=0, sticky="w", pady=10)
-        lang_var = tk.StringVar(value=elevenlabs_settings.get("language_code", default_settings["language_code"]))
-        lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
-        lang_entry.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
-        ttk.Label(frame, text="Optional ISO language code (e.g., 'en-US'). Leave empty for auto-detection.", 
-                  wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
-        
-        # Tag Audio Events
-        ttk.Label(frame, text="Tag Audio Events:").grid(row=5, column=0, sticky="w", pady=10)
-        tag_events_var = tk.BooleanVar(value=elevenlabs_settings.get("tag_audio_events", default_settings["tag_audio_events"]))
-        tag_events_check = ttk.Checkbutton(frame, variable=tag_events_var)
-        tag_events_check.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
-        ttk.Label(frame, text="Add timestamps and labels for audio events like silence, music, etc.", 
-                  wraplength=400, foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", padx=(20, 0))
-        
-        # Number of Speakers
-        ttk.Label(frame, text="Number of Speakers:").grid(row=7, column=0, sticky="w", pady=10)
-        
-        # Create a custom variable handler for the special "None" case
-        speakers_value = elevenlabs_settings.get("num_speakers", default_settings["num_speakers"])
-        speakers_str = "" if speakers_value is None else str(speakers_value)
-        speakers_entry = ttk.Entry(frame, width=30)
-        speakers_entry.insert(0, speakers_str)
-        speakers_entry.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=10)
-        
-        ttk.Label(frame, text="Optional number of speakers. Leave empty for auto-detection.", 
-                  wraplength=400, foreground="gray").grid(row=8, column=0, columnspan=2, sticky="w", padx=(20, 0))
-        
-        # Timestamps Granularity
-        ttk.Label(frame, text="Timestamps Granularity:").grid(row=9, column=0, sticky="w", pady=10)
-        granularity_var = tk.StringVar(value=elevenlabs_settings.get("timestamps_granularity", default_settings["timestamps_granularity"]))
-        granularity_combo = ttk.Combobox(frame, textvariable=granularity_var, width=30)
-        granularity_combo['values'] = ["word", "segment", "sentence"]
-        granularity_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
-        
-        # Diarize
-        ttk.Label(frame, text="Diarize:").grid(row=10, column=0, sticky="w", pady=10)
-        diarize_var = tk.BooleanVar(value=elevenlabs_settings.get("diarize", default_settings["diarize"]))
-        diarize_check = ttk.Checkbutton(frame, variable=diarize_var)
-        diarize_check.grid(row=10, column=1, sticky="w", padx=(10, 0), pady=10)
-        ttk.Label(frame, text="Identify different speakers in the audio.", 
-                  wraplength=400, foreground="gray").grid(row=11, column=0, columnspan=2, sticky="w", padx=(20, 0))
-        
-        # Create the buttons frame
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=12, column=0, columnspan=2, pady=(20, 0), sticky="e")
-        
-        # Save handler - renamed to avoid conflict with imported save_settings
-        def save_elevenlabs_settings():
-            # Parse the number of speakers value (None or int)
-            try:
-                num_speakers = None if not speakers_entry.get().strip() else int(speakers_entry.get())
-            except ValueError:
-                messagebox.showerror("Invalid Input", "Number of speakers must be a valid integer or empty.")
-                return
-                
-            # Build the new settings
-            new_settings = {
-                "model_id": model_var.get(),
-                "language_code": lang_var.get(),
-                "tag_audio_events": tag_events_var.get(),
-                "num_speakers": num_speakers,
-                "timestamps_granularity": granularity_var.get(),
-                "diarize": diarize_var.get()
-            }
-            
-            # Update the settings
-            SETTINGS["elevenlabs"] = new_settings
-            save_settings(SETTINGS)  # This now refers to the imported save_settings function
-            self.update_status("ElevenLabs settings saved successfully", status_type="success")
-            dialog.destroy()
-        
-        # Cancel handler
-        def cancel():
-            dialog.destroy()
-        
-        ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Save", command=save_elevenlabs_settings, bootstyle="success", width=10).pack(side="left", padx=5)
+        # Refresh the audio handler with potentially new settings
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=self.elevenlabs_api_key,
+            deepgram_api_key=self.deepgram_api_key,
+            recognition_language=self.recognition_language
+        )
+        self.update_status("ElevenLabs settings saved successfully", status_type="success")
