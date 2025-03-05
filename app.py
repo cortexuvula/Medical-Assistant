@@ -23,7 +23,7 @@ from pathlib import Path
 import requests
 
 from utils import get_valid_microphones
-from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
+from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai, get_possible_conditions, create_letter_with_ai
 from tooltip import ToolTip
 from settings import SETTINGS, save_settings  # Add save_settings here
 from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog
@@ -876,15 +876,6 @@ class MedicalDictationApp(ttk.Window):
             ])
         self.executor.submit(task)
 
-    def _get_possible_conditions(self, text: str) -> str:
-        from ai import call_ai, remove_markdown, remove_citations
-        prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. Keep the condition names simple and specific and not longer that 3 words. "
-                  "Return them as a comma-separated list. Text: " + text)
-        result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7, 100)
-        conditions = remove_markdown(result).strip()
-        conditions = remove_citations(conditions)
-        return conditions
-
     def create_referral(self) -> None:
         # Check if the transcript is empty before proceeding
         text = self.transcript_text.get("1.0", tk.END).strip()
@@ -897,9 +888,9 @@ class MedicalDictationApp(ttk.Window):
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         
-        # New: Get suggested conditions asynchronously
+        # New: Get suggested conditions asynchronously using imported function
         def get_conditions() -> str:
-            return self._get_possible_conditions(text)
+            return get_possible_conditions(text)  # Use the imported function
         future = self.executor.submit(get_conditions)
         def on_conditions_done(future_result):
             try:
@@ -1129,8 +1120,8 @@ class MedicalDictationApp(ttk.Window):
         
         def task() -> None:
             try:
-                # Generate letter using AI
-                letter = self._generate_letter_with_ai(text, specs)
+                # Generate letter using the imported AI function
+                letter = create_letter_with_ai(text, specs)
                 
                 # Update UI when done
                 self.after(0, lambda: [
@@ -1149,32 +1140,6 @@ class MedicalDictationApp(ttk.Window):
         
         # Execute in thread pool
         self.executor.submit(task)
-
-    def _generate_letter_with_ai(self, text: str, specs: str) -> str:
-        """Use the selected AI provider to generate a professional letter"""
-        from ai import call_ai, remove_markdown, remove_citations
-        
-        # Create a prompt for the AI
-        prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
-        if specs.strip():
-            prompt += f"Special instructions: {specs}\n\n"
-        
-        prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
-        
-        # Call the AI with the letter generation prompt
-        system_message = "You are an expert medical professional specializing in writing professional medical letters. Create well-formatted correspondence that is clear, concise, and appropriate for medical communication."
-        
-        # Use the currently selected AI provider
-        from settings import SETTINGS
-        current_provider = SETTINGS.get("ai_provider", "openai")
-        
-        result = call_ai("gpt-4o", system_message, prompt, 0.7, 2000)
-        
-        # Clean up any markdown formatting from the result
-        clean_result = remove_markdown(result)
-        clean_result = remove_citations(clean_result)
-        
-        return clean_result
 
     def show_elevenlabs_settings(self) -> None:
         # Call the refactored function from dialogs.py

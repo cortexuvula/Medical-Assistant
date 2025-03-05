@@ -178,3 +178,54 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
     except Exception as e:
         logging.error(f"Error creating referral: {str(e)}")
         return f"Error creating referral: {str(e)}"
+
+# NEW FUNCTIONS: Add these to the end of the ai.py file
+
+def get_possible_conditions(text: str) -> str:
+    """Extract possible medical conditions from text for referrals.
+    
+    Args:
+        text: Source text to analyze
+        
+    Returns:
+        Comma-separated string of medical conditions
+    """
+    prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. "
+              "Keep the condition names simple and specific and not longer that 3 words. "
+              "Return them as a comma-separated list. Text: " + text)
+    result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7, 100)
+    conditions = remove_markdown(result).strip()
+    conditions = remove_citations(conditions)
+    return conditions
+
+def create_letter_with_ai(text: str, specs: str = "") -> str:
+    """Generate a professional medical letter based on provided text and specifications.
+    
+    Args:
+        text: Content to base the letter on
+        specs: Special instructions for letter formatting/content
+        
+    Returns:
+        Complete formatted letter
+    """
+    # Create a prompt for the AI
+    prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
+    if specs.strip():
+        prompt += f"Special instructions: {specs}\n\n"
+    
+    prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
+    
+    # Call the AI with the letter generation prompt
+    system_message = "You are an expert medical professional specializing in writing professional medical letters. Create well-formatted correspondence that is clear, concise, and appropriate for medical communication."
+    
+    # Use the currently selected AI provider
+    from settings import SETTINGS
+    current_provider = SETTINGS.get("ai_provider", "openai")
+    
+    result = call_ai("gpt-4o", system_message, prompt, 0.7, 2000)
+    
+    # Clean up any markdown formatting from the result
+    clean_result = remove_markdown(result)
+    clean_result = remove_citations(clean_result)
+    
+    return clean_result
