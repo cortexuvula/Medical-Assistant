@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, scrolledtext  # Add scrolledtext here
 import ttkbootstrap as ttk
 import re
 

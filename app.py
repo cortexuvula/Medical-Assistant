@@ -25,7 +25,7 @@ import requests
 from utils import get_valid_microphones
 from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai
 from tooltip import ToolTip
-from settings import SETTINGS
+from settings import SETTINGS, save_settings  # Add save_settings here
 from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog
 
 # Add near the top of the file
@@ -35,6 +35,13 @@ from requests.exceptions import RequestException, Timeout, ConnectionError
 
 # Add to imports section
 from audio import AudioHandler
+
+# Add these imports:
+from ui_components import UIComponents
+from text_processor import TextProcessor
+
+# Add this import at the top with other imports
+from status_manager import StatusManager
 
 # Completely revised check_env_file function to handle the tkinter window properly
 def check_env_file():
@@ -201,20 +208,22 @@ class MedicalDictationApp(ttk.Window):
         self.minsize(700, 500)
         self.config(bg="#f0f0f0")
 
-        # Move these here from the module level
+        # Initialize API keys and handlers
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        # NEW: Add ElevenLabs API key
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
         
-        # Initialize audio handler instead of Deepgram client
+        # Initialize audio handler
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
             recognition_language=self.recognition_language
         )
 
+        # Initialize text processor
+        self.text_processor = TextProcessor()
+        
         self.appended_chunks = []
         self.capitalize_next = False
         self.audio_segments = []
@@ -222,14 +231,25 @@ class MedicalDictationApp(ttk.Window):
         self.soap_audio_segments = []
         self.soap_stop_listening_function = None
 
+        # Create UI using the component builder
+        self.ui = UIComponents(self)
         self.create_menu()
         self.create_widgets()
         self.bind_shortcuts()
 
+        # Initialize status manager
+        self.status_manager = StatusManager(
+            self,
+            self.status_icon_label,
+            self.status_label,
+            self.provider_indicator,
+            self.progress_bar
+        )
+        
         if not openai.api_key:
-            self.refine_button.config(state=DISABLED)
-            self.improve_button.config(state=DISABLED)
-            self.update_status("Warning: OpenAI API key not provided. AI features disabled.")
+            self.buttons["refine"].config(state=DISABLED)
+            self.buttons["improve"].config(state=DISABLED)
+            self.status_manager.warning("Warning: OpenAI API key not provided. AI features disabled.")
 
         self.recognizer = sr.Recognizer()
         self.listening = False
@@ -258,8 +278,13 @@ class MedicalDictationApp(ttk.Window):
         # Add ElevenLabs settings menu option
         settings_menu.add_command(label="ElevenLabs Settings", command=self.show_elevenlabs_settings)
         
+        # Update this section to add all prompt settings options to the submenu
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
         text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
+        text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
+        text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)
+        text_settings_menu.add_command(label="Referral Settings", command=self.show_referral_settings_dialog)
+        
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
@@ -300,7 +325,7 @@ class MedicalDictationApp(ttk.Window):
             recognition_language=self.recognition_language
         )
         
-        self.update_status("API keys updated successfully", status_type="success")
+        self.status_manager.success("API keys updated successfully")
 
     def show_about(self) -> None:
         # Call the refactored function from dialogs.py
@@ -325,7 +350,7 @@ class MedicalDictationApp(ttk.Window):
             deepgram_api_key=self.deepgram_api_key,
             recognition_language=self.recognition_language
         )
-        self.update_status("ElevenLabs settings saved successfully", status_type="success")
+        self.status_manager.success("ElevenLabs settings saved successfully")
 
     def set_default_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Storage Folder")
@@ -383,270 +408,61 @@ class MedicalDictationApp(ttk.Window):
                 messagebox.showerror("Import Prompts", f"Error importing prompts: {e}")
 
     def create_widgets(self) -> None:
-        mic_frame = ttk.Frame(self, padding=10)
+        # Define command mapping for buttons
+        command_map = {
+            "toggle_recording": self.toggle_recording,
+            "new_session": self.new_session,
+            "undo_text": self.undo_text,
+            "redo_text": self.redo_text,
+            "copy_text": self.copy_text,
+            "save_text": self.save_text,
+            "load_audio_file": self.load_audio_file,
+            "refine_text": self.refine_text,
+            "improve_text": self.improve_text,
+            "create_soap_note": self.create_soap_note,
+            "create_referral": self.create_referral,
+            "create_letter": self.create_letter,
+            "toggle_soap_recording": self.toggle_soap_recording,
+            "toggle_soap_pause": self.toggle_soap_pause
+        }
+        
+        # Create microphone frame
+        mic_frame, self.mic_combobox, self.provider_combobox, self.stt_combobox = self.ui.create_microphone_frame(
+            on_provider_change=self._on_provider_change,
+            on_stt_change=self._on_stt_change,
+            refresh_microphones=self.refresh_microphones
+        )
         mic_frame.pack(side=TOP, fill=tk.X, padx=20, pady=(20, 10))
-        ttk.Label(mic_frame, text="Select Microphone:").pack(side=LEFT, padx=(0, 10))
-        self.mic_names = get_valid_microphones() or sr.Microphone.list_microphone_names()
-        self.mic_combobox = ttk.Combobox(mic_frame, values=self.mic_names, state="readonly", width=50)
-        self.mic_combobox.pack(side=LEFT)
-        if self.mic_names:
-            self.mic_combobox.current(0)
-        else:
-            self.mic_combobox.set("No microphone found")
-        refresh_btn = ttk.Button(mic_frame, text="Refresh", command=self.refresh_microphones, bootstyle="PRIMARY")
-        refresh_btn.pack(side=LEFT, padx=10)
-        ToolTip(refresh_btn, "Refresh the list of available microphones.")
         
-        # Create a frame for the provider selection
-        provider_frame = ttk.Frame(mic_frame)
-        provider_frame.pack(side=LEFT, padx=10)
-        
-        # Add a label for the provider dropdown
-        ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
-        
-        # Create a dropdown for provider selection instead of a button
-        from settings import SETTINGS, save_settings
-        provider = SETTINGS.get("ai_provider", "openai")
-        
-        # Available provider options
-        providers = ["openai", "perplexity", "grok"]
-        provider_display = ["OpenAI", "Perplexity", "Grok"]  # Capitalized display names
-        
-        # Create the provider selection combobox
-        self.provider_combobox = ttk.Combobox(
-            provider_frame, 
-            values=provider_display,
-            state="readonly",
-            width=12
-        )
-        self.provider_combobox.pack(side=LEFT)
-        
-        # Set the current value
-        try:
-            current_index = providers.index(provider.lower())
-            self.provider_combobox.current(current_index)
-        except (ValueError, IndexError):
-            # Default to OpenAI if provider not found in list
-            self.provider_combobox.current(0)
-        
-        # Add callback for when selection changes
-        def on_provider_change(event):
-            selected_index = self.provider_combobox.current()
-            if 0 <= selected_index < len(providers):
-                selected_provider = providers[selected_index]
-                SETTINGS["ai_provider"] = selected_provider
-                save_settings(SETTINGS)
-                self.update_status(f"AI Provider set to {provider_display[selected_index]}")
-        
-        self.provider_combobox.bind("<<ComboboxSelected>>", on_provider_change)
-        ToolTip(self.provider_combobox, "Select which AI provider to use")
-        
-        # NEW: Add Speech-to-Text provider selection with ElevenLabs
-        stt_frame = ttk.Frame(mic_frame)
-        stt_frame.pack(side=LEFT, padx=10)
-        
-        # Add label for STT provider dropdown
-        ttk.Label(stt_frame, text="Speech To Text:").pack(side=LEFT, padx=(0, 5))
-        
-        # Available STT provider options - add ElevenLabs
-        stt_providers = ["elevenlabs", "deepgram", "google"]
-        stt_display = ["ElevenLabs", "Deepgram", "Google"]
-        
-        # Get current STT provider from settings
-        stt_provider = SETTINGS.get("stt_provider", "deepgram")
-        
-        # Create the STT provider selection combobox
-        self.stt_combobox = ttk.Combobox(
-            stt_frame,
-            values=stt_display,
-            state="readonly",
-            width=12
-        )
-        self.stt_combobox.pack(side=LEFT)
-        
-        # Set the current value
-        try:
-            stt_index = stt_providers.index(stt_provider.lower())
-            self.stt_combobox.current(stt_index)
-        except (ValueError, IndexError):
-            # Default to Deepgram if provider not found in list
-            self.stt_combobox.current(0)
-        
-        # Add callback for when STT selection changes
-        def on_stt_change(event):
-            selected_index = self.stt_combobox.current()
-            if 0 <= selected_index < len(stt_providers):
-                selected_stt = stt_providers[selected_index]
-                SETTINGS["stt_provider"] = selected_stt
-                save_settings(SETTINGS)
-                self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
-        
-        self.stt_combobox.bind("<<ComboboxSelected>>", on_stt_change)
-        ToolTip(self.stt_combobox, "Select which Speech-to-Text provider to use")
-
-        # NEW: Force use of "clam" theme and configure custom Notebook style
-        style = ttk.Style()
-        # Removed theme_use("clam") to prevent conflict with ttkbootstrap's theme
-        # style.theme_use("clam")
-        style.configure("Green.TNotebook", background="white", borderwidth=0)
-        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey", foreground="black")
-        
-        # Map the foreground (text color) based on tab state
-        style.map("Green.TNotebook.Tab",
-            background=[("selected", "teal"), ("active", "teal"), ("!selected", "lightgrey")],
-            foreground=[("selected", "white"), ("!selected", "black")]  # White text when selected, black otherwise
-        )
-        
-        # Get success color from ttkbootstrap theme
-        success_color = style.colors.success
-        
-        # Configure notebook with success color for active tabs
-        style.configure("Green.TNotebook", background="white", borderwidth=0)
-        style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey", foreground="black")
-        
-        # Map the foreground (text color) and background based on tab state
-        style.map("Green.TNotebook.Tab",
-            background=[("selected", success_color), ("active", success_color), ("!selected", "lightgrey")],
-            foreground=[("selected", "white"), ("!selected", "black")]
-        )
-        
-        # Create the Notebook using the custom style
-        self.notebook = ttk.Notebook(self, style="Green.TNotebook")
-
-        # NEW: Create notebook with four tabs
+        # Create notebook with text areas
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.dictation_text = self.ui.create_notebook()
         self.notebook.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
-        transcript_frame = ttk.Frame(self.notebook)
-        soap_frame = ttk.Frame(self.notebook)
-        referral_frame = ttk.Frame(self.notebook)
-        dictation_frame = ttk.Frame(self.notebook)  # NEW: Dictation tab
-        self.notebook.add(transcript_frame, text="Transcript")
-        self.notebook.add(soap_frame, text="SOAP Note")
-        self.notebook.add(referral_frame, text="Referral")
-        self.notebook.add(dictation_frame, text="Dictation")  # NEW
-        self.transcript_text = scrolledtext.ScrolledText(transcript_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
-        self.transcript_text.pack(fill=tk.BOTH, expand=True)
-        self.soap_text = scrolledtext.ScrolledText(soap_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
-        self.soap_text.pack(fill=tk.BOTH, expand=True)
-        self.referral_text = scrolledtext.ScrolledText(referral_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)
-        self.referral_text.pack(fill=tk.BOTH, expand=True)
-        self.dictation_text = scrolledtext.ScrolledText(dictation_frame, wrap=tk.WORD, width=80, height=12, font=("Segoe UI", 11), undo=True, autoseparators=False)  # NEW
-        self.dictation_text.pack(fill=tk.BOTH, expand=True)
-        # NEW: Set initial active text widget and bind tab change event
+        
+        # Set initial active text widget and bind tab change event
         self.active_text_widget = self.transcript_text
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-
-        control_frame = ttk.Frame(self, padding=10)
+        
+        # Create control panel with buttons
+        control_frame, self.buttons = self.ui.create_control_panel(command_map)
         control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
-        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
-        main_controls = ttk.Frame(control_frame)
-        main_controls.grid(row=1, column=0, sticky="w")
         
-        # Change the record button to be a toggle button that starts/stops recording
-        self.record_button = ttk.Button(main_controls, text="Start Dictation", width=15, 
-                                        command=self.toggle_recording, bootstyle="success")
-        self.record_button.grid(row=0, column=0, padx=5, pady=5)
-        ToolTip(self.record_button, "Start or stop recording audio.")
+        # Access common buttons from self.buttons
+        self.record_button = self.buttons["record"]
+        self.refine_button = self.buttons["refine"]
+        self.improve_button = self.buttons["improve"]
+        self.soap_button = self.buttons["soap"]
+        self.referral_button = self.buttons["referral"]
+        self.letter_button = self.buttons["letter"]
+        self.record_soap_button = self.buttons["record_soap"]
+        self.pause_soap_button = self.buttons["pause_soap"]
         
-        # Hide the stop button as we'll use the record button for both functions
-        # self.stop_button = ttk.Button(main_controls, text="Stop", width=10, command=self.stop_recording, state=DISABLED, bootstyle="danger")
-        # self.stop_button.grid(row=0, column=1, padx=5, pady=5)
-        # ToolTip(self.stop_button, "Stop recording audio.")
+        # Add missing button references
+        self.load_button = self.buttons["load"]
+        self.save_button = self.buttons["save"]
         
-        # Change button text from "New Dictation" to "New Session"
-        self.new_session_button = ttk.Button(main_controls, text="New Session", width=12, command=self.new_session, bootstyle="warning")
-        self.new_session_button.grid(row=0, column=1, padx=5, pady=5)  # Adjust column to 1 since stop button is removed
-        
-        self.undo_button = ttk.Button(main_controls, text="Undo", width=10, command=self.undo_text, bootstyle="SECONDARY")
-        self.undo_button.grid(row=0, column=3, padx=5, pady=5)
-        ToolTip(self.undo_button, "Undo the last change.")
-        # NEW: Add redo button next to undo button
-        self.redo_button = ttk.Button(main_controls, text="Redo", width=10, command=self.redo_text, bootstyle="SECONDARY")
-        self.redo_button.grid(row=0, column=4, padx=5, pady=5)
-        ToolTip(self.redo_button, "Redo the last undone change.")
-        # Move Copy Text button to column 5 (between Redo and Save)
-        self.copy_button = ttk.Button(main_controls, text="Copy Text", width=10, command=self.copy_text, bootstyle="PRIMARY")
-        self.copy_button.grid(row=0, column=5, padx=5, pady=5)
-        ToolTip(self.copy_button, "Copy the text to the clipboard.")
-        # Adjust Save and Load buttons to columns 6 and 7
-        self.save_button = ttk.Button(main_controls, text="Save", width=10, command=self.save_text, bootstyle="PRIMARY")
-        self.save_button.grid(row=0, column=6, padx=5, pady=5)
-        ToolTip(self.save_button, "Save the transcription and audio to files.")
-        self.load_button = ttk.Button(main_controls, text="Load", width=10, command=self.load_audio_file, bootstyle="PRIMARY")
-        self.load_button.grid(row=0, column=7, padx=5, pady=5)
-        ToolTip(self.load_button, "Load an audio file and transcribe.")
-
-        ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(row=2, column=0, sticky="w", padx=5, pady=(10, 5))
-        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 10, "italic")).grid(row=3, column=0, sticky="w", padx=5, pady=(0, 5))
-        ai_buttons = ttk.Frame(control_frame)
-        ai_buttons.grid(row=4, column=0, sticky="w")
-        self.refine_button = ttk.Button(ai_buttons, text="Refine Text", width=15, command=self.refine_text, bootstyle="SECONDARY")
-        self.refine_button.grid(row=0, column=0, padx=5, pady=5)
-        ToolTip(self.refine_button, "Refine text using OpenAI.")
-        self.improve_button = ttk.Button(ai_buttons, text="Improve Text", width=15, command=self.improve_text, bootstyle="SECONDARY")
-        self.improve_button.grid(row=0, column=1, padx=5, pady=5)
-        ToolTip(self.improve_button, "Improve text clarity using OpenAI.")
-        self.soap_button = ttk.Button(ai_buttons, text="SOAP Note", width=15, command=self.create_soap_note, bootstyle="SECONDARY")
-        self.soap_button.grid(row=0, column=2, padx=5, pady=5)
-        ToolTip(self.soap_button, "Create a SOAP note using OpenAI.")
-        self.referral_button = ttk.Button(ai_buttons, text="Referral", width=15, command=self.create_referral, bootstyle="SECONDARY")
-        self.referral_button.grid(row=0, column=3, padx=5, pady=5)
-        ToolTip(self.referral_button, "Generate a referral paragraph using OpenAI.")
-        
-        # ADD NEW BUTTON: Letter button
-        self.letter_button = ttk.Button(ai_buttons, text="Letter", width=15, command=self.create_letter, bootstyle="SECONDARY")
-        self.letter_button.grid(row=0, column=4, padx=5, pady=5)
-        ToolTip(self.letter_button, "Generate a professional letter from text.")
-        
-        ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(row=5, column=0, sticky="w", padx=5, pady=(0, 5))
-        automation_frame = ttk.Frame(control_frame)
-        automation_frame.grid(row=6, column=0, sticky="w")
-        self.record_soap_button = ttk.Button(
-            automation_frame, text="Record SOAP Note", width=25,
-            command=self.toggle_soap_recording, bootstyle="success"
-        )
-        self.record_soap_button.grid(row=0, column=0, padx=5, pady=5)
-        ToolTip(self.record_soap_button, "Record audio for SOAP note without live transcription.")
-        # New pause/resume button for SOAP Note recording
-        self.pause_soap_button = ttk.Button(
-            automation_frame, text="Pause", width=15,
-            command=self.toggle_soap_pause, bootstyle="SECONDARY", state=tk.DISABLED
-        )
-        self.pause_soap_button.grid(row=0, column=1, padx=5, pady=5)
-        ToolTip(self.pause_soap_button, "Pause/Resume the SOAP note recording.")
-
-        status_frame = ttk.Frame(self, padding=(10, 5))
+        # Create status bar
+        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
         status_frame.pack(side=BOTTOM, fill=tk.X)
-        
-        # Enhanced status indicator with icon and color indicators
-        self.status_icon_label = ttk.Label(status_frame, text="•", font=("Segoe UI", 16), foreground="gray")
-        self.status_icon_label.pack(side=LEFT, padx=(5, 0))
-        
-        self.status_label = ttk.Label(
-            status_frame, 
-            text="Status: Idle", 
-            anchor="w",
-            font=("Segoe UI", 10)
-        )
-        self.status_label.pack(side=LEFT, fill=tk.X, expand=True, padx=(5, 0))
-        
-        # Add current AI provider indicator to status bar
-        provider = SETTINGS.get("ai_provider", "openai").capitalize()
-        self.provider_indicator = ttk.Label(
-            status_frame, 
-            text=f"Using: {provider}",
-            anchor="e",
-            font=("Segoe UI", 9),
-            foreground="gray"
-        )
-        self.provider_indicator.pack(side=LEFT, padx=(0, 10))
-        
-        self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.stop()
-        self.progress_bar.pack_forget()
-        
-        # For automatic status clearing
-        self.status_timer = None
 
     def bind_shortcuts(self) -> None:
         self.bind("<Control-n>", lambda event: self.new_session())
@@ -850,58 +666,10 @@ class MedicalDictationApp(ttk.Window):
             self.transcript_text.see(tk.END)
 
     def update_status(self, message: str, status_type="info") -> None:
-        # Cancel any pending status timer
-        if self.status_timer:
-            self.after_cancel(self.status_timer)
-            self.status_timer = None
-        
-        # Cancel all scheduled status updates
-        for timer_id in self.status_timers:
-            if timer_id:
-                try:
-                    self.after_cancel(timer_id)
-                except Exception:
-                    pass
-        self.status_timers = []
-        
-        # Update status text
-        self.status_label.config(text=f"Status: {message}")
-        
-        # Color-code the status indicator based on status_type
-        status_colors = {
-            "success": "#28a745",  # Green
-            "info": "#17a2b8",     # Blue
-            "warning": "#ffc107",  # Yellow
-            "error": "#dc3545",    # Red
-            "idle": "gray"         # Gray for idle state
-        }
-        
-        # Status icons - using circle symbol with different colors
-        self.status_icon_label.config(
-            foreground=status_colors.get(status_type, status_colors["info"])
-        )
-        
-        # Make status message more prominent for important messages
-        if status_type in ["error", "warning"]:
-            self.status_label.config(font=("Segoe UI", 10, "bold"))
-        else:
-            self.status_label.config(font=("Segoe UI", 10))
-        
-        # Update AI provider indicator when it changes
-        provider = SETTINGS.get("ai_provider", "openai").capitalize()
-        stt_provider = SETTINGS.get("stt_provider", "deepgram").capitalize()
-        self.provider_indicator.config(text=f"Using: {provider} | STT: {stt_provider}")
-        
-        # For non-error messages, set a timer to clear status after a delay
-        if status_type != "error" and status_type != "progress":
-            # Clear status after 8 seconds unless it's an error or progress indicator
-            self.status_timer = self.after(8000, lambda: self.reset_status())
+        self.status_manager.update_status(message, status_type)
 
     def reset_status(self) -> None:
-        """Reset status to idle state after timeout"""
-        self.status_label.config(text="Status: Idle", font=("Segoe UI", 10))
-        self.status_icon_label.config(foreground="gray")
-        self.status_timer = None
+        self.status_manager.reset_status()
 
     def toggle_recording(self) -> None:
         """Toggle between starting and stopping recording"""
@@ -989,8 +757,9 @@ class MedicalDictationApp(ttk.Window):
         )
         if not file_path:
             return
-        self.update_status("Transcribing audio...")
-        self.load_button.config(state=DISABLED)
+        self.status_manager.progress("Transcribing audio...")
+        self.buttons["load"].config(state=DISABLED)
+        
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         
@@ -1004,14 +773,14 @@ class MedicalDictationApp(ttk.Window):
             if transcript:
                 self.after(0, lambda: [
                     self.transcript_text.delete("1.0", tk.END),
-                    self._update_text_area(transcript, "Audio transcribed successfully.", self.load_button, self.transcript_text),
+                    self._update_text_area(transcript, "Audio transcribed successfully.", self.buttons["load"], self.transcript_text),
                     self.notebook.select(0)
                 ])
             else:
                 self.after(0, lambda: messagebox.showerror("Transcription Error", "Failed to transcribe audio."))
                 
             # Always re-enable button and hide progress bar
-            self.after(0, lambda: self.load_button.config(state=NORMAL))
+            self.after(0, lambda: self.buttons["load"].config(state=NORMAL))
             self.after(0, self.progress_bar.stop)
             self.after(0, self.progress_bar.pack_forget)
             
@@ -1061,7 +830,7 @@ class MedicalDictationApp(ttk.Window):
         if not text:
             messagebox.showwarning("Process Text", "There is no text to process.")
             return
-        self.update_status("Processing text...")
+        self.status_manager.progress("Processing text...")
         button.config(state=DISABLED)
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
@@ -1075,10 +844,9 @@ class MedicalDictationApp(ttk.Window):
         target_widget.delete("1.0", tk.END)
         target_widget.insert(tk.END, new_text)
         target_widget.edit_separator()
-        self.update_status(success_message, status_type="success")
+        self.status_manager.success(success_message)
         button.config(state=NORMAL)
-        self.progress_bar.stop()
-        self.progress_bar.pack_forget()
+        self.status_manager.show_progress(False)
 
     def get_active_text_widget(self) -> tk.Widget:
         return self.active_text_widget
@@ -1096,7 +864,7 @@ class MedicalDictationApp(ttk.Window):
         if not transcript:
             messagebox.showwarning("Process Text", "There is no text to process.")
             return
-        self.update_status("Processing SOAP note...")
+        self.status_manager.progress("Processing SOAP note...")
         self.soap_button.config(state=DISABLED)
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
@@ -1125,7 +893,7 @@ class MedicalDictationApp(ttk.Window):
             return
             
         # New: Immediately update status and display progress bar on referral click
-        self.update_status("Referral button clicked - preparing referral...")
+        self.status_manager.progress("Referral button clicked - preparing referral...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         
@@ -1154,7 +922,7 @@ class MedicalDictationApp(ttk.Window):
             return
         
         # Use "progress" status type to prevent auto-clearing for long-running operations
-        self.update_status(f"Processing referral for conditions: {focus}...", status_type="progress")
+        self.status_manager.progress(f"Processing referral for conditions: {focus}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         self.referral_button.config(state=DISABLED)  # Disable button while processing
@@ -1327,9 +1095,7 @@ class MedicalDictationApp(ttk.Window):
 
     def schedule_status_update(self, delay_ms: int, message: str, status_type: str = "info") -> None:
         """Schedule a status update that won't be automatically cleared after timeout"""
-        timer_id = self.after(delay_ms, lambda: self.update_status(message, status_type))
-        self.status_timers.append(timer_id)
-        return timer_id
+        return self.status_manager.schedule_status_update(delay_ms, message, status_type)
 
     def show_letter_options_dialog(self) -> tuple:
         # Call the refactored function from dialogs.py
@@ -1356,7 +1122,7 @@ class MedicalDictationApp(ttk.Window):
             return
         
         # Show progress
-        self.update_status(f"Generating letter from {source_name} text...", status_type="progress")
+        self.status_manager.progress(f"Generating letter from {source_name} text...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
         self.letter_button.config(state=DISABLED)
@@ -1421,4 +1187,31 @@ class MedicalDictationApp(ttk.Window):
             deepgram_api_key=self.deepgram_api_key,
             recognition_language=self.recognition_language
         )
-        self.update_status("ElevenLabs settings saved successfully", status_type="success")
+        self.status_manager.success("ElevenLabs settings saved successfully")
+
+    def _on_provider_change(self, event):
+        from settings import SETTINGS, save_settings  # Import locally if preferred
+        
+        selected_index = self.provider_combobox.current()
+        providers = ["openai", "perplexity", "grok"]
+        provider_display = ["OpenAI", "Perplexity", "Grok"]
+        
+        if 0 <= selected_index < len(providers):
+            selected_provider = providers[selected_index]
+            SETTINGS["ai_provider"] = selected_provider
+            save_settings(SETTINGS)
+            self.update_status(f"AI Provider set to {provider_display[selected_index]}")
+
+    def _on_stt_change(self, event):
+        from settings import SETTINGS, save_settings  # Import locally if preferred
+        
+        selected_index = self.stt_combobox.current()
+        stt_providers = ["elevenlabs", "deepgram", "google"]
+        stt_display = ["ElevenLabs", "Deepgram", "Google"]
+        
+        if 0 <= selected_index < len(stt_providers):
+            selected_stt = stt_providers[selected_index]
+            SETTINGS["stt_provider"] = selected_stt
+            save_settings(SETTINGS)
+            self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
+
