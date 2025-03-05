@@ -1,10 +1,10 @@
 # Medical Assistant
 
-Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI and Perplexity) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
+Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Perplexity and Grok) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
 
 ## Features
-- **Real-time transcription:** Convert speech to text using Google Speech Recognition or Deepgram.
-- **AI Assistance:** Generate refined texts, improved clarity, SOAP notes, and referral paragraphs using OpenAI/Perplexity.
+- **Real-time transcription:** Convert speech to text using Google Speech Recognition, Deepgram or Elevenlabs.
+- **AI Assistance:** Generate refined texts, improved clarity, SOAP notes, and referral paragraphs using OpenAI/Perplexity/Grok.
 - **Voice Commands:** Control the application via voice commands (e.g., "new paragraph", "full stop").
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation.
 - **Audio Recording:** Record and save audio with options for live transcription and SOAP note extraction.
