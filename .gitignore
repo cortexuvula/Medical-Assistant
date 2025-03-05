@@ -175,6 +175,9 @@ test_*.py
 *_test.py
 *_test_*.py
 test.py
+*_test_*.wav
+*_response_*.json
+*_curl_*.json
 
 # Application-specific temporary files
 temp.wav

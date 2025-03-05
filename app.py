@@ -28,6 +28,11 @@ from tooltip import ToolTip
 from settings import SETTINGS
 from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog
 
+# Add near the top of the file
+import time
+import uuid
+from requests.exceptions import RequestException, Timeout, ConnectionError
+
 # Completely revised check_env_file function to handle the tkinter window properly
 def check_env_file():
     """Check if .env file exists and create it if needed.
@@ -241,11 +246,11 @@ class MedicalDictationApp(ttk.Window):
         settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
         settings_menu.add_separator()
         
+        # Add ElevenLabs settings menu option
+        settings_menu.add_command(label="ElevenLabs Settings", command=self.show_elevenlabs_settings)
+        
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
         text_settings_menu.add_command(label="Refine Prompt Settings", command=self.show_refine_settings_dialog)
-        text_settings_menu.add_command(label="Improve Prompt Settings", command=self.show_improve_settings_dialog)
-        text_settings_menu.add_command(label="SOAP Note Settings", command=self.show_soap_settings_dialog)
-        text_settings_menu.add_command(label="Referral Prompt Settings", command=self.show_referral_settings_dialog)
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
@@ -1074,128 +1079,359 @@ class MedicalDictationApp(ttk.Window):
 
     # NEW: Add method to transcribe with ElevenLabs
     def _transcribe_with_elevenlabs(self, segment: AudioSegment) -> str:
+        """Transcribe audio using ElevenLabs API with proper diarization parameters."""
         api_key = self.elevenlabs_api_key or os.getenv("ELEVENLABS_API_KEY")
         if not api_key:
             self.update_status("ElevenLabs API key not found", status_type="warning")
             return ""
         
-        # Create a unique temp filename to avoid conflicts
-        import uuid
-        temp_file = f"temp_{uuid.uuid4().hex}.wav"
+        # Fetch ElevenLabs settings
+        from settings import SETTINGS, _DEFAULT_SETTINGS
+        elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+        default_settings = _DEFAULT_SETTINGS["elevenlabs"]
+        
+        # Get configuration with fallbacks to defaults
+        model_id = elevenlabs_settings.get("model_id", default_settings["model_id"])
+        diarize = elevenlabs_settings.get("diarize", default_settings["diarize"])
+        num_speakers = elevenlabs_settings.get("num_speakers", default_settings["num_speakers"])
+        
+        # Create a unique temp file with UUID
+        temp_file = f"temp_elevenlabs_{uuid.uuid4().hex}.wav"
         
         try:
             # Export audio segment to temp file
             segment.export(temp_file, format="wav")
             
+            # Setup the API request
             url = "https://api.elevenlabs.io/v1/speech-to-text"
-            headers = {
-                "xi-api-key": api_key
-            }
+            headers = {"xi-api-key": api_key}
             
-            # Use a context manager to ensure the file is properly closed
-            with open(temp_file, 'rb') as file_handle:
-                files = {
-                    'file': file_handle
-                }
-                data = {
-                    'model_id': 'scribe_v1'
-                }
+            # Open the file in binary mode
+            with open(temp_file, 'rb') as audio_file:
+                # Set up files parameter with mime type
+                files = {'file': (os.path.basename(temp_file), audio_file, 'audio/wav')}
                 
-                response = requests.post(url, headers=headers, files=files, data=data)
+                # Set up data for optimal diarization results
+                data = {'model_id': model_id}
+                
+                # Always set diarize as a string 'true', not a boolean
+                if diarize:
+                    data['diarize'] = 'true'
+                    
+                    # Always include num_speakers when diarizing (default to 2 if None)
+                    if num_speakers is not None:
+                        data['num_speakers'] = num_speakers
+                    else:
+                        data['num_speakers'] = 2  # Default to 2 speakers for diarization
+                
+                logging.info(f"ElevenLabs request data: {data}")
+                
+                # Make the request
+                response = requests.post(
+                    url, 
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=30
+                )
             
-            # File handle is closed now, safe to remove the file
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception as e:
-                    logging.warning(f"Failed to remove temp file {temp_file}: {str(e)}")
-            
+            # Process response
             if response.status_code == 200:
                 result = response.json()
-                return result.get("text", "")
+                
+                # Save a copy of the full response for debugging
+                debug_file = f"elevenlabs_response_{uuid.uuid4().hex[:8]}.json"
+                with open(debug_file, "w") as f:
+                    json.dump(result, f, indent=2)
+                    
+                # Format text with speaker labels if diarization was enabled
+                if diarize and 'words' in result and result['words']:
+                    formatted_text = self._format_diarized_text(result['words'])
+                    return formatted_text
+                else:
+                    return result.get("text", "")
             else:
                 self.update_status(f"ElevenLabs API error: {response.status_code}", status_type="error")
+                logging.error(f"ElevenLabs API error: {response.text}")
                 return ""
                 
         except Exception as e:
-            # Try to clean up, but don't raise another exception if it fails
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception:
-                    pass
-            
-            logging.error(f"Error with ElevenLabs transcription: {str(e)}")
-            self.update_status(f"ElevenLabs error: {str(e)}", status_type="error")
+            logging.error(f"Error with ElevenLabs transcription: {str(e)}", exc_info=True)
+            self.update_status(f"Error with ElevenLabs: {str(e)}", status_type="error")
             return ""
+        finally:
+            # Clean up temp file
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception as e:
+                logging.warning(f"Failed to delete temp file {temp_file}: {str(e)}")
+
+    def _format_diarized_text(self, words):
+        """Format diarized text from ElevenLabs with speaker labels."""
+        if not words:
+            return ""
+        
+        formatted_text = []
+        current_speaker = None
+        current_paragraph = []
+        
+        for word in words:
+            # Skip non-word entries like spacing
+            if word.get("type") != "word":
+                continue
+                
+            speaker = word.get("speaker_id")
+            text = word.get("text", "")
+            
+            # If this is a new speaker, start a new paragraph
+            if speaker and speaker != current_speaker:
+                # Add the previous paragraph if it exists
+                if current_paragraph:
+                    formatted_text.append(" ".join(current_paragraph))
+                    current_paragraph = []
+                
+                # Start new paragraph with speaker label
+                current_speaker = speaker
+                display_speaker = f"Speaker {speaker.split('_')[-1]}: " if speaker else ""
+                current_paragraph.append(display_speaker + text)
+            else:
+                # Same speaker, just add the word
+                current_paragraph.append(text)
+        
+        # Add the final paragraph
+        if current_paragraph:
+            formatted_text.append(" ".join(current_paragraph))
+        
+        # Join paragraphs with double newlines for clear separation
+        return "\n\n".join(formatted_text)
 
     def _transcribe_audio(self, segment: AudioSegment) -> str:
+        """Transcribe audio using selected provider with improved error handling and fallbacks."""
+        from settings import SETTINGS
+        
+        # Get the selected STT provider from settings
+        primary_provider = SETTINGS.get("stt_provider", "deepgram")
+        
+        # Track if we've already tried fallback options
+        fallback_attempted = False
+        
+        # First attempt with selected provider
+        transcript = self._try_transcription_with_provider(segment, primary_provider)
+        
+        # If primary provider failed, try fallbacks in sequence
+        if not transcript and not fallback_attempted:
+            fallback_providers = ["deepgram", "elevenlabs", "google"]
+            # Remove primary provider from fallbacks to avoid duplicate attempt
+            if primary_provider in fallback_providers:
+                fallback_providers.remove(primary_provider)
+                
+            for provider in fallback_providers:
+                self.update_status(f"Trying fallback provider: {provider}", status_type="info")
+                transcript = self._try_transcription_with_provider(segment, provider)
+                if transcript:
+                    self.update_status(f"Transcription successful with fallback provider: {provider}", status_type="success")
+                    break
+                    
+        return transcript or ""  # Return empty string if all providers failed
+
+    def _try_transcription_with_provider(self, segment: AudioSegment, provider: str) -> str:
+        """Try to transcribe with a specific provider, handling errors appropriately."""
         try:
-            # Get the selected STT provider from settings
-            from settings import SETTINGS
-            stt_provider = SETTINGS.get("stt_provider", "deepgram")
-            
-            # NEW: Handle ElevenLabs transcription
-            if stt_provider == "elevenlabs":
+            if provider == "elevenlabs":
                 return self._transcribe_with_elevenlabs(segment)
-            elif stt_provider == "deepgram" and self.deepgram_client:
+                
+            elif provider == "deepgram" and self.deepgram_client:
+                return self._transcribe_with_deepgram(segment)
+                
+            elif provider == "google":
+                return self._transcribe_with_google(segment)
+                
+            else:
+                self.update_status(f"Unknown provider: {provider}", status_type="warning")
+                return ""
+                
+        except Exception as e:
+            logging.error(f"Error with {provider} transcription: {str(e)}", exc_info=True)
+            self.update_status(f"Error with {provider} transcription: {str(e)}", status_type="error")
+            return ""
+
+    def _transcribe_with_deepgram(self, segment: AudioSegment) -> str:
+        """Transcribe audio using Deepgram API with improved error handling."""
+        if not self.deepgram_client:
+            self.update_status("Deepgram client not initialized - check API key", status_type="warning")
+            return ""
+        
+        max_retries = 2
+        retry_delay = 2  # seconds
+        attempt = 0
+        
+        while attempt <= max_retries:
+            try:
+                logging.info(f"Deepgram transcription attempt {attempt+1}/{max_retries+1}")
+                
+                # Prepare audio for Deepgram
                 buf = BytesIO()
                 segment.export(buf, format="wav")
                 buf.seek(0)
-                options = PrerecordedOptions(model="nova-2-medical", language="en-US")
-                try:
-                    response = self.deepgram_client.listen.rest.v("1").transcribe_file({"buffer": buf}, options)
-                    transcript = json.loads(response.to_json(indent=4))["results"]["channels"][0]["alternatives"][0]["transcript"]
-                    return transcript
-                except Exception as e:
-                    logging.error("Deepgram API error, falling back to Google Speech Recognition", exc_info=True)
-                    self.update_status(f"Deepgram API error: {str(e)}", status_type="warning")
-                    if stt_provider == "deepgram":
-                        # Only fall back to Google if Deepgram was selected but failed
-                        temp_file = "temp.wav"
-                        segment.export(temp_file, format="wav")
-                        with sr.AudioFile(temp_file) as source:
-                            audio_data = self.recognizer.record(source)
-                        transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
-                        os.remove(temp_file)
-                        return transcript
-                    else:
-                        raise  # Re-raise if user specifically selected Deepgram but it failed
-            else:
-                # Use Google Speech Recognition
-                temp_file = "temp.wav"
-                segment.export(temp_file, format="wav")
-                with sr.AudioFile(temp_file) as source:
-                    audio_data = self.recognizer.record(source)
-                transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
-                os.remove(temp_file)
-                return transcript
+                
+                # Set up options
+                options = PrerecordedOptions(
+                    model="nova-2-medical", 
+                    language="en-US",
+                    smart_format=True  # Enable smart formatting for better punctuation
+                )
+                
+                # Make API call
+                response = self.deepgram_client.listen.rest.v("1").transcribe_file(
+                    {"buffer": buf}, 
+                    options
+                )
+                
+                # Process response
+                response_json = json.loads(response.to_json(indent=4))
+                
+                # Check for results
+                if "results" in response_json and response_json["results"].get("channels"):
+                    alternatives = response_json["results"]["channels"][0].get("alternatives", [])
+                    if alternatives and "transcript" in alternatives[0]:
+                        return alternatives[0]["transcript"]
+                    
+                # If we get here, response structure wasn't as expected
+                logging.warning(f"Unexpected Deepgram response structure: {response_json}")
+                return ""
+                
+            except Exception as e:
+                error_message = str(e)
+                
+                # Check for specific error types
+                if "rate limit" in error_message.lower() or "429" in error_message:
+                    if attempt < max_retries:
+                        self.update_status(f"Deepgram API rate limited, retrying in {retry_delay} seconds...", status_type="warning")
+                        time.sleep(retry_delay)
+                        attempt += 1
+                        continue
+                elif "unauthorized" in error_message.lower() or "401" in error_message:
+                    self.update_status("Deepgram API: Authentication failed - check your API key", status_type="error")
+                    return ""
+                elif "connection" in error_message.lower():
+                    if attempt < max_retries:
+                        self.update_status("Deepgram API: Connection error, retrying...", status_type="warning")
+                        time.sleep(retry_delay)
+                        attempt += 1
+                        continue
+                    
+                # Log error and increment attempt counter
+                logging.error(f"Deepgram transcription error: {error_message}", exc_info=True)
+                
+                if attempt < max_retries:
+                    self.update_status(f"Deepgram error, retrying ({attempt+1}/{max_retries})...", status_type="warning")
+                    time.sleep(retry_delay)
+                    attempt += 1
+                else:
+                    self.update_status(f"Deepgram transcription failed after {max_retries+1} attempts", status_type="error")
+                    return ""
+        
+        return ""  # Return empty string if all attempts failed
+
+    def _transcribe_with_google(self, segment: AudioSegment) -> str:
+        """Transcribe audio using Google Speech Recognition with improved error handling."""
+        temp_file = f"temp_google_{uuid.uuid4().hex}.wav"
+        
+        try:
+            # Export audio to temp file
+            segment.export(temp_file, format="wav")
+            
+            # Use Google Speech Recognition
+            with sr.AudioFile(temp_file) as source:
+                audio_data = self.recognizer.record(source)
+                
+            transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+            return transcript
         except Exception as e:
-            logging.error("Transcription error", exc_info=True)
-            self.update_status(f"Transcription error: {str(e)}", status_type="error")
+            logging.error(f"Error with Google transcription: {str(e)}", exc_info=True)
+            return ""  # Return empty string if transcription fails
+
+    def _transcribe_with_google(self, segment: AudioSegment) -> str:
+        """Transcribe audio using Google Speech Recognition with improved error handling."""
+        temp_file = f"temp_google_{uuid.uuid4().hex}.wav"
+        
+        try:
+            # Export audio to temp file
+            segment.export(temp_file, format="wav")
+            
+            # Use Google Speech Recognition
+            with sr.AudioFile(temp_file) as source:
+                audio_data = self.recognizer.record(source)
+            
+            transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
+            return transcript
+            
+        except sr.UnknownValueError:
+            self.update_status("Google Speech Recognition could not understand audio", status_type="warning")
             return ""
+        except sr.RequestError as e:
+            self.update_status(f"Google Speech Recognition service error: {e}", status_type="error")
+            return ""
+        except Exception as e:
+            logging.error(f"Error with Google transcription: {str(e)}", exc_info=True)
+            self.update_status(f"Google transcription error: {str(e)}", status_type="error")
+            return ""
+        finally:
+            # Clean up temp file
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception as e:
+                logging.warning(f"Failed to remove temp file {temp_file}: {str(e)}")
 
     def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+        """Process audio with better error handling."""
         try:
+            # Extract audio metadata
             channels = getattr(audio, "channels", 1)
-            segment = AudioSegment(
-                data=audio.get_raw_data(),
-                sample_width=audio.sample_width,
-                frame_rate=audio.sample_rate,
-                channels=channels
-            )
+            sample_width = getattr(audio, "sample_width", None)
+            sample_rate = getattr(audio, "sample_rate", None)
+            
+            # Log diagnostic info
+            logging.debug(f"Processing audio: channels={channels}, width={sample_width}, rate={sample_rate}")
+            
+            # Validate audio data
+            if not audio.get_raw_data():
+                self.after(0, self.update_status, "Empty audio data received", "warning")
+                return
+                
+            # Convert to AudioSegment
+            try:
+                segment = AudioSegment(
+                    data=audio.get_raw_data(),
+                    sample_width=sample_width,
+                    frame_rate=sample_rate,
+                    channels=channels
+                )
+            except Exception as e:
+                self.after(0, self.update_status, f"Failed to process audio: {e}", "error")
+                logging.error(f"Error creating AudioSegment: {e}", exc_info=True)
+                return
+                
+            # Store segment and get transcript
             self.audio_segments.append(segment)
             transcript = self._transcribe_audio(segment)
-            self.after(0, self.handle_recognized_text, transcript)
+            
+            # Handle transcript result
+            if transcript:
+                self.after(0, self.handle_recognized_text, transcript)
+            else:
+                self.after(0, self.update_status, "No transcript was produced", "warning")
+                
         except sr.UnknownValueError:
-            logging.info("Audio not understood.")
-            self.after(0, self.update_status, "Audio not understood")
+            self.after(0, self.update_status, "Speech not recognized", "warning")
         except sr.RequestError as e:
-            logging.error("Request error", exc_info=True)
-            self.after(0, self.update_status, f"Request error: {e}")
+            self.after(0, self.update_status, f"Speech recognition service error: {e}", "error")
         except Exception as e:
-            logging.error("Processing error", exc_info=True)
-            self.after(0, self.update_status, f"Error: {e}")
+            error_msg = f"Audio processing error: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self.after(0, self.update_status, error_msg, "error")
 
     def process_soap_recording(self) -> None:
         def task() -> None:
@@ -1732,14 +1968,107 @@ class MedicalDictationApp(ttk.Window):
         
         return clean_result
 
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-
-
-
-
+    def show_elevenlabs_settings(self) -> None:
+        """Show dialog to configure ElevenLabs speech-to-text settings."""
+        from settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
+        
+        # Get current ElevenLabs settings with fallback to defaults
+        elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+        default_settings = _DEFAULT_SETTINGS["elevenlabs"]
+        
+        dialog = create_toplevel_dialog(self, "ElevenLabs Settings", "650x750")
+        frame = ttk.Frame(dialog, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create form with current settings
+        ttk.Label(frame, text="ElevenLabs Speech-to-Text Settings", 
+                  font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
+        
+        # Model ID
+        ttk.Label(frame, text="Model ID:").grid(row=1, column=0, sticky="w", pady=10)
+        model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings["model_id"]))
+        model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
+        model_combo['values'] = ["scribe_v1", "scribe_v1_base"]  # Updated to supported models only
+        model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+        ttk.Label(frame, text="The AI model to use for transcription.", 
+                  wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
+        
+        # Language Code
+        ttk.Label(frame, text="Language Code:").grid(row=3, column=0, sticky="w", pady=10)
+        lang_var = tk.StringVar(value=elevenlabs_settings.get("language_code", default_settings["language_code"]))
+        lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
+        lang_entry.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
+        ttk.Label(frame, text="Optional ISO language code (e.g., 'en-US'). Leave empty for auto-detection.", 
+                  wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+        
+        # Tag Audio Events
+        ttk.Label(frame, text="Tag Audio Events:").grid(row=5, column=0, sticky="w", pady=10)
+        tag_events_var = tk.BooleanVar(value=elevenlabs_settings.get("tag_audio_events", default_settings["tag_audio_events"]))
+        tag_events_check = ttk.Checkbutton(frame, variable=tag_events_var)
+        tag_events_check.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
+        ttk.Label(frame, text="Add timestamps and labels for audio events like silence, music, etc.", 
+                  wraplength=400, foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", padx=(20, 0))
+        
+        # Number of Speakers
+        ttk.Label(frame, text="Number of Speakers:").grid(row=7, column=0, sticky="w", pady=10)
+        
+        # Create a custom variable handler for the special "None" case
+        speakers_value = elevenlabs_settings.get("num_speakers", default_settings["num_speakers"])
+        speakers_str = "" if speakers_value is None else str(speakers_value)
+        speakers_entry = ttk.Entry(frame, width=30)
+        speakers_entry.insert(0, speakers_str)
+        speakers_entry.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=10)
+        
+        ttk.Label(frame, text="Optional number of speakers. Leave empty for auto-detection.", 
+                  wraplength=400, foreground="gray").grid(row=8, column=0, columnspan=2, sticky="w", padx=(20, 0))
+        
+        # Timestamps Granularity
+        ttk.Label(frame, text="Timestamps Granularity:").grid(row=9, column=0, sticky="w", pady=10)
+        granularity_var = tk.StringVar(value=elevenlabs_settings.get("timestamps_granularity", default_settings["timestamps_granularity"]))
+        granularity_combo = ttk.Combobox(frame, textvariable=granularity_var, width=30)
+        granularity_combo['values'] = ["word", "segment", "sentence"]
+        granularity_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
+        
+        # Diarize
+        ttk.Label(frame, text="Diarize:").grid(row=10, column=0, sticky="w", pady=10)
+        diarize_var = tk.BooleanVar(value=elevenlabs_settings.get("diarize", default_settings["diarize"]))
+        diarize_check = ttk.Checkbutton(frame, variable=diarize_var)
+        diarize_check.grid(row=10, column=1, sticky="w", padx=(10, 0), pady=10)
+        ttk.Label(frame, text="Identify different speakers in the audio.", 
+                  wraplength=400, foreground="gray").grid(row=11, column=0, columnspan=2, sticky="w", padx=(20, 0))
+        
+        # Create the buttons frame
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=12, column=0, columnspan=2, pady=(20, 0), sticky="e")
+        
+        # Save handler - renamed to avoid conflict with imported save_settings
+        def save_elevenlabs_settings():
+            # Parse the number of speakers value (None or int)
+            try:
+                num_speakers = None if not speakers_entry.get().strip() else int(speakers_entry.get())
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Number of speakers must be a valid integer or empty.")
+                return
+                
+            # Build the new settings
+            new_settings = {
+                "model_id": model_var.get(),
+                "language_code": lang_var.get(),
+                "tag_audio_events": tag_events_var.get(),
+                "num_speakers": num_speakers,
+                "timestamps_granularity": granularity_var.get(),
+                "diarize": diarize_var.get()
+            }
+            
+            # Update the settings
+            SETTINGS["elevenlabs"] = new_settings
+            save_settings(SETTINGS)  # This now refers to the imported save_settings function
+            self.update_status("ElevenLabs settings saved successfully", status_type="success")
+            dialog.destroy()
+        
+        # Cancel handler
+        def cancel():
+            dialog.destroy()
+        
+        ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Save", command=save_elevenlabs_settings, bootstyle="success", width=10).pack(side="left", padx=5)

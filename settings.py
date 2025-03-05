@@ -103,6 +103,14 @@ Follow up:
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
         "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+    },
+    "elevenlabs": {
+        "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model
+        "language_code": "",  # Empty string for auto-detection
+        "tag_audio_events": True,
+        "num_speakers": None,  # None means auto-detection
+        "timestamps_granularity": "word",
+        "diarize": False
     }
 }
 
