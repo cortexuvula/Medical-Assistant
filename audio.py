@@ -30,6 +30,9 @@ class AudioHandler:
         
         # Initialize Deepgram client if API key is provided
         self.deepgram_client = DeepgramClient(api_key=self.deepgram_api_key) if self.deepgram_api_key else None
+        
+        # Initialize fallback callback to None
+        self.fallback_callback = None
 
     def combine_audio_segments(self, segments: List[AudioSegment]) -> Optional[AudioSegment]:
         """Combine multiple audio segments into a single segment.
@@ -46,6 +49,14 @@ class AudioHandler:
         for segment in segments[1:]:
             combined += segment
         return combined
+
+    def set_fallback_callback(self, callback: Callable[[str, str], None]) -> None:
+        """Set a callback function to be called when service fallback occurs.
+        
+        Args:
+            callback: Function taking (primary_provider, fallback_provider) as parameters
+        """
+        self.fallback_callback = callback
 
     def transcribe_audio(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider with fallback options.
@@ -74,6 +85,11 @@ class AudioHandler:
                 
             for provider in fallback_providers:
                 logging.info(f"Trying fallback provider: {provider}")
+                
+                # Notify UI about fallback through callback
+                if self.fallback_callback:
+                    self.fallback_callback(primary_provider, provider)
+                
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript:
                     logging.info(f"Transcription successful with fallback provider: {provider}")
@@ -501,9 +517,9 @@ class AudioHandler:
             Tuple of (AudioSegment, transcription_text)
         """
         try:
-            if file_path.lower().endswith(".mp3"):
+            if (file_path.lower().endswith(".mp3")):
                 seg = AudioSegment.from_file(file_path, format="mp3")
-            elif file_path.lower().endswith(".wav"):
+            elif (file_path.lower().endswith(".wav")):
                 seg = AudioSegment.from_file(file_path, format="wav")
             else:
                 raise ValueError("Unsupported audio format. Only .wav and .mp3 supported.")

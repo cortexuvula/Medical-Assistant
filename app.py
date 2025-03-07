@@ -230,7 +230,13 @@ class MedicalDictationApp(ttk.Window):
             deepgram_api_key=self.deepgram_api_key,
             recognition_language=self.recognition_language
         )
-
+        
+        # Register fallback notification callback with error handling
+        try:
+            self.audio_handler.set_fallback_callback(self.on_transcription_fallback)
+        except AttributeError:
+            logging.warning("Audio handler doesn't support fallback callback - update your audio.py file")
+            
         # Initialize text processor
         self.text_processor = TextProcessor()
         
@@ -1203,5 +1209,35 @@ class MedicalDictationApp(ttk.Window):
             SETTINGS["stt_provider"] = selected_stt
             save_settings(SETTINGS)
             self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
+
+    def on_transcription_fallback(self, primary_provider: str, fallback_provider: str) -> None:
+        """Handle notification of transcription service fallback.
+        
+        Args:
+            primary_provider: Name of the primary provider that failed
+            fallback_provider: Name of the fallback provider being used
+        """
+        # Create readable provider names for display
+        provider_names = {
+            "elevenlabs": "ElevenLabs",
+            "deepgram": "Deepgram",
+            "google": "Google"
+        }
+        
+        primary_display = provider_names.get(primary_provider, primary_provider)
+        fallback_display = provider_names.get(fallback_provider, fallback_provider)
+        
+        # Update status with warning about fallback
+        message = f"{primary_display} transcription failed. Falling back to {fallback_display}."
+        self.after(0, lambda: self.status_manager.warning(message))
+        
+        # Update STT provider dropdown to reflect actual service being used
+        try:
+            stt_providers = ["elevenlabs", "deepgram", "google"]
+            fallback_index = stt_providers.index(fallback_provider)
+            self.after(0, lambda: self.stt_combobox.current(fallback_index))
+        except (ValueError, IndexError):
+            pass
+
 
 
