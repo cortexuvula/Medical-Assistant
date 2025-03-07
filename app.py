@@ -453,7 +453,8 @@ class MedicalDictationApp(ttk.Window):
             "create_referral": self.create_referral,
             "create_letter": self.create_letter,
             "toggle_soap_recording": self.toggle_soap_recording,
-            "toggle_soap_pause": self.toggle_soap_pause
+            "toggle_soap_pause": self.toggle_soap_pause,
+            "cancel_soap_recording": self.cancel_soap_recording  # Add the new command
         }
         
         # Create microphone frame
@@ -489,6 +490,7 @@ class MedicalDictationApp(ttk.Window):
         # Add missing button references
         self.load_button = self.buttons["load"]
         self.save_button = self.buttons["save"]
+        self.cancel_soap_button = self.buttons["cancel_soap"]  # Add the new button reference
         
         # Create status bar
         status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
@@ -1000,6 +1002,7 @@ class MedicalDictationApp(ttk.Window):
             self.soap_paused = False  # NEW: reset pause state
             self.record_soap_button.config(text="Stop", bootstyle="danger")
             self.pause_soap_button.config(state=tk.NORMAL, text="Pause")  # enable pause button
+            self.cancel_soap_button.config(state=tk.NORMAL)  # enable cancel button
             self.update_status("Recording SOAP note...")
             try:
                 import speech_recognition as sr
@@ -1019,6 +1022,7 @@ class MedicalDictationApp(ttk.Window):
             # Disable the record SOAP note button for 5 seconds to prevent double click
             self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
             self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
+            self.cancel_soap_button.config(state=tk.DISABLED)  # disable cancel button
             self.update_status("Transcribing SOAP note...")
             
             import datetime
@@ -1075,6 +1079,36 @@ class MedicalDictationApp(ttk.Window):
                 self.soap_audio_segments.append(segment)
         except Exception as e:
             logging.error(f"Error recording SOAP note chunk: {str(e)}", exc_info=True)
+
+    def cancel_soap_recording(self) -> None:
+        """Cancel the current SOAP note recording without processing."""
+        if not self.soap_recording:
+            return
+            
+        # Show confirmation dialog before canceling
+        if not messagebox.askyesno("Cancel Recording", 
+                                  "Are you sure you want to cancel the current recording?\n\nAll recorded audio will be discarded.",
+                                  icon="warning"):
+            return  # User clicked "No", abort cancellation
+            
+        # Stop the recording
+        if self.soap_stop_listening_function:
+            self.soap_stop_listening_function(wait_for_stop=False)
+            
+        # Reset state
+        self.soap_recording = False
+        self.soap_paused = False
+        
+        # Clear recorded segments
+        self.soap_audio_segments.clear()
+        
+        # Update UI
+        self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+        self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
+        self.cancel_soap_button.config(state=tk.DISABLED)
+        
+        # Notify user
+        self.status_manager.warning("SOAP note recording cancelled.")
 
     def undo_text(self) -> None:
         try:

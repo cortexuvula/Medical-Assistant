@@ -287,8 +287,17 @@ class UIComponents:
         pause_soap_button.grid(row=0, column=1, padx=5, pady=5)
         ToolTip(pause_soap_button, "Pause/Resume the SOAP note recording.")
         
+        # Add Cancel button
+        cancel_soap_button = ttk.Button(
+            automation_frame, text="Cancel", width=15,
+            command=command_map.get("cancel_soap_recording"), bootstyle="danger", state=tk.DISABLED
+        )
+        cancel_soap_button.grid(row=0, column=2, padx=5, pady=5)
+        ToolTip(cancel_soap_button, "Cancel the current SOAP note recording without processing.")
+        
         button_widgets["record_soap"] = record_soap_button
         button_widgets["pause_soap"] = pause_soap_button
+        button_widgets["cancel_soap"] = cancel_soap_button
         
         return control_frame, button_widgets
     
