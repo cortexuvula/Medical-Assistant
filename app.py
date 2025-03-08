@@ -539,7 +539,8 @@ class MedicalDictationApp(ttk.Window):
             current_model=cfg.get("model", ""),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
-            save_callback=self.save_refine_settings
+            save_callback=self.save_refine_settings,
+            current_ollama=cfg.get("ollama_model", "")
         )
 
     def show_improve_settings_dialog(self) -> None:
@@ -554,7 +555,8 @@ class MedicalDictationApp(ttk.Window):
             current_model=cfg.get("model", ""),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
-            save_callback=self.save_improve_settings
+            save_callback=self.save_improve_settings,
+            current_ollama=cfg.get("ollama_model", "")
         )
 
     def show_soap_settings_dialog(self) -> None:
@@ -571,7 +573,8 @@ class MedicalDictationApp(ttk.Window):
             current_model=cfg.get("model") or default_model,
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
-            save_callback=self.save_soap_settings
+            save_callback=self.save_soap_settings,
+            current_ollama=cfg.get("ollama_model", "")
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -588,52 +591,57 @@ class MedicalDictationApp(ttk.Window):
             current_model=cfg.get("model", default_model),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
-            save_callback=self.save_referral_settings
+            save_callback=self.save_referral_settings,
+            current_ollama=cfg.get("ollama_model", "")
         )
 
-    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
+    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["refine_text"] = {
             "prompt": prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
-            "grok_model": grok_model
+            "grok_model": grok_model,
+            "ollama_model": ollama_model
         }
         save_settings(SETTINGS)
-        self.update_status("Refine settings saved.")
+        self.status_manager.success("Refine text settings saved successfully")
 
-    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
+    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["improve_text"] = {
             "prompt": prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
-            "grok_model": grok_model
+            "grok_model": grok_model,
+            "ollama_model": ollama_model
         }
         save_settings(SETTINGS)
-        self.update_status("Improve settings saved.")
+        self.status_manager.success("Improve text settings saved successfully")
 
-    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
+    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["soap_note"] = {
             "system_message": prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
-            "grok_model": grok_model
+            "grok_model": grok_model,
+            "ollama_model": ollama_model
         }
         save_settings(SETTINGS)
-        self.update_status("SOAP note settings saved.")
+        self.status_manager.success("SOAP note settings saved successfully")
 
-    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str) -> None:
-        from settings import SETTINGS, save_settings
+    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
+        from settings import save_settings, SETTINGS
         SETTINGS["referral"] = {
             "prompt": prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
-            "grok_model": grok_model
+            "grok_model": grok_model,
+            "ollama_model": ollama_model
         }
         save_settings(SETTINGS)
-        self.update_status("Referral settings saved.")
+        self.status_manager.success("Referral settings saved successfully")
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
@@ -1240,8 +1248,8 @@ class MedicalDictationApp(ttk.Window):
         from settings import SETTINGS, save_settings  # Import locally if preferred
         
         selected_index = self.provider_combobox.current()
-        providers = ["openai", "perplexity", "grok"]
-        provider_display = ["OpenAI", "Perplexity", "Grok"]
+        providers = ["openai", "perplexity", "grok", "ollama"]
+        provider_display = ["OpenAI", "Perplexity", "Grok", "Ollama"]
         
         if 0 <= selected_index < len(providers):
             selected_provider = providers[selected_index]

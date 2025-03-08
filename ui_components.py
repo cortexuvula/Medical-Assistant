@@ -65,8 +65,8 @@ class UIComponents:
         # Provider dropdown
         ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
         provider = SETTINGS.get("ai_provider", "openai")
-        providers = ["openai", "perplexity", "grok"]
-        provider_display = ["OpenAI", "Perplexity", "Grok"]
+        providers = ["openai", "perplexity", "grok", "ollama"]
+        provider_display = ["OpenAI", "Perplexity", "Grok", "Ollama"]
         
         provider_combobox = ttk.Combobox(
             provider_frame, 

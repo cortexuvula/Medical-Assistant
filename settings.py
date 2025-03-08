@@ -13,11 +13,17 @@ DEFAULT_STT_PROVIDER = "deepgram"
 _DEFAULT_SETTINGS = {
     "refine_text": {
         "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
-        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+        "model": "gpt-3.5-turbo",  # OpenAI model
+        "grok_model": "grok-1",    # Grok model
+        "perplexity_model": "sonar-medium-chat",  # Perplexity model
+        "ollama_model": "llama3"   # Ollama model
     },
     "improve_text": {
         "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
-        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+        "model": "gpt-3.5-turbo",  # OpenAI model
+        "grok_model": "grok-1",    # Grok model
+        "perplexity_model": "sonar-medium-chat",  # Perplexity model
+        "ollama_model": "llama3"   # Ollama model
     },
     "soap_note": {
         "system_message": """You are a supportive general family practice physician tasked with analyzing transcripts from patient consultations with yourself.   
@@ -98,11 +104,17 @@ Follow up:
 ** Always return your response in plain text without markdown **
 
 """,
-        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+        "model": "gpt-3.5-turbo",  # OpenAI model
+        "grok_model": "grok-1",    # Grok model
+        "perplexity_model": "sonar-medium-chat",  # Perplexity model
+        "ollama_model": "llama3"   # Ollama model
     },
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
-        "model": "OpenAI Model"  # Options: OpenAI Model, Perplexity Model, Grok Model
+        "model": "gpt-3.5-turbo",  # OpenAI model
+        "grok_model": "grok-1",    # Grok model
+        "perplexity_model": "sonar-medium-chat",  # Perplexity model
+        "ollama_model": "llama3"   # Ollama model
     },
     "elevenlabs": {
         "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model

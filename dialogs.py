@@ -8,30 +8,64 @@ import re
 
 # Function to get OpenAI models
 def get_openai_models() -> list:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        api_key = prompt_for_api_key("OpenAI")
-        if not api_key:
-            return get_fallback_openai_models()
+    import openai
+    try:
+        models = []
+        for model_name in ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-turbo", "gpt-4-1106-preview", "gpt-4-32k"]:
+            models.append(model_name)
+        return models
+    except Exception as e:
+        logging.error(f"Error fetching OpenAI models: {str(e)}")
+        return []
+
+def get_perplexity_models() -> list:
+    try:
+        return ["sonar-small-chat", "sonar-medium-chat", "sonar-large-chat", "sonar-small-online", "sonar-medium-online", "codellama-70b-instruct", "mixtral-8x7b-instruct", "llama-2-70b-chat", "llama-3-8b-instruct"]
+    except Exception as e:
+        logging.error(f"Error fetching Perplexity models: {str(e)}")
+        return []
+
+def get_grok_models() -> list:
+    try:
+        return ["grok-1", "grok-0"]
+    except Exception as e:
+        logging.error(f"Error fetching Grok models: {str(e)}")
+        return []
+
+def get_ollama_models() -> list:
+    """Fetch available models from Ollama API."""
+    import requests
+    import json
+    import os
     
     try:
-        logging.info("Fetching OpenAI models...")
-        headers = {"Authorization": f"Bearer {api_key}"}
-        response = requests.get("https://api.openai.com/v1/models", headers=headers)
+        # Get Ollama API URL from environment or use default
+        ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+        base_url = ollama_url.rstrip("/")  # Remove trailing slash if present
+        
+        response = requests.get(
+            f"{base_url}/api/tags",
+            headers={"Content-Type": "application/json"},
+            timeout=5
+        )
         
         if response.status_code == 200:
             data = response.json()
-            # Filter models to include only GPT models
-            models = [item["id"] for item in data.get("data", []) 
-                     if any(model_name in item["id"] for model_name in ["gpt", "GPT"])]
-            logging.info(f"Fetched {len(models)} OpenAI models")
-            return sorted(models)
+            if "models" in data:
+                # Extract model names from the response
+                return [model["name"] for model in data["models"]]
+            else:
+                logging.warning("Unexpected Ollama API response format")
+                # Return common models as fallback
+                return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
         else:
-            logging.error(f"Failed to fetch OpenAI models: {response.status_code}, {response.text}")
-            return get_fallback_openai_models()
+            logging.warning(f"Failed to fetch Ollama models: {response.status_code}")
+            # Return common models as fallback
+            return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
     except Exception as e:
-        logging.error(f"Error fetching OpenAI models: {str(e)}")
-        return get_fallback_openai_models()
+        logging.error(f"Error fetching Ollama models: {str(e)}")
+        # Return common models as fallback
+        return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
 
 def get_fallback_openai_models() -> list:
     """Return a list of common OpenAI models as fallback"""
@@ -214,8 +248,8 @@ def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "600x500")
 
 def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict, 
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
-                         save_callback: callable) -> None:
-    dialog = create_toplevel_dialog(parent, title, "900x700")
+                         save_callback: callable, current_ollama: str = "") -> None:
+    dialog = create_toplevel_dialog(parent, title, "900x750")
     frame = ttk.LabelFrame(dialog, text=title, padding=10)
     frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
@@ -284,6 +318,34 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     grok_fetch_button = ttk.Button(grok_frame, text="Fetch Models", command=fetch_grok_models)
     grok_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
     
+    # Ollama Model
+    ttk.Label(frame, text="Ollama Model:").grid(row=4, column=0, sticky="nw")
+    ollama_frame = ttk.Frame(frame)
+    ollama_frame.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+    ollama_combobox = ttk.Combobox(ollama_frame, width=48)
+    ollama_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    # Populate with common Ollama models
+    ollama_models = ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
+    ollama_combobox['values'] = ollama_models
+    
+    if current_ollama:
+        ollama_combobox.set(current_ollama)
+    else:
+        ollama_combobox.set("llama3")  # Default value
+    
+    # Add fetch button for Ollama models
+    def fetch_ollama_models():
+        models = get_ollama_models()
+        if models:
+            ollama_combobox['values'] = models
+            ollama_combobox.config(state="readonly")
+            parent.bell()
+        else:
+            ollama_combobox['values'] = ["No models found - check Ollama API URL"]
+    ollama_fetch_button = ttk.Button(ollama_frame, text="Fetch Models", command=fetch_ollama_models)
+    ollama_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
     # Try to pre-populate all models
     openai_models = get_openai_models()
     if openai_models:
@@ -300,6 +362,9 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         grok_combobox['values'] = grok_models
         grok_combobox.config(state="readonly")
     
+    # Try to get Ollama models
+    fetch_ollama_models()
+    
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
     def reset_fields():
@@ -309,13 +374,15 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         openai_combobox.set(default.get("model", ""))
         perplexity_combobox.set(default.get("perplexity_model", ""))
         grok_combobox.set(default.get("grok_model", ""))
+        ollama_combobox.set(default.get("ollama_model", "llama3"))
         prompt_text.focus()
     ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
     ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(
         prompt_text.get("1.0", tk.END).strip(),
         openai_combobox.get().strip(),
         perplexity_combobox.get().strip(),
-        grok_combobox.get().strip()
+        grok_combobox.get().strip(),
+        ollama_combobox.get().strip()
     ), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
     ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
@@ -394,6 +461,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     grok_key = os.getenv("GROK_API_KEY", "")
     perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
     elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
+    ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")  # Default Ollama URL
 
     # Create entry fields with password masking - add more vertical spacing
     row_offset = 1  # Start at row 1 since header is at row 0
@@ -414,6 +482,21 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     perplexity_entry = ttk.Entry(frame, width=50, show="•")
     perplexity_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     perplexity_entry.insert(0, perplexity_key)
+    row_offset += 1
+    
+    ttk.Label(frame, text="Ollama API URL:").grid(row=row_offset, column=0, sticky="w", pady=15)
+    ollama_entry = ttk.Entry(frame, width=50)
+    ollama_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
+    ollama_entry.insert(0, ollama_url)
+    row_offset += 1
+    
+    # Add a "Test Connection" button for Ollama
+    test_ollama_btn = ttk.Button(
+        frame, 
+        text="Test Ollama Connection", 
+        command=lambda: test_ollama_connection(parent, ollama_entry.get())
+    )
+    test_ollama_btn.grid(row=row_offset, column=1, sticky="e", padx=(10, 5), pady=15)
     row_offset += 1
     
     # Add a separator and section title for STT APIs
@@ -448,6 +531,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=1, column=2, padx=5)
     ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=2, column=2, padx=5)
     ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=3, column=2, padx=5)
+    # Ollama URL doesn't need a show/hide button as it's not a key
     ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=6, column=2, padx=5)
     ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=7, column=2, padx=5)
 
@@ -465,10 +549,11 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
         new_grok = grok_entry.get().strip()
         new_perplexity = perplexity_entry.get().strip()
         new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
+        new_ollama_url = ollama_entry.get().strip()  # Get Ollama URL
 
         # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
-        if not (new_openai or new_grok or new_perplexity):
-            error_var.set("Error: At least one of OpenAI, Grok, or Perplexity API keys is required.")
+        if not (new_openai or new_grok or new_perplexity or new_ollama_url):
+            error_var.set("Error: At least one of OpenAI, Grok, Perplexity, or Ollama API key/URL is required.")
             return
             
         # Check if at least one speech-to-text API key is provided
@@ -513,6 +598,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 elif "ELEVENLABS_API_KEY=" in line:  # NEW: Update ElevenLabs key
                     updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
                     keys_updated.add("ELEVENLABS_API_KEY")
+                elif "OLLAMA_API_URL=" in line:
+                    updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
+                    keys_updated.add("OLLAMA_API_URL")
                 else:
                     updated_lines.append(line)
             
@@ -527,6 +615,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 updated_lines.append(f"PERPLEXITY_API_KEY={new_perplexity}")
             if "ELEVENLABS_API_KEY" not in keys_updated and new_elevenlabs:
                 updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
+            if "OLLAMA_API_URL" not in keys_updated and new_ollama_url:
+                updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
             
             # Make sure we have the RECOGNITION_LANGUAGE line
             if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
@@ -549,6 +639,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 os.environ["PERPLEXITY_API_KEY"] = new_perplexity
             if new_elevenlabs:
                 os.environ["ELEVENLABS_API_KEY"] = new_elevenlabs
+            if new_ollama_url:
+                os.environ["OLLAMA_API_URL"] = new_ollama_url
             
             # Success message and close dialog
             messagebox.showinfo("API Keys", "API keys updated successfully")
@@ -560,7 +652,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 "deepgram": new_deepgram,
                 "grok": new_grok,
                 "perplexity": new_perplexity,
-                "elevenlabs": new_elevenlabs
+                "elevenlabs": new_elevenlabs,
+                "ollama_url": new_ollama_url
             }
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
@@ -956,3 +1049,70 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
         dialog.destroy()
         
     dialog.protocol("WM_DELETE_WINDOW", on_close)
+
+def test_ollama_connection(parent: tk.Tk, ollama_url: str = None) -> bool:
+    """
+    Test the connection to Ollama server and show a message with the results.
+    
+    Args:
+        parent: Parent window
+        ollama_url: The Ollama API URL to test, if None, will use environment variable or default
+        
+    Returns:
+        bool: True if connection was successful, False otherwise
+    """
+    import requests
+    import os
+    import logging
+    
+    if ollama_url is None:
+        ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+    
+    base_url = ollama_url.rstrip("/")  # Remove trailing slash if present
+    
+    try:
+        # Get available models as a connection test
+        response = requests.get(
+            f"{base_url}/api/tags",
+            headers={"Content-Type": "application/json"},
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "models" in data and len(data["models"]) > 0:
+                # Get the list of available models
+                models = [model["name"] for model in data["models"]]
+                model_list = "\n".join(models[:10])  # Show first 10 models
+                if len(models) > 10:
+                    model_list += f"\n...and {len(models)-10} more"
+                
+                messagebox.showinfo(
+                    "Ollama Connection Successful", 
+                    f"Successfully connected to Ollama server at {ollama_url}.\n\n"
+                    f"Available models:\n{model_list}"
+                )
+                return True
+            else:
+                messagebox.showwarning(
+                    "Ollama Connection Warning", 
+                    f"Connected to Ollama server at {ollama_url}, but no models were found.\n\n"
+                    "Please pull at least one model using 'ollama pull <model_name>'"
+                )
+                return False
+        else:
+            messagebox.showerror(
+                "Ollama Connection Failed", 
+                f"Could not connect to Ollama server at {ollama_url}.\n\n"
+                f"Status code: {response.status_code}\n"
+                "Please make sure Ollama is running and the URL is correct."
+            )
+            return False
+    except Exception as e:
+        messagebox.showerror(
+            "Ollama Connection Error", 
+            f"Error connecting to Ollama server at {ollama_url}:\n\n{str(e)}\n\n"
+            "Please make sure Ollama is running and the URL is correct."
+        )
+        logging.error(f"Ollama connection test error: {str(e)}")
+        return False
