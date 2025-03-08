@@ -74,7 +74,7 @@ def check_env_file():
         tk.Label(api_root, text="Please enter at least one of the following API keys to continue:",
                 font=("Segoe UI", 11)).pack(pady=(0, 5))
         
-        tk.Label(api_root, text="OpenAI, Grok, or Perplexity API key is required. Deepgram is optional but recommended.",
+        tk.Label(api_root, text="OpenAI, Grok, or Perplexity API key is required. Either Deepgram or ElevenLabs API key is mandatory for speech recognition.",
                 wraplength=450).pack(pady=(0, 20))
         
         # Create frame for keys
@@ -95,12 +95,12 @@ def check_env_file():
         perplexity_entry.grid(row=2, column=1, sticky="ew", pady=5)
         
         # Create entry for optional API key last
-        tk.Label(keys_frame, text="Deepgram API Key (Optional):").grid(row=3, column=0, sticky="w", pady=5)
+        tk.Label(keys_frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=5)
         deepgram_entry = tk.Entry(keys_frame, width=40)
         deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
         
         # NEW: Add ElevenLabs API Key field
-        tk.Label(keys_frame, text="ElevenLabs API Key (Optional):").grid(row=4, column=0, sticky="w", pady=5)
+        tk.Label(keys_frame, text="ElevenLabs API Key:").grid(row=4, column=0, sticky="w", pady=5)
         elevenlabs_entry = tk.Entry(keys_frame, width=40)
         elevenlabs_entry.grid(row=4, column=1, sticky="ew", pady=5)
         
@@ -128,6 +128,11 @@ def check_env_file():
             # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
             if not (openai_key or grok_key or perplexity_key):
                 error_var.set("Error: At least one of OpenAI, Grok, or Perplexity API keys is required.")
+                return
+                
+            # Check if at least one speech-to-text API key is provided
+            if not (deepgram_key or elevenlabs_key):
+                error_var.set("Error: Either Deepgram or ElevenLabs API key is required for speech recognition.")
                 return
             
             # Create the .env file with the provided keys
@@ -223,6 +228,18 @@ class MedicalDictationApp(ttk.Window):
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
+        
+        # Check for necessary API keys for at least one STT provider
+        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+        deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+        
+        if not (elevenlabs_key or deepgram_key):
+            messagebox.showwarning(
+                "Missing STT API Keys", 
+                "No Speech-to-Text API keys found. Either Deepgram or ElevenLabs API key " +
+                "is required for speech recognition functionality.\n\n" +
+                "Please add at least one of these API keys in the settings."
+            )
         
         # Initialize audio handler
         self.audio_handler = AudioHandler(
@@ -974,6 +991,7 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
+        
         # Execute in thread pool
         self.executor.submit(task)
 
@@ -1232,16 +1250,21 @@ class MedicalDictationApp(ttk.Window):
             self.update_status(f"AI Provider set to {provider_display[selected_index]}")
 
     def _on_stt_change(self, event):
-        from settings import SETTINGS, save_settings  # Import locally if preferred
-        
+        """Update STT provider when dropdown selection changes."""
         selected_index = self.stt_combobox.current()
-        stt_providers = ["elevenlabs", "deepgram", "google"]
-        stt_display = ["ElevenLabs", "Deepgram", "Google"]
-        
-        if 0 <= selected_index < len(stt_providers):
-            selected_stt = stt_providers[selected_index]
-            SETTINGS["stt_provider"] = selected_stt
+        if selected_index >= 0:
+            # Map display values to actual provider values
+            stt_providers = ["elevenlabs", "deepgram"]
+            stt_display = ["ElevenLabs", "Deepgram"]
+            
+            # Update settings
+            provider = stt_providers[selected_index]
+            from settings import SETTINGS, save_settings
+            SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
+            
+            # Update status with the new provider info
+            self.status_manager.update_provider_info()
             self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
 
     def on_transcription_fallback(self, primary_provider: str, fallback_provider: str) -> None:
@@ -1267,11 +1290,8 @@ class MedicalDictationApp(ttk.Window):
         
         # Update STT provider dropdown to reflect actual service being used
         try:
-            stt_providers = ["elevenlabs", "deepgram", "google"]
+            stt_providers = ["elevenlabs", "deepgram"]
             fallback_index = stt_providers.index(fallback_provider)
             self.after(0, lambda: self.stt_combobox.current(fallback_index))
         except (ValueError, IndexError):
             pass
-
-
-

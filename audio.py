@@ -78,7 +78,7 @@ class AudioHandler:
         
         # If primary provider failed, try fallbacks in sequence
         if not transcript and not fallback_attempted:
-            fallback_providers = ["deepgram", "elevenlabs", "google"]
+            fallback_providers = ["deepgram", "elevenlabs"]
             # Remove primary provider from fallbacks to avoid duplicate attempt
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
@@ -102,7 +102,7 @@ class AudioHandler:
         
         Args:
             segment: AudioSegment to transcribe
-            provider: Provider name ('elevenlabs', 'deepgram', or 'google')
+            provider: Provider name ('elevenlabs' or 'deepgram')
             
         Returns:
             Transcription text or empty string if failed
@@ -113,9 +113,6 @@ class AudioHandler:
                 
             elif provider == "deepgram" and self.deepgram_client:
                 return self._transcribe_with_deepgram(segment)
-                
-            elif provider == "google":
-                return self._transcribe_with_google(segment)
                 
             else:
                 logging.warning(f"Unknown provider: {provider}")
@@ -426,45 +423,6 @@ class AudioHandler:
             result.append(f"{speaker_label}{''.join(current_text)}")
         
         return "\n\n".join(result)
-
-    def _transcribe_with_google(self, segment: AudioSegment) -> str:
-        """Transcribe audio using Google Speech Recognition with improved error handling.
-        
-        Args:
-            segment: AudioSegment to transcribe
-            
-        Returns:
-            Transcription text or empty string if failed
-        """
-        temp_file = f"temp_google_{uuid.uuid4().hex}.wav"
-        
-        try:
-            # Export audio to temp file
-            segment.export(temp_file, format="wav")
-            
-            # Use Google Speech Recognition
-            with sr.AudioFile(temp_file) as source:
-                audio_data = self.recognizer.record(source)
-            
-            transcript = self.recognizer.recognize_google(audio_data, language=self.recognition_language)
-            return transcript
-            
-        except sr.UnknownValueError:
-            logging.warning("Google Speech Recognition could not understand audio")
-            return ""
-        except sr.RequestError as e:
-            logging.error(f"Google Speech Recognition service error: {e}")
-            return ""
-        except Exception as e:
-            logging.error(f"Error with Google transcription: {str(e)}", exc_info=True)
-            return ""
-        finally:
-            # Clean up temp file
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            except Exception as e:
-                logging.warning(f"Failed to remove temp file {temp_file}: {str(e)}")
 
     def process_audio_data(self, audio_data: sr.AudioData) -> tuple[Optional[AudioSegment], str]:
         """Process audio data to get an AudioSegment and transcription.

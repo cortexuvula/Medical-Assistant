@@ -369,11 +369,24 @@ def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: li
 
 def show_api_keys_dialog(parent: tk.Tk) -> None:
     """Shows a dialog to update API keys and updates the .env file."""
-    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x750")
+    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x950")
     
     # Increase main frame padding for more spacing around all content
     frame = ttk.Frame(dialog, padding=20)
     frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+    
+    # Add a header section with explanation
+    header_frame = ttk.Frame(frame)
+    header_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 30))
+    
+    ttk.Label(header_frame, text="API Key Configuration", 
+             font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 15))
+    
+    ttk.Label(header_frame, text="• At least one LLM provider API key (OpenAI, Grok, or Perplexity) is required.",
+             wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
+    
+    ttk.Label(header_frame, text="• At least one Speech-to-Text API key (Deepgram or ElevenLabs) is REQUIRED for dictation.",
+             wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
 
     # Get current API keys from environment
     openai_key = os.getenv("OPENAI_API_KEY", "")
@@ -383,52 +396,68 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
 
     # Create entry fields with password masking - add more vertical spacing
-    ttk.Label(frame, text="OpenAI API Key:").grid(row=0, column=0, sticky="w", pady=10)
+    row_offset = 1  # Start at row 1 since header is at row 0
+    
+    ttk.Label(frame, text="OpenAI API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
     openai_entry = ttk.Entry(frame, width=50, show="•")
-    openai_entry.grid(row=0, column=1, sticky="ew", padx=(10, 5), pady=10)
+    openai_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     openai_entry.insert(0, openai_key)
+    row_offset += 1
 
-    ttk.Label(frame, text="Grok API Key:").grid(row=1, column=0, sticky="w", pady=10)
+    ttk.Label(frame, text="Grok API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
     grok_entry = ttk.Entry(frame, width=50, show="•")
-    grok_entry.grid(row=1, column=1, sticky="ew", padx=(10, 5), pady=10)
+    grok_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     grok_entry.insert(0, grok_key)
+    row_offset += 1
 
-    ttk.Label(frame, text="Perplexity API Key:").grid(row=2, column=0, sticky="w", pady=10)
+    ttk.Label(frame, text="Perplexity API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
     perplexity_entry = ttk.Entry(frame, width=50, show="•")
-    perplexity_entry.grid(row=2, column=1, sticky="ew", padx=(10, 5), pady=10)
+    perplexity_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     perplexity_entry.insert(0, perplexity_key)
+    row_offset += 1
+    
+    # Add a separator and section title for STT APIs
+    ttk.Separator(frame, orient="horizontal").grid(row=row_offset, column=0, columnspan=3, sticky="ew", pady=25)
+    row_offset += 1
+    
+    stt_label = ttk.Label(frame, text="Speech-to-Text APIs (at least one required)", font=("Segoe UI", 12, "bold"))
+    stt_label.grid(row=row_offset, column=0, columnspan=3, sticky="w", pady=(0, 15))
+    row_offset += 1
 
-    ttk.Label(frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=10)
-    deepgram_entry = ttk.Entry(frame, width=50, show="•")
-    deepgram_entry.grid(row=3, column=1, sticky="ew", padx=(10, 5), pady=10)
+    # Add Deepgram API Key field with special styling
+    deepgram_label = ttk.Label(frame, text="Deepgram API Key:", bootstyle="warning")
+    deepgram_label.grid(row=row_offset, column=0, sticky="w", pady=15)
+    deepgram_entry = ttk.Entry(frame, width=50, show="•", bootstyle="warning")
+    deepgram_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     deepgram_entry.insert(0, deepgram_key)
+    row_offset += 1
 
-    # NEW: Add ElevenLabs API Key field
-    ttk.Label(frame, text="ElevenLabs API Key:").grid(row=4, column=0, sticky="w", pady=10)
-    elevenlabs_entry = ttk.Entry(frame, width=50, show="•")
-    elevenlabs_entry.grid(row=4, column=1, sticky="ew", padx=(10, 5), pady=10)
+    # Add ElevenLabs API Key field with special styling
+    elevenlabs_label = ttk.Label(frame, text="ElevenLabs API Key:", bootstyle="warning")
+    elevenlabs_label.grid(row=row_offset, column=0, sticky="w", pady=15)
+    elevenlabs_entry = ttk.Entry(frame, width=50, show="•", bootstyle="warning")
+    elevenlabs_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     elevenlabs_entry.insert(0, elevenlabs_key)
+    row_offset += 1
 
     # Add toggle buttons to show/hide keys
     def toggle_show_hide(entry):
         current = entry['show']
         entry['show'] = '' if current else '•'
     
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=0, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=1, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=2, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=3, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=4, column=2, padx=5)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=1, column=2, padx=5)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=2, column=2, padx=5)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=3, column=2, padx=5)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=6, column=2, padx=5)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=7, column=2, padx=5)
 
-    # Provide info about where to get API keys - add more vertical spacing
-    info_text = ("Get your API keys at:\n"
-                "• OpenAI: https://platform.openai.com/account/api-keys\n"
-                "• Grok (X.AI): https://x.ai\n"
-                "• Perplexity: https://docs.perplexity.ai/\n"
-                "• Deepgram: https://console.deepgram.com/signup\n"
-                "• ElevenLabs: https://elevenlabs.io/app/speech-to-text")
-    ttk.Label(frame, text=info_text, justify="left", wraplength=450).grid(
-        row=5, column=0, columnspan=3, sticky="w", pady=20)
+    # Error variable for validation messages
+    error_var = tk.StringVar()
+    error_label = ttk.Label(frame, textvariable=error_var, bootstyle="danger")
+    error_label.grid(row=row_offset, column=0, columnspan=3, sticky="w", pady=15)
+    row_offset += 1
+
+    
 
     def update_api_keys():
         new_openai = openai_entry.get().strip()
@@ -436,6 +465,19 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
         new_grok = grok_entry.get().strip()
         new_perplexity = perplexity_entry.get().strip()
         new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
+
+        # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
+        if not (new_openai or new_grok or new_perplexity):
+            error_var.set("Error: At least one of OpenAI, Grok, or Perplexity API keys is required.")
+            return
+            
+        # Check if at least one speech-to-text API key is provided
+        if not (new_deepgram or new_elevenlabs):
+            error_var.set("Error: Either Deepgram or ElevenLabs API key is required for speech recognition.")
+            return
+            
+        # Clear any error messages
+        error_var.set("")
 
         # Update .env file
         try:
@@ -455,7 +497,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 if line.strip() == "" or line.strip().startswith("#"):
                     updated_lines.append(line)
                     continue
-                    
+                     
                 if "OPENAI_API_KEY=" in line:
                     updated_lines.append(f"OPENAI_API_KEY={new_openai}")
                     keys_updated.add("OPENAI_API_KEY")
@@ -526,7 +568,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
 
     # Add more padding to the button frame
     btn_frame = ttk.Frame(dialog)
-    btn_frame.pack(pady=20, padx=20)
+    btn_frame.pack(pady=30, padx=20)
     ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=20)
     ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success", width=15).pack(side=tk.LEFT, padx=20)
     
@@ -914,4 +956,3 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
         dialog.destroy()
         
     dialog.protocol("WM_DELETE_WINDOW", on_close)
-

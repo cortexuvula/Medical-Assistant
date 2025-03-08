@@ -91,8 +91,8 @@ class UIComponents:
         stt_frame.pack(side=LEFT, padx=10)
         
         ttk.Label(stt_frame, text="Speech To Text:").pack(side=LEFT, padx=(0, 5))
-        stt_providers = ["elevenlabs", "deepgram", "google"]
-        stt_display = ["ElevenLabs", "Deepgram", "Google"]
+        stt_providers = ["elevenlabs", "deepgram"]
+        stt_display = ["ElevenLabs", "Deepgram"]
         stt_provider = SETTINGS.get("stt_provider", "deepgram")
         
         stt_combobox = ttk.Combobox(
