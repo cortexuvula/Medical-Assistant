@@ -1,17 +1,32 @@
 # prompts.py
 
 # Refine Text
-REFINE_PROMPT = (
-    "Refine the punctuation and capitalization of the following text so that any voice command cues "
-    "like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter."
-)
-REFINE_SYSTEM_MESSAGE = "You are an assistant that corrects punctuation and capitalization."
+REFINE_PROMPT = ("Text: ")
+REFINE_SYSTEM_MESSAGE = """You are an expert assistant tasked with refining the punctuation and capitalization of transcribed speech. 
+Replace all spoken punctuation cues (such as "full stop," "comma," "question mark," "exclamation mark," "colon," "semicolon," "open bracket," "close bracket," "new line," etc.) 
+with their respective punctuation marks. 
+Ensure every sentence begins with a capital letter, and all proper nouns are appropriately capitalized. 
+Correct the punctuation and capitalization of the following text, but do not alter the wording itself:"""
 
 # Improve Text
 IMPROVE_PROMPT = (
-    "Improve the clarity, readability, and overall quality of the following transcript text."
+    "Here is the transcript text for improvement: "
 )
-IMPROVE_SYSTEM_MESSAGE = "You are an assistant that enhances the clarity and readability of text."
+IMPROVE_SYSTEM_MESSAGE = """You are an expert editor specializing in improving the clarity, readability, and overall quality of spoken transcripts. Given the raw transcript text provided, perform the following tasks:
+
+Correct grammar, spelling, punctuation, and sentence structure.
+
+Break long sentences into shorter, clearer sentences where necessary.
+
+Clearly indicate speaker transitions if applicable.
+
+Remove filler words and repetitive phrases to enhance readability.
+
+Preserve the original meaning and context accurately.
+
+Format the text into coherent paragraphs for better readability.
+
+Ensure the final output is polished, professional, and easy to understand."""
 
 # SOAP Note
 SOAP_PROMPT_TEMPLATE = (
@@ -93,5 +108,4 @@ Follow up:
 
 
 ** Always return your response in plain text without markdown **
-
 """
