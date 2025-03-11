@@ -404,21 +404,40 @@ def askstring_min(parent: tk.Tk, title: str, prompt: str, initialvalue: str = ""
 
 def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: list) -> str:
     dialog = create_toplevel_dialog(parent, title, "500x500")
-    tk.Label(dialog, text=prompt, wraplength=380).pack(padx=20, pady=10)
+    
+    # Create a frame to hold all content
+    main_frame = ttk.Frame(dialog, padding=10)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    ttk.Label(main_frame, text=prompt, wraplength=450).pack(padx=20, pady=10)
+    
+    # Configure styles that work well in both light and dark modes
     style = ttk.Style()
-    style.configure("Green.TCheckbutton", background="white", foreground="grey20", indicatorcolor="blue")
-    style.map("Green.TCheckbutton", background=[("active", "teal"), ("selected", "teal")],
-              foreground=[("selected", "white")], indicatorcolor=[("selected", "blue"), ("pressed", "teal")])
-    checkbox_frame = tk.Frame(dialog)
+    
+    # Define a custom style for our checkbuttons that adapts to the theme
+    style.configure("Conditions.TCheckbutton", font=("Segoe UI", 10))
+    
+    # Create a frame for checkboxes with a slight border for visual separation
+    checkbox_frame = ttk.LabelFrame(main_frame, text="", padding=10)
     checkbox_frame.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+    
     vars_list = []
     for cond in conditions:
         var = tk.BooleanVar()
-        ttk.Checkbutton(checkbox_frame, text=cond, variable=var, style="Green.TCheckbutton").pack(anchor="w")
+        cb = ttk.Checkbutton(checkbox_frame, text=cond, variable=var, style="Conditions.TCheckbutton")
+        cb.pack(anchor="w", pady=2)
         vars_list.append((cond, var))
-    tk.Label(dialog, text="Additional conditions (optional):", wraplength=380).pack(padx=20, pady=(10,0))
-    optional_text = tk.Text(dialog, width=50, height=3)
-    optional_text.pack(padx=20, pady=(0,10))
+    
+    # Additional conditions section
+    ttk.Label(main_frame, text="Additional conditions (optional):", wraplength=450).pack(padx=20, pady=(10,0))
+    
+    # Add a frame for the Text widget to visually separate it
+    text_frame = ttk.Frame(main_frame, borderwidth=1, relief="solid")
+    text_frame.pack(padx=20, pady=(5,10), fill="x")
+    
+    optional_text = tk.Text(text_frame, width=50, height=3, borderwidth=2)
+    optional_text.pack(padx=2, pady=2, fill="x")
+    
     selected = []
     def on_ok():
         for cond, var in vars_list:
@@ -428,9 +447,13 @@ def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: li
         if extra:
             selected.extend([item.strip() for item in extra.split(",") if item.strip()])
         dialog.destroy()
-    btn_frame = tk.Frame(dialog)
+    
+    btn_frame = ttk.Frame(main_frame)
     btn_frame.pack(pady=10)
-    tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+    
+    ok_button = ttk.Button(btn_frame, text="OK", command=on_ok, width=10)
+    ok_button.pack(side=tk.LEFT, padx=5)
+    
     dialog.wait_window()
     return ", ".join(selected) if selected else ""
 

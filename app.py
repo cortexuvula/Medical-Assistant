@@ -834,15 +834,73 @@ class MedicalDictationApp(ttk.Window):
             
         def task() -> None:
             try:
+                # Log audio segments information for debugging
+                segment_count = len(self.soap_audio_segments)
+                total_duration_ms = sum(len(seg.raw_data) / (seg.frame_rate * seg.frame_width) * 1000 for seg in self.soap_audio_segments)
+                logging.info(f"Processing SOAP recording with {segment_count} segments, total duration: {total_duration_ms:.2f}ms")
+                
                 # First combine the audio segments using I/O operations
                 combined = self.audio_handler.combine_audio_segments(self.soap_audio_segments)
                 if not combined:
                     raise ValueError("Failed to combine audio segments")
+                
+                # Log combined audio information
+                combined_size = len(combined.raw_data)
+                combined_duration_ms = len(combined.raw_data) / (combined.frame_rate * combined.frame_width) * 1000
+                logging.info(f"Combined audio size: {combined_size} bytes, duration: {combined_duration_ms:.2f}ms")
+                
+                # Load the saved audio file instead of transcribing the segments directly
+                # Get the most recently created wav file in the storage folder
+                folder = SETTINGS.get("default_storage_folder")
+                if not folder or not os.path.exists(folder):
+                    raise ValueError("Storage folder not found")
+                
+                # Find wav files and sort by creation time (newest first)
+                wav_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.wav')]
+                if not wav_files:
+                    raise ValueError("No WAV files found in storage folder")
+                
+                wav_files.sort(key=lambda x: os.path.getctime(x), reverse=True)
+                latest_wav = wav_files[0]
+                logging.info(f"Using latest saved WAV file for transcription: {latest_wav}")
+                
+                # Try transcription with fallbacks
+                transcript = ""
+                
+                # For SOAP notes, explicitly try ElevenLabs first if available
+                if self.elevenlabs_api_key:
+                    self.after(0, lambda: self.status_manager.progress("Transcribing SOAP note with ElevenLabs (best quality)..."))
+                    logging.info("Attempting SOAP note transcription with ElevenLabs")
                     
-                # Then transcribe the audio (I/O-bound operation)
-                transcript = self.audio_handler.transcribe_audio(combined)
+                    # Use the elevenlabs method directly with the file
+                    from pydub import AudioSegment as PyAudioSegment
+                    audio_segment = PyAudioSegment.from_file(latest_wav, format="wav")
+                    
+                    # Try ElevenLabs
+                    transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
+                
+                # If ElevenLabs failed or is not available, try Deepgram
                 if not transcript:
-                    raise ValueError("Failed to transcribe audio - no text recognized")
+                    if self.elevenlabs_api_key:
+                        self.after(0, lambda: self.status_manager.progress("ElevenLabs transcription failed, trying Deepgram..."))
+                        logging.info("ElevenLabs transcription failed, falling back to Deepgram")
+                    else:
+                        self.after(0, lambda: self.status_manager.progress("Transcribing SOAP note with Deepgram..."))
+                        logging.info("ElevenLabs API key not available, using Deepgram")
+                    
+                    # Try with Deepgram directly
+                    if self.deepgram_api_key:
+                        transcript = self.audio_handler._transcribe_with_deepgram(audio_segment)
+                    
+                    # If both ElevenLabs and Deepgram failed or aren't available, try Whisper
+                    if not transcript and self.audio_handler.whisper_available:
+                        self.after(0, lambda: self.status_manager.progress("Trying local Whisper model for transcription..."))
+                        logging.info("Trying local Whisper model as last resort")
+                        transcript = self.audio_handler._transcribe_with_whisper(audio_segment)
+                
+                # If all transcription methods failed
+                if not transcript:
+                    raise ValueError("All transcription methods failed - no text recognized")
                 
                 # Log success and progress
                 logging.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
@@ -881,16 +939,14 @@ class MedicalDictationApp(ttk.Window):
             except Exception as e:
                 error_msg = f"Error processing SOAP note: {str(e)}"
                 logging.error(error_msg, exc_info=True)
-                
-                def update_error_ui():
-                    self.status_manager.error(error_msg)
-                    self.progress_bar.stop()
-                    self.progress_bar.pack_forget()
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget(),
                     self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+                ])
                 
-                self.after(0, update_error_ui)
-                
-        # Use I/O executor for task management since it involves UI coordination
+        # Use IO executor for the CPU-intensive audio processing
         self.io_executor.submit(task)
 
     def handle_recognized_text(self, text: str) -> None:
@@ -938,6 +994,7 @@ class MedicalDictationApp(ttk.Window):
             try:
                 # Use CPU executor for the actual AI processing which is CPU-intensive
                 result_future = self.cpu_executor.submit(api_func, text)
+                # Get result with timeout to prevent hanging
                 result = result_future.result(timeout=60)  # Add timeout to prevent hanging
                 
                 # Schedule UI update on the main thread
@@ -1094,9 +1151,9 @@ class MedicalDictationApp(ttk.Window):
         self.soap_paused = False
         
         # Update UI elements
-        self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
         self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
         self.cancel_soap_button.config(state=tk.DISABLED)
+        self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
         
         # Check if we have any audio segments to process
         if not self.soap_audio_segments:
@@ -1104,7 +1161,7 @@ class MedicalDictationApp(ttk.Window):
             self.after(1000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
             return
             
-        self.update_status("Transcribing SOAP note...")
+        self.update_status("Saving SOAP note audio recording...")
         
         # Save the recorded audio
         import datetime
@@ -1115,14 +1172,31 @@ class MedicalDictationApp(ttk.Window):
         now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
         audio_file_path = os.path.join(folder, f"{now_str}.wav") if folder else f"{now_str}.wav"
         
-        # Use audio handler to save the combined audio
-        self.audio_handler.save_audio(self.soap_audio_segments, audio_file_path)
-        self.update_status(f"SOAP audio saved to: {audio_file_path}")
-            
-        # Process the recording
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        self.process_soap_recording()
+        # Use a thread to save the audio without blocking the UI
+        def save_and_process_audio():
+            try:
+                # Save the combined audio to file
+                self.audio_handler.save_audio(self.soap_audio_segments, audio_file_path)
+                
+                # Update UI from main thread
+                self.after(0, lambda: self.update_status(f"SOAP audio saved to: {audio_file_path}"))
+                
+                # After saving is complete, start transcription
+                self.after(0, lambda: [
+                    self.update_status("Transcribing SOAP note with ElevenLabs (best quality)..."),
+                    self.progress_bar.pack(side=RIGHT, padx=10),
+                    self.progress_bar.start(),
+                    self.process_soap_recording()
+                ])
+                
+            except Exception as e:
+                error_msg = f"Error saving SOAP audio: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: self.update_status(f"Error saving audio: {str(e)}", "error"))
+                self.after(0, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
+        
+        # Execute the save and transcription process in a background thread
+        self.io_executor.submit(save_and_process_audio)
         
         # Re-enable the record button after 5 seconds
         self.after(5000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
@@ -1173,15 +1247,27 @@ class MedicalDictationApp(ttk.Window):
                 logging.warning("Empty audio data received in SOAP callback")
                 return
                 
-            # Extract audio segment using AudioHandler
-            segment, _ = self.audio_handler.process_audio_data(audio)
+            # Convert audio data to segment WITHOUT transcribing
+            # Extract raw audio data from AudioData
+            raw_data = audio.get_raw_data()
+            sample_rate = audio.sample_rate
+            sample_width = audio.sample_width
+            
+            # Create AudioSegment directly from raw data
+            from pydub import AudioSegment as PyAudioSegment
+            segment = PyAudioSegment(
+                data=raw_data,
+                sample_width=sample_width,
+                frame_rate=sample_rate,
+                channels=1  # Speech recognition typically uses mono
+            )
             
             if segment:
                 segment_length = len(segment.raw_data)
                 logging.info(f"Adding audio segment of length {segment_length} bytes to SOAP recording")
                 self.soap_audio_segments.append(segment)
             else:
-                logging.warning("AudioHandler returned None segment from valid audio data")
+                logging.warning("Failed to create audio segment from valid audio data")
                 
         except Exception as e:
             logging.error(f"Error recording SOAP note chunk: {str(e)}", exc_info=True)
@@ -1601,6 +1687,7 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.cpu_executor.submit(create_referral_with_openai, transcript, focus)
+                
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 

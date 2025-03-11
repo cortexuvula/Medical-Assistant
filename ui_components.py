@@ -55,9 +55,9 @@ class UIComponents:
             mic_select_frame,
             values=get_valid_microphones() or sr.Microphone.list_microphone_names(),
             state="readonly",
-            width=30
+            width=45
         )
-        mic_combobox.pack(side=LEFT, padx=(0, 15), fill=tk.X, expand=True)
+        mic_combobox.pack(side=LEFT, padx=(0, 5), fill=None, expand=False)
         
         if len(mic_combobox["values"]) > 0:
             mic_combobox.current(0)
@@ -68,7 +68,7 @@ class UIComponents:
             command=refresh_microphones,
             width=3
         )
-        refresh_btn.pack(side=LEFT, padx=(0, 20))
+        refresh_btn.pack(side=LEFT, padx=(0, 10))
         ToolTip(refresh_btn, "Refresh microphone list")
         
         # Middle - Provider selection
@@ -99,7 +99,7 @@ class UIComponents:
         
         # STT Provider selection
         stt_frame = ttk.Frame(mic_frame)
-        stt_frame.pack(side=LEFT, fill=tk.X, expand=False, padx=(20, 0))
+        stt_frame.pack(side=LEFT, fill=tk.X, expand=False, padx=(10, 0))
         
         ttk.Label(stt_frame, text="STT:").pack(side=LEFT)
         
@@ -131,7 +131,7 @@ class UIComponents:
         # NEW: Add theme toggle button
         if toggle_theme:
             theme_frame = ttk.Frame(mic_frame)
-            theme_frame.pack(side=RIGHT, padx=10, fill=tk.X, expand=False)
+            theme_frame.pack(side=LEFT, padx=(15, 0), fill=tk.X, expand=False)
             
             # Get current theme to determine icon and tooltip
             current_theme = SETTINGS.get("theme", "flatly")
@@ -149,14 +149,14 @@ class UIComponents:
                 text=f"{icon} Theme",  # Add 'Theme' text next to icon
                 command=toggle_theme,
                 bootstyle="info" if not is_dark else "warning",  # Different style per mode
-                width=10  # Increased width to fit text
+                width=15  # Increased width from 10 to 15
             )
-            theme_btn.pack(side=RIGHT, fill=tk.X)
+            theme_btn.pack(side=LEFT, fill=tk.X)
             
             # Add theme indicator label - should show current mode
             mode_text = "Light Mode" if not is_dark else "Dark Mode"
-            theme_label = ttk.Label(theme_frame, text=f"({mode_text})")
-            theme_label.pack(side=RIGHT, padx=(0, 5))
+            theme_label = ttk.Label(theme_frame, text=f"({mode_text})", width=12)
+            theme_label.pack(side=LEFT, padx=(5, 0))
             
             # Store the tooltip directly on the button as an attribute
             theme_btn._tooltip = ToolTip(theme_btn, tooltip_text)
