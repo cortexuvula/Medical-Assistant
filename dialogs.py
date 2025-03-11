@@ -218,7 +218,7 @@ def save_api_key_to_env(key: str, env_var_name: str) -> None:
     except Exception as e:
         logging.error(f"Failed to save {env_var_name}: {e}")
 
-def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "600x500") -> tk.Toplevel:
+def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500") -> tk.Toplevel:
     """Create a top-level dialog with standard properties.
     
     Args:

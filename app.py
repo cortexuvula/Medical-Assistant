@@ -224,8 +224,8 @@ class MedicalDictationApp(ttk.Window):
         
         super().__init__(themename=self.current_theme)
         self.title("Medical Assistant")
-        self.geometry("1450x950")
-        self.minsize(700, 500)
+        self.geometry("1700x950")
+        self.minsize(1200, 800)
         self.config(bg="#f0f0f0")
     
         # Center the window on the screen
