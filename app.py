@@ -3,7 +3,8 @@ import json
 import string
 import logging
 import concurrent.futures
-from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import multiprocessing
 import tkinter as tk
 from tkinter import messagebox, filedialog, scrolledtext, ttk
 import speech_recognition as sr
@@ -204,18 +205,29 @@ def main() -> None:
 
 class MedicalDictationApp(ttk.Window):
     def __init__(self) -> None:
-        # Initialize the executor first, before any potential failures
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        # Determine number of CPU cores available for optimal threading configuration
+        cpu_count = multiprocessing.cpu_count()
+        
+        # Initialize ThreadPoolExecutor for I/O-bound tasks (network calls, file operations)
+        # Use more threads for I/O operations since they spend most of their time waiting
+        self.io_executor = ThreadPoolExecutor(max_workers=min(32, cpu_count * 4))
+        
+        # Initialize ProcessPoolExecutor for CPU-bound tasks (text processing, analysis)
+        # Use number of physical cores for CPU-intensive tasks to avoid context switching overhead
+        self.cpu_executor = ProcessPoolExecutor(max_workers=max(2, cpu_count - 1))
+        
+        # Maintain the original executor for backwards compatibility
+        self.executor = self.io_executor
         
         # Get theme from settings or use default
         self.current_theme = SETTINGS.get("theme", "flatly")
         
         super().__init__(themename=self.current_theme)
         self.title("Medical Assistant")
-        self.geometry("1400x950")
+        self.geometry("1450x950")
         self.minsize(700, 500)
         self.config(bg="#f0f0f0")
-        
+    
         # Center the window on the screen
         self.update_idletasks()  # Ensure window dimensions are calculated
         screen_width = self.winfo_screenwidth()
@@ -773,7 +785,9 @@ class MedicalDictationApp(ttk.Window):
             self.update_status("Stopped listening.")
 
     def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
-        self.executor.submit(self.process_audio, recognizer, audio)
+        """Handle speech recognition callback with better concurrency."""
+        # Use the I/O executor for speech recognition as it involves network and file I/O
+        self.io_executor.submit(self.process_audio, recognizer, audio)
 
     def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         """Process audio with better error handling using AudioHandler."""
@@ -792,74 +806,77 @@ class MedicalDictationApp(ttk.Window):
             self.after(0, self.update_status, "Failed to process audio", "error")
 
     def process_soap_recording(self) -> None:
-        """Process SOAP recording using AudioHandler."""
+        """Process SOAP recording using AudioHandler with improved concurrency."""
+        # Safety check - if no audio segments, don't proceed
+        if not self.soap_audio_segments:
+            self.after(0, lambda: [
+                self.status_manager.error("No audio data available to process"),
+                self.progress_bar.stop(),
+                self.progress_bar.pack_forget(),
+                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+            ])
+            return
+            
         def task() -> None:
             try:
-                # Use audio handler to combine segments and get transcript
+                # First combine the audio segments using I/O operations
                 combined = self.audio_handler.combine_audio_segments(self.soap_audio_segments)
-                transcript = self.audio_handler.transcribe_audio(combined) if combined else ""
-                soap_note = create_soap_note_with_openai(transcript)
-            except Exception as e:
-                soap_note = f"Error processing SOAP note: {e}"
-                transcript = ""
+                if not combined:
+                    raise ValueError("Failed to combine audio segments")
+                    
+                # Then transcribe the audio (I/O-bound operation)
+                transcript = self.audio_handler.transcribe_audio(combined)
+                if not transcript:
+                    raise ValueError("Failed to transcribe audio - no text recognized")
                 
-            def update_ui():
-                # Update Transcript tab with the obtained transcript
-                self.transcript_text.delete("1.0", tk.END)
-                self.transcript_text.insert(tk.END, transcript)
-                # Update SOAP Note tab with the generated SOAP note
-                self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text)
-                # Switch focus to the SOAP Note tab (index 1)
-                self.notebook.select(1)
+                # Log success and progress
+                logging.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
+                self.after(0, lambda: self.status_manager.progress("Creating SOAP note from transcript..."))
                 
-            self.after(0, update_ui)
-            
-        self.executor.submit(task)
-
-    def load_audio_file(self) -> None:
-        """Load and transcribe audio from a file using AudioHandler."""
-        file_path = filedialog.askopenfilename(
-            title="Select Audio File",
-            filetypes=[("Audio Files", "*.wav *.mp3"), ("All Files", "*.*")]
-        )
-        if not file_path:
-            return
-        self.status_manager.progress("Transcribing audio...")
-        self.buttons["load"].config(state=DISABLED)
-        
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        
-        def task() -> None:
-            segment, transcript = self.audio_handler.load_audio_file(file_path)
-            
-            if segment:
-                # Store segment for future use
-                self.audio_segments = [segment]
-            
-            if transcript:
+                # Use CPU executor for the AI-intensive SOAP note creation
+                future = self.cpu_executor.submit(create_soap_note_with_openai, transcript)
+                
+                # Get result with timeout to prevent hanging
+                soap_note = future.result(timeout=120)
+                
+                def update_ui():
+                    # Update Transcript tab with the obtained transcript
+                    self.transcript_text.delete("1.0", tk.END)
+                    self.transcript_text.insert(tk.END, transcript)
+                    
+                    # Update SOAP Note tab with the generated SOAP note
+                    self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text)
+                    
+                    # Switch focus to the SOAP Note tab (index 1)
+                    self.notebook.select(1)
+                    
+                    # Stop and hide progress bar
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+                    
+                self.after(0, update_ui)
+                
+            except concurrent.futures.TimeoutError:
                 self.after(0, lambda: [
-                    self.transcript_text.delete("1.0", tk.END),
-                    self._update_text_area(transcript, "Audio transcribed successfully.", self.buttons["load"], self.transcript_text),
-                    self.notebook.select(0)
+                    self.status_manager.error("SOAP note creation timed out. Please try again."),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget(),
+                    self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
                 ])
-            else:
-                self.after(0, lambda: messagebox.showerror("Transcription Error", "Failed to transcribe audio."))
+            except Exception as e:
+                error_msg = f"Error processing SOAP note: {str(e)}"
+                logging.error(error_msg, exc_info=True)
                 
-            # Always re-enable button and hide progress bar
-            self.after(0, lambda: self.buttons["load"].config(state=NORMAL))
-            self.after(0, self.progress_bar.stop)
-            self.after(0, self.progress_bar.pack_forget)
-            
-        self.executor.submit(task)
-
-    def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
-        current = widget.get("1.0", "end-1c")
-        if (self.capitalize_next or not current or current[-1] in ".!?") and text:
-            text = text[0].upper() + text[1:]
-            self.capitalize_next = False
-        widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
-        widget.see(tk.END)
+                def update_error_ui():
+                    self.status_manager.error(error_msg)
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+                    self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+                
+                self.after(0, update_error_ui)
+                
+        # Use I/O executor for task management since it involves UI coordination
+        self.io_executor.submit(task)
 
     def handle_recognized_text(self, text: str) -> None:
         if not text.strip():
@@ -901,10 +918,34 @@ class MedicalDictationApp(ttk.Window):
         button.config(state=DISABLED)
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
+        
         def task() -> None:
-            result = api_func(text)
-            self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
-        self.executor.submit(task)
+            try:
+                # Use CPU executor for the actual AI processing which is CPU-intensive
+                result_future = self.cpu_executor.submit(api_func, text)
+                result = result_future.result(timeout=60)  # Add timeout to prevent hanging
+                
+                # Schedule UI update on the main thread
+                self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
+            except concurrent.futures.TimeoutError:
+                self.after(0, lambda: [
+                    self.status_manager.error("AI processing timed out. Please try again."),
+                    button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+            except Exception as e:
+                error_msg = f"Error processing text: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+                
+        # Use I/O executor for the task since it involves UI coordination
+        self.io_executor.submit(task)
 
     def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
         target_widget.edit_separator()
@@ -927,92 +968,56 @@ class MedicalDictationApp(ttk.Window):
         self._process_text_with_ai(improve_text_with_openai, "Text improved.", self.improve_button, active_widget)
 
     def create_soap_note(self) -> None:
+        """Create a SOAP note from the selected text using AI with improved concurrency."""
         transcript = self.transcript_text.get("1.0", tk.END).strip()
         if not transcript:
-            messagebox.showwarning("Process Text", "There is no text to process.")
+            messagebox.showwarning("Create SOAP Note", "There is no transcript to process.")
             return
-        self.status_manager.progress("Processing SOAP note...")
+
+        self.status_manager.progress("Creating SOAP note (this may take a moment)...")
         self.soap_button.config(state=DISABLED)
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
-        def task() -> None:
-            result = create_soap_note_with_openai(transcript)
-            self.after(0, lambda: [
-                self._update_text_area(result, "SOAP note created.", self.soap_button, self.soap_text),
-                self.notebook.select(1)  # Switch focus to SOAP Note tab (index 1)
-            ])
-        self.executor.submit(task)
 
-    def create_referral(self) -> None:
-        # Check if the transcript is empty before proceeding
-        text = self.transcript_text.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showwarning("Empty Transcript", "The transcript is empty. Please add content before creating a referral.")
-            return
-            
-        # New: Immediately update status and display progress bar on referral click
-        self.status_manager.progress("Referral button clicked - preparing referral...")
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        
-        # New: Get suggested conditions asynchronously using imported function
-        def get_conditions() -> str:
-            return get_possible_conditions(text)  # Use the imported function
-        future = self.executor.submit(get_conditions)
-        def on_conditions_done(future_result):
-            try:
-                suggestions = future_result.result() or ""
-            except Exception as e:
-                suggestions = ""
-            # Continue on the main thread
-            self.after(0, lambda: self._create_referral_continued(suggestions))
-        future.add_done_callback(on_conditions_done)
-
-    def _create_referral_continued(self, suggestions: str) -> None:
-        self.progress_bar.stop()
-        self.progress_bar.pack_forget()
-        conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
-        # Fix: Use ask_conditions_dialog as an imported function, not as a method
-        from dialogs import ask_conditions_dialog
-        focus = ask_conditions_dialog(self, "Select Conditions", "Select conditions to focus on:", conditions_list)
-        if not focus:
-            self.update_status("Referral cancelled or no conditions selected.", status_type="warning")
-            return
-        
-        # Use "progress" status type to prevent auto-clearing for long-running operations
-        self.status_manager.progress(f"Processing referral for conditions: {focus}...")
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        self.referral_button.config(state=DISABLED)  # Disable button while processing
-        
         def task() -> None:
             try:
-                transcript = self.transcript_text.get("1.0", tk.END).strip()
-                # Import locally to avoid potential circular import
-                from ai import create_referral_with_openai
-                # Use our custom scheduler instead of direct after() calls
-                self.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
-                self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
-                # Execute the referral creation with conditions
-                result = create_referral_with_openai(transcript, focus)
+                # Get the appropriate AI model based on settings
+                provider = SETTINGS.get("soap_provider", "openai")
                 
-                # Update UI when done
+                # Use CPU executor for the AI processing which is CPU-intensive
+                future = self.cpu_executor.submit(
+                    create_soap_note_with_openai if provider == "openai" else
+                    create_soap_note_with_other_provider,
+                    transcript
+                )
+                
+                # Get result with timeout to prevent hanging
+                result = future.result(timeout=120)
+                
+                # Schedule UI update on the main thread
                 self.after(0, lambda: [
-                    self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
-                    self.notebook.select(2)  # Switch focus to Referral tab (index 2)
+                    self._update_text_area(result, "SOAP note created", self.soap_button, self.soap_text),
+                    self.notebook.select(1)  # Switch to SOAP tab
                 ])
-            except Exception as e:
-                error_msg = f"Error creating referral: {str(e)}"
-                logging.error(error_msg, exc_info=True)
+            except concurrent.futures.TimeoutError:
                 self.after(0, lambda: [
-                    self.update_status(error_msg, status_type="error"),
-                    self.referral_button.config(state=NORMAL),
+                    self.status_manager.error("SOAP note creation timed out. Please try again."),
+                    self.soap_button.config(state=NORMAL),
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-        
-        # Execute in thread pool
-        self.executor.submit(task)
+            except Exception as e:
+                error_msg = f"Error creating SOAP note: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    self.soap_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+
+        # Use I/O executor for task management since it involves UI coordination
+        self.io_executor.submit(task)
 
     def refresh_microphones(self) -> None:
         names = get_valid_microphones() or sr.Microphone.list_microphone_names()
@@ -1025,8 +1030,6 @@ class MedicalDictationApp(ttk.Window):
 
     def toggle_soap_recording(self) -> None:
         """Toggle SOAP note recording using AudioHandler."""
-        # ... existing code for starting recording ...
-        
         if not self.soap_recording:
             # Clear all text areas and reset audio segments before starting a new SOAP recording session
             self.transcript_text.delete("1.0", tk.END)
@@ -1052,34 +1055,62 @@ class MedicalDictationApp(ttk.Window):
             self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
         else:
             # Stopping SOAP recording
-            if self.soap_stop_listening_function:
-                self.soap_stop_listening_function(wait_for_stop=False)
-            self.soap_recording = False
-            self.soap_paused = False
-            # Disable the record SOAP note button for 5 seconds to prevent double click
-            self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
-            self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
-            self.cancel_soap_button.config(state=tk.DISABLED)  # disable cancel button
-            self.update_status("Transcribing SOAP note...")
+            self.update_status("Finalizing recording (processing last chunk)...")
             
-            import datetime
-            folder = SETTINGS.get("default_storage_folder")
-            if folder and not os.path.exists(folder):
-                os.makedirs(folder)
+            def stop_recording_task():
+                # Stop listening with wait_for_stop=True to ensure last chunk is processed
+                if self.soap_stop_listening_function:
+                    self.soap_stop_listening_function(wait_for_stop=True)
                 
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-            audio_file_path = os.path.join(folder, f"{now_str}.wav") if folder else f"{now_str}.wav"
+                # Wait a small additional time to ensure processing completes
+                time.sleep(0.5)
+                
+                # Update UI on main thread
+                self.after(0, lambda: [
+                    self._finalize_soap_recording()
+                ])
             
-            # Use audio handler to save the combined audio
-            if self.soap_audio_segments:
-                self.audio_handler.save_audio(self.soap_audio_segments, audio_file_path)
-                self.update_status(f"SOAP audio saved to: {audio_file_path}")
-                
-            self.progress_bar.pack(side=RIGHT, padx=10)
-            self.progress_bar.start()
-            self.process_soap_recording()
-            # Re-enable the record button after 5 seconds and restore green colors
-            self.after(5000, lambda: self.record_soap_button.config(state=NORMAL, bootstyle="success"))
+            # Run the stopping process in a separate thread to avoid freezing the UI
+            self.io_executor.submit(stop_recording_task)
+
+    def _finalize_soap_recording(self):
+        """Complete the SOAP recording process after ensuring all audio is captured."""
+        self.soap_recording = False
+        self.soap_paused = False
+        
+        # Update UI elements
+        self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
+        self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
+        self.cancel_soap_button.config(state=tk.DISABLED)
+        
+        # Check if we have any audio segments to process
+        if not self.soap_audio_segments:
+            self.update_status("No audio recorded. Try again.")
+            self.after(1000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
+            return
+            
+        self.update_status("Transcribing SOAP note...")
+        
+        # Save the recorded audio
+        import datetime
+        folder = SETTINGS.get("default_storage_folder")
+        if folder and not os.path.exists(folder):
+            os.makedirs(folder)
+            
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        audio_file_path = os.path.join(folder, f"{now_str}.wav") if folder else f"{now_str}.wav"
+        
+        # Use audio handler to save the combined audio
+        self.audio_handler.save_audio(self.soap_audio_segments, audio_file_path)
+        self.update_status(f"SOAP audio saved to: {audio_file_path}")
+            
+        # Process the recording
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        self.process_soap_recording()
+        
+        # Re-enable the record button after 5 seconds
+        self.after(5000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
 
     def toggle_soap_pause(self) -> None:
         if self.soap_paused:
@@ -1096,12 +1127,21 @@ class MedicalDictationApp(ttk.Window):
             self.update_status("SOAP note recording paused.")
 
     def resume_soap_recording(self) -> None:
+        """Resume SOAP recording after pause using the selected microphone."""
         if self.soap_recording and self.soap_paused:
             try:
-                mic = sr.Microphone()  # Adjust as needed for selected mic
+                import speech_recognition as sr
+                # Use the selected microphone from combobox
+                selected_index = self.mic_combobox.current()
+                mic = sr.Microphone(device_index=selected_index)
+                logging.info(f"Resuming SOAP recording with microphone index: {selected_index}")
             except Exception as e:
-                self.update_status(f"Error accessing microphone: {e}")
+                error_msg = f"Error accessing microphone: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.update_status(error_msg)
                 return
+                
+            # Restart the background listening with same callback
             self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
             self.soap_paused = False
             self.pause_soap_button.config(text="Pause")
@@ -1110,10 +1150,24 @@ class MedicalDictationApp(ttk.Window):
     def soap_callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
         """Callback for SOAP note recording using AudioHandler."""
         try:
+            # Log that we received audio data
+            audio_size = len(audio.get_raw_data()) if audio else 0
+            logging.info(f"SOAP callback received audio chunk of size: {audio_size} bytes")
+            
+            if not audio or audio_size == 0:
+                logging.warning("Empty audio data received in SOAP callback")
+                return
+                
             # Extract audio segment using AudioHandler
             segment, _ = self.audio_handler.process_audio_data(audio)
+            
             if segment:
+                segment_length = len(segment.raw_data)
+                logging.info(f"Adding audio segment of length {segment_length} bytes to SOAP recording")
                 self.soap_audio_segments.append(segment)
+            else:
+                logging.warning("AudioHandler returned None segment from valid audio data")
+                
         except Exception as e:
             logging.error(f"Error recording SOAP note chunk: {str(e)}", exc_info=True)
 
@@ -1128,23 +1182,36 @@ class MedicalDictationApp(ttk.Window):
                                   icon="warning"):
             return  # User clicked "No", abort cancellation
             
-        # Stop the recording
-        if self.soap_stop_listening_function:
-            self.soap_stop_listening_function(wait_for_stop=False)
+        self.update_status("Cancelling recording...")
+        
+        def cancel_task():
+            # Stop listening with wait_for_stop=True to ensure clean shutdown
+            if self.soap_stop_listening_function:
+                self.soap_stop_listening_function(wait_for_stop=True)
+                
+            # Update UI on main thread
+            self.after(0, lambda: [
+                self._cancel_soap_recording_finalize()
+            ])
             
-        # Reset state
+        # Run the cancellation process in a separate thread to avoid freezing the UI
+        self.io_executor.submit(cancel_task)
+        
+    def _cancel_soap_recording_finalize(self):
+        """Finalize the cancellation of SOAP recording."""
+        # Clear the audio segments
+        self.soap_audio_segments.clear()
+        
+        # Reset state variables
         self.soap_recording = False
         self.soap_paused = False
         
-        # Clear recorded segments
-        self.soap_audio_segments.clear()
-        
-        # Update UI
-        self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+        # Reset UI buttons
         self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
-        self.cancel_soap_button.config(state=tk.DISABLED)  # disable cancel button
+        self.cancel_soap_button.config(state=tk.DISABLED)
+        self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
         
-        # Notify user
+        # Update status
         self.status_manager.warning("SOAP note recording cancelled.")
 
     def undo_text(self) -> None:
@@ -1165,11 +1232,18 @@ class MedicalDictationApp(ttk.Window):
 
     def on_closing(self) -> None:
         try:
-            # Check if executor exists and is not None before trying to shut it down
-            if hasattr(self, 'executor') and self.executor is not None:
-                self.executor.shutdown(wait=False)
+            # Shutdown all executor pools properly
+            for executor_name in ['io_executor', 'cpu_executor', 'executor']:
+                if hasattr(self, executor_name) and getattr(self, executor_name) is not None:
+                    try:
+                        executor = getattr(self, executor_name)
+                        logging.info(f"Shutting down {executor_name}")
+                        executor.shutdown(wait=False)
+                    except Exception as e:
+                        logging.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
         except Exception as e:
-            logging.error(f"Error shutting down executor: {str(e)}", exc_info=True)
+            logging.error(f"Error during executor shutdown: {str(e)}", exc_info=True)
+        
         self.destroy()
 
     def on_tab_changed(self, event: tk.Event) -> None:
@@ -1431,6 +1505,174 @@ class MedicalDictationApp(ttk.Window):
             
         # Update shortcut label in status bar to show theme toggle shortcut
         self.status_manager.info("Theme toggle shortcut: Alt+T")
+
+    def create_referral(self) -> None:
+        """Create a referral from transcript with improved concurrency."""
+        # Check if the transcript is empty before proceeding
+        text = self.transcript_text.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Empty Transcript", "The transcript is empty. Please add content before creating a referral.")
+            return
+            
+        # Update status and display progress bar on referral click
+        self.status_manager.progress("Analyzing transcript for possible conditions...")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        
+        # Get suggested conditions asynchronously using CPU executor
+        def get_conditions_task() -> str:
+            try:
+                # Use CPU executor for the condition analysis which is CPU-intensive
+                future = self.cpu_executor.submit(get_possible_conditions, text)
+                # Get result with timeout to prevent hanging
+                return future.result(timeout=60) or ""
+            except concurrent.futures.TimeoutError:
+                logging.error("Condition analysis timed out")
+                return ""
+            except Exception as e:
+                logging.error(f"Error analyzing conditions: {str(e)}", exc_info=True)
+                return ""
+
+        # Use I/O executor for the overall task management
+        future = self.io_executor.submit(get_conditions_task)
+        
+        def on_conditions_done(future_result):
+            try:
+                suggestions = future_result.result()
+                # Continue on the main thread
+                self.after(0, lambda: self._create_referral_continued(suggestions))
+            except Exception as e:
+                error_msg = f"Failed to analyze conditions: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+                
+        future.add_done_callback(on_conditions_done)
+
+    def _create_referral_continued(self, suggestions: str) -> None:
+        """Continue referral creation process after condition analysis."""
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()
+        
+        conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
+        
+        # Use ask_conditions_dialog as an imported function
+        from dialogs import ask_conditions_dialog
+        focus = ask_conditions_dialog(self, "Select Conditions", "Select conditions to focus on:", conditions_list)
+        
+        if not focus:
+            self.update_status("Referral cancelled or no conditions selected.", status_type="warning")
+            return
+        
+        # Use "progress" status type to prevent auto-clearing for long-running operations
+        self.status_manager.progress(f"Creating referral for conditions: {focus}...")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        self.referral_button.config(state=DISABLED)  # Disable button while processing
+        
+        def task() -> None:
+            try:
+                transcript = self.transcript_text.get("1.0", tk.END).strip()
+                
+                # Import locally to avoid potential circular import
+                from ai import create_referral_with_openai
+                
+                # Use our custom scheduler for status updates
+                self.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
+                self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
+                
+                # Use CPU executor for the AI processing which is CPU-intensive
+                future = self.cpu_executor.submit(create_referral_with_openai, transcript, focus)
+                # Get result with timeout to prevent hanging
+                result = future.result(timeout=120)
+                
+                # Update UI when done
+                self.after(0, lambda: [
+                    self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
+                    self.notebook.select(2)  # Switch focus to Referral tab
+                ])
+            except concurrent.futures.TimeoutError:
+                self.after(0, lambda: [
+                    self.status_manager.error("Referral creation timed out. Please try again."),
+                    self.referral_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+            except Exception as e:
+                error_msg = f"Error creating referral: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    self.referral_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+        
+        # Use I/O executor for task management since it involves UI coordination
+        self.io_executor.submit(task)
+
+    def load_audio_file(self) -> None:
+        """Load and transcribe audio from a file using AudioHandler with improved concurrency."""
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.expanduser("~"),
+            title="Select Audio File",
+            filetypes=(
+                ("Audio Files", "*.wav;*.mp3;*.ogg;*.flac;*.m4a"),
+                ("All Files", "*.*")
+            )
+        )
+        if not file_path:
+            return
+        
+        self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
+        self.progress_bar.pack(side=RIGHT, padx=10)
+        self.progress_bar.start()
+        
+        def task() -> None:
+            try:
+                # Use I/O executor for file loading which is I/O-bound
+                segment, transcript = self.audio_handler.load_audio_file(file_path)
+                
+                if segment and transcript:
+                    # Store segment for future use (was missing in the updated code)
+                    self.audio_segments = [segment]
+                    
+                    # Schedule UI update on the main thread
+                    self.after(0, lambda: [
+                        self.append_text(transcript),
+                        self.status_manager.success(f"Audio transcribed: {os.path.basename(file_path)}"),
+                        self.progress_bar.stop(),
+                        self.progress_bar.pack_forget(),
+                        self.notebook.select(0)  # Switch to Transcript tab (index 0)
+                    ])
+                else:
+                    self.after(0, lambda: [
+                        self.status_manager.error("Failed to process audio file"),
+                        self.progress_bar.stop(),
+                        self.progress_bar.pack_forget()
+                    ])
+            except Exception as e:
+                error_msg = f"Error processing audio file: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.after(0, lambda: [
+                    self.status_manager.error(error_msg),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
+                ])
+                
+        # Use I/O executor for the task since it primarily involves file I/O
+        self.io_executor.submit(task)
+
+    def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
+        current = widget.get("1.0", "end-1c")
+        if (self.capitalize_next or not current or current[-1] in ".!?") and text:
+            text = text[0].upper() + text[1:]
+            self.capitalize_next = False
+        widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
+        widget.see(tk.END)
 
 if __name__ == "__main__":
     main()
