@@ -224,16 +224,23 @@ class MedicalDictationApp(ttk.Window):
         
         super().__init__(themename=self.current_theme)
         self.title("Medical Assistant")
-        self.geometry("1700x950")
-        self.minsize(1200, 800)
-        self.config(bg="#f0f0f0")
-    
-        # Center the window on the screen
-        self.update_idletasks()  # Ensure window dimensions are calculated
+        
+        # Get screen dimensions and calculate appropriate window size
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        window_width = 1400
-        window_height = 950
+        
+        # Calculate responsive window size (80% of screen size, but not larger than 1700x950)
+        window_width = min(int(screen_width * 0.8), 1700)
+        window_height = min(int(screen_height * 0.8), 950)
+        
+        # Apply the calculated window size
+        self.geometry(f"{window_width}x{window_height}")
+        
+        # Set a reasonable minimum size that ensures all UI elements are visible
+        self.minsize(1100, 750)
+        
+        # Center the window on the screen
+        self.update_idletasks()  # Ensure window dimensions are calculated
         x = (screen_width // 2) - (window_width // 2)
         y = (screen_height // 2) - (window_height // 2)
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
@@ -487,29 +494,37 @@ class MedicalDictationApp(ttk.Window):
             "create_letter": self.create_letter,
             "toggle_soap_recording": self.toggle_soap_recording,
             "toggle_soap_pause": self.toggle_soap_pause,
-            "cancel_soap_recording": self.cancel_soap_recording  # Add the new command
+            "cancel_soap_recording": self.cancel_soap_recording
         }
         
-        # Create microphone frame with theme button references
+        # Create a main content frame to hold everything except the status bar
+        main_content = ttk.Frame(self)
+        main_content.pack(side=TOP, fill=tk.BOTH, expand=True)
+        
+        # Create status bar - placed first in packing order but with side=BOTTOM
+        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
+        status_frame.pack(side=BOTTOM, fill=tk.X)
+        
+        # Create microphone frame with theme button references - inside main_content
         mic_frame, self.mic_combobox, self.provider_combobox, self.stt_combobox, self.theme_btn, self.theme_label = self.ui.create_microphone_frame(
             on_provider_change=self._on_provider_change,
             on_stt_change=self._on_stt_change,
             refresh_microphones=self.refresh_microphones,
             toggle_theme=self.toggle_theme  # Pass the toggle_theme method to the UI
         )
-        mic_frame.pack(side=TOP, fill=tk.X, padx=20, pady=(20, 10))
+        mic_frame.pack(side=TOP, fill=tk.X, padx=10, pady=(10, 5))
         
-        # Create notebook with text areas
+        # Create control panel with buttons - inside main_content
+        self.control_frame, self.buttons = self.ui.create_control_panel(command_map)
+        self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
+        
+        # Create notebook with text areas - inside main_content with expand=True
         self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.dictation_text = self.ui.create_notebook()
-        self.notebook.pack(padx=20, pady=10, fill=tk.BOTH, expand=True)
+        self.notebook.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         
         # Set initial active text widget and bind tab change event
         self.active_text_widget = self.transcript_text
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-        
-        # Create control panel with buttons
-        self.control_frame, self.buttons = self.ui.create_control_panel(command_map)
-        self.control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
         
         # Access common buttons from self.buttons
         self.record_button = self.buttons["record"]
@@ -524,11 +539,11 @@ class MedicalDictationApp(ttk.Window):
         # Add missing button references
         self.load_button = self.buttons["load"]
         self.save_button = self.buttons["save"]
-        self.cancel_soap_button = self.buttons["cancel_soap"]  # Add the new button reference
+        self.cancel_soap_button = self.buttons["cancel_soap"]
         
         # Create status bar
-        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
-        status_frame.pack(side=BOTTOM, fill=tk.X)
+        # status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
+        # status_frame.pack(side=BOTTOM, fill=tk.X)
 
     def bind_shortcuts(self) -> None:
         self.bind("<Control-n>", lambda event: self.new_session())
@@ -943,7 +958,7 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-                
+
         # Use I/O executor for the task since it involves UI coordination
         self.io_executor.submit(task)
 
@@ -1610,7 +1625,7 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-        
+
         # Use I/O executor for task management since it involves UI coordination
         self.io_executor.submit(task)
 

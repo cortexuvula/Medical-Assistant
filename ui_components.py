@@ -37,66 +37,72 @@ class UIComponents:
     
     def create_microphone_frame(self, on_provider_change: Callable, on_stt_change: Callable, 
                               refresh_microphones: Callable, toggle_theme: Callable = None) -> tuple:
-        """Create the microphone selection and provider dropdown frame.
+        """Create the microphone selection section with provider and STT options.
         
-        Args:
-            on_provider_change: Callback for provider dropdown change
-            on_stt_change: Callback for STT provider dropdown change
-            refresh_microphones: Callback to refresh microphone list
-            toggle_theme: Callback to toggle between light and dark themes
-            
         Returns:
-            tuple: (frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label)
+            tuple: (mic_frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label)
         """
+        # Main frame for microphone selection
         mic_frame = ttk.Frame(self.parent, padding=10)
         
-        # Microphone selection
-        ttk.Label(mic_frame, text="Select Microphone:").pack(side=LEFT, padx=(0, 10))
-        mic_names = get_valid_microphones() or sr.Microphone.list_microphone_names()
-        mic_combobox = ttk.Combobox(mic_frame, values=mic_names, state="readonly", width=50)
-        mic_combobox.pack(side=LEFT)
-        if mic_names:
+        # Left side - microphone selection
+        mic_select_frame = ttk.Frame(mic_frame)
+        mic_select_frame.pack(side=LEFT, fill=tk.X, expand=True)
+        
+        ttk.Label(mic_select_frame, text="Select Microphone:").pack(side=LEFT, padx=(0, 10))
+        
+        mic_combobox = ttk.Combobox(
+            mic_select_frame,
+            values=get_valid_microphones() or sr.Microphone.list_microphone_names(),
+            state="readonly",
+            width=30
+        )
+        mic_combobox.pack(side=LEFT, padx=(0, 15), fill=tk.X, expand=True)
+        
+        if len(mic_combobox["values"]) > 0:
             mic_combobox.current(0)
-        else:
-            mic_combobox.set("No microphone found")
-            
-        refresh_btn = ttk.Button(mic_frame, text="Refresh", command=refresh_microphones, bootstyle="PRIMARY")
-        refresh_btn.pack(side=LEFT, padx=10)
-        ToolTip(refresh_btn, "Refresh the list of available microphones.")
         
-        # Provider selection frame
+        refresh_btn = ttk.Button(
+            mic_select_frame,
+            text="⟳",
+            command=refresh_microphones,
+            width=3
+        )
+        refresh_btn.pack(side=LEFT, padx=(0, 20))
+        ToolTip(refresh_btn, "Refresh microphone list")
+        
+        # Middle - Provider selection
         provider_frame = ttk.Frame(mic_frame)
-        provider_frame.pack(side=LEFT, padx=10)
+        provider_frame.pack(side=LEFT, fill=tk.X, expand=False)
         
-        # Provider dropdown
-        ttk.Label(provider_frame, text="Provider:").pack(side=LEFT, padx=(0, 5))
+        ttk.Label(provider_frame, text="Provider:").pack(side=LEFT)
+        
+        provider_values = ["OpenAI", "Azure", "Anthropic", "Perplexity", "Groq", "Ollama"]
         provider = SETTINGS.get("ai_provider", "openai")
-        providers = ["openai", "perplexity", "grok", "ollama"]
-        provider_display = ["OpenAI", "Perplexity", "Grok", "Ollama"]
         
         provider_combobox = ttk.Combobox(
-            provider_frame, 
-            values=provider_display,
+            provider_frame,
+            values=provider_values,
             state="readonly",
             width=12
         )
-        provider_combobox.pack(side=LEFT)
+        provider_combobox.pack(side=LEFT, padx=5)
         
-        # Set current provider
         try:
-            current_index = providers.index(provider.lower())
-            provider_combobox.current(current_index)
+            provider_index = [p.lower() for p in provider_values].index(provider.lower())
+            provider_combobox.current(provider_index)
         except (ValueError, IndexError):
             provider_combobox.current(0)
         
         provider_combobox.bind("<<ComboboxSelected>>", on_provider_change)
-        ToolTip(provider_combobox, "Select which AI provider to use")
+        ToolTip(provider_combobox, "Select which AI provider to use for text processing")
         
-        # STT provider selection
+        # STT Provider selection
         stt_frame = ttk.Frame(mic_frame)
-        stt_frame.pack(side=LEFT, padx=10)
+        stt_frame.pack(side=LEFT, fill=tk.X, expand=False, padx=(20, 0))
         
-        ttk.Label(stt_frame, text="Speech To Text:").pack(side=LEFT, padx=(0, 5))
+        ttk.Label(stt_frame, text="STT:").pack(side=LEFT)
+        
         stt_providers = ["elevenlabs", "deepgram"]
         stt_display = ["ElevenLabs", "Deepgram"]
         stt_provider = SETTINGS.get("stt_provider", "deepgram")
@@ -125,7 +131,7 @@ class UIComponents:
         # NEW: Add theme toggle button
         if toggle_theme:
             theme_frame = ttk.Frame(mic_frame)
-            theme_frame.pack(side=RIGHT, padx=10)
+            theme_frame.pack(side=RIGHT, padx=10, fill=tk.X, expand=False)
             
             # Get current theme to determine icon and tooltip
             current_theme = SETTINGS.get("theme", "flatly")
@@ -145,7 +151,7 @@ class UIComponents:
                 bootstyle="info" if not is_dark else "warning",  # Different style per mode
                 width=10  # Increased width to fit text
             )
-            theme_btn.pack(side=RIGHT)
+            theme_btn.pack(side=RIGHT, fill=tk.X)
             
             # Add theme indicator label - should show current mode
             mode_text = "Light Mode" if not is_dark else "Dark Mode"
@@ -177,27 +183,25 @@ class UIComponents:
         notebook.add(referral_frame, text="Referral")
         notebook.add(dictation_frame, text="Dictation")
         
-        # Create text widgets for each tab
+        # Create text widgets for each tab - use relative sizing
         text_kwargs = {
             "wrap": tk.WORD, 
-            "width": 80, 
-            "height": 12, 
-            "font": ("Segoe UI", 11),
             "undo": True, 
-            "autoseparators": False
+            "autoseparators": False,
+            "font": ("Segoe UI", 11)
         }
         
         transcript_text = tk.scrolledtext.ScrolledText(transcript_frame, **text_kwargs)
-        transcript_text.pack(fill=tk.BOTH, expand=True)
+        transcript_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         soap_text = tk.scrolledtext.ScrolledText(soap_frame, **text_kwargs)
-        soap_text.pack(fill=tk.BOTH, expand=True)
+        soap_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         referral_text = tk.scrolledtext.ScrolledText(referral_frame, **text_kwargs)
-        referral_text.pack(fill=tk.BOTH, expand=True)
+        referral_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         dictation_text = tk.scrolledtext.ScrolledText(dictation_frame, **text_kwargs)
-        dictation_text.pack(fill=tk.BOTH, expand=True)
+        dictation_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         return notebook, transcript_text, soap_text, referral_text, dictation_text
     
@@ -210,14 +214,31 @@ class UIComponents:
         Returns:
             ttk.Frame: The control panel frame
         """
-        control_frame = ttk.Frame(self.parent, padding=10)
+        control_frame = ttk.Frame(self.parent, padding=5)  # Reduced padding
         
-        # Individual controls section
-        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(
-            row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+        # Set up responsive grid configuration
+        control_frame.columnconfigure(0, weight=1)
         
-        main_controls = ttk.Frame(control_frame)
-        main_controls.grid(row=1, column=0, sticky="w")
+        # Create a more compact layout with sections side by side
+        main_section = ttk.Frame(control_frame)
+        main_section.grid(row=0, column=0, sticky="ew", pady=(5, 0))
+        main_section.columnconfigure(0, weight=1)
+        main_section.columnconfigure(1, weight=1)
+        
+        # Left side - Individual controls section
+        individual_section = ttk.Frame(main_section)
+        individual_section.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        individual_section.columnconfigure(0, weight=1)
+        
+        ttk.Label(individual_section, text="Individual Controls", font=("Segoe UI", 11, "bold")).grid(
+            row=0, column=0, sticky="w", padx=5, pady=(0, 3))  # Reduced padding
+        
+        main_controls = ttk.Frame(individual_section)
+        main_controls.grid(row=1, column=0, sticky="ew")
+        
+        # Configure main_controls for responsive layout
+        for i in range(8):  # Enough columns for all buttons
+            main_controls.columnconfigure(i, weight=1)
         
         # Main control buttons
         buttons = [
@@ -259,19 +280,28 @@ class UIComponents:
                 command=btn["command"],
                 bootstyle=btn.get("bootstyle", "")
             )
-            button.grid(row=0, column=btn["column"], padx=5, pady=5)
+            button.grid(row=0, column=btn["column"], padx=3, pady=3, sticky="ew")  # Reduced padding
             ToolTip(button, btn["tooltip"])
             button_widgets[btn["name"]] = button
         
-        # AI Assist section
-        ttk.Label(control_frame, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(
-            row=2, column=0, sticky="w", padx=5, pady=(10, 5))
-            
-        ttk.Label(control_frame, text="Individual Controls", font=("Segoe UI", 10, "italic")).grid(
-            row=3, column=0, sticky="w", padx=5, pady=(0, 5))
+        # Right side - AI Assist section
+        ai_section = ttk.Frame(main_section)
+        ai_section.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        ai_section.columnconfigure(0, weight=1)
         
-        ai_buttons = ttk.Frame(control_frame)
-        ai_buttons.grid(row=4, column=0, sticky="w")
+        ttk.Label(ai_section, text="AI Assist", font=("Segoe UI", 11, "bold")).grid(
+            row=0, column=0, sticky="w", padx=5, pady=(0, 3))  # Reduced padding
+        
+        # Create a notebook for AI controls to save vertical space
+        ai_notebook = ttk.Notebook(ai_section, style="Green.TNotebook")
+        ai_notebook.grid(row=1, column=0, sticky="ew", pady=(0, 5))
+        
+        # Individual AI controls tab
+        individual_ai_frame = ttk.Frame(ai_notebook)
+        ai_notebook.add(individual_ai_frame, text="Text Processing")
+        
+        for i in range(5):  # Enough columns for all AI buttons
+            individual_ai_frame.columnconfigure(i, weight=1)
         
         # AI control buttons
         ai_btn_list = [
@@ -298,36 +328,37 @@ class UIComponents:
         
         for btn in ai_btn_list:
             button = ttk.Button(
-                ai_buttons, 
+                individual_ai_frame, 
                 text=btn["text"], 
                 width=btn["width"],
                 command=btn["command"],
                 bootstyle=btn.get("bootstyle", "")
             )
-            button.grid(row=0, column=btn["column"], padx=5, pady=5)
+            button.grid(row=0, column=btn["column"], padx=3, pady=3, sticky="ew")  # Reduced padding
             ToolTip(button, btn["tooltip"])
             button_widgets[btn["name"]] = button
         
-        # Automation Controls section
-        ttk.Label(control_frame, text="Automation Controls", font=("Segoe UI", 10, "italic")).grid(
-            row=5, column=0, sticky="w", padx=5, pady=(0, 5))
+        # Automation controls tab
+        automation_frame = ttk.Frame(ai_notebook)
+        ai_notebook.add(automation_frame, text="SOAP Automation")
         
-        automation_frame = ttk.Frame(control_frame)
-        automation_frame.grid(row=6, column=0, sticky="w")
+        # Configure automation_frame for responsive layout
+        for i in range(3):  # Enough columns for all automation buttons
+            automation_frame.columnconfigure(i, weight=1)
         
         # SOAP recording buttons
         record_soap_button = ttk.Button(
             automation_frame, text="Record SOAP Note", width=25,
             command=command_map.get("toggle_soap_recording"), bootstyle="success"
         )
-        record_soap_button.grid(row=0, column=0, padx=5, pady=5)
+        record_soap_button.grid(row=0, column=0, padx=3, pady=3, sticky="ew")  # Reduced padding
         ToolTip(record_soap_button, "Record audio for SOAP note without live transcription.")
         
         pause_soap_button = ttk.Button(
             automation_frame, text="Pause", width=15,
             command=command_map.get("toggle_soap_pause"), bootstyle="SECONDARY", state=tk.DISABLED
         )
-        pause_soap_button.grid(row=0, column=1, padx=5, pady=5)
+        pause_soap_button.grid(row=0, column=1, padx=3, pady=3, sticky="ew")  # Reduced padding
         ToolTip(pause_soap_button, "Pause/Resume the SOAP note recording.")
         
         # Add Cancel button
@@ -335,7 +366,7 @@ class UIComponents:
             automation_frame, text="Cancel", width=15,
             command=command_map.get("cancel_soap_recording"), bootstyle="danger", state=tk.DISABLED
         )
-        cancel_soap_button.grid(row=0, column=2, padx=5, pady=5)
+        cancel_soap_button.grid(row=0, column=2, padx=3, pady=3, sticky="ew")  # Reduced padding
         ToolTip(cancel_soap_button, "Cancel the current SOAP note recording without processing.")
         
         button_widgets["record_soap"] = record_soap_button
@@ -351,6 +382,9 @@ class UIComponents:
             tuple: (status_frame, status_icon_label, status_label, provider_indicator, progress_bar)
         """
         status_frame = ttk.Frame(self.parent, padding=(10, 5))
+        
+        # Configure for responsive layout
+        status_frame.columnconfigure(1, weight=1)  # Status label should expand
         
         # Status icon
         status_icon_label = ttk.Label(status_frame, text="•", font=("Segoe UI", 16), foreground="gray")
