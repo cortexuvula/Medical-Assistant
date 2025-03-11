@@ -36,11 +36,17 @@ class UIComponents:
         )
     
     def create_microphone_frame(self, on_provider_change: Callable, on_stt_change: Callable, 
-                              refresh_microphones: Callable) -> ttk.Frame:
+                              refresh_microphones: Callable, toggle_theme: Callable = None) -> tuple:
         """Create the microphone selection and provider dropdown frame.
         
+        Args:
+            on_provider_change: Callback for provider dropdown change
+            on_stt_change: Callback for STT provider dropdown change
+            refresh_microphones: Callback to refresh microphone list
+            toggle_theme: Callback to toggle between light and dark themes
+            
         Returns:
-            ttk.Frame: The microphone selection frame
+            tuple: (frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label)
         """
         mic_frame = ttk.Frame(self.parent, padding=10)
         
@@ -112,7 +118,44 @@ class UIComponents:
         stt_combobox.bind("<<ComboboxSelected>>", on_stt_change)
         ToolTip(stt_combobox, "Select which Speech-to-Text provider to use")
         
-        return mic_frame, mic_combobox, provider_combobox, stt_combobox
+        # Initialize theme button and label
+        theme_btn = None
+        theme_label = None
+        
+        # NEW: Add theme toggle button
+        if toggle_theme:
+            theme_frame = ttk.Frame(mic_frame)
+            theme_frame.pack(side=RIGHT, padx=10)
+            
+            # Get current theme to determine icon and tooltip
+            current_theme = SETTINGS.get("theme", "flatly")
+            is_dark = current_theme in ["darkly", "solar", "cyborg", "superhero"]
+            
+            # Use correct icon and tooltip text based on the CURRENT theme
+            # In light mode, show moon icon and "Switch to Dark Mode" tooltip
+            # In dark mode, show sun icon and "Switch to Light Mode" tooltip
+            icon = "🌙" if not is_dark else "☀️"
+            tooltip_text = "Switch to Dark Mode" if not is_dark else "Switch to Light Mode"
+            
+            # Create a more visible theme toggle button with a distinct appearance
+            theme_btn = ttk.Button(
+                theme_frame,
+                text=f"{icon} Theme",  # Add 'Theme' text next to icon
+                command=toggle_theme,
+                bootstyle="info" if not is_dark else "warning",  # Different style per mode
+                width=10  # Increased width to fit text
+            )
+            theme_btn.pack(side=RIGHT)
+            
+            # Add theme indicator label - should show current mode
+            mode_text = "Light Mode" if not is_dark else "Dark Mode"
+            theme_label = ttk.Label(theme_frame, text=f"({mode_text})")
+            theme_label.pack(side=RIGHT, padx=(0, 5))
+            
+            # Store the tooltip directly on the button as an attribute
+            theme_btn._tooltip = ToolTip(theme_btn, tooltip_text)
+        
+        return mic_frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label
     
     def create_notebook(self) -> tuple:
         """Create the notebook with tabs for transcript, soap note, referral, and dictation.

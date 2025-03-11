@@ -9,6 +9,8 @@ DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
 DEFAULT_AI_PROVIDER = "openai"
 # NEW: Default Speech-to-Text provider setting (updated to include ElevenLabs)
 DEFAULT_STT_PROVIDER = "deepgram"
+# NEW: Default theme setting
+DEFAULT_THEME = "flatly"  # Light theme default
 
 _DEFAULT_SETTINGS = {
     "refine_text": {
@@ -132,7 +134,11 @@ Follow up:
         "profanity_filter": False,  # Filter profanity
         "redact": False,            # Redact PII (personally identifiable information)
         "alternatives": 1           # Number of alternative transcriptions
-    }
+    },
+    "storage_folder": DEFAULT_STORAGE_FOLDER,
+    "ai_provider": DEFAULT_AI_PROVIDER,
+    "stt_provider": DEFAULT_STT_PROVIDER,
+    "theme": DEFAULT_THEME
 }
 
 def load_settings() -> dict:

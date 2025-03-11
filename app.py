@@ -5,7 +5,7 @@ import logging
 import concurrent.futures
 from io import BytesIO
 import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext
+from tkinter import messagebox, filedialog, scrolledtext, ttk
 import speech_recognition as sr
 from pydub import AudioSegment
 from deepgram import DeepgramClient, PrerecordedOptions
@@ -207,7 +207,10 @@ class MedicalDictationApp(ttk.Window):
         # Initialize the executor first, before any potential failures
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         
-        super().__init__(themename="flatly")
+        # Get theme from settings or use default
+        self.current_theme = SETTINGS.get("theme", "flatly")
+        
+        super().__init__(themename=self.current_theme)
         self.title("Medical Assistant")
         self.geometry("1400x950")
         self.minsize(700, 500)
@@ -323,6 +326,7 @@ class MedicalDictationApp(ttk.Window):
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
         settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
+        settings_menu.add_command(label="Toggle Theme", command=self.toggle_theme)  # NEW: Add toggle theme option
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         helpmenu = tk.Menu(menubar, tearoff=0)
@@ -474,11 +478,12 @@ class MedicalDictationApp(ttk.Window):
             "cancel_soap_recording": self.cancel_soap_recording  # Add the new command
         }
         
-        # Create microphone frame
-        mic_frame, self.mic_combobox, self.provider_combobox, self.stt_combobox = self.ui.create_microphone_frame(
+        # Create microphone frame with theme button references
+        mic_frame, self.mic_combobox, self.provider_combobox, self.stt_combobox, self.theme_btn, self.theme_label = self.ui.create_microphone_frame(
             on_provider_change=self._on_provider_change,
             on_stt_change=self._on_stt_change,
-            refresh_microphones=self.refresh_microphones
+            refresh_microphones=self.refresh_microphones,
+            toggle_theme=self.toggle_theme  # Pass the toggle_theme method to the UI
         )
         mic_frame.pack(side=TOP, fill=tk.X, padx=20, pady=(20, 10))
         
@@ -491,8 +496,8 @@ class MedicalDictationApp(ttk.Window):
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
         # Create control panel with buttons
-        control_frame, self.buttons = self.ui.create_control_panel(command_map)
-        control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
+        self.control_frame, self.buttons = self.ui.create_control_panel(command_map)
+        self.control_frame.pack(side=TOP, fill=tk.X, padx=20, pady=10)
         
         # Access common buttons from self.buttons
         self.record_button = self.buttons["record"]
@@ -518,6 +523,11 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-s>", lambda event: self.save_text())
         self.bind("<Control-c>", lambda event: self.copy_text())
         self.bind("<Control-l>", lambda event: self.load_audio_file())
+        self.bind("<Control-z>", lambda event: self.undo_text())
+        self.bind("<Control-y>", lambda event: self.redo_text())
+        self.bind("<F5>", lambda event: self.toggle_recording())
+        self.bind("<Control-Shift-S>", lambda event: self.toggle_soap_recording())
+        self.bind("<Alt-t>", lambda event: self.toggle_theme())
 
     def show_about(self) -> None:
         # Call the refactored function from dialogs.py
@@ -985,6 +995,7 @@ class MedicalDictationApp(ttk.Window):
                 self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
                 # Execute the referral creation with conditions
                 result = create_referral_with_openai(transcript, focus)
+                
                 # Update UI when done
                 self.after(0, lambda: [
                     self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
@@ -1131,7 +1142,7 @@ class MedicalDictationApp(ttk.Window):
         # Update UI
         self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
         self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
-        self.cancel_soap_button.config(state=tk.DISABLED)
+        self.cancel_soap_button.config(state=tk.DISABLED)  # disable cancel button
         
         # Notify user
         self.status_manager.warning("SOAP note recording cancelled.")
@@ -1303,3 +1314,123 @@ class MedicalDictationApp(ttk.Window):
             self.after(0, lambda: self.stt_combobox.current(fallback_index))
         except (ValueError, IndexError):
             pass
+
+    def toggle_theme(self):
+        """Toggle between light and dark themes"""
+        # Define light and dark theme pairs
+        theme_pairs = {
+            # Light themes
+            "flatly": "darkly",
+            "cosmo": "solar",
+            "yeti": "cyborg",
+            "minty": "superhero",
+            # Dark themes
+            "darkly": "flatly",
+            "solar": "cosmo",
+            "cyborg": "yeti",
+            "superhero": "minty"
+        }
+        
+        # Get the paired theme for the current theme
+        new_theme = theme_pairs.get(self.current_theme, "flatly")
+        
+        # Apply the new theme - need to recreate the window to fully apply the theme
+        self.style.theme_use(new_theme)
+        self.current_theme = new_theme
+        
+        # Update settings
+        SETTINGS["theme"] = new_theme
+        save_settings(SETTINGS)
+        
+        # Define dark themes list
+        dark_themes = ["darkly", "solar", "cyborg", "superhero"]
+        
+        # Check if the NEW theme is dark (not the current theme which has just been switched)
+        is_dark = new_theme in dark_themes
+        mode_name = "Dark" if is_dark else "Light"
+        self.status_manager.info(f"Switched to {mode_name} Mode ({new_theme})")
+        
+        # Update text widgets background and foreground colors based on theme
+        text_bg = "#212529" if is_dark else "#ffffff"
+        text_fg = "#f8f9fa" if is_dark else "#212529"
+        
+        # Update all text widgets with new colors
+        text_widgets = [self.transcript_text, self.soap_text, self.referral_text, self.dictation_text]
+        for widget in text_widgets:
+            widget.config(bg=text_bg, fg=text_fg, insertbackground=text_fg)
+            
+        # For better visibility in dark mode, update styles for buttons and other elements
+        control_bg = "#212529" if is_dark else "#f8f9fa"
+        control_fg = "#f8f9fa" if is_dark else "#212529"
+        
+        # Update control panel backgrounds - handle tk vs ttk frames differently
+        for frame in self.winfo_children():
+            if isinstance(frame, tk.Frame):  # Only standard tk frames support 'background'
+                frame.configure(background=control_bg)
+                
+        # Update all button frames specifically - handle tk vs ttk frames differently
+        for btn_name, btn in self.buttons.items():
+            btn_frame = btn.master
+            if isinstance(btn_frame, tk.Frame):  # Only standard tk frames support 'background'
+                btn_frame.configure(background=control_bg)
+                
+        # Update notebook style
+        if is_dark:
+            # Dark mode styling
+            self.style.configure("Green.TNotebook", background=control_bg)
+            self.style.configure("Green.TNotebook.Tab", background="#343a40", foreground=control_fg)
+            self.style.configure("TButton", foreground=control_fg)
+            self.style.configure("TFrame", background=control_bg)  # Use style system for ttk frames
+            self.style.configure("TLabel", foreground=control_fg)
+            
+            # Set specific components that need explicit styling
+            if hasattr(self, 'control_frame') and isinstance(self.control_frame, tk.Frame):
+                self.control_frame.configure(background=control_bg)
+        else:
+            # Light mode styling - reset to defaults
+            self.style.configure("Green.TNotebook", background="#ffffff")
+            self.style.configure("Green.TNotebook.Tab", background="#e9ecef", foreground="#212529")
+            self.style.configure("TButton", foreground="#212529")
+            self.style.configure("TFrame", background="#f8f9fa")  # Use style system for ttk frames
+            self.style.configure("TLabel", foreground="#212529")
+            
+            # Set specific components that need explicit styling
+            if hasattr(self, 'control_frame') and isinstance(self.control_frame, tk.Frame):
+                self.control_frame.configure(background="#f8f9fa")
+            
+            # Do not try to style menu bar directly as it's not stored as an instance variable
+        
+        # Update theme button icon and tooltip if available
+        if hasattr(self, 'theme_btn') and self.theme_btn:
+            # Log the current state for debugging
+            print(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
+            
+            # Update icon and text based on new theme
+            icon = "🌙" if not is_dark else "☀️"
+            self.theme_btn.config(text=f"{icon} Theme")
+            
+            # Also update bootstyle based on theme for better visibility
+            button_style = "info" if not is_dark else "warning"
+            self.theme_btn.configure(bootstyle=button_style)
+            
+            # Update tooltip - create new tooltip and destroy old one
+            tooltip_text = "Switch to Dark Mode" if not is_dark else "Switch to Light Mode"
+            if hasattr(self.theme_btn, '_tooltip'):
+                if hasattr(self.theme_btn._tooltip, 'hidetip'):
+                    self.theme_btn._tooltip.hidetip()  # Hide current tooltip if visible
+                
+                # Update tooltip text
+                self.theme_btn._tooltip.text = tooltip_text
+                print(f"Updated tooltip text to: {tooltip_text}")
+        
+        # Update the theme label if available
+        if hasattr(self, 'theme_label') and self.theme_label:
+            mode_text = "Light Mode" if not is_dark else "Dark Mode"
+            self.theme_label.config(text=f"({mode_text})")
+            print(f"Updated theme label to: ({mode_text})")
+            
+        # Update shortcut label in status bar to show theme toggle shortcut
+        self.status_manager.info("Theme toggle shortcut: Alt+T")
+
+if __name__ == "__main__":
+    main()
