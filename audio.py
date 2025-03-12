@@ -227,16 +227,6 @@ class AudioHandler:
             if response.status_code == 200:
                 result = response.json()
                 
-                # Save complete response for debugging
-                try:
-                    import json
-                    debug_file = f"elevenlabs_response_debug.json"
-                    with open(debug_file, "w") as f:
-                        json.dump(result, f, indent=2)
-                    print(f"Saved complete response to: {debug_file}")
-                except Exception as e:
-                    print(f"Could not save debug file: {str(e)}")
-                
                 # Print successful response info to terminal
                 print("\n===== ELEVENLABS API RESPONSE =====")
                 print(f"Status: {response.status_code} OK")
@@ -712,13 +702,6 @@ class AudioHandler:
                             print(f"Transcript preview: {transcript_preview}")
                     
                     print("=================================\n")
-                    
-                    # For debugging (but only save for failed attempts to avoid clutter)
-                    if not transcript:
-                        debug_file = f"deepgram_response_debug_{uuid.uuid4().hex[:8]}.json"
-                        with open(debug_file, "w") as f:
-                            json.dump(response_json, f, indent=2)
-                        logging.info(f"Saved Deepgram response for debugging to: {debug_file}")
                     
                     # Check if diarization is enabled
                     is_diarized = deepgram_settings.get("diarize", False)
