@@ -1729,9 +1729,6 @@ class MedicalDictationApp(ttk.Window):
         if not file_path:
             return
         
-        # Clear all text tabs before loading new audio
-        self.clear_all_tabs()
-        
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
@@ -1767,40 +1764,9 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-        
-        # Use I/O executor for task management
+                
+        # Use I/O executor for the task since it primarily involves file I/O
         self.io_executor.submit(task)
-        
-    def clear_all_tabs(self) -> None:
-        """Clear the text content of all text area tabs."""
-        try:
-            # Clear transcript tab
-            if hasattr(self, 'transcript_text'):
-                self.transcript_text.delete("1.0", tk.END)
-                
-            # Clear SOAP note tab
-            if hasattr(self, 'soap_text'):
-                self.soap_text.delete("1.0", tk.END)
-                
-            # Clear summary tab
-            if hasattr(self, 'summary_text'):
-                self.summary_text.delete("1.0", tk.END)
-                
-            # Clear patient text
-            if hasattr(self, 'patient_text'):
-                self.patient_text.delete("1.0", tk.END)
-                
-            # Clear plan tab
-            if hasattr(self, 'plan_text'):
-                self.plan_text.delete("1.0", tk.END)
-                
-            # Reset audio segments
-            self.audio_segments = []
-            self.soap_audio_segments = []
-            
-            logging.info("All text tabs cleared")
-        except Exception as e:
-            logging.error(f"Error clearing tabs: {str(e)}", exc_info=True)
 
     def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
         current = widget.get("1.0", "end-1c")

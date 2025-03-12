@@ -26,10 +26,6 @@ class UIComponents:
         # Configure notebook with success color for active tabs
         success_color = self.style.colors.success
         
-        # Define background color for status bar and dropdown boxes for consistent appearance
-        self.status_bg_color = self.style.colors.bg
-        
-        # Configure notebook styles
         self.style.configure("Green.TNotebook", background="white", borderwidth=0)
         self.style.configure("Green.TNotebook.Tab", padding=[10, 5], background="lightgrey", foreground="black")
         
@@ -38,19 +34,6 @@ class UIComponents:
             background=[("selected", success_color), ("active", success_color), ("!selected", "lightgrey")],
             foreground=[("selected", "white"), ("!selected", "black")]
         )
-        
-        # Create consistent style for the status bar and dropdown boxes
-        self.style.configure("StatusBar.TFrame", background=self.status_bg_color)
-        
-        # Configure the TCombobox style to match status bar background
-        self.style.map("TCombobox",
-            fieldbackground=[("readonly", self.status_bg_color)],
-            background=[("readonly", self.status_bg_color)]
-        )
-        self.style.configure("TCombobox", 
-                             selectbackground=self.status_bg_color,
-                             fieldbackground=self.status_bg_color,
-                             background=self.status_bg_color)
     
     def create_microphone_frame(self, on_provider_change: Callable, on_stt_change: Callable, 
                               refresh_microphones: Callable, toggle_theme: Callable = None) -> tuple:
@@ -94,7 +77,7 @@ class UIComponents:
         
         ttk.Label(provider_frame, text="Provider:").pack(side=LEFT)
         
-        provider_values = ["OpenAI", "Azure", "Anthropic", "Perplexity", "Groq", "Ollama"]
+        provider_values = ["OpenAI", "Groq", "Perplexity"]
         provider = SETTINGS.get("ai_provider", "openai")
         
         provider_combobox = ttk.Combobox(
@@ -398,7 +381,7 @@ class UIComponents:
         Returns:
             tuple: (status_frame, status_icon_label, status_label, provider_indicator, progress_bar)
         """
-        status_frame = ttk.Frame(self.parent, padding=(10, 5), style="StatusBar.TFrame")
+        status_frame = ttk.Frame(self.parent, padding=(10, 5))
         
         # Configure for responsive layout
         status_frame.columnconfigure(1, weight=1)  # Status label should expand
