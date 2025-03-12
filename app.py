@@ -709,7 +709,7 @@ class MedicalDictationApp(ttk.Window):
                 # Save audio if available using the AudioHandler
                 if self.audio_segments:
                     base, _ = os.path.splitext(file_path)
-                    audio_path = f"{base}.wav"
+                    audio_path = f"{base}.mp3"
                     if self.audio_handler.save_audio(self.audio_segments, audio_path):
                         messagebox.showinfo("Save Audio", f"Audio saved as: {audio_path}")
                 
@@ -850,19 +850,19 @@ class MedicalDictationApp(ttk.Window):
                 logging.info(f"Combined audio size: {combined_size} bytes, duration: {combined_duration_ms:.2f}ms")
                 
                 # Load the saved audio file instead of transcribing the segments directly
-                # Get the most recently created wav file in the storage folder
+                # Get the most recently created mp3 file in the storage folder
                 folder = SETTINGS.get("default_storage_folder")
                 if not folder or not os.path.exists(folder):
                     raise ValueError("Storage folder not found")
                 
-                # Find wav files and sort by creation time (newest first)
-                wav_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.wav')]
-                if not wav_files:
-                    raise ValueError("No WAV files found in storage folder")
+                # Find mp3 files and sort by creation time (newest first)
+                mp3_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.mp3')]
+                if not mp3_files:
+                    raise ValueError("No MP3 files found in storage folder")
                 
-                wav_files.sort(key=lambda x: os.path.getctime(x), reverse=True)
-                latest_wav = wav_files[0]
-                logging.info(f"Using latest saved WAV file for transcription: {latest_wav}")
+                mp3_files.sort(key=lambda x: os.path.getctime(x), reverse=True)
+                latest_mp3 = mp3_files[0]
+                logging.info(f"Using latest saved MP3 file for transcription: {latest_mp3}")
                 
                 # Try transcription with fallbacks
                 transcript = ""
@@ -874,7 +874,7 @@ class MedicalDictationApp(ttk.Window):
                     
                     # Use the elevenlabs method directly with the file
                     from pydub import AudioSegment as PyAudioSegment
-                    audio_segment = PyAudioSegment.from_file(latest_wav, format="wav")
+                    audio_segment = PyAudioSegment.from_file(latest_mp3, format="mp3")
                     
                     # Try ElevenLabs
                     transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
@@ -1170,7 +1170,7 @@ class MedicalDictationApp(ttk.Window):
             os.makedirs(folder)
             
         now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-        audio_file_path = os.path.join(folder, f"{now_str}.wav") if folder else f"{now_str}.wav"
+        audio_file_path = os.path.join(folder, f"{now_str}.mp3") if folder else f"{now_str}.mp3"
         
         # Use a thread to save the audio without blocking the UI
         def save_and_process_audio():

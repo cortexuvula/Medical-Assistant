@@ -904,7 +904,7 @@ class AudioHandler:
             if combined:
                 # Ensure directory exists
                 Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-                combined.export(file_path, format="wav")
+                combined.export(file_path, format="mp3")
                 logging.info(f"Audio saved to {file_path}")
                 return True
             return False
