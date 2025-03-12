@@ -1290,6 +1290,9 @@ class MedicalDictationApp(ttk.Window):
             if self.soap_stop_listening_function:
                 self.soap_stop_listening_function(wait_for_stop=True)
                 
+            # Wait a small additional time to ensure processing completes
+            time.sleep(0.5)
+                
             # Update UI on main thread
             self.after(0, lambda: [
                 self._cancel_soap_recording_finalize()
@@ -1728,6 +1731,16 @@ class MedicalDictationApp(ttk.Window):
         )
         if not file_path:
             return
+        
+        # Clear audio chunks and text widgets
+        self.audio_segments = []
+        self.appended_chunks = []
+        
+        # Clear all text tabs
+        self.transcript_text.delete(1.0, tk.END)
+        self.soap_text.delete(1.0, tk.END)
+        self.referral_text.delete(1.0, tk.END)
+        self.dictation_text.delete(1.0, tk.END)
         
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
