@@ -1609,6 +1609,44 @@ class MedicalDictationApp(ttk.Window):
             
         # Update shortcut label in status bar to show theme toggle shortcut
         self.status_manager.info("Theme toggle shortcut: Alt+T")
+        
+        # Configure refresh button style based on theme
+        if is_dark:
+            # Dark mode - button is already visible against dark background
+            self.style.configure("Refresh.TButton", foreground="#f8f9fa")  # Light text on dark background
+            self.style.map("Refresh.TButton", 
+                foreground=[("pressed", "#f8f9fa"), ("active", "#f8f9fa")],
+                background=[("pressed", "#0d6efd"), ("active", "#0d6efd")])
+                
+            # Find and update refresh button if it exists
+            for widget in self.winfo_children():
+                self._update_refresh_button_bootstyle(widget, "dark")
+        else:
+            # Light mode - make button text white for visibility
+            self.style.configure("Refresh.TButton", foreground="white")  # White text for better visibility
+            self.style.map("Refresh.TButton", 
+                foreground=[("pressed", "white"), ("active", "white")],
+                background=[("pressed", "#0d6efd"), ("active", "#0d6efd")])
+                
+            # Find and update refresh button if it exists
+            for widget in self.winfo_children():
+                self._update_refresh_button_bootstyle(widget, "info")
+
+    def _update_refresh_button_bootstyle(self, widget, style):
+        """Update the bootstyle of a refresh button if found"""
+        # Check if this is a ttk Button with our custom style
+        if isinstance(widget, ttk.Button) and hasattr(widget, 'configure'):
+            try:
+                # Try to get the current widget style
+                current_style = widget.cget('style')
+                if current_style == "Refresh.TButton":
+                    widget.configure(bootstyle=style)
+            except (tk.TclError, AttributeError):
+                pass  # Ignore errors if widget doesn't support style attribute
+        
+        # Search children for ttk widgets
+        for child in widget.winfo_children():
+            self._update_refresh_button_bootstyle(child, style)
 
     def create_referral(self) -> None:
         """Create a referral from transcript with improved concurrency."""
@@ -1752,7 +1790,7 @@ class MedicalDictationApp(ttk.Window):
                 segment, transcript = self.audio_handler.load_audio_file(file_path)
                 
                 if segment and transcript:
-                    # Store segment for future use (was missing in the updated code)
+                    # Store segment
                     self.audio_segments = [segment]
                     
                     # Schedule UI update on the main thread

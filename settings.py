@@ -124,7 +124,7 @@ Follow up:
         "tag_audio_events": True,
         "num_speakers": None,  # None means auto-detection
         "timestamps_granularity": "word",
-        "diarize": False
+        "diarize": True
     },
     "deepgram": {
         "model": "nova-2-medical",  # Options: nova-2, nova-2-medical, enhanced, etc.

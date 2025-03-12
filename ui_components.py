@@ -34,6 +34,14 @@ class UIComponents:
             background=[("selected", success_color), ("active", success_color), ("!selected", "lightgrey")],
             foreground=[("selected", "white"), ("!selected", "black")]
         )
+        
+        # Configure custom style for refresh button - using ttkbootstrap's info color for light mode
+        # This makes it match the theme button color which uses bootstyle="info" in light mode
+        info_color = self.style.colors.info  # Get the info color from ttkbootstrap
+        self.style.configure("Refresh.TButton", foreground="white", background=info_color)
+        self.style.map("Refresh.TButton", 
+            foreground=[("pressed", "white"), ("active", "white")],
+            background=[("pressed", info_color), ("active", info_color)])
     
     def create_microphone_frame(self, on_provider_change: Callable, on_stt_change: Callable, 
                               refresh_microphones: Callable, toggle_theme: Callable = None) -> tuple:
@@ -62,11 +70,16 @@ class UIComponents:
         if len(mic_combobox["values"]) > 0:
             mic_combobox.current(0)
         
+        # Determine if currently in dark mode
+        is_dark = self.parent.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        
         refresh_btn = ttk.Button(
             mic_select_frame,
             text="⟳",
             command=refresh_microphones,
-            width=3
+            width=3,
+            bootstyle="info" if not is_dark else "dark",  # Match theme button's "info" style in light mode
+            style="Refresh.TButton"
         )
         refresh_btn.pack(side=LEFT, padx=(0, 10))
         ToolTip(refresh_btn, "Refresh microphone list")
