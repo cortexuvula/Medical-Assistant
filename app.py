@@ -566,58 +566,65 @@ class MedicalDictationApp(ttk.Window):
 
     def show_refine_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
+        from prompts import REFINE_PROMPT, REFINE_SYSTEM_MESSAGE
         cfg = SETTINGS.get("refine_text", {})
         show_settings_dialog(
             parent=self,
             title="Refine Text Settings",
             config=cfg,
             default=_DEFAULT_SETTINGS["refine_text"],
-            current_prompt=cfg.get("prompt", ""),
+            current_prompt=cfg.get("prompt", REFINE_PROMPT),
             current_model=cfg.get("model", ""),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_refine_settings,
-            current_ollama=cfg.get("ollama_model", "")
+            current_ollama=cfg.get("ollama_model", ""),
+            current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE)
         )
 
     def show_improve_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
+        from prompts import IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE
         cfg = SETTINGS.get("improve_text", {})
         show_settings_dialog(
             parent=self,
             title="Improve Text Settings",
             config=cfg,
             default=_DEFAULT_SETTINGS["improve_text"],
-            current_prompt=cfg.get("prompt", ""),
+            current_prompt=cfg.get("prompt", IMPROVE_PROMPT),
             current_model=cfg.get("model", ""),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_improve_settings,
-            current_ollama=cfg.get("ollama_model", "")
+            current_ollama=cfg.get("ollama_model", ""),
+            current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE)
         )
 
     def show_soap_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
+        from prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
         cfg = SETTINGS.get("soap_note", {})
-        default_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", "")
+        default_system_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", SOAP_SYSTEM_MESSAGE)
         default_model = _DEFAULT_SETTINGS["soap_note"].get("model", "")
         show_settings_dialog(
             parent=self,
             title="SOAP Note Settings",
             config=cfg,
             default=_DEFAULT_SETTINGS["soap_note"],
-            current_prompt=cfg.get("system_message") or default_prompt,
-            current_model=cfg.get("model") or default_model,
+            current_prompt=cfg.get("prompt", SOAP_PROMPT_TEMPLATE),
+            current_model=cfg.get("model", default_model),
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_soap_settings,
-            current_ollama=cfg.get("ollama_model", "")
+            current_ollama=cfg.get("ollama_model", ""),
+            current_system_prompt=cfg.get("system_message", default_system_prompt)
         )
 
     def show_referral_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
         cfg = SETTINGS.get("referral", {})
         default_prompt = _DEFAULT_SETTINGS["referral"].get("prompt", "")
+        default_system_prompt = _DEFAULT_SETTINGS["referral"].get("system_message", "")
         default_model = _DEFAULT_SETTINGS["referral"].get("model", "")
         show_settings_dialog(
             parent=self,
@@ -629,13 +636,15 @@ class MedicalDictationApp(ttk.Window):
             current_perplexity=cfg.get("perplexity_model", ""),
             current_grok=cfg.get("grok_model", ""),
             save_callback=self.save_referral_settings,
-            current_ollama=cfg.get("ollama_model", "")
+            current_ollama=cfg.get("ollama_model", ""),
+            current_system_prompt=cfg.get("system_message", default_system_prompt)
         )
 
-    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
+    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["refine_text"] = {
             "prompt": prompt,
+            "system_message": system_prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
@@ -644,10 +653,11 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         self.status_manager.success("Refine text settings saved successfully")
 
-    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
+    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["improve_text"] = {
             "prompt": prompt,
+            "system_message": system_prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
@@ -656,10 +666,11 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         self.status_manager.success("Improve text settings saved successfully")
 
-    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
+    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["soap_note"] = {
-            "system_message": prompt,
+            "prompt": prompt,
+            "system_message": system_prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
@@ -668,10 +679,11 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 
-    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str) -> None:
+    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["referral"] = {
             "prompt": prompt,
+            "system_message": system_prompt,
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,

@@ -8,29 +8,169 @@ import re
 
 # Function to get OpenAI models
 def get_openai_models() -> list:
+    """Fetch available models from OpenAI API."""
     import openai
     try:
+        # Create OpenAI client
+        client = openai.OpenAI()
+        
+        # Make API call to list models
+        response = client.models.list()
+        
+        # Extract GPT models from response
         models = []
-        for model_name in ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-turbo", "gpt-4-1106-preview", "gpt-4-32k"]:
-            models.append(model_name)
-        return models
+        for model in response.data:
+            if "gpt" in model.id.lower():
+                models.append(model.id)
+        
+        # Add common models in case they're not in the API response
+        common_models = [
+            "gpt-3.5-turbo", 
+            "gpt-3.5-turbo-16k", 
+            "gpt-3.5-turbo-1106", 
+            "gpt-3.5-turbo-0125",
+            "gpt-4", 
+            "gpt-4-turbo", 
+            "gpt-4-turbo-preview",
+            "gpt-4-0125-preview",
+            "gpt-4-1106-preview", 
+            "gpt-4-vision-preview",
+            "gpt-4-32k"
+        ]
+        
+        # Add any missing common models
+        for model in common_models:
+            if model not in models:
+                models.append(model)
+        
+        # Return sorted list
+        return sorted(models)
     except Exception as e:
         logging.error(f"Error fetching OpenAI models: {str(e)}")
-        return []
+        
+        # Return fallback list of common models
+        return [
+            "gpt-3.5-turbo", 
+            "gpt-3.5-turbo-16k", 
+            "gpt-3.5-turbo-1106", 
+            "gpt-3.5-turbo-0125",
+            "gpt-4", 
+            "gpt-4-turbo", 
+            "gpt-4-turbo-preview",
+            "gpt-4-0125-preview",
+            "gpt-4-1106-preview", 
+            "gpt-4-vision-preview",
+            "gpt-4-32k"
+        ]
 
 def get_perplexity_models() -> list:
+    """Fetch available models from Perplexity API."""
     try:
-        return ["sonar-small-chat", "sonar-medium-chat", "sonar-large-chat", "sonar-small-online", "sonar-medium-online", "codellama-70b-instruct", "mixtral-8x7b-instruct", "llama-2-70b-chat", "llama-3-8b-instruct"]
+        import requests
+        import os
+        import json
+        
+        # Get API key from environment
+        api_key = os.getenv("PERPLEXITY_API_KEY")
+        if not api_key:
+            logging.error("Perplexity API key not found in environment variables")
+            return get_fallback_perplexity_models()
+            
+        # Make API call to get models
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.get(
+            "https://api.perplexity.ai/models",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Extract model IDs
+            models = [model["id"] for model in data if "id" in model]
+            # Add any common models that might be missing
+            common_models = ["sonar-small-chat", "sonar-medium-chat", "sonar-large-chat", "sonar-small-online", "sonar-medium-online", "codellama-70b-instruct", "mixtral-8x7b-instruct", "llama-2-70b-chat", "llama-3-8b-instruct"]
+            for model in common_models:
+                if model not in models:
+                    models.append(model)
+            return sorted(models)
+        else:
+            logging.error(f"Error fetching Perplexity models: {response.status_code}")
+            return get_fallback_perplexity_models()
     except Exception as e:
         logging.error(f"Error fetching Perplexity models: {str(e)}")
-        return []
+        return get_fallback_perplexity_models()
+
+def get_fallback_perplexity_models() -> list:
+    """Return fallback list of common Perplexity models."""
+    return [
+        "sonar-small-chat", 
+        "sonar-medium-chat", 
+        "sonar-large-chat", 
+        "sonar-small-online", 
+        "sonar-medium-online", 
+        "codellama-70b-instruct", 
+        "mixtral-8x7b-instruct", 
+        "llama-2-70b-chat", 
+        "llama-3-8b-instruct"
+    ]
 
 def get_grok_models() -> list:
+    """Fetch available models from Grok API."""
     try:
-        return ["grok-1", "grok-0"]
+        import requests
+        import os
+        import json
+        
+        # Get API key from environment
+        api_key = os.getenv("GROK_API_KEY")
+        if not api_key:
+            logging.error("Grok API key not found in environment variables")
+            return get_fallback_grok_models()
+            
+        # Since the Grok API is having SSL issues, return fallback models for now
+        # This avoids connection errors while preserving functionality
+        logging.info("Using fallback Grok models due to potential API connectivity issues")
+        return get_fallback_grok_models()
+        
+        # The code below is commented out until the API connection issues are resolved
+        """
+        # Make API call to get models
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Note: This URL might need to be updated as Grok's API evolves
+        response = requests.get(
+            "https://api.grok.ai/v1/models",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Extract model IDs
+            models = [model["id"] for model in data.get("data", []) if "id" in model]
+            # Add common models that might be missing
+            common_models = ["grok-1", "grok-0"]
+            for model in common_models:
+                if model not in models:
+                    models.append(model)
+            return sorted(models)
+        else:
+            logging.error(f"Error fetching Grok models: {response.status_code}")
+            return get_fallback_grok_models()
+        """
     except Exception as e:
         logging.error(f"Error fetching Grok models: {str(e)}")
-        return []
+        return get_fallback_grok_models()
+
+def get_fallback_grok_models() -> list:
+    """Return fallback list of common Grok models."""
+    return ["grok-1", "grok-0", "grok-1.5", "grok-mini"]
 
 def get_ollama_models() -> list:
     """Fetch available models from Ollama API."""
@@ -39,33 +179,26 @@ def get_ollama_models() -> list:
     import os
     
     try:
-        # Get Ollama API URL from environment or use default
-        ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
-        base_url = ollama_url.rstrip("/")  # Remove trailing slash if present
-        
-        response = requests.get(
-            f"{base_url}/api/tags",
-            headers={"Content-Type": "application/json"},
-            timeout=5
-        )
+        # Make a request to the Ollama API to list models
+        response = requests.get("http://localhost:11434/api/tags")
         
         if response.status_code == 200:
+            # Parse the response as JSON
             data = response.json()
-            if "models" in data:
-                # Extract model names from the response
-                return [model["name"] for model in data["models"]]
-            else:
-                logging.warning("Unexpected Ollama API response format")
-                # Return common models as fallback
-                return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
+            
+            # Extract model names from the response
+            models = [model["name"] for model in data["models"]]
+            
+            # Sort models alphabetically
+            models.sort()
+            
+            return models
         else:
-            logging.warning(f"Failed to fetch Ollama models: {response.status_code}")
-            # Return common models as fallback
-            return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
+            logging.error(f"Error fetching Ollama models: {response.status_code}")
+            return []
     except Exception as e:
         logging.error(f"Error fetching Ollama models: {str(e)}")
-        # Return common models as fallback
-        return ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
+        return []
 
 def get_fallback_openai_models() -> list:
     """Return a list of common OpenAI models as fallback"""
@@ -97,50 +230,6 @@ def get_fallback_perplexity_models() -> list:
         "sonar",                  # 128k context
         "r1-1776"                # 128k context
     ]
-
-def get_grok_models() -> list:
-    # Get the Grok API key from the environment
-    api_key = os.getenv("GROK_API_KEY")
-    if not api_key:
-        # Show dialog to input API key if not found in environment variables
-        api_key = prompt_for_api_key()
-        if not api_key:
-            logging.warning("Grok API key not provided by user")
-            return get_fallback_models()
-    
-    # Log partial key for debugging (showing only first 4 chars)
-    key_prefix = api_key[:4] + "..." if api_key else "None"
-    logging.info(f"Using Grok API key starting with: {key_prefix}")
-    
-    try:
-        logging.info("Fetching Grok (X.AI) models...")
-        # Use the correct API endpoint and headers for X.AI (Grok)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        try:
-            response = requests.get("https://api.x.ai/v1/models", headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                models = [item["id"] for item in data.get("data", [])]
-                logging.info(f"Fetched {len(models)} models from Grok API")
-                return models
-            else:
-                logging.error(f"Failed to fetch Grok models: {response.status_code}, {response.text}")
-                return get_fallback_models()
-        except Exception as e:
-            logging.error(f"Error fetching Grok models: {str(e)}")
-            return get_fallback_models()
-    except Exception as e:
-        logging.error(f"Error in get_grok_models: {str(e)}")
-    return get_fallback_models()
-
-def get_fallback_models() -> list:
-    """Return a list of common Grok models as fallback"""
-    logging.info("Using fallback set of common Grok models")
-    return ["grok-1", "grok-1-mini", "grok-2", "grok-2-mini"]
 
 def prompt_for_api_key(provider: str = "Grok") -> str:
     """Prompt the user for their API key."""
@@ -246,145 +335,400 @@ def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500")
     
     return dialog
 
+def create_model_selection_dialog(parent, title, models_list, current_selection):
+    """
+    Create a dialog with a scrollable listbox for selecting models.
+    
+    Args:
+        parent: Parent window
+        title: Dialog title
+        models_list: List of models to display
+        current_selection: Currently selected model
+    
+    Returns:
+        Selected model or None if cancelled
+    """
+    dialog = create_toplevel_dialog(parent, title, "700x450")  # Increased size for better model selection
+    
+    # Create a frame for the dialog
+    frame = ttk.Frame(dialog, padding=10)
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Create label
+    ttk.Label(frame, text="Select a model:").pack(anchor="w", pady=(0, 5))
+    
+    # Create a frame for the listbox and scrollbar
+    list_frame = ttk.Frame(frame)
+    list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+    
+    # Create scrollbar
+    scrollbar = ttk.Scrollbar(list_frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    # Create listbox
+    listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, exportselection=0)
+    listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    
+    # Configure scrollbar
+    scrollbar.config(command=listbox.yview)
+    
+    # Insert models into listbox
+    for model in models_list:
+        listbox.insert(tk.END, model)
+        if model == current_selection:
+            listbox.selection_set(listbox.size() - 1)
+            listbox.see(listbox.size() - 1)
+    
+    # Create a frame for buttons
+    button_frame = ttk.Frame(frame)
+    button_frame.pack(fill=tk.X, pady=(10, 0))
+    
+    # Variable to store the result
+    result = [None]
+    
+    # Define OK function
+    def ok_function():
+        selection = listbox.curselection()
+        if selection:
+            result[0] = listbox.get(selection[0])
+        dialog.destroy()
+    
+    # Define Cancel function
+    def cancel_function():
+        dialog.destroy()
+    
+    # Create OK and Cancel buttons
+    ttk.Button(button_frame, text="OK", command=ok_function).pack(side=tk.RIGHT, padx=5)
+    ttk.Button(button_frame, text="Cancel", command=cancel_function).pack(side=tk.RIGHT)
+    
+    # Make dialog modal
+    dialog.transient(parent)
+    dialog.grab_set()
+    parent.wait_window(dialog)
+    
+    return result[0]
+
 def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict, 
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
-                         save_callback: callable, current_ollama: str = "") -> None:
-    dialog = create_toplevel_dialog(parent, title, "900x750")
+                         save_callback: callable, current_ollama: str = "", current_system_prompt: str = "") -> None:
+    """Show settings dialog for configuring prompt and model.
+    
+    Args:
+        parent: Parent window
+        title: Dialog title
+        config: Current configuration
+        default: Default configuration
+        current_prompt: Current prompt text
+        current_model: Current OpenAI model
+        current_perplexity: Current Perplexity model
+        current_grok: Current Grok model
+        save_callback: Callback for saving settings
+        current_ollama: Current Ollama model
+        current_system_prompt: Current system prompt text
+    """
+    # Create dialog
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.geometry("950x900")  # Increased height by 100 pixels (from 800 to 900)
+    dialog.transient(parent)
+    dialog.grab_set()
+    
+    # Center the dialog on the screen
+    dialog.update_idletasks()
+    screen_width = dialog.winfo_screenwidth()
+    screen_height = dialog.winfo_screenheight()
+    x = (screen_width // 2) - (950 // 2)
+    y = (screen_height // 2) - (900 // 2)  # Updated height
+    dialog.geometry(f"950x900+{x}+{y}")  # Updated dimensions
+    
+    # Create main frame for the dialog
     frame = ttk.LabelFrame(dialog, text=title, padding=10)
     frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    ttk.Label(frame, text="Prompt:").grid(row=0, column=0, sticky="nw")
+    
+    # User Prompt
+    ttk.Label(frame, text="User Prompt:").grid(row=0, column=0, sticky="nw")
     import tkinter.scrolledtext as scrolledtext
-    prompt_text = scrolledtext.ScrolledText(frame, width=60, height=10)
+    prompt_text = scrolledtext.ScrolledText(frame, width=60, height=5)
     prompt_text.grid(row=0, column=1, padx=5, pady=5)
     prompt_text.insert("1.0", current_prompt)
     
+    # System Prompt
+    ttk.Label(frame, text="System Prompt:").grid(row=1, column=0, sticky="nw")
+    system_prompt_text = scrolledtext.ScrolledText(frame, width=60, height=15)
+    system_prompt_text.grid(row=1, column=1, padx=5, pady=5)
+    system_prompt_text.insert("1.0", current_system_prompt)
+    
     # OpenAI Model
-    ttk.Label(frame, text="OpenAI Model:").grid(row=1, column=0, sticky="nw")
+    ttk.Label(frame, text="OpenAI Model:").grid(row=2, column=0, sticky="nw")
     openai_frame = ttk.Frame(frame)
-    openai_frame.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-    openai_combobox = ttk.Combobox(openai_frame, width=48)
-    openai_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    if current_model:
-        openai_combobox.set(current_model)
-    # Add fetch button
-    def fetch_openai_models():
+    openai_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+    
+    # Create a listbox with scrollbar for displaying models instead of combobox
+    openai_model_var = tk.StringVar(value=current_model if current_model else "")
+    openai_entry = ttk.Entry(openai_frame, textvariable=openai_model_var, width=48)
+    openai_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    # Function to show model selection dialog
+    def select_openai_model():
+        # Make a fresh API call to get the latest models
+        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
+        progress_frame = ttk.Frame(progress_dialog, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(progress_frame, text="Fetching OpenAI models...").pack(pady=(0, 10))
+        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
+        progress.pack(fill=tk.X)
+        progress.start()
+        
+        # Update the dialog to show progress
+        progress_dialog.update()
+        
+        # Make API call
         models = get_openai_models()
-        if models:
-            openai_combobox['values'] = models
-            openai_combobox.config(state="readonly")
-            parent.bell()
-        else:
-            openai_combobox['values'] = ["No models found - check API key"]
-    openai_fetch_button = ttk.Button(openai_frame, text="Fetch Models", command=fetch_openai_models)
-    openai_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Close progress dialog
+        progress_dialog.destroy()
+        
+        if not models:
+            # If API call failed, show error message
+            messagebox.showerror("Error", "Failed to fetch OpenAI models. Check your API key and internet connection.")
+            return
+            
+        # Open the model selection dialog with the fetched models
+        model_selection = create_model_selection_dialog(parent, "Select OpenAI Model", models, openai_model_var.get())
+        if model_selection:
+            openai_model_var.set(model_selection)
+    
+    # Add select model button
+    openai_select_button = ttk.Button(openai_frame, text="Select Model", command=select_openai_model)
+    openai_select_button.pack(side=tk.RIGHT, padx=(5, 0))
     
     # Perplexity Model
-    ttk.Label(frame, text="Perplexity Model:").grid(row=2, column=0, sticky="nw")
+    ttk.Label(frame, text="Perplexity Model:").grid(row=3, column=0, sticky="nw")
     perplexity_frame = ttk.Frame(frame)
-    perplexity_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-    perplexity_combobox = ttk.Combobox(perplexity_frame, width=48)
-    perplexity_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    if current_perplexity:
-        perplexity_combobox.set(current_perplexity)
-    # Add fetch button
-    def fetch_perplexity_models():
-        models = get_perplexity_models()
-        if models:
-            perplexity_combobox['values'] = models
-            perplexity_combobox.config(state="readonly")
-            parent.bell()
-        else:
-            perplexity_combobox['values'] = ["No models found - check API key"]
-    perplexity_fetch_button = ttk.Button(perplexity_frame, text="Fetch Models", command=fetch_perplexity_models)
-    perplexity_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+    perplexity_frame.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
     
-    # Grok Model - keep existing implementation
-    ttk.Label(frame, text="Grok Model:").grid(row=3, column=0, sticky="nw")
+    # Create a text entry with selection dialog for Perplexity models
+    perplexity_model_var = tk.StringVar(value=current_perplexity if current_perplexity else "")
+    perplexity_entry = ttk.Entry(perplexity_frame, textvariable=perplexity_model_var, width=48)
+    perplexity_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    # Function to show model selection dialog
+    def select_perplexity_model():
+        # Make a fresh API call to get the latest models
+        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
+        progress_frame = ttk.Frame(progress_dialog, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(progress_frame, text="Fetching Perplexity models...").pack(pady=(0, 10))
+        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
+        progress.pack(fill=tk.X)
+        progress.start()
+        
+        # Update the dialog to show progress
+        progress_dialog.update()
+        
+        # Make API call
+        models = get_perplexity_models()
+        
+        # Close progress dialog
+        progress_dialog.destroy()
+        
+        if not models:
+            # If API call failed, show error message
+            messagebox.showerror("Error", "Failed to fetch Perplexity models. Check your API key and internet connection.")
+            return
+            
+        # Open the model selection dialog with the fetched models
+        model_selection = create_model_selection_dialog(parent, "Select Perplexity Model", models, perplexity_model_var.get())
+        if model_selection:
+            perplexity_model_var.set(model_selection)
+    
+    # Add select model button
+    perplexity_select_button = ttk.Button(perplexity_frame, text="Select Model", command=select_perplexity_model)
+    perplexity_select_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    # Grok Model
+    ttk.Label(frame, text="Grok Model:").grid(row=4, column=0, sticky="nw")
     grok_frame = ttk.Frame(frame)
-    grok_frame.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-    grok_combobox = ttk.Combobox(grok_frame, width=48)
-    grok_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    if current_grok:
-        grok_combobox.set(current_grok)
-    # Add fetch button
-    def fetch_grok_models():
+    grok_frame.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+    
+    # Create a text entry with selection dialog for Grok models
+    grok_model_var = tk.StringVar(value=current_grok if current_grok else "")
+    grok_entry = ttk.Entry(grok_frame, textvariable=grok_model_var, width=48)
+    grok_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    # Function to show model selection dialog
+    def select_grok_model():
+        # Make a fresh API call to get the latest models
+        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
+        progress_frame = ttk.Frame(progress_dialog, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(progress_frame, text="Fetching Grok models...").pack(pady=(0, 10))
+        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
+        progress.pack(fill=tk.X)
+        progress.start()
+        
+        # Update the dialog to show progress
+        progress_dialog.update()
+        
+        # Make API call
         models = get_grok_models()
-        if models:
-            grok_combobox['values'] = models
-            grok_combobox.config(state="readonly")
-            parent.bell()
-        else:
-            grok_combobox['values'] = ["No models found - check API key"]
-    grok_fetch_button = ttk.Button(grok_frame, text="Fetch Models", command=fetch_grok_models)
-    grok_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Close progress dialog
+        progress_dialog.destroy()
+        
+        if not models:
+            messagebox.showerror("Error", "Failed to fetch Grok models. Check your API key and internet connection.")
+            fallback_models = get_fallback_grok_models()
+            model_selection = create_model_selection_dialog(parent, "Select Grok Model", fallback_models, grok_model_var.get())
+            if model_selection:
+                grok_model_var.set(model_selection)
+            return
+            
+        # Open the model selection dialog with the fetched models
+        model_selection = create_model_selection_dialog(parent, "Select Grok Model", models, grok_model_var.get())
+        if model_selection:
+            grok_model_var.set(model_selection)
+    
+    # Add select model button
+    grok_select_button = ttk.Button(grok_frame, text="Select Model", command=select_grok_model)
+    grok_select_button.pack(side=tk.RIGHT, padx=(5, 0))
     
     # Ollama Model
-    ttk.Label(frame, text="Ollama Model:").grid(row=4, column=0, sticky="nw")
+    ttk.Label(frame, text="Ollama Model:").grid(row=5, column=0, sticky="nw")
     ollama_frame = ttk.Frame(frame)
-    ollama_frame.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
-    ollama_combobox = ttk.Combobox(ollama_frame, width=48)
-    ollama_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    ollama_frame.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
     
-    # Populate with common Ollama models
+    # Create a text entry with selection dialog for Ollama models
+    ollama_model_var = tk.StringVar(value=current_ollama if current_ollama else "llama3")
+    ollama_entry = ttk.Entry(ollama_frame, textvariable=ollama_model_var, width=48)
+    ollama_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    # Populate common Ollama models
     ollama_models = ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
-    ollama_combobox['values'] = ollama_models
     
-    if current_ollama:
-        ollama_combobox.set(current_ollama)
-    else:
-        ollama_combobox.set("llama3")  # Default value
-    
-    # Add fetch button for Ollama models
-    def fetch_ollama_models():
+    # Function to show model selection dialog
+    def select_ollama_model():
+        # Make a fresh API call to get the latest models
+        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
+        progress_frame = ttk.Frame(progress_dialog, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(progress_frame, text="Fetching Ollama models...").pack(pady=(0, 10))
+        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
+        progress.pack(fill=tk.X)
+        progress.start()
+        
+        # Update the dialog to show progress
+        progress_dialog.update()
+        
+        # Get fresh models list
         models = get_ollama_models()
-        if models:
-            ollama_combobox['values'] = models
-            ollama_combobox.config(state="readonly")
-            parent.bell()
-        else:
-            ollama_combobox['values'] = ["No models found - check Ollama API URL"]
-    ollama_fetch_button = ttk.Button(ollama_frame, text="Fetch Models", command=fetch_ollama_models)
-    ollama_fetch_button.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Close progress dialog
+        progress_dialog.destroy()
+        
+        if not models:
+            models = ollama_models
+            messagebox.showwarning("Warning", "Could not connect to Ollama API. Using default models instead.")
+        
+        # Show model selection dialog
+        model_selection = create_model_selection_dialog(parent, "Select Ollama Model", models, ollama_model_var.get())
+        if model_selection:
+            ollama_model_var.set(model_selection)
+    
+    # Add select model button
+    ollama_select_button = ttk.Button(ollama_frame, text="Select Model", command=select_ollama_model)
+    ollama_select_button.pack(side=tk.RIGHT, padx=(5, 0))
     
     # Try to pre-populate all models
     openai_models = get_openai_models()
     if openai_models:
-        openai_combobox['values'] = openai_models
-        openai_combobox.config(state="readonly")
+        openai_entry.delete(0, tk.END)
+        openai_entry.insert(0, openai_models[0])
     
     perplexity_models = get_perplexity_models()
     if perplexity_models:
-        perplexity_combobox['values'] = perplexity_models
-        perplexity_combobox.config(state="readonly")
+        perplexity_entry.delete(0, tk.END)
+        perplexity_entry.insert(0, perplexity_models[0])
     
     grok_models = get_grok_models()
     if grok_models:
-        grok_combobox['values'] = grok_models
-        grok_combobox.config(state="readonly")
-    
-    # Try to get Ollama models
-    fetch_ollama_models()
+        grok_entry.delete(0, tk.END)
+        grok_entry.insert(0, grok_models[0])
     
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
+    
+    # Create buttons FIRST then define the reset_fields function
+    reset_button = ttk.Button(btn_frame, text="Reset")
+    reset_button.pack(side=tk.LEFT, padx=5)
+    
+    save_button = ttk.Button(btn_frame, text="Save")
+    save_button.pack(side=tk.RIGHT, padx=5)
+    
+    cancel_button = ttk.Button(btn_frame, text="Cancel", command=dialog.destroy)
+    cancel_button.pack(side=tk.RIGHT, padx=5)
+    
+    # Simple reset function - get default values directly from default dict
     def reset_fields():
+        # Import default prompts directly from prompts.py
+        from prompts import REFINE_PROMPT, IMPROVE_PROMPT, SOAP_PROMPT_TEMPLATE, REFINE_SYSTEM_MESSAGE, IMPROVE_SYSTEM_MESSAGE, SOAP_SYSTEM_MESSAGE
+        
+        # Clear text areas
         prompt_text.delete("1.0", tk.END)
-        insertion_text = default.get("system_message", default.get("prompt", "Default prompt not set"))
-        prompt_text.insert("1.0", insertion_text)
-        openai_combobox.set(default.get("model", ""))
-        perplexity_combobox.set(default.get("perplexity_model", ""))
-        grok_combobox.set(default.get("grok_model", ""))
-        ollama_combobox.set(default.get("ollama_model", "llama3"))
-        prompt_text.focus()
-    ttk.Button(btn_frame, text="Reset", command=reset_fields).pack(side=tk.LEFT, padx=5)
-    ttk.Button(btn_frame, text="Save", command=lambda: [save_callback(
-        prompt_text.get("1.0", tk.END).strip(),
-        openai_combobox.get().strip(),
-        perplexity_combobox.get().strip(),
-        grok_combobox.get().strip(),
-        ollama_combobox.get().strip()
-    ), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
-    ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        system_prompt_text.delete("1.0", tk.END)
+        
+        # Determine which default prompt to use based on the dialog title
+        default_prompt = ""
+        default_system = ""
+        
+        if "Refine Text" in title:
+            default_prompt = REFINE_PROMPT
+            default_system = REFINE_SYSTEM_MESSAGE
+        elif "Improve Text" in title:
+            default_prompt = IMPROVE_PROMPT
+            default_system = IMPROVE_SYSTEM_MESSAGE
+        elif "SOAP Note" in title:
+            default_prompt = SOAP_PROMPT_TEMPLATE
+            default_system = SOAP_SYSTEM_MESSAGE
+        elif "Referral" in title:
+            # For referral, use defaults from the default dictionary
+            default_prompt = default.get("prompt", "Write a referral paragraph using the SOAP Note given to you")
+            default_system = default.get("system_message", "")
+        
+        # Insert defaults
+        prompt_text.insert("1.0", default_prompt)
+        system_prompt_text.insert("1.0", default_system)
+        
+        # Reset combo boxes to default values
+        openai_entry.delete(0, tk.END)
+        openai_entry.insert(0, "gpt-3.5-turbo")  # Default OpenAI model
+        perplexity_entry.delete(0, tk.END)
+        perplexity_entry.insert(0, "sonar-medium-chat")  # Default Perplexity model
+        grok_entry.delete(0, tk.END)
+        grok_entry.insert(0, "grok-1")  # Default Grok model
+        ollama_entry.delete(0, tk.END)
+        ollama_entry.insert(0, "llama3")  # Default Ollama model
+        
+        # Set focus
+        prompt_text.focus_set()
+    
+    # Now assign the function to the button
+    reset_button.config(command=reset_fields)
+    
+    # Define save function
+    def save_fields():
+        save_callback(
+            prompt_text.get("1.0", tk.END).strip(),
+            openai_entry.get().strip(),
+            perplexity_entry.get().strip(),
+            grok_entry.get().strip(),
+            ollama_entry.get().strip(),
+            system_prompt_text.get("1.0", tk.END).strip()
+        )
+        dialog.destroy()
+    
+    # Assign save function to save button
+    save_button.config(command=save_fields)
 
 def askstring_min(parent: tk.Tk, title: str, prompt: str, initialvalue: str = "") -> str:
     dialog = create_toplevel_dialog(parent, title, "400x300")
