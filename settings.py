@@ -18,14 +18,24 @@ _DEFAULT_SETTINGS = {
         "model": "gpt-3.5-turbo",  # OpenAI model
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
-        "ollama_model": "llama3"   # Ollama model
+        "ollama_model": "llama3",   # Ollama model
+        "temperature": 0.0,  # Default temperature for refine_text
+        "openai_temperature": 0.0,  # OpenAI-specific temperature
+        "grok_temperature": 0.0,    # Grok-specific temperature
+        "perplexity_temperature": 0.0, # Perplexity-specific temperature
+        "ollama_temperature": 0.0   # Ollama-specific temperature
     },
     "improve_text": {
         "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
         "model": "gpt-3.5-turbo",  # OpenAI model
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
-        "ollama_model": "llama3"   # Ollama model
+        "ollama_model": "llama3",   # Ollama model
+        "temperature": 0.7,  # Default temperature for improve_text
+        "openai_temperature": 0.7,  # OpenAI-specific temperature
+        "grok_temperature": 0.7,    # Grok-specific temperature
+        "perplexity_temperature": 0.7, # Perplexity-specific temperature
+        "ollama_temperature": 0.7   # Ollama-specific temperature
     },
     "soap_note": {
         "system_message": """You are a supportive general family practice physician tasked with analyzing transcripts from patient consultations with yourself.   
@@ -109,14 +119,24 @@ Follow up:
         "model": "gpt-3.5-turbo",  # OpenAI model
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
-        "ollama_model": "llama3"   # Ollama model
+        "ollama_model": "llama3",   # Ollama model
+        "temperature": 0.7,  # Default temperature for soap_note
+        "openai_temperature": 0.7,  # OpenAI-specific temperature
+        "grok_temperature": 0.7,    # Grok-specific temperature
+        "perplexity_temperature": 0.7, # Perplexity-specific temperature
+        "ollama_temperature": 0.7   # Ollama-specific temperature
     },
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
         "model": "gpt-3.5-turbo",  # OpenAI model
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
-        "ollama_model": "llama3"   # Ollama model
+        "ollama_model": "llama3",   # Ollama model
+        "temperature": 0.7,  # Default temperature for referral
+        "openai_temperature": 0.7,  # OpenAI-specific temperature
+        "grok_temperature": 0.7,    # Grok-specific temperature
+        "perplexity_temperature": 0.7, # Perplexity-specific temperature
+        "ollama_temperature": 0.7   # Ollama-specific temperature
     },
     "elevenlabs": {
         "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model

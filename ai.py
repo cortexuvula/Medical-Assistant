@@ -428,7 +428,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
     # Handle different providers and get appropriate model
     if provider == "perplexity":
         logging.info(f"Using provider: Perplexity for task: {model_key}")
-        print("===== PERPLEXITY API CALL DETAILS =====")
+        print("===== ROUTE TO PERPLEXITY API CALL DETAILS =====")
         print(f"Provider: Perplexity")
         print(f"Model: sonar-reasoning-pro")
         print(f"Temperature: {temperature}")
@@ -440,7 +440,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
     elif provider == "grok":
         actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
-        print("===== GROK API CALL DETAILS =====")
+        print("===== ROUTE TO GROK API CALL DETAILS =====")
         print(f"Provider: Grok")
         print(f"Model: {actual_model}")
         print(f"Temperature: {temperature}")
@@ -451,7 +451,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
         return call_grok(actual_model, system_message, prompt, temperature, max_tokens)
     elif provider == "ollama":
         logging.info(f"Using provider: Ollama for task: {model_key}")
-        print("===== OLLAMA API CALL DETAILS =====")
+        print("===== ROUTE TO OLLAMA API CALL DETAILS =====")
         print(f"Provider: Ollama")
         print(f"Temperature: {temperature}")
         print(f"Max Tokens: {max_tokens}")
@@ -462,7 +462,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
     else:  # OpenAI is the default
         actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")
-        print("===== OPENAI API CALL DETAILS =====")
+        print("===== ROUTE TO OPENAI API CALL DETAILS =====")
         print(f"Provider: OpenAI")
         print(f"Model: {actual_model}")
         print(f"Temperature: {temperature}")
