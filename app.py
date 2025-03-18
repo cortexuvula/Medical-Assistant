@@ -1014,7 +1014,13 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Log success and progress
                 logging.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
-                self.after(0, lambda: self.status_manager.progress("Creating SOAP note from transcript..."))
+                
+                # Update transcript tab with the raw transcript
+                self.after(0, lambda: [
+                    self.transcript_text.delete("1.0", tk.END),
+                    self.transcript_text.insert(tk.END, transcript),
+                    self.status_manager.progress("Creating SOAP note from transcript...")
+                ])
                 
                 # Use CPU executor for the AI-intensive SOAP note creation
                 future = self.cpu_executor.submit(
