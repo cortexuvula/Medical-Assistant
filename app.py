@@ -1625,7 +1625,15 @@ class MedicalDictationApp(ttk.Window):
         new_theme = theme_pairs.get(self.current_theme, "flatly")
         
         # Apply the new theme - need to recreate the window to fully apply the theme
-        self.style.theme_use(new_theme)
+        try:
+            self.style.theme_use(new_theme)
+        except tk.TclError as e:
+            # Catch and log the error instead of crashing
+            if "Duplicate element" in str(e):
+                logging.info(f"Ignoring harmless duplicate element error during theme change: {e}")
+            else:
+                # Re-raise if it's not the specific error we're handling
+                raise
         self.current_theme = new_theme
         
         # Update settings
