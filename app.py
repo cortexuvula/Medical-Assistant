@@ -1,7 +1,8 @@
-import os
 import json
 import string
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing
@@ -16,6 +17,44 @@ from dotenv import load_dotenv
 import openai
 import pyaudio
 from typing import Callable, Optional
+
+# Set up logging configuration
+def setup_logging():
+    """Set up logging with rotation to keep file size manageable"""
+    # Create logs directory if it doesn't exist
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Path to the log file
+    log_file = os.path.join(log_dir, "medical_dictation.log")
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # Create and configure rotating file handler
+    # Set maxBytes to a reasonable size that will hold approximately 1000 entries
+    # Each log entry is roughly 100-200 bytes, so 200KB should hold ~1000 entries
+    file_handler = RotatingFileHandler(
+        log_file, 
+        maxBytes=200*1024,  # 200 KB
+        backupCount=2  # Keep 2 backup files in addition to the current one
+    )
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    
+    # Also add console handler for stdout output
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    
+    logging.info("Logging initialized")
+    logging.info(f"Log file path: {log_file}")
+
+setup_logging()
 
 # Add this import for creating .env file
 from pathlib import Path
@@ -191,17 +230,34 @@ def check_env_file():
 
 # Modify the main function to only create the app if check_env_file returns True
 def main() -> None:
-    # First check for .env file - only proceed if successful
-    if check_env_file():
-        # Load environment variables
-        load_dotenv()
+    """Main function to start the application."""
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    # Log application startup
+    logging.info("Medical Dictation application starting")
+    
+    # Check for .env file
+    if not check_env_file():
+        return
         
-        try:
-            # Only create the app if we got past the env check
-            app = MedicalDictationApp()
-            app.mainloop()
-        except Exception as e:
-            logging.error(f"Error in main application: {e}", exc_info=True)
+    # Create and start main app
+    app = MedicalDictationApp()
+    
+    # Configure exception handler to log uncaught exceptions
+    def handle_exception(exc_type, exc_value, exc_traceback, *args):
+        logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+        # Show error message to user
+        messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
+    
+    # Set exception handler for uncaught exceptions
+    tk.Tk.report_callback_exception = handle_exception
+    
+    # Start the app
+    app.mainloop()
+    
+    # Log application shutdown
+    logging.info("Medical Dictation application shutting down")
 
 class MedicalDictationApp(ttk.Window):
     def __init__(self) -> None:
@@ -352,6 +408,7 @@ class MedicalDictationApp(ttk.Window):
         helpmenu = tk.Menu(menubar, tearoff=0)
         helpmenu.add_command(label="About", command=self.show_about)
         helpmenu.add_command(label="Shortcuts & Voice Commands", command=self.show_shortcuts)
+        helpmenu.add_command(label="View Logs", command=self.view_logs)
         menubar.add_cascade(label="Help", menu=helpmenu)
 
         self.config(menu=menubar)
@@ -1844,6 +1901,140 @@ class MedicalDictationApp(ttk.Window):
             self.capitalize_next = False
         widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
         widget.see(tk.END)
+
+    def view_logs(self) -> None:
+        """Open the logs directory in file explorer or view log contents"""
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        log_file = os.path.join(log_dir, "medical_dictation.log")
+        
+        if not os.path.exists(log_dir):
+            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
+            return
+            
+        # Log that logs are being viewed
+        logging.info("User accessed logs directory")
+
+        # Create a dropdown menu for log actions
+        log_menu = tk.Menu(self, tearoff=0)
+        log_menu.add_command(label="Open Logs Folder", command=lambda: self._open_logs_folder(log_dir))
+        log_menu.add_command(label="View Log Contents", command=lambda: self._show_log_contents(log_file))
+        
+        # Get the position of the mouse
+        try:
+            x = self.winfo_pointerx()
+            y = self.winfo_pointery()
+            log_menu.tk_popup(x, y)
+        finally:
+            # Make sure to release the grab
+            log_menu.grab_release()
+    
+    def _open_logs_folder(self, log_dir):
+        """Open the logs directory using file explorer"""
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(log_dir)
+            elif os.name == 'posix':  # macOS or Linux
+                import subprocess
+                subprocess.Popen(['open', log_dir] if sys.platform == 'darwin' else ['xdg-open', log_dir])
+            else:
+                messagebox.showinfo("Logs", f"Logs are located at: {log_dir}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
+            logging.error(f"Error opening logs directory: {str(e)}")
+
+    def _show_log_contents(self, log_file):
+        """Show log contents in a dialog window"""
+        if not os.path.exists(log_file):
+            messagebox.showinfo("Logs", "No log file exists yet.")
+            return
+            
+        # Create a dialog to show the log contents
+        log_dialog = ttk.Toplevel(self)
+        log_dialog.title("Log Contents")
+        
+        # Calculate dialog size based on parent window size (responsive design)
+        width = min(int(self.winfo_width() * 0.8), 900)
+        height = min(int(self.winfo_height() * 0.8), 700)
+        log_dialog.geometry(f"{width}x{height}")
+        log_dialog.minsize(600, 400)  # Set minimum size for usability
+        
+        # Make the dialog modal
+        log_dialog.transient(self)
+        log_dialog.grab_set()
+        
+        # Configure dialog to be resizable
+        log_dialog.rowconfigure(0, weight=1)
+        log_dialog.columnconfigure(0, weight=1)
+        
+        # Create main frame to respect theme
+        main_frame = ttk.Frame(log_dialog)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        main_frame.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        
+        # Create a text widget to display the log contents
+        log_text = ttk.ScrolledText(main_frame, wrap=tk.WORD)
+        log_text.grid(row=0, column=0, sticky="nsew")
+        
+        # Use a monospace font for better log readability
+        log_text.configure(font=("Consolas", 10))
+        
+        # Read the log file and display its contents
+        try:
+            with open(log_file, 'r') as f:
+                log_contents = f.read()
+                log_text.insert(tk.END, log_contents)
+                log_text.see(tk.END)  # Scroll to the end
+        except Exception as e:
+            log_text.insert(tk.END, f"Error reading log file: {str(e)}")
+            logging.error(f"Error reading log file: {str(e)}")
+        
+        # Make text read-only
+        log_text.configure(state='disabled')
+        
+        # Add a refresh button
+        def refresh_logs():
+            log_text.configure(state='normal')
+            log_text.delete(1.0, tk.END)
+            try:
+                with open(log_file, 'r') as f:
+                    log_contents = f.read()
+                    log_text.insert(tk.END, log_contents)
+                    log_text.see(tk.END)
+            except Exception as e:
+                log_text.insert(tk.END, f"Error reading log file: {str(e)}")
+            log_text.configure(state='disabled')
+        
+        # Add buttons for actions
+        button_frame = ttk.Frame(log_dialog)
+        button_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        
+        # Configure button frame for responsive layout
+        button_frame.columnconfigure(0, weight=1)  # Left side expands
+        button_frame.columnconfigure(1, weight=0)  # Buttons don't expand
+        button_frame.columnconfigure(2, weight=0)  # Buttons don't expand
+        
+        # Add label showing log file path
+        path_label = ttk.Label(button_frame, text=f"Log file: {log_file}", font=("Segoe UI", 9))
+        path_label.grid(row=0, column=0, sticky="w", padx=5)
+        
+        refresh_button = ttk.Button(button_frame, text="Refresh", command=refresh_logs, width=10)
+        refresh_button.grid(row=0, column=1, padx=5, pady=5)
+        
+        close_button = ttk.Button(button_frame, text="Close", command=log_dialog.destroy, width=10)
+        close_button.grid(row=0, column=2, padx=5, pady=5)
+        
+        # Create tooltip for refresh button
+        from tooltip import ToolTip
+        ToolTip(refresh_button, "Reload the log file contents")
+        
+        # Center the dialog on the parent window
+        log_dialog.update_idletasks()
+        dialog_width = log_dialog.winfo_width()
+        dialog_height = log_dialog.winfo_height()
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - (dialog_width // 2)
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - (dialog_height // 2)
+        log_dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
 
 if __name__ == "__main__":
     main()

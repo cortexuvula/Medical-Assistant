@@ -9,6 +9,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 - **Voice Commands:** Control the application via voice commands (e.g., "new paragraph", "full stop").
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation.
 - **Audio Recording:** Record and save audio with options for live transcription and SOAP note extraction.
+- **File Logging System:** Track application activity with a built-in logging system that maintains the last 1000 entries.
 - **User-friendly Interface:** Built with Tkinter and ttkbootstrap for a modern UI experience.
 
 ## Installation
@@ -64,6 +65,11 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 4. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities. Each provider can have different model selections.
 
+5. **Viewing Application Logs**
+   - Access application logs through the "View Logs" option in the Help menu
+   - Choose between opening the logs directory or viewing logs directly in the application
+   - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
+
 ## Troubleshooting
 
 - **Ollama Connection Issues**: If you experience timeouts with Ollama models, try:
@@ -72,6 +78,8 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
   - Testing your connection with the "Test Ollama Connection" button
 
 - **API Keys**: If you need to update API keys after startup, use the "API Keys" option in the settings menu.
+
+- **Application Errors**: Check the application logs through Help → View Logs for detailed error information that can help diagnose issues.
 
 ## Contribution
 
