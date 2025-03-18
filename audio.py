@@ -16,16 +16,18 @@ import tempfile
 class AudioHandler:
     """Class to handle all audio-related functionality including recording, transcription, and file operations."""
     
-    def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US"):
+    def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
         
         Args:
             elevenlabs_api_key: API key for ElevenLabs
             deepgram_api_key: API key for Deepgram
             recognition_language: Language code for speech recognition
+            groq_api_key: API key for GROQ (default STT provider)
         """
         self.elevenlabs_api_key = elevenlabs_api_key
         self.deepgram_api_key = deepgram_api_key
+        self.groq_api_key = groq_api_key
         self.recognition_language = recognition_language
         self.recognizer = sr.Recognizer()
         
@@ -81,7 +83,7 @@ class AudioHandler:
         # For successful API calls that return a result (even placeholders like "[Silence...]"), 
         # we'll keep that result and not fall back
         if transcript == "" and not fallback_attempted:
-            fallback_providers = ["deepgram", "elevenlabs"]
+            fallback_providers = ["deepgram", "elevenlabs", "groq"]
             # Remove primary provider from fallbacks to avoid duplicate attempt
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
@@ -105,7 +107,7 @@ class AudioHandler:
         
         Args:
             segment: AudioSegment to transcribe
-            provider: Provider name ('elevenlabs' or 'deepgram')
+            provider: Provider name ('elevenlabs', 'deepgram', or 'groq')
             
         Returns:
             Transcription text or empty string if failed
@@ -116,6 +118,9 @@ class AudioHandler:
                 
             elif provider == "deepgram" and self.deepgram_client:
                 return self._transcribe_with_deepgram(segment)
+                
+            elif provider == "groq":
+                return self._transcribe_with_groq(segment)
                 
             else:
                 logging.warning(f"Unknown provider: {provider}")
@@ -603,6 +608,103 @@ class AudioHandler:
             result.append(f"{speaker_label}{''.join(current_text)}")
         
         return "\n\n".join(result)
+
+    def _transcribe_with_groq(self, segment: AudioSegment) -> str:
+        """Transcribe audio using GROQ API.
+        
+        Args:
+            segment: Audio segment to transcribe
+            
+        Returns:
+            Transcription text
+        """
+        if not self.groq_api_key:
+            logging.warning("GROQ API key not found")
+            return ""
+        
+        temp_file = None
+        file_obj = None
+        transcript = ""
+            
+        try:
+            # Convert segment to WAV for API
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
+                temp_file = temp.name
+                segment.export(temp_file, format="wav")
+                
+            # Get file size and adjust timeout accordingly
+            file_size_kb = os.path.getsize(temp_file) / 1024
+            
+            # Add a minute of timeout for each 500KB of audio, with a minimum of 60 seconds
+            timeout_seconds = max(60, int(file_size_kb / 500) * 60)
+            logging.info(f"Setting GROQ timeout to {timeout_seconds} seconds for {file_size_kb:.2f} KB file")
+
+            # Using OpenAI client since GROQ uses a compatible API
+            from openai import OpenAI
+            
+            # Initialize client with GROQ base URL
+            client = OpenAI(api_key=self.groq_api_key, base_url="https://api.groq.com/openai/v1")
+            
+            # Print API call details to terminal
+            print("\n===== GROQ API CALL =====")
+            print(f"File: {os.path.basename(temp_file)} (audio/wav)")
+            print(f"Audio file size: {file_size_kb:.2f} KB")
+            print(f"Timeout set to: {timeout_seconds} seconds")
+            print("=========================\n")
+            
+            # Open and read the audio file
+            with open(temp_file, "rb") as audio_file:
+                # Make API call with timeout
+                response = client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-large-v3-turbo",  # GROQ's Whisper model (updated name)
+                    language=self.recognition_language.split('-')[0],  # Use language code without region
+                    timeout=timeout_seconds
+                )
+            
+            # Process response
+            if hasattr(response, 'text'):
+                transcript = response.text
+                
+                # Print successful response info to terminal
+                print("\n===== GROQ API RESPONSE =====")
+                print(f"Response successfully received")
+                if transcript:
+                    text_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
+                    print(f"Text preview: {text_preview}")
+                print("============================\n")
+            else:
+                logging.error("Unexpected response format from GROQ API")
+                print("\n===== GROQ API ERROR =====")
+                print(f"Unexpected response format: {response}")
+                print("==========================\n")
+                
+        except Exception as e:
+            error_msg = f"Error with GROQ transcription: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            
+            # Print exception details to terminal
+            print("\n===== GROQ EXCEPTION =====")
+            print(f"Error: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            print("==========================\n")
+                
+        finally:
+            # Try to clean up temp file
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    # On Windows, sometimes we need to wait a moment before the file can be deleted
+                    import time
+                    time.sleep(0.5)
+                    os.unlink(temp_file)
+                except Exception as e:
+                    # Log but don't fail if cleanup fails - this shouldn't affect functionality
+                    logging.warning(f"Failed to delete temp file {temp_file}: {str(e)}")
+                    # We'll just let Windows clean it up later
+            
+        # Return whatever transcript we got, empty string if we failed
+        return transcript
 
     def _transcribe_with_deepgram(self, segment: AudioSegment) -> str:
         """Transcribe audio using Deepgram API with improved error handling.

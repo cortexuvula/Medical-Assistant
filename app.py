@@ -144,15 +144,21 @@ def check_env_file():
         elevenlabs_entry = tk.Entry(keys_frame, width=40)
         elevenlabs_entry.grid(row=4, column=1, sticky="ew", pady=5)
         
+        # NEW: Add GROQ API Key field
+        tk.Label(keys_frame, text="GROQ API Key:").grid(row=5, column=0, sticky="w", pady=5)
+        groq_entry = tk.Entry(keys_frame, width=40)
+        groq_entry.grid(row=5, column=1, sticky="ew", pady=5)
+        
         # Add info about where to find the keys
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
                     "• Grok (X.AI): https://x.ai\n"
                     "• Perplexity: https://docs.perplexity.ai/\n"
                     "• Deepgram: https://console.deepgram.com/signup\n"
-                    "• ElevenLabs: https://elevenlabs.io/app/speech-to-text")
+                    "• ElevenLabs: https://elevenlabs.io/app/speech-to-text\n"
+                    "• GROQ: https://groq.com/")
         tk.Label(keys_frame, text=info_text, justify="left", wraplength=450).grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=10)
+            row=6, column=0, columnspan=2, sticky="w", pady=10)
         
         error_var = tk.StringVar()
         error_label = tk.Label(api_root, textvariable=error_var, foreground="red", wraplength=450)
@@ -164,6 +170,7 @@ def check_env_file():
             grok_key = grok_entry.get().strip()
             perplexity_key = perplexity_entry.get().strip()
             elevenlabs_key = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
+            groq_key = groq_entry.get().strip()  # NEW: Get GROQ key
             
             # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
             if not (openai_key or grok_key or perplexity_key):
@@ -171,8 +178,8 @@ def check_env_file():
                 return
                 
             # Check if at least one speech-to-text API key is provided
-            if not (deepgram_key or elevenlabs_key):
-                error_var.set("Error: Either Deepgram or ElevenLabs API key is mandatory for speech recognition.")
+            if not (deepgram_key or elevenlabs_key or groq_key):
+                error_var.set("Error: Either Deepgram, ElevenLabs, or GROQ API key is mandatory for speech recognition.")
                 return
             
             # Create the .env file with the provided keys
@@ -188,6 +195,9 @@ def check_env_file():
                 # NEW: Add ElevenLabs key if provided
                 if elevenlabs_key:
                     f.write(f"ELEVENLABS_API_KEY={elevenlabs_key}\n")
+                # NEW: Add GROQ key if provided
+                if groq_key:
+                    f.write(f"GROQ_API_KEY={groq_key}\n")
                 f.write(f"RECOGNITION_LANGUAGE=en-US\n")
             
             should_continue[0] = True
@@ -305,16 +315,18 @@ class MedicalDictationApp(ttk.Window):
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
         
         # Check for necessary API keys for at least one STT provider
         elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+        groq_key = os.getenv("GROQ_API_KEY")
         
-        if not (elevenlabs_key or deepgram_key):
+        if not (elevenlabs_key or deepgram_key or groq_key):
             messagebox.showwarning(
                 "Missing STT API Keys", 
-                "No Speech-to-Text API keys found. Either Deepgram or ElevenLabs API key " +
+                "No Speech-to-Text API keys found. Either GROQ, Deepgram, or ElevenLabs API key " +
                 "is required for speech recognition functionality.\n\n" +
                 "Please add at least one of these API keys in the settings."
             )
@@ -323,6 +335,7 @@ class MedicalDictationApp(ttk.Window):
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
         
@@ -422,6 +435,7 @@ class MedicalDictationApp(ttk.Window):
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         
         # Update UI components based on API availability
         if openai.api_key:
@@ -437,6 +451,7 @@ class MedicalDictationApp(ttk.Window):
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
         
@@ -463,6 +478,7 @@ class MedicalDictationApp(ttk.Window):
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
         self.status_manager.success("ElevenLabs settings saved successfully")
@@ -476,6 +492,7 @@ class MedicalDictationApp(ttk.Window):
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
         self.status_manager.success("Deepgram settings saved successfully")
@@ -983,45 +1000,36 @@ class MedicalDictationApp(ttk.Window):
                 self.after(0, lambda: self.status_manager.progress("Creating SOAP note from transcript..."))
                 
                 # Use CPU executor for the AI-intensive SOAP note creation
-                future = self.cpu_executor.submit(create_soap_note_with_openai, transcript)
+                future = self.cpu_executor.submit(
+                    create_soap_note_with_openai,
+                    transcript
+                )
                 
                 # Get result with timeout to prevent hanging
-                soap_note = future.result(timeout=120)
+                result = future.result(timeout=120)
                 
-                def update_ui():
-                    # Update Transcript tab with the obtained transcript
-                    self.transcript_text.delete("1.0", tk.END)
-                    self.transcript_text.insert(tk.END, transcript)
-                    
-                    # Update SOAP Note tab with the generated SOAP note
-                    self._update_text_area(soap_note, "SOAP note created from recording.", self.record_soap_button, self.soap_text)
-                    
-                    # Switch focus to the SOAP Note tab (index 1)
-                    self.notebook.select(1)
-                    
-                    # Stop and hide progress bar
-                    self.progress_bar.stop()
-                    self.progress_bar.pack_forget()
-                    
-                self.after(0, update_ui)
-                
+                # Schedule UI update on the main thread
+                self.after(0, lambda: [
+                    self._update_text_area(result, "SOAP note created", self.soap_button, self.soap_text),
+                    self.notebook.select(1)  # Switch to SOAP tab
+                ])
             except concurrent.futures.TimeoutError:
                 self.after(0, lambda: [
                     self.status_manager.error("SOAP note creation timed out. Please try again."),
+                    self.soap_button.config(state=NORMAL),
                     self.progress_bar.stop(),
-                    self.progress_bar.pack_forget(),
-                    self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+                    self.progress_bar.pack_forget()
                 ])
             except Exception as e:
                 error_msg = f"Error processing SOAP note: {str(e)}"
                 logging.error(error_msg, exc_info=True)
                 self.after(0, lambda: [
                     self.status_manager.error(error_msg),
+                    self.soap_button.config(state=NORMAL),
                     self.progress_bar.stop(),
-                    self.progress_bar.pack_forget(),
-                    self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+                    self.progress_bar.pack_forget()
                 ])
-                
+
         # Use IO executor for the CPU-intensive audio processing
         self.io_executor.submit(task)
 
@@ -1504,6 +1512,7 @@ class MedicalDictationApp(ttk.Window):
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
         self.status_manager.success("ElevenLabs settings saved successfully")
@@ -1526,8 +1535,8 @@ class MedicalDictationApp(ttk.Window):
         selected_index = self.stt_combobox.current()
         if selected_index >= 0:
             # Map display values to actual provider values
-            stt_providers = ["elevenlabs", "deepgram"]
-            stt_display = ["ElevenLabs", "Deepgram"]
+            stt_providers = ["groq", "elevenlabs", "deepgram"]
+            stt_display = ["GROQ", "ElevenLabs", "Deepgram"]
             
             # Update settings
             provider = stt_providers[selected_index]
@@ -1550,6 +1559,7 @@ class MedicalDictationApp(ttk.Window):
         provider_names = {
             "elevenlabs": "ElevenLabs",
             "deepgram": "Deepgram",
+            "groq": "GROQ",
             "google": "Google"
         }
         
@@ -1562,7 +1572,7 @@ class MedicalDictationApp(ttk.Window):
         
         # Update STT provider dropdown to reflect actual service being used
         try:
-            stt_providers = ["elevenlabs", "deepgram"]
+            stt_providers = ["groq", "elevenlabs", "deepgram"]
             fallback_index = stt_providers.index(fallback_provider)
             self.after(0, lambda: self.stt_combobox.current(fallback_index))
         except (ValueError, IndexError):
@@ -1766,7 +1776,7 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-                
+
         future.add_done_callback(on_conditions_done)
 
     def _create_referral_continued(self, suggestions: str) -> None:

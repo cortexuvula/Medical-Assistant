@@ -116,9 +116,9 @@ class UIComponents:
         
         ttk.Label(stt_frame, text="STT:").pack(side=LEFT)
         
-        stt_providers = ["elevenlabs", "deepgram"]
-        stt_display = ["ElevenLabs", "Deepgram"]
-        stt_provider = SETTINGS.get("stt_provider", "deepgram")
+        stt_providers = ["groq", "elevenlabs", "deepgram"]
+        stt_display = ["GROQ", "ElevenLabs", "Deepgram"]
+        stt_provider = SETTINGS.get("stt_provider", "groq")
         
         stt_combobox = ttk.Combobox(
             stt_frame,

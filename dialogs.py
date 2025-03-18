@@ -825,7 +825,7 @@ def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: li
 
 def show_api_keys_dialog(parent: tk.Tk) -> None:
     """Shows a dialog to update API keys and updates the .env file."""
-    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x950")
+    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x1000")
     
     # Increase main frame padding for more spacing around all content
     frame = ttk.Frame(dialog, padding=20)
@@ -841,7 +841,10 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     ttk.Label(header_frame, text="• At least one LLM provider API key (OpenAI, Grok, or Perplexity) is required.",
              wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
     
-    ttk.Label(header_frame, text="• At least one Speech-to-Text API key (Deepgram or ElevenLabs) is REQUIRED for dictation.",
+    ttk.Label(header_frame, text="• GROQ API Key is REQUIRED for dictation (default STT provider).",
+             wraplength=700, font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=3)
+             
+    ttk.Label(header_frame, text="• Deepgram or ElevenLabs API key is also needed as fallback for dictation.",
              wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
 
     # Get current API keys from environment
@@ -851,7 +854,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
     elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")  # Default Ollama URL
-
+    groq_key = os.getenv("GROQ_API_KEY", "")  # NEW: Get GROQ key
+    
     # Create entry fields with password masking - add more vertical spacing
     row_offset = 1  # Start at row 1 since header is at row 0
     
@@ -912,17 +916,30 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     elevenlabs_entry.insert(0, elevenlabs_key)
     row_offset += 1
 
-    # Add toggle buttons to show/hide keys
+    # Add GROQ API Key field
+    groq_label = ttk.Label(frame, text="GROQ API Key:", bootstyle="danger")
+    groq_label.grid(row=row_offset, column=0, sticky="w", pady=15)
+    groq_entry = ttk.Entry(frame, width=50, show="•", bootstyle="danger")
+    groq_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
+    groq_entry.insert(0, groq_key)
+    row_offset += 1
+    
+    # Add toggle buttons to show/hide keys with dynamic row positioning
     def toggle_show_hide(entry):
         current = entry['show']
         entry['show'] = '' if current else '•'
     
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=1, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=2, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=3, column=2, padx=5)
+    # Fixed eye button positions for LLM API keys
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=1, column=2, padx=5, pady=15)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=2, column=2, padx=5, pady=15)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=3, column=2, padx=5, pady=15)
     # Ollama URL doesn't need a show/hide button as it's not a key
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=6, column=2, padx=5)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=7, column=2, padx=5)
+    
+    # Calculate eye button positions for STT API keys based on deepgram's row
+    deepgram_row = 8  # Based on the row_offset after separator and STT label
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=deepgram_row, column=2, padx=5, pady=15)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=deepgram_row+1, column=2, padx=5, pady=15)
+    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(groq_entry)).grid(row=deepgram_row+2, column=2, padx=5, pady=15)
 
     # Error variable for validation messages
     error_var = tk.StringVar()
@@ -939,10 +956,16 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
         new_perplexity = perplexity_entry.get().strip()
         new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
         new_ollama_url = ollama_entry.get().strip()  # Get Ollama URL
-
+        new_groq = groq_entry.get().strip()  # NEW: Get GROQ key
+        
         # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
         if not (new_openai or new_grok or new_perplexity or new_ollama_url):
             error_var.set("Error: At least one of OpenAI, Grok, Perplexity, or Ollama API key/URL is required.")
+            return
+            
+        # Check if GROQ API key is provided
+        if not new_groq:
+            error_var.set("Error: GROQ API key is required for dictation.")
             return
             
         # Check if at least one speech-to-text API key is provided
@@ -990,6 +1013,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 elif "OLLAMA_API_URL=" in line:
                     updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
                     keys_updated.add("OLLAMA_API_URL")
+                elif "GROQ_API_KEY=" in line:  # NEW: Update GROQ key
+                    updated_lines.append(f"GROQ_API_KEY={new_groq}")
+                    keys_updated.add("GROQ_API_KEY")
                 else:
                     updated_lines.append(line)
             
@@ -1006,6 +1032,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 updated_lines.append(f"ELEVENLABS_API_KEY={new_elevenlabs}")
             if "OLLAMA_API_URL" not in keys_updated and new_ollama_url:
                 updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
+            if "GROQ_API_KEY" not in keys_updated and new_groq:
+                updated_lines.append(f"GROQ_API_KEY={new_groq}")
             
             # Make sure we have the RECOGNITION_LANGUAGE line
             if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
@@ -1030,6 +1058,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 os.environ["ELEVENLABS_API_KEY"] = new_elevenlabs
             if new_ollama_url:
                 os.environ["OLLAMA_API_URL"] = new_ollama_url
+            if new_groq:
+                os.environ["GROQ_API_KEY"] = new_groq
             
             # Success message and close dialog
             messagebox.showinfo("API Keys", "API keys updated successfully")
@@ -1042,7 +1072,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 "grok": new_grok,
                 "perplexity": new_perplexity,
                 "elevenlabs": new_elevenlabs,
-                "ollama_url": new_ollama_url
+                "ollama_url": new_ollama_url,
+                "groq": new_groq
             }
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
@@ -1051,8 +1082,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     # Add more padding to the button frame
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(pady=30, padx=20)
-    ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, width=15).pack(side=tk.LEFT, padx=20)
-    ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success", width=15).pack(side=tk.LEFT, padx=20)
+    ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, width=15).pack(side="left", padx=20)
+    ttk.Button(btn_frame, text="Update Keys", command=update_api_keys, bootstyle="success", width=15).pack(side="left", padx=20)
     
     # Wait for dialog to close
     dialog.wait_window()
