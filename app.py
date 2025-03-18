@@ -133,7 +133,7 @@ def check_env_file():
                 
             # Check if at least one speech-to-text API key is provided
             if not (deepgram_key or elevenlabs_key):
-                error_var.set("Error: Either Deepgram or ElevenLabs API key is required for speech recognition.")
+                error_var.set("Error: Either Deepgram or ElevenLabs API key is mandatory for speech recognition.")
                 return
             
             # Create the .env file with the provided keys
@@ -333,6 +333,7 @@ class MedicalDictationApp(ttk.Window):
         # Add STT provider settings menu options
         settings_menu.add_command(label="ElevenLabs Settings", command=self.show_elevenlabs_settings)
         settings_menu.add_command(label="Deepgram Settings", command=self.show_deepgram_settings)  # Add this line
+        settings_menu.add_command(label="Temperature Settings", command=self.show_temperature_settings)
         
         # Update this section to add all prompt settings options to the submenu
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
@@ -639,6 +640,12 @@ class MedicalDictationApp(ttk.Window):
             current_ollama=cfg.get("ollama_model", ""),
             current_system_prompt=cfg.get("system_message", default_system_prompt)
         )
+
+    def show_temperature_settings(self) -> None:
+        """Show dialog to configure temperature settings for each AI provider."""
+        from temperature_dialog import show_temperature_settings_dialog
+        show_temperature_settings_dialog(self)
+        self.status_manager.success("Temperature settings saved successfully")
 
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS

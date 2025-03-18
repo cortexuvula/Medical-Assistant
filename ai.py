@@ -425,6 +425,19 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
     provider = current_settings.get("ai_provider", "openai")
     model_key = get_model_key_for_task(system_message, prompt)
     
+    # Get provider-specific temperature if available
+    provider_temp_key = f"{provider}_temperature"
+    provider_temp = current_settings.get(model_key, {}).get(provider_temp_key)
+    
+    # If provider-specific temperature exists, use it, otherwise use the passed temperature
+    if provider_temp is not None:
+        temperature = provider_temp
+    else:
+        # Try to get the generic temperature for this model type
+        generic_temp = current_settings.get(model_key, {}).get("temperature")
+        if generic_temp is not None:
+            temperature = generic_temp
+    
     # Handle different providers and get appropriate model
     if provider == "perplexity":
         logging.info(f"Using provider: Perplexity for task: {model_key}")
