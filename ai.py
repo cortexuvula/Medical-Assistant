@@ -16,7 +16,7 @@ OPENAI_MAX_TOKENS_REFINEMENT = 4000
 OPENAI_TEMPERATURE_IMPROVEMENT = 0.5
 OPENAI_MAX_TOKENS_IMPROVEMENT = 4000
 
-def call_openai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
         
@@ -25,7 +25,6 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         print(f"Provider: OpenAI")
         print(f"Model: {model}")
         print(f"Temperature: {temperature}")
-        print(f"Max Tokens: {max_tokens}")
         print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
         print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
         print(f"====================================\n")
@@ -37,14 +36,13 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
                 {"role": "user", "content": prompt}
             ],
             temperature=temperature,
-            max_tokens=max_tokens,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
         return prompt
 
-def call_perplexity(system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
     from openai import OpenAI
     api_key = os.getenv("PERPLEXITY_API_KEY")
     if not api_key:
@@ -62,7 +60,6 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
     print(f"Provider: Perplexity")
     print(f"Model: {model}")
     print(f"Temperature: {temperature}")
-    print(f"Max Tokens: {max_tokens}")
     print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
     print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
     print(f"========================================\n")
@@ -75,6 +72,7 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
         response = client.chat.completions.create(
             model=model,
             messages=messages,
+            temperature=temperature,
         )
         result = response.choices[0].message.content.strip()
         # Remove text between <think> and </think>
@@ -84,7 +82,7 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         return prompt
 
-def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     import requests
     import json
     import time
@@ -104,7 +102,6 @@ def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens
     print(f"Provider: Ollama")
     print(f"Model: {model}")
     print(f"Temperature: {temperature}")
-    print(f"Max Tokens: {max_tokens}")
     print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
     print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
     print(f"====================================\n")
@@ -116,7 +113,6 @@ def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens
         "model": model,
         "prompt": f"<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n{prompt}[/INST]",
         "temperature": temperature,
-        "max_tokens": max_tokens,
         "stream": False
     }
     
@@ -179,14 +175,14 @@ def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens
                 else:
                     logging.warning(f"Unexpected Ollama API response format: {result}")
                     # Fallback to chat API if generate fails
-                    return fallback_ollama_chat(model, system_message, prompt, temperature, max_tokens, timeout_values[attempt])
+                    return fallback_ollama_chat(model, system_message, prompt, temperature, timeout_values[attempt])
                     
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse Ollama API response: {e}")
                 logging.error(f"Raw response: {response.text[:500]}...")  # Log first 500 chars
                 if attempt == max_retries - 1:  # Last attempt
                     # Try the fallback method
-                    return fallback_ollama_chat(model, system_message, prompt, temperature, max_tokens, timeout_values[attempt])
+                    return fallback_ollama_chat(model, system_message, prompt, temperature, timeout_values[attempt])
                 time.sleep(2)
                 continue
                 
@@ -207,7 +203,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens
     # If all retries failed
     return f"Error: Failed to get a response from Ollama after {max_retries} attempts. Please try again later or choose a different model."
 
-def fallback_ollama_chat(model, system_message, prompt, temperature, max_tokens, timeout):
+def fallback_ollama_chat(model, system_message, prompt, temperature, timeout):
     """Fallback method to use the chat API endpoint if generate fails"""
     import requests
     import json
@@ -224,7 +220,6 @@ def fallback_ollama_chat(model, system_message, prompt, temperature, max_tokens,
             {"role": "user", "content": prompt}
         ],
         "temperature": temperature,
-        "max_tokens": max_tokens,
         "stream": False
     }
     
@@ -251,7 +246,7 @@ def fallback_ollama_chat(model, system_message, prompt, temperature, max_tokens,
         logging.error(f"Fallback Ollama chat API error: {str(e)}")
         return f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed."
 
-def call_grok(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
     from openai import OpenAI
     api_key = os.getenv("GROK_API_KEY")
     if not api_key:
@@ -265,7 +260,6 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float, 
     print(f"Provider: Grok")
     print(f"Model: {model}")
     print(f"Temperature: {temperature}")
-    print(f"Max Tokens: {max_tokens}")
     print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
     print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
     print(f"==================================\n")
@@ -280,7 +274,6 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float, 
             model=model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -291,13 +284,13 @@ def adjust_text_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["refine_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
-    return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_REFINEMENT, OPENAI_MAX_TOKENS_REFINEMENT)
+    return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_REFINEMENT)
 
 def improve_text_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["improve_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
-    return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_IMPROVEMENT, OPENAI_MAX_TOKENS_IMPROVEMENT)
+    return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_IMPROVEMENT)
 
 # NEW: Helper function to remove markdown formatting from text
 def remove_markdown(text: str) -> str:
@@ -323,7 +316,7 @@ def create_soap_note_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["soap_note"]["model"]  # Default model as fallback
     
     full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
-    result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7, 4000)
+    result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
     cleaned = remove_markdown(result)
     # Remove citation markers from the result
     cleaned = remove_citations(cleaned)
@@ -346,8 +339,7 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
             model, 
             "You are a physician writing referral letters to other physicians. Be concise but thorough.", 
             new_prompt, 
-            0.7, 
-            500  # Increased from 250 to give more space for the response
+            0.7
         )
         return remove_markdown(result)
     except Exception as e:
@@ -380,7 +372,7 @@ def get_possible_conditions(text: str) -> str:
     prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. "
               "Keep the condition names simple and specific and not longer that 3 words. "
               "Return them as a comma-separated list. Text: " + text)
-    result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7, 100)
+    result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7)
     conditions = remove_markdown(result).strip()
     conditions = remove_citations(conditions)
     return conditions
@@ -409,7 +401,7 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     from settings import SETTINGS
     current_provider = SETTINGS.get("ai_provider", "openai")
     
-    result = call_ai("gpt-4o", system_message, prompt, 0.7, 2000)
+    result = call_ai("gpt-4o", system_message, prompt, 0.7)
     
     # Clean up any markdown formatting from the result
     clean_result = remove_markdown(result)
@@ -417,7 +409,19 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     
     return clean_result
 
-def call_ai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
+def call_ai(model: str, system_message: str, prompt: str, temperature: float) -> str:
+    """
+    Route API calls to the appropriate provider based on the selected AI provider in settings
+    
+    Args:
+        model: Model to use (may be overridden by provider-specific settings)
+        system_message: System message to guide the AI's response
+        prompt: Content to send to the model
+        temperature: Temperature parameter to control randomness (may be overridden by settings)
+        
+    Returns:
+        AI-generated response as a string
+    """
     # Reload settings from file to ensure we have the latest provider selection
     from settings import load_settings
     current_settings = load_settings()
@@ -445,11 +449,10 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
         print(f"Provider: Perplexity")
         print(f"Model: sonar-reasoning-pro")
         print(f"Temperature: {temperature}")
-        print(f"Max Tokens: {max_tokens}")
         print(f"System Message: {system_message[:100]}...")
         print(f"Prompt: {prompt[:100]}...")
         print("==================================")
-        return call_perplexity(system_message, prompt, temperature, max_tokens)
+        return call_perplexity(system_message, prompt, temperature)
     elif provider == "grok":
         actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
@@ -457,21 +460,19 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
         print(f"Provider: Grok")
         print(f"Model: {actual_model}")
         print(f"Temperature: {temperature}")
-        print(f"Max Tokens: {max_tokens}")
         print(f"System Message: {system_message[:100]}...")
         print(f"Prompt: {prompt[:100]}...")
         print("==================================")
-        return call_grok(actual_model, system_message, prompt, temperature, max_tokens)
+        return call_grok(actual_model, system_message, prompt, temperature)
     elif provider == "ollama":
         logging.info(f"Using provider: Ollama for task: {model_key}")
         print("===== ROUTE TO OLLAMA API CALL DETAILS =====")
         print(f"Provider: Ollama")
         print(f"Temperature: {temperature}")
-        print(f"Max Tokens: {max_tokens}")
         print(f"System Message: {system_message[:100]}...")
         print(f"Prompt: {prompt[:100]}...")
         print("==================================")
-        return call_ollama(system_message, prompt, temperature, max_tokens)
+        return call_ollama(system_message, prompt, temperature)
     else:  # OpenAI is the default
         actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")
@@ -479,8 +480,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float, ma
         print(f"Provider: OpenAI")
         print(f"Model: {actual_model}")
         print(f"Temperature: {temperature}")
-        print(f"Max Tokens: {max_tokens}")
         print(f"System Message: {system_message[:100]}...")
         print(f"Prompt: {prompt[:100]}...")
         print("==================================")
-        return call_openai(actual_model, system_message, prompt, temperature, max_tokens)
+        return call_openai(actual_model, system_message, prompt, temperature)
