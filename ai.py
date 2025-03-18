@@ -288,33 +288,13 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float, 
         return prompt
 
 def adjust_text_with_openai(text: str) -> str:
-    provider = SETTINGS.get("ai_provider", "openai")
-    if provider == "openai":
-        model = SETTINGS.get("refine_text", {}).get("model", _DEFAULT_SETTINGS["refine_text"]["model"])
-    elif provider == "perplexity":
-        model = SETTINGS.get("refine_text", {}).get("perplexity_model", _DEFAULT_SETTINGS["refine_text"]["perplexity_model"])
-    elif provider == "grok":
-        model = SETTINGS.get("refine_text", {}).get("grok_model", _DEFAULT_SETTINGS["refine_text"]["grok_model"])
-    elif provider == "ollama":
-        model = SETTINGS.get("refine_text", {}).get("ollama_model", _DEFAULT_SETTINGS["refine_text"]["ollama_model"])
-    else:
-        model = _DEFAULT_SETTINGS["refine_text"]["model"]
+    model = _DEFAULT_SETTINGS["refine_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
     return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_REFINEMENT, OPENAI_MAX_TOKENS_REFINEMENT)
 
 def improve_text_with_openai(text: str) -> str:
-    provider = SETTINGS.get("ai_provider", "openai")
-    if provider == "openai":
-        model = SETTINGS.get("improve_text", {}).get("model", _DEFAULT_SETTINGS["improve_text"]["model"])
-    elif provider == "perplexity":
-        model = SETTINGS.get("improve_text", {}).get("perplexity_model", _DEFAULT_SETTINGS["improve_text"]["perplexity_model"])
-    elif provider == "grok":
-        model = SETTINGS.get("improve_text", {}).get("grok_model", _DEFAULT_SETTINGS["improve_text"]["grok_model"])
-    elif provider == "ollama":
-        model = SETTINGS.get("improve_text", {}).get("ollama_model", _DEFAULT_SETTINGS["improve_text"]["ollama_model"])
-    else:
-        model = _DEFAULT_SETTINGS["improve_text"]["model"]
+    model = _DEFAULT_SETTINGS["improve_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
     return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_IMPROVEMENT, OPENAI_MAX_TOKENS_IMPROVEMENT)
@@ -338,17 +318,9 @@ def remove_citations(text: str) -> str:
     return re.sub(r'(\[\d+\])+', '', text)
 
 def create_soap_note_with_openai(text: str) -> str:
-    provider = SETTINGS.get("ai_provider", "openai")
-    if provider == "openai":
-        model = SETTINGS.get("soap_note", {}).get("model", _DEFAULT_SETTINGS["soap_note"]["model"])
-    elif provider == "perplexity":
-        model = SETTINGS.get("soap_note", {}).get("perplexity_model", _DEFAULT_SETTINGS["soap_note"]["perplexity_model"])
-    elif provider == "grok":
-        model = SETTINGS.get("soap_note", {}).get("grok_model", _DEFAULT_SETTINGS["soap_note"]["grok_model"])
-    elif provider == "ollama":
-        model = SETTINGS.get("soap_note", {}).get("ollama_model", _DEFAULT_SETTINGS["soap_note"]["ollama_model"])
-    else:
-        model = _DEFAULT_SETTINGS["soap_note"]["model"]
+    # We don't need to check the provider here since call_ai will handle it
+    # Just pass the model name based on the type of note we're creating
+    model = _DEFAULT_SETTINGS["soap_note"]["model"]  # Default model as fallback
     
     full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
     result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7, 4000)
@@ -358,17 +330,7 @@ def create_soap_note_with_openai(text: str) -> str:
     return cleaned.strip()
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
-    provider = SETTINGS.get("ai_provider", "openai")
-    if provider == "openai":
-        model = SETTINGS.get("referral", {}).get("model", _DEFAULT_SETTINGS["referral"]["model"])
-    elif provider == "perplexity":
-        model = SETTINGS.get("referral", {}).get("perplexity_model", _DEFAULT_SETTINGS["referral"]["perplexity_model"])
-    elif provider == "grok":
-        model = SETTINGS.get("referral", {}).get("grok_model", _DEFAULT_SETTINGS["referral"]["grok_model"])
-    elif provider == "ollama":
-        model = SETTINGS.get("referral", {}).get("ollama_model", _DEFAULT_SETTINGS["referral"]["ollama_model"])
-    else:
-        model = _DEFAULT_SETTINGS["referral"]["model"]
+    model = _DEFAULT_SETTINGS["referral"]["model"]  # Default model as fallback
     
     # Add conditions to the prompt if provided
     if conditions:
