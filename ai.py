@@ -10,12 +10,6 @@ from prompts import (
 )
 from settings import SETTINGS, _DEFAULT_SETTINGS, load_settings
 
-# Constants for OpenAI API calls
-OPENAI_TEMPERATURE_REFINEMENT = 0.0
-OPENAI_MAX_TOKENS_REFINEMENT = 4000
-OPENAI_TEMPERATURE_IMPROVEMENT = 0.5
-OPENAI_MAX_TOKENS_IMPROVEMENT = 4000
-
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
@@ -284,13 +278,17 @@ def adjust_text_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["refine_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
-    return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_REFINEMENT)
+    # Get temperature from settings or use a reasonable default
+    temperature = SETTINGS.get("refine_text", {}).get("temperature", 0.0)
+    return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, temperature)
 
 def improve_text_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["improve_text"]["model"]  # Default model as fallback
     
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
-    return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, OPENAI_TEMPERATURE_IMPROVEMENT)
+    # Get temperature from settings or use a reasonable default
+    temperature = SETTINGS.get("improve_text", {}).get("temperature", 0.5)
+    return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, temperature)
 
 # NEW: Helper function to remove markdown formatting from text
 def remove_markdown(text: str) -> str:
