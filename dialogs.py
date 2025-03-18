@@ -124,6 +124,7 @@ def get_grok_models() -> list:
         import requests
         import os
         import json
+        from openai import OpenAI
         
         # Get API key from environment
         api_key = os.getenv("GROK_API_KEY")
@@ -131,46 +132,67 @@ def get_grok_models() -> list:
             logging.error("Grok API key not found in environment variables")
             return get_fallback_grok_models()
             
-        # Since the Grok API is having SSL issues, return fallback models for now
-        # This avoids connection errors while preserving functionality
-        logging.info("Using fallback Grok models due to potential API connectivity issues")
-        return get_fallback_grok_models()
-        
-        # The code below is commented out until the API connection issues are resolved
-        """
-        # Make API call to get models
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # Note: This URL might need to be updated as Grok's API evolves
-        response = requests.get(
-            "https://api.grok.ai/v1/models",
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
+        # Make API call to get models using the OpenAI client with x.ai base URL
+        try:
+            # Initialize client with X.AI base URL
+            client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+            
+            # Make API call to get models
+            response = client.models.list()
+            
             # Extract model IDs
-            models = [model["id"] for model in data.get("data", []) if "id" in model]
+            models = []
+            for model in response.data:
+                if hasattr(model, 'id'):
+                    models.append(model.id)
+            
             # Add common models that might be missing
-            common_models = ["grok-1", "grok-0"]
+            common_models = ["grok-1", "grok-1.5", "grok-mini"]
             for model in common_models:
                 if model not in models:
                     models.append(model)
+                    
             return sorted(models)
-        else:
-            logging.error(f"Error fetching Grok models: {response.status_code}")
-            return get_fallback_grok_models()
-        """
+        
+        except Exception as api_error:
+            # Fall back to direct request if OpenAI client approach fails
+            logging.warning(f"OpenAI client approach failed, trying direct request: {str(api_error)}")
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.get(
+                "https://api.x.ai/v1/models",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Extract model IDs - adjust according to actual response structure
+                if "data" in data:
+                    models = [model.get("id") for model in data.get("data", []) if model.get("id")]
+                else:
+                    models = [model.get("id") for model in data if model.get("id")]
+                
+                # Add common models that might be missing
+                common_models = ["grok-1", "grok-1.5", "grok-mini"]
+                for model in common_models:
+                    if model not in models:
+                        models.append(model)
+                return sorted(models)
+            else:
+                logging.error(f"Error fetching Grok models: {response.status_code}")
+                return get_fallback_grok_models()
+    
     except Exception as e:
         logging.error(f"Error fetching Grok models: {str(e)}")
         return get_fallback_grok_models()
 
 def get_fallback_grok_models() -> list:
     """Return fallback list of common Grok models."""
-    return ["grok-1", "grok-0", "grok-1.5", "grok-mini"]
+    return ["grok-1", "grok-1.5", "grok-mini"]
 
 def get_ollama_models() -> list:
     """Fetch available models from Ollama API."""

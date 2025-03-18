@@ -90,7 +90,7 @@ class UIComponents:
         
         ttk.Label(provider_frame, text="Provider:").pack(side=LEFT)
         
-        provider_values = ["OpenAI", "Groq", "Perplexity"]
+        provider_values = ["OpenAI", "Grok", "Perplexity"]
         provider = SETTINGS.get("ai_provider", "openai")
         
         provider_combobox = ttk.Combobox(

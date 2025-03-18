@@ -1065,13 +1065,12 @@ class MedicalDictationApp(ttk.Window):
 
         def task() -> None:
             try:
-                # Get the appropriate AI model based on settings
-                provider = SETTINGS.get("soap_provider", "openai")
+                # Get the current AI provider from settings
+                provider = SETTINGS.get("ai_provider", "openai")
                 
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.cpu_executor.submit(
-                    create_soap_note_with_openai if provider == "openai" else
-                    create_soap_note_with_other_provider,
+                    create_soap_note_with_openai,
                     transcript
                 )
                 
@@ -1449,8 +1448,8 @@ class MedicalDictationApp(ttk.Window):
         from settings import SETTINGS, save_settings  # Import locally if preferred
         
         selected_index = self.provider_combobox.current()
-        providers = ["openai", "perplexity", "grok", "ollama"]
-        provider_display = ["OpenAI", "Perplexity", "Grok", "Ollama"]
+        providers = ["openai", "grok", "perplexity"]
+        provider_display = ["OpenAI", "Grok", "Perplexity"]
         
         if 0 <= selected_index < len(providers):
             selected_provider = providers[selected_index]
@@ -1789,8 +1788,8 @@ class MedicalDictationApp(ttk.Window):
         # Clear all text tabs
         self.transcript_text.delete(1.0, tk.END)
         self.soap_text.delete(1.0, tk.END)
-        self.referral_text.delete(1.0, tk.END)
-        self.dictation_text.delete(1.0, tk.END)
+        self.referral_text.delete(1.0, tk.END)   # NEW: clear referral tab
+        self.dictation_text.delete(1.0, tk.END)   # NEW: clear dictation tab
         
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)

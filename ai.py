@@ -8,7 +8,7 @@ from prompts import (
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
     SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
 )
-from settings import SETTINGS, _DEFAULT_SETTINGS
+from settings import SETTINGS, _DEFAULT_SETTINGS, load_settings
 
 # Constants for OpenAI API calls
 OPENAI_TEMPERATURE_REFINEMENT = 0.0
@@ -19,6 +19,17 @@ OPENAI_MAX_TOKENS_IMPROVEMENT = 4000
 def call_openai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
+        
+        # Print API call details to terminal
+        print(f"\n===== OPENAI API CALL DETAILS =====")
+        print(f"Provider: OpenAI")
+        print(f"Model: {model}")
+        print(f"Temperature: {temperature}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
+        print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+        print(f"====================================\n")
+        
         response = openai.chat.completions.create(
             model=model,
             messages=[
@@ -46,6 +57,16 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
     model = SETTINGS.get(model_key, {}).get("perplexity_model", "sonar-medium-chat")
     logging.info(f"Making Perplexity API call with model: {model}")
     
+    # Print API call details to terminal
+    print(f"\n===== PERPLEXITY API CALL DETAILS =====")
+    print(f"Provider: Perplexity")
+    print(f"Model: {model}")
+    print(f"Temperature: {temperature}")
+    print(f"Max Tokens: {max_tokens}")
+    print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
+    print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+    print(f"========================================\n")
+    
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": prompt}
@@ -63,7 +84,6 @@ def call_perplexity(system_message: str, prompt: str, temperature: float, max_to
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         return prompt
 
-# NEW: Add Ollama API call function
 def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
     import requests
     import json
@@ -78,6 +98,16 @@ def call_ollama(system_message: str, prompt: str, temperature: float, max_tokens
     model = SETTINGS.get(model_key, {}).get("ollama_model", "llama3")
     
     logging.info(f"Making Ollama API call with model: {model}")
+    
+    # Print API call details to terminal
+    print(f"\n===== OLLAMA API CALL DETAILS =====")
+    print(f"Provider: Ollama")
+    print(f"Model: {model}")
+    print(f"Temperature: {temperature}")
+    print(f"Max Tokens: {max_tokens}")
+    print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
+    print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+    print(f"====================================\n")
     
     # Format the request payload for Ollama API
     # Use the 'generate' endpoint instead of 'chat' for more consistent responses
@@ -229,6 +259,16 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float, 
         return prompt
     
     logging.info(f"Making Grok API call with model: {model}")
+    
+    # Print API call details to terminal
+    print(f"\n===== GROK API CALL DETAILS =====")
+    print(f"Provider: Grok")
+    print(f"Model: {model}")
+    print(f"Temperature: {temperature}")
+    print(f"Max Tokens: {max_tokens}")
+    print(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
+    print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+    print(f"==================================\n")
     
     client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
     messages = [
@@ -416,21 +456,56 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     return clean_result
 
 def call_ai(model: str, system_message: str, prompt: str, temperature: float, max_tokens: int) -> str:
-    provider = SETTINGS.get("ai_provider", "openai")
+    # Reload settings from file to ensure we have the latest provider selection
+    from settings import load_settings
+    current_settings = load_settings()
+    
+    provider = current_settings.get("ai_provider", "openai")
     model_key = get_model_key_for_task(system_message, prompt)
     
     # Handle different providers and get appropriate model
     if provider == "perplexity":
         logging.info(f"Using provider: Perplexity for task: {model_key}")
+        print("===== PERPLEXITY API CALL DETAILS =====")
+        print(f"Provider: Perplexity")
+        print(f"Model: sonar-reasoning-pro")
+        print(f"Temperature: {temperature}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"System Message: {system_message[:100]}...")
+        print(f"Prompt: {prompt[:100]}...")
+        print("==================================")
         return call_perplexity(system_message, prompt, temperature, max_tokens)
     elif provider == "grok":
-        actual_model = SETTINGS.get(model_key, {}).get("grok_model", "grok-1")
+        actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
+        print("===== GROK API CALL DETAILS =====")
+        print(f"Provider: Grok")
+        print(f"Model: {actual_model}")
+        print(f"Temperature: {temperature}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"System Message: {system_message[:100]}...")
+        print(f"Prompt: {prompt[:100]}...")
+        print("==================================")
         return call_grok(actual_model, system_message, prompt, temperature, max_tokens)
     elif provider == "ollama":
         logging.info(f"Using provider: Ollama for task: {model_key}")
+        print("===== OLLAMA API CALL DETAILS =====")
+        print(f"Provider: Ollama")
+        print(f"Temperature: {temperature}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"System Message: {system_message[:100]}...")
+        print(f"Prompt: {prompt[:100]}...")
+        print("==================================")
         return call_ollama(system_message, prompt, temperature, max_tokens)
     else:  # OpenAI is the default
-        actual_model = SETTINGS.get(model_key, {}).get("model", model)
+        actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")
+        print("===== OPENAI API CALL DETAILS =====")
+        print(f"Provider: OpenAI")
+        print(f"Model: {actual_model}")
+        print(f"Temperature: {temperature}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"System Message: {system_message[:100]}...")
+        print(f"Prompt: {prompt[:100]}...")
+        print("==================================")
         return call_openai(actual_model, system_message, prompt, temperature, max_tokens)
