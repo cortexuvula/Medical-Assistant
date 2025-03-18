@@ -295,9 +295,18 @@ class MedicalDictationApp(ttk.Window):
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         
-        # Calculate responsive window size (80% of screen size, but not larger than 1700x950)
-        window_width = min(int(screen_width * 0.8), 1700)
-        window_height = min(int(screen_height * 0.8), 950)
+        # Check if we have saved window dimensions in settings
+        saved_width = SETTINGS.get("window_width", 0)
+        saved_height = SETTINGS.get("window_height", 0)
+        
+        if saved_width > 0 and saved_height > 0:
+            # Use saved dimensions if they exist and are valid
+            window_width = saved_width
+            window_height = saved_height
+        else:
+            # Calculate responsive window size (80% of screen size, but not larger than 1700x950)
+            window_width = min(int(screen_width * 0.8), 1700)
+            window_height = min(int(screen_height * 0.8), 950)
         
         # Apply the calculated window size
         self.geometry(f"{window_width}x{window_height}")
@@ -310,7 +319,15 @@ class MedicalDictationApp(ttk.Window):
         x = (screen_width // 2) - (window_width // 2)
         y = (screen_height // 2) - (window_height // 2)
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-
+        
+        # Add binding for window resize to save dimensions
+        self.bind("<Configure>", self.on_window_configure)
+        
+        # Variables to optimize resize event handling
+        self.resize_timer = None
+        self.last_width = window_width
+        self.last_height = window_height
+        
         # Initialize API keys and handlers
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
@@ -1418,6 +1435,10 @@ class MedicalDictationApp(ttk.Window):
             self.update_status("Nothing to redo.")
 
     def on_closing(self) -> None:
+        """Clean up resources and save settings before closing the application."""
+        # Save window dimensions before closing
+        self.save_window_dimensions()
+        
         try:
             # Shutdown all executor pools properly
             for executor_name in ['io_executor', 'cpu_executor', 'executor']:
@@ -1499,8 +1520,8 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-        
-        # Execute in thread pool
+
+        # Use IO executor for the task since it involves UI coordination
         self.executor.submit(task)
 
     def show_elevenlabs_settings(self) -> None:
@@ -2045,6 +2066,35 @@ class MedicalDictationApp(ttk.Window):
         x = self.winfo_rootx() + (self.winfo_width() // 2) - (dialog_width // 2)
         y = self.winfo_rooty() + (self.winfo_height() // 2) - (dialog_height // 2)
         log_dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+    def on_window_configure(self, event):
+        """
+        Handle window configuration events.
+        Only save dimensions when the window size actually changes and after resizing stops.
+        """
+        # Skip if this is not the main window configure event or if size hasn't changed
+        if event.widget != self or (self.last_width == self.winfo_width() and self.last_height == self.winfo_height()):
+            return
+            
+        # Update last known dimensions
+        self.last_width = self.winfo_width()
+        self.last_height = self.winfo_height()
+        
+        # Cancel previous timer if it exists
+        if self.resize_timer is not None:
+            self.after_cancel(self.resize_timer)
+            
+        # Set a new timer to save settings after resizing stops (500ms delay)
+        self.resize_timer = self.after(500, self.save_window_dimensions)
+    
+    def save_window_dimensions(self):
+        """Save the current window dimensions to settings."""
+        from settings import SETTINGS, save_settings
+        SETTINGS["window_width"] = self.last_width
+        SETTINGS["window_height"] = self.last_height
+        save_settings(SETTINGS)
+        # No status message needed for this automatic action
+        self.resize_timer = None  # Clear the timer reference
 
 if __name__ == "__main__":
     main()
