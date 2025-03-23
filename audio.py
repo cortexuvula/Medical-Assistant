@@ -1198,7 +1198,7 @@ class AudioHandler:
             return lambda wait_for_stop=True: None
             
     def _listen_with_sounddevice(self, device_name: str, callback: Callable[[np.ndarray], None],
-                               phrase_time_limit: int = 10) -> Callable[[], None]:
+                           phrase_time_limit: int = 10) -> Callable[[], None]:
         """Listen using sounddevice library for microphone input.
         
         Args:
@@ -1213,17 +1213,30 @@ class AudioHandler:
             # Store the device name
             self.listening_device = device_name
             
-            # Find device by name
+            # Find device by name - more thorough search for Voicemeeter devices
             device_id = None
             devices = sd.query_devices()
+            
+            # Debug logging - print all available devices
+            logging.info("Available audio devices:")
             for i, device in enumerate(devices):
-                if device['name'] == device_name:
+                device_name_lower = device['name'].lower()
+                is_input = device['max_input_channels'] > 0
+                channels = device['max_input_channels']
+                logging.info(f"  [{i}] {device['name']} - Input: {is_input}, Channels: {channels}")
+                
+                # More flexible matching for Voicemeeter devices
+                if device_name.lower() in device_name_lower and is_input:
                     device_id = i
+                    logging.info(f"Selected device {i}: {device['name']}")
                     break
                     
             if device_id is None:
-                logging.error(f"Could not find device: {device_name}")
-                return lambda wait_for_stop=False: None
+                logging.error(f"Could not find device: {device_name}, falling back to default input")
+                # Get default input device
+                device_info = sd.query_devices(kind='input')
+                device_id = device_info['index'] if 'index' in device_info else 0
+                logging.info(f"Using default input device: {device_info['name']}")
             
             # Store callback
             self.callback_function = callback
@@ -1232,7 +1245,7 @@ class AudioHandler:
             buffer_size = int(self.sample_rate * phrase_time_limit)
             
             # Log buffer size
-            logging.info(f"Started sounddevice recording on {device_name} with buffer {buffer_size}")
+            logging.info(f"Started sounddevice recording on {device_name} (ID: {device_id}) with buffer {buffer_size}")
             
             # Global variables for thread
             accumulated_frames = np.array([], dtype=np.float32)
@@ -1247,12 +1260,30 @@ class AudioHandler:
                     logging.warning(f"Recording status: {status}")
                 
                 # Log the maximum amplitude of this chunk
-                max_amp = np.abs(indata).max()
-                logging.debug(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
-                
-                if indata.size > 0:
-                    # Always append data to accumulated buffer
-                    accumulated_frames = np.append(accumulated_frames, indata[:, 0])  # Take first channel if stereo
+                if indata is not None and indata.size > 0:
+                    max_amp = np.abs(indata).max()
+                    if self.soap_mode:
+                        logging.info(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
+                    else:
+                        logging.debug(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
+                    
+                    # When in SOAP mode, normalize audio to ensure it's not too quiet
+                    if self.soap_mode and max_amp > 0.0001:  # Only normalize if there's some sound
+                        # Normalize to reasonable level if the audio is too quiet
+                        if max_amp < 0.1:  # Boost quiet audio
+                            # Calculate scaling factor - boost quiet audio
+                            scale_factor = min(10.0, 0.5 / max_amp) 
+                            indata = indata * scale_factor
+                            logging.debug(f"Boosted audio by factor {scale_factor:.2f}")
+                    
+                    # Always append data to accumulated buffer for SOAP recording
+                    # For stereo input, average the channels to get mono
+                    if indata.shape[1] > 1:  # If stereo
+                        mono_data = np.mean(indata, axis=1)
+                        accumulated_frames = np.append(accumulated_frames, mono_data)
+                        logging.debug(f"Converted stereo to mono, shape now: {mono_data.shape}")
+                    else:
+                        accumulated_frames = np.append(accumulated_frames, indata[:, 0])  # Take first channel
                 else:
                     logging.warning("Received empty audio chunk")
             
@@ -1269,11 +1300,22 @@ class AudioHandler:
                         # Process accumulated frames in chunks
                         if len(accumulated_frames) >= chunk_frames:
                             try:
+                                # Extract current chunk
+                                current_chunk = accumulated_frames[:chunk_frames]
+                                
                                 # Process only if above silence threshold
-                                max_amp = np.abs(accumulated_frames).max()
+                                max_amp = np.abs(current_chunk).max()
                                 
                                 # In SOAP mode, always log the amplitude for debugging
-                                logging.debug(f"Audio chunk amplitude: {max_amp:.6f} (threshold: {self.silence_threshold:.6f})")
+                                if self.soap_mode:
+                                    logging.info(f"SOAP audio chunk amplitude: {max_amp:.6f} (threshold: {self.silence_threshold:.6f})")
+                                    
+                                    # For SOAP recording, we want to capture everything, so boost the signal if needed
+                                    if max_amp > 0.0001 and max_amp < 0.1:  # Only boost if there's some sound but it's quiet
+                                        scale_factor = min(10.0, 0.3 / max_amp)
+                                        current_chunk = current_chunk * scale_factor
+                                        new_max = np.abs(current_chunk).max()
+                                        logging.debug(f"Boosted SOAP chunk from {max_amp:.6f} to {new_max:.6f}")
                                 
                                 # Process all audio regardless of amplitude in SOAP mode
                                 # Force the callback to be called even with low amplitude
@@ -1281,8 +1323,8 @@ class AudioHandler:
                                     try:
                                         # Always call the callback with the data in SOAP mode
                                         if self.callback_function:
-                                            logging.debug(f"Calling audio callback with data: shape={accumulated_frames[:chunk_frames].shape}")
-                                            self.callback_function(accumulated_frames[:chunk_frames])
+                                            logging.debug(f"Calling audio callback with data: shape={current_chunk.shape}, max_amp={max_amp:.6f}")
+                                            self.callback_function(current_chunk)
                                         else:
                                             logging.warning("No callback function set")
                                     except Exception as cb_error:
@@ -1386,6 +1428,7 @@ class AudioHandler:
                         # Apply gain to boost low-level signals if needed (multiply to increase volume)
                         # This helps with Voicemeeter outputs that might have lower levels
                         if np.abs(data).max() < 0.01:  # If the signal is weak but not silent
+                            # Calculate scaling factor - boost quiet audio
                             gain_factor = min(10.0, 0.01 / max(0.001, np.abs(data).max()))
                             data = data * gain_factor
                             logging.debug(f"Applied gain factor of {gain_factor:.2f} to boost low audio")

@@ -17,6 +17,7 @@ from typing import Callable, Optional
 import threading
 import numpy as np
 from pydub import AudioSegment
+from datetime import datetime as dt
 
 # Set up logging configuration
 def setup_logging():
@@ -515,6 +516,8 @@ class MedicalDictationApp(ttk.Window):
         if folder:
             try:
                 from settings import SETTINGS, save_settings
+                # Set both keys for backwards compatibility
+                SETTINGS["storage_folder"] = folder
                 SETTINGS["default_storage_folder"] = folder
                 save_settings(SETTINGS)
                 self.update_status(f"Default storage folder set to: {folder}")
@@ -931,79 +934,119 @@ class MedicalDictationApp(ttk.Window):
 
     def process_soap_recording(self) -> None:
         """Process SOAP recording using AudioHandler with improved concurrency."""
-        # Safety check - if no audio segments, don't proceed
-        if not self.soap_audio_segments:
-            self.after(0, lambda: [
-                self.status_manager.error("No audio data available to process"),
-                self.progress_bar.stop(),
-                self.progress_bar.pack_forget(),
-                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
-            ])
-            return
-            
-        def task() -> None:
+        def task():
             try:
-                # Log audio segments information for debugging
-                segment_count = len(self.soap_audio_segments)
-                total_duration_ms = sum(len(seg.raw_data) / (seg.frame_rate * seg.frame_width) * 1000 for seg in self.soap_audio_segments)
-                logging.info(f"Processing SOAP recording with {segment_count} segments, total duration: {total_duration_ms:.2f}ms")
+                # Reset the audio handler silence threshold to normal
+                self.audio_handler.silence_threshold = 0.01
                 
-                # First combine the audio segments using I/O operations
-                combined = self.audio_handler.combine_audio_segments(self.soap_audio_segments)
-                if not combined:
-                    raise ValueError("Failed to combine audio segments")
+                # Turn off SOAP debug mode
+                self.audio_handler.soap_mode = False
                 
-                # Log combined audio information
-                combined_size = len(combined.raw_data)
-                combined_duration_ms = len(combined.raw_data) / (combined.frame_rate * combined.frame_width) * 1000
-                logging.info(f"Combined audio size: {combined_size} bytes, duration: {combined_duration_ms:.2f}ms")
+                # Process the concatenated audio segments
+                if not self.soap_audio_segments:
+                    raise ValueError("No SOAP audio segments to process")
                 
-                # Load the saved audio file instead of transcribing the segments directly
-                # Get the most recently created mp3 file in the storage folder
-                folder = SETTINGS.get("default_storage_folder")
-                if not folder or not os.path.exists(folder):
-                    raise ValueError("Storage folder not found")
+                total_samples = sum(len(segment) for segment in self.soap_audio_segments)
+                logging.info(f"Processing SOAP recording with {len(self.soap_audio_segments)} segments, " +
+                            f"total samples: {total_samples}")
                 
-                # Find mp3 files and sort by creation time (newest first)
-                mp3_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.mp3')]
-                if not mp3_files:
-                    raise ValueError("No MP3 files found in storage folder")
+                # Update status on UI thread
+                self.after(0, lambda: [
+                    self.status_manager.progress("Preparing SOAP audio..."),
+                    self.progress_bar.pack(side=LEFT, padx=(5, 0))
+                ])
                 
-                mp3_files.sort(key=lambda x: os.path.getctime(x), reverse=True)
-                latest_mp3 = mp3_files[0]
-                logging.info(f"Using latest saved MP3 file for transcription: {latest_mp3}")
+                # Concatenate all segments into one AudioSegment
+                audio_segment = None
+                if self.soap_audio_segments:
+                    audio_segment = self.audio_handler.combine_audio_segments(self.soap_audio_segments)
                 
-                # Try transcription with fallbacks
-                transcript = ""
+                if not audio_segment:
+                    raise ValueError("Failed to create audio segment")
                 
-                # For SOAP notes, explicitly try ElevenLabs first if available
-                if self.elevenlabs_api_key:
-                    self.after(0, lambda: self.status_manager.progress("Transcribing SOAP note with ElevenLabs (best quality)..."))
-                    logging.info("Attempting SOAP note transcription with ElevenLabs")
+                # Save the SOAP audio to the user's default storage folder
+                from settings import SETTINGS
+                
+                # Try to get storage folder from both possible keys for backward compatibility
+                storage_folder = SETTINGS.get("storage_folder")
+                if not storage_folder:
+                    storage_folder = SETTINGS.get("default_storage_folder")
+                
+                # If no storage folder is set, create default one
+                if not storage_folder or not os.path.exists(storage_folder):
+                    storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
+                    os.makedirs(storage_folder, exist_ok=True)
                     
-                    # Use the elevenlabs method directly with the file
-                    from pydub import AudioSegment as PyAudioSegment
-                    audio_segment = PyAudioSegment.from_file(latest_mp3, format="mp3")
+                timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+                audio_path = os.path.join(storage_folder, f"soap_recording_{timestamp}.mp3")
+                
+                # Save the audio file
+                if audio_segment:
+                    segment_length_ms = len(audio_segment)
+                    segment_frame_rate = audio_segment.frame_rate
+                    segment_channels = audio_segment.channels
+                    segment_sample_width = audio_segment.sample_width
+                    segment_max_volume = float(getattr(audio_segment, "max", -1))
                     
-                    # Try ElevenLabs
+                    logging.info(f"SOAP audio segment stats: length={segment_length_ms}ms, "
+                                f"rate={segment_frame_rate}Hz, channels={segment_channels}, "
+                                f"width={segment_sample_width}bytes, max_volume={segment_max_volume}")
+                    
+                    # Check if the audio segment has meaningful content
+                    if segment_length_ms < 100:  # Less than 100ms is probably empty
+                        logging.warning(f"SOAP audio segment is too short ({segment_length_ms}ms), might be empty")
+                    
+                if self.audio_handler.save_audio([audio_segment], audio_path):
+                    logging.info(f"SOAP audio saved to: {audio_path}")
+                    self.after(0, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
+                
+                # Update status on UI thread
+                self.after(0, lambda: [
+                    self.status_manager.progress("Transcribing SOAP audio..."),
+                    self.progress_bar.pack(side=LEFT, padx=(5, 0))
+                ])
+                
+                # Try transcription with the selected STT provider first, then fall back to others
+                transcript = None
+                
+                # Get the currently selected STT provider from settings
+                from settings import SETTINGS
+                selected_provider = SETTINGS.get("stt_provider", "groq").lower()
+                
+                # Log the selected provider
+                logging.info(f"Using selected STT provider: {selected_provider}")
+                
+                # Try the selected provider first
+                if selected_provider == "elevenlabs" and self.elevenlabs_api_key:
+                    self.after(0, lambda: self.status_manager.progress("Transcribing with ElevenLabs..."))
                     transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
+                elif selected_provider == "deepgram" and self.deepgram_api_key:
+                    self.after(0, lambda: self.status_manager.progress("Transcribing with Deepgram..."))
+                    transcript = self.audio_handler._transcribe_with_deepgram(audio_segment)
+                elif selected_provider == "groq" and self.groq_api_key:
+                    self.after(0, lambda: self.status_manager.progress("Transcribing with GROQ..."))
+                    transcript = self.audio_handler._transcribe_with_groq(audio_segment)
                 
-                # If ElevenLabs failed or is not available, try Deepgram
+                # If the selected provider failed or isn't available, try the others as fallbacks
                 if not transcript:
-                    if self.elevenlabs_api_key:
-                        self.after(0, lambda: self.status_manager.progress("ElevenLabs transcription failed, trying Deepgram..."))
-                        logging.info("ElevenLabs transcription failed, falling back to Deepgram")
-                    else:
-                        self.after(0, lambda: self.status_manager.progress("Transcribing SOAP note with Deepgram..."))
-                        logging.info("ElevenLabs API key not available, using Deepgram")
+                    self.after(0, lambda: self.status_manager.progress("Selected provider failed, trying alternatives..."))
                     
-                    # Try with Deepgram directly
-                    if self.deepgram_api_key:
+                    # Try in order of reliability: ElevenLabs, Deepgram, GROQ, Whisper
+                    if selected_provider != "elevenlabs" and self.elevenlabs_api_key:
+                        self.after(0, lambda: self.status_manager.progress("Trying ElevenLabs as fallback..."))
+                        transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
+                    
+                    if not transcript and selected_provider != "deepgram" and self.deepgram_api_key:
+                        self.after(0, lambda: self.status_manager.progress("Trying Deepgram as fallback..."))
                         transcript = self.audio_handler._transcribe_with_deepgram(audio_segment)
+                        
+                    if not transcript and selected_provider != "groq" and self.groq_api_key:
+                        self.after(0, lambda: self.status_manager.progress("Trying GROQ as fallback..."))
+                        transcript = self.audio_handler._transcribe_with_groq(audio_segment)
                     
-                    # If both ElevenLabs and Deepgram failed or aren't available, try Whisper
+                    # Try Whisper as a last resort
                     if not transcript and self.audio_handler.whisper_available:
-                        self.after(0, lambda: self.status_manager.progress("Trying local Whisper model for transcription..."))
+                        self.after(0, lambda: self.status_manager.progress("Trying local Whisper model as last resort..."))
                         logging.info("Trying local Whisper model as last resort")
                         transcript = self.audio_handler._transcribe_with_whisper(audio_segment)
                 
@@ -1225,12 +1268,23 @@ class MedicalDictationApp(ttk.Window):
             # Switch focus to the SOAP tab
             self.notebook.select(1)
             
+            # Clear previous SOAP note content
+            self.soap_text.delete("1.0", tk.END)
+            
             # Start SOAP recording
             try:
                 selected_index = self.mic_combobox.current()
+                selected_device = self.mic_combobox.get()
                 self.update_status("Recording SOAP note...", "info")
                 
-                # Initialize audio segments list
+                # Get the actual device index if using the new naming format
+                from utils import get_device_index_from_name
+                device_index = get_device_index_from_name(selected_device)
+                
+                # Log the selected device information
+                logging.info(f"Starting SOAP recording with device: {selected_device} (index {device_index})")
+                
+                # Initialize empty audio segments list
                 self.soap_audio_segments = []
                 
                 # Set debug flag for SOAP recording to help with troubleshooting
@@ -1239,12 +1293,9 @@ class MedicalDictationApp(ttk.Window):
                 # Use a much lower silence threshold for SOAP recording
                 self.audio_handler.silence_threshold = 0.0001  # Much lower for SOAP recording
                 
-                # Log start of SOAP recording
-                logging.info(f"Starting SOAP recording with device index {selected_index}")
-                
                 # Start recording using AudioHandler
                 self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                    device_index=selected_index,
+                    device_index=device_index,
                     callback=self.soap_callback,
                     phrase_time_limit=10
                 )
@@ -1263,7 +1314,7 @@ class MedicalDictationApp(ttk.Window):
                 self.update_status(f"Error starting SOAP recording: {str(e)}", "error")
         else:
             # Stop SOAP recording
-            def stop_recording_task() -> None:
+            def stop_recording_task():
                 try:
                     if self.soap_stop_listening_function:
                         self.soap_stop_listening_function(wait_for_stop=True)
@@ -1277,7 +1328,9 @@ class MedicalDictationApp(ttk.Window):
                     self.soap_recording = False
                     
                     # Update UI on main thread
-                    self.after(0, self._finalize_soap_recording)
+                    self.after(0, lambda: [
+                        self._finalize_soap_recording()
+                    ])
                     
                 except Exception as e:
                     logging.error("Error stopping SOAP recording", exc_info=True)
@@ -1319,12 +1372,20 @@ class MedicalDictationApp(ttk.Window):
     def resume_soap_recording(self) -> None:
         """Resume SOAP recording after pause using the selected microphone."""
         try:
-            # Get selected microphone index
+            # Get selected microphone index and name
             selected_index = self.mic_combobox.current()
+            selected_device = self.mic_combobox.get()
+            
+            # Get the actual device index if using the new naming format
+            from utils import get_device_index_from_name
+            device_index = get_device_index_from_name(selected_device)
+            
+            # Log the selected device information
+            logging.info(f"Resuming SOAP recording with device: {selected_device} (index {device_index})")
             
             # Start new recording session
             self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                device_index=selected_index,
+                device_index=device_index,
                 callback=self.soap_callback,
                 phrase_time_limit=10
             )
@@ -1940,7 +2001,7 @@ class MedicalDictationApp(ttk.Window):
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
         self.progress_bar.start()
-        
+
         def task() -> None:
             try:
                 # Use I/O executor for file loading which is I/O-bound
