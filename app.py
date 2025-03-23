@@ -1347,6 +1347,14 @@ class MedicalDictationApp(ttk.Window):
         """Complete the SOAP recording process after ensuring all audio is captured."""
         # Process the recorded audio segments
         self.process_soap_recording()
+        
+        # Reset all button states after processing is complete
+        self.after(0, lambda: [
+            self.record_soap_button.config(text="Record SOAP Note", state=tk.NORMAL, bootstyle="success"),
+            self.pause_soap_button.config(text="Pause", state=tk.DISABLED, bootstyle="warning"),
+            self.cancel_soap_button.config(state=tk.DISABLED),
+            self.record_button.config(state=tk.NORMAL)
+        ])
 
     def toggle_soap_pause(self) -> None:
         """Toggle pause for SOAP recording."""
