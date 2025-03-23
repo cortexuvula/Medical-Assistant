@@ -6,7 +6,6 @@ import logging
 from tooltip import ToolTip
 from settings import SETTINGS
 from utils import get_valid_microphones
-import speech_recognition as sr
 
 class UIComponents:
     """Helper class to build and manage UI components for the Medical Dictation app."""
@@ -61,7 +60,7 @@ class UIComponents:
         
         mic_combobox = ttk.Combobox(
             mic_select_frame,
-            values=get_valid_microphones() or sr.Microphone.list_microphone_names(),
+            values=get_valid_microphones() or [],
             state="readonly",
             width=45
         )

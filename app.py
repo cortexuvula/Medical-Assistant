@@ -8,15 +8,15 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing
 import tkinter as tk
 from tkinter import messagebox, filedialog, scrolledtext, ttk
-import speech_recognition as sr
-from pydub import AudioSegment
-from deepgram import DeepgramClient, PrerecordedOptions
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from dotenv import load_dotenv
 import openai
 import pyaudio
 from typing import Callable, Optional
+import threading
+import numpy as np
+from pydub import AudioSegment
 
 # Set up logging configuration
 def setup_logging():
@@ -391,10 +391,6 @@ class MedicalDictationApp(ttk.Window):
             self.buttons["refine"].config(state=DISABLED)
             self.buttons["improve"].config(state=DISABLED)
             self.status_manager.warning("Warning: OpenAI API key not provided. AI features disabled.")
-
-        self.recognizer = sr.Recognizer()
-        self.listening = False
-        self.stop_listening_function = None
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -890,15 +886,18 @@ class MedicalDictationApp(ttk.Window):
         if not self.listening:
             self.update_status("Listening...")
             try:
-                import speech_recognition as sr
                 selected_index = self.mic_combobox.current()
-                mic = sr.Microphone(device_index=selected_index)
-                self.stop_listening_function = self.recognizer.listen_in_background(mic, self.callback, phrase_time_limit=10)
+                # Use AudioHandler's new methods for recording
+                self.stop_listening_function = self.audio_handler.listen_in_background(
+                    device_index=selected_index,
+                    callback=self.callback,
+                    phrase_time_limit=10
+                )
                 self.listening = True
                 self.record_button.config(text="Stop", bootstyle="danger")
             except Exception as e:
                 logging.error("Error creating microphone", exc_info=True)
-                self.update_status("Error accessing microphone.")
+                self.update_status(f"Error accessing microphone: {str(e)}")
         else:
             self.update_status("Already listening.")
 
@@ -909,14 +908,14 @@ class MedicalDictationApp(ttk.Window):
             self.record_button.config(text="Start Dictation", bootstyle="success")
             self.update_status("Stopped listening.")
 
-    def callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+    def callback(self, audio_data) -> None:
         """Handle speech recognition callback with better concurrency."""
         # Use the I/O executor for speech recognition as it involves network and file I/O
-        self.io_executor.submit(self.process_audio, recognizer, audio)
+        self.io_executor.submit(self.process_audio, audio_data)
 
-    def process_audio(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
+    def process_audio(self, audio_data) -> None:
         """Process audio with better error handling using AudioHandler."""
-        segment, transcript = self.audio_handler.process_audio_data(audio)
+        segment, transcript = self.audio_handler.process_audio_data(audio_data)
         
         if segment:
             # Store segment
@@ -1124,7 +1123,7 @@ class MedicalDictationApp(ttk.Window):
                 ])
 
         # Use I/O executor for the task since it involves UI coordination
-        self.io_executor.submit(task)
+        self.executor.submit(task)
 
     def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
         target_widget.edit_separator()
@@ -1198,185 +1197,220 @@ class MedicalDictationApp(ttk.Window):
         self.io_executor.submit(task)
 
     def refresh_microphones(self) -> None:
-        names = get_valid_microphones() or sr.Microphone.list_microphone_names()
-        self.mic_combobox['values'] = names
-        if names:
-            self.mic_combobox.current(0)
-        else:
-            self.mic_combobox.set("No microphone found")
-        self.update_status("Microphone list refreshed.")
+        try:
+            # Get available microphones using common method
+            from utils import get_valid_microphones
+            mic_names = get_valid_microphones()
+            
+            # Clear existing items
+            self.mic_combobox['values'] = []
+            
+            # Add device names to dropdown
+            if mic_names:
+                self.mic_combobox['values'] = mic_names
+                # Select first device
+                self.mic_combobox.current(0)
+            else:
+                self.mic_combobox['values'] = ["No microphones found"]
+                self.mic_combobox.current(0)
+                self.update_status("No microphones detected", "warning")
+                
+        except Exception as e:
+            logging.error("Error refreshing microphones", exc_info=True)
+            self.update_status("Error detecting microphones", "error")
 
     def toggle_soap_recording(self) -> None:
         """Toggle SOAP note recording using AudioHandler."""
         if not self.soap_recording:
-            # Clear all text areas and reset audio segments before starting a new SOAP recording session
-            self.transcript_text.delete("1.0", tk.END)
-            self.soap_text.delete("1.0", tk.END)
-            self.referral_text.delete("1.0", tk.END)   # NEW: clear referral tab
-            self.dictation_text.delete("1.0", tk.END)   # NEW: clear dictation tab
-            self.appended_chunks.clear()
-            self.soap_audio_segments.clear()
-            self.soap_recording = True
-            self.soap_paused = False  # NEW: reset pause state
-            self.record_soap_button.config(text="Stop", bootstyle="danger")
-            self.pause_soap_button.config(state=tk.NORMAL, text="Pause")  # enable pause button
-            self.cancel_soap_button.config(state=tk.NORMAL)  # enable cancel button
-            self.update_status("Recording SOAP note...")
+            # Switch focus to the SOAP tab
+            self.notebook.select(1)
+            
+            # Start SOAP recording
             try:
-                import speech_recognition as sr
                 selected_index = self.mic_combobox.current()
-                mic = sr.Microphone(device_index=selected_index)
+                self.update_status("Recording SOAP note...", "info")
+                
+                # Initialize audio segments list
+                self.soap_audio_segments = []
+                
+                # Set debug flag for SOAP recording to help with troubleshooting
+                self.audio_handler.soap_mode = True
+                
+                # Use a much lower silence threshold for SOAP recording
+                self.audio_handler.silence_threshold = 0.0001  # Much lower for SOAP recording
+                
+                # Log start of SOAP recording
+                logging.info(f"Starting SOAP recording with device index {selected_index}")
+                
+                # Start recording using AudioHandler
+                self.soap_stop_listening_function = self.audio_handler.listen_in_background(
+                    device_index=selected_index,
+                    callback=self.soap_callback,
+                    phrase_time_limit=10
+                )
+                
+                # Update state and UI
+                self.soap_recording = True
+                self.record_soap_button.config(text="Stop Recording", bootstyle="danger")
+                self.pause_soap_button.config(state=tk.NORMAL)
+                self.cancel_soap_button.config(state=tk.NORMAL)
+                
+                # Disable other buttons during recording
+                self.record_button.config(state=tk.DISABLED)
+                
             except Exception as e:
-                logging.error("Error creating microphone for SOAP recording", exc_info=True)
-                self.update_status("Error accessing microphone for SOAP note.")
-                return
-            self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
+                logging.error("Error starting SOAP recording", exc_info=True)
+                self.update_status(f"Error starting SOAP recording: {str(e)}", "error")
         else:
-            # Stopping SOAP recording
-            self.update_status("Finalizing recording (processing last chunk)...")
+            # Stop SOAP recording
+            def stop_recording_task() -> None:
+                try:
+                    if self.soap_stop_listening_function:
+                        self.soap_stop_listening_function(wait_for_stop=True)
+                        self.soap_stop_listening_function = None
+                    
+                    # Reset SOAP mode
+                    self.audio_handler.soap_mode = False
+                    self.audio_handler.silence_threshold = 0.001  # Reset to normal
+                    
+                    # Reset state
+                    self.soap_recording = False
+                    
+                    # Update UI on main thread
+                    self.after(0, self._finalize_soap_recording)
+                    
+                except Exception as e:
+                    logging.error("Error stopping SOAP recording", exc_info=True)
+                    self.after(0, lambda: self.update_status(f"Error stopping SOAP recording: {str(e)}", "error"))
             
-            def stop_recording_task():
-                # Stop listening with wait_for_stop=True to ensure last chunk is processed
-                if self.soap_stop_listening_function:
-                    self.soap_stop_listening_function(wait_for_stop=True)
-                
-                # Wait a small additional time to ensure processing completes
-                time.sleep(0.5)
-                
-                # Update UI on main thread
-                self.after(0, lambda: [
-                    self._finalize_soap_recording()
-                ])
+            # Run the cancellation process in a separate thread to avoid freezing the UI
+            threading.Thread(target=stop_recording_task, daemon=True).start()
             
-            # Run the stopping process in a separate thread to avoid freezing the UI
-            self.io_executor.submit(stop_recording_task)
+            # Update status immediately
+            self.update_status("Finalizing SOAP recording...", "info")
+            self.record_soap_button.config(state=tk.DISABLED)
 
     def _finalize_soap_recording(self):
         """Complete the SOAP recording process after ensuring all audio is captured."""
-        self.soap_recording = False
-        self.soap_paused = False
-        
-        # Update UI elements
-        self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
-        self.cancel_soap_button.config(state=tk.DISABLED)
-        self.record_soap_button.config(text="Record SOAP Note", bootstyle="SECONDARY", state=tk.DISABLED)
-        
-        # Check if we have any audio segments to process
-        if not self.soap_audio_segments:
-            self.update_status("No audio recorded. Try again.")
-            self.after(1000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
-            return
-            
-        self.update_status("Saving SOAP note audio recording...")
-        
-        # Save the recorded audio
-        import datetime
-        folder = SETTINGS.get("default_storage_folder")
-        if folder and not os.path.exists(folder):
-            os.makedirs(folder)
-            
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-        audio_file_path = os.path.join(folder, f"{now_str}.mp3") if folder else f"{now_str}.mp3"
-        
-        # Use a thread to save the audio without blocking the UI
-        def save_and_process_audio():
-            try:
-                # Save the combined audio to file
-                self.audio_handler.save_audio(self.soap_audio_segments, audio_file_path)
-                
-                # Update UI from main thread
-                self.after(0, lambda: self.update_status(f"SOAP audio saved to: {audio_file_path}"))
-                
-                # After saving is complete, start transcription
-                self.after(0, lambda: [
-                    self.update_status("Transcribing SOAP note with ElevenLabs (best quality)..."),
-                    self.progress_bar.pack(side=RIGHT, padx=10),
-                    self.progress_bar.start(),
-                    self.process_soap_recording()
-                ])
-                
-            except Exception as e:
-                error_msg = f"Error saving SOAP audio: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.after(0, lambda: self.update_status(f"Error saving audio: {str(e)}", "error"))
-                self.after(0, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
-        
-        # Execute the save and transcription process in a background thread
-        self.io_executor.submit(save_and_process_audio)
-        
-        # Re-enable the record button after 5 seconds
-        self.after(5000, lambda: self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL))
+        # Process the recorded audio segments
+        self.process_soap_recording()
 
     def toggle_soap_pause(self) -> None:
-        if self.soap_paused:
-            self.resume_soap_recording()
-        else:
-            self.pause_soap_recording()
+        """Toggle pause for SOAP recording."""
+        if self.soap_recording:
+            if self.soap_stop_listening_function:
+                # Currently recording, so pause
+                self.pause_soap_recording()
+            else:
+                # Currently paused, so resume
+                self.resume_soap_recording()
 
     def pause_soap_recording(self) -> None:
-        if self.soap_recording and not self.soap_paused:
-            if self.soap_stop_listening_function:
-                self.soap_stop_listening_function(wait_for_stop=False)
-            self.soap_paused = True
-            self.pause_soap_button.config(text="Resume")
-            self.update_status("SOAP note recording paused.")
+        """Pause SOAP recording."""
+        if self.soap_stop_listening_function:
+            # Stop the current recording
+            self.soap_stop_listening_function(wait_for_stop=True)
+            self.soap_stop_listening_function = None
+            
+            # Update UI
+            self.pause_soap_button.config(text="Resume", bootstyle="success")
+            self.update_status("SOAP recording paused. Press Resume to continue.", "info")
 
     def resume_soap_recording(self) -> None:
         """Resume SOAP recording after pause using the selected microphone."""
-        if self.soap_recording and self.soap_paused:
-            try:
-                import speech_recognition as sr
-                # Use the selected microphone from combobox
-                selected_index = self.mic_combobox.current()
-                mic = sr.Microphone(device_index=selected_index)
-                logging.info(f"Resuming SOAP recording with microphone index: {selected_index}")
-            except Exception as e:
-                error_msg = f"Error accessing microphone: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.update_status(error_msg)
-                return
-                
-            # Restart the background listening with same callback
-            self.soap_stop_listening_function = self.recognizer.listen_in_background(mic, self.soap_callback, phrase_time_limit=10)
-            self.soap_paused = False
-            self.pause_soap_button.config(text="Pause")
-            self.update_status("SOAP note recording resumed.")
-
-    def soap_callback(self, recognizer: sr.Recognizer, audio: sr.AudioData) -> None:
-        """Callback for SOAP note recording using AudioHandler."""
         try:
-            # Log that we received audio data
-            audio_size = len(audio.get_raw_data()) if audio else 0
-            logging.info(f"SOAP callback received audio chunk of size: {audio_size} bytes")
+            # Get selected microphone index
+            selected_index = self.mic_combobox.current()
             
-            if not audio or audio_size == 0:
-                logging.warning("Empty audio data received in SOAP callback")
-                return
-                
-            # Convert audio data to segment WITHOUT transcribing
-            # Extract raw audio data from AudioData
-            raw_data = audio.get_raw_data()
-            sample_rate = audio.sample_rate
-            sample_width = audio.sample_width
-            
-            # Create AudioSegment directly from raw data
-            from pydub import AudioSegment as PyAudioSegment
-            segment = PyAudioSegment(
-                data=raw_data,
-                sample_width=sample_width,
-                frame_rate=sample_rate,
-                channels=1  # Speech recognition typically uses mono
+            # Start new recording session
+            self.soap_stop_listening_function = self.audio_handler.listen_in_background(
+                device_index=selected_index,
+                callback=self.soap_callback,
+                phrase_time_limit=10
             )
             
+            # Update UI
+            self.pause_soap_button.config(text="Pause", bootstyle="warning")
+            self.update_status("SOAP recording resumed.", "info")
+            
+        except Exception as e:
+            logging.error("Error resuming SOAP recording", exc_info=True)
+            self.update_status(f"Error resuming SOAP recording: {str(e)}", "error")
+
+    def soap_callback(self, audio_data) -> None:
+        """Callback for SOAP note recording using AudioHandler."""
+        try:
+            # Log audio data information
+            logging.debug(f"SOAP audio data received: type={type(audio_data)}, shape={getattr(audio_data, 'shape', None)}")
+            
+            # Check if we have any data
+            if audio_data is None:
+                logging.warning("SOAP callback received None audio data")
+                return
+                
+            # For numpy arrays from sounddevice, bypass the normal process_audio_data
+            # and create AudioSegment directly to avoid losing data
+            if isinstance(audio_data, np.ndarray):
+                # Track max amplitude for debugging
+                max_amp = np.abs(audio_data).max()
+                logging.debug(f"SOAP direct numpy audio data max amplitude: {max_amp:.6f}")
+                
+                # For SOAP, process ALL audio data regardless of amplitude
+                # Skip only completely silent audio (essentially zeros)
+                if max_amp > 0.00001:  # Extremely low threshold to catch any non-zero audio
+                    try:
+                        # Convert float32 to int16 for compatibility with pydub
+                        # Use scaling to ensure we don't lose quiet sounds
+                        scaling_factor = 32767 * min(50.0, 0.1 / max(0.001, max_amp))  # Dynamic scaling
+                        audio_int16 = (audio_data * scaling_factor).astype(np.int16)
+                        
+                        # Log the scaling applied
+                        logging.debug(f"Applied scaling factor of {scaling_factor:.2f} to SOAP audio")
+                        
+                        # Convert to bytes
+                        raw_data = audio_int16.tobytes()
+                        
+                        # Convert to AudioSegment
+                        segment = AudioSegment(
+                            data=raw_data,
+                            sample_width=2,  # 2 bytes for int16
+                            frame_rate=self.audio_handler.sample_rate,
+                            channels=self.audio_handler.channels
+                        )
+                        
+                        # Add to segments list for later processing
+                        self.soap_audio_segments.append(segment)
+                        
+                        # Visual feedback that audio is being recorded
+                        self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
+                        return
+                    except Exception as e:
+                        logging.error(f"Error processing direct SOAP audio data: {str(e)}", exc_info=True)
+                else:
+                    logging.debug(f"SOAP audio segment skipped - completely silent ({max_amp:.8f})")
+            
+            # Fall back to standard processing if direct method fails
+            # This is the path for AudioData objects or if the direct processing had an exception
+            segment, _ = self.audio_handler.process_audio_data(audio_data)
+            
             if segment:
-                segment_length = len(segment.raw_data)
-                logging.info(f"Adding audio segment of length {segment_length} bytes to SOAP recording")
+                # Add to segments list for later processing
                 self.soap_audio_segments.append(segment)
+                
+                # Visual feedback that audio is being recorded
+                self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
             else:
-                logging.warning("Failed to create audio segment from valid audio data")
+                # Log the issue with audio data
+                logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
+                max_amp = np.abs(audio_data).max() if hasattr(audio_data, 'max') else 0
+                logging.warning(f"SOAP recording: Max amplitude was {max_amp}")
+                
+                # Visual feedback for user
+                if hasattr(audio_data, 'max') and np.abs(audio_data).max() < 0.005:
+                    self.after(0, lambda: self.update_status("Audio level too low - check your microphone settings", "warning"))
                 
         except Exception as e:
-            logging.error(f"Error recording SOAP note chunk: {str(e)}", exc_info=True)
+            logging.error("Error in SOAP callback", exc_info=True)
 
     def cancel_soap_recording(self) -> None:
         """Cancel the current SOAP note recording without processing."""
@@ -1405,8 +1439,12 @@ class MedicalDictationApp(ttk.Window):
             ])
             
         # Run the cancellation process in a separate thread to avoid freezing the UI
-        self.io_executor.submit(cancel_task)
+        threading.Thread(target=cancel_task, daemon=True).start()
         
+        # Update status immediately
+        self.update_status("Cancelling SOAP recording...", "info")
+        self.record_soap_button.config(state=tk.DISABLED)
+
     def _cancel_soap_recording_finalize(self):
         """Finalize the cancellation of SOAP recording."""
         # Clear the audio segments
@@ -1414,7 +1452,6 @@ class MedicalDictationApp(ttk.Window):
         
         # Reset state variables
         self.soap_recording = False
-        self.soap_paused = False
         
         # Reset UI buttons
         self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
@@ -1482,7 +1519,7 @@ class MedicalDictationApp(ttk.Window):
         return show_letter_options_dialog(self)
 
     def create_letter(self) -> None:
-        """Create a letter from the selected text source with AI assistance"""
+        """Create a letter from transcript with improved concurrency."""
         # Get source and specifications
         source, specs = self.show_letter_options_dialog()
         
@@ -1852,7 +1889,7 @@ class MedicalDictationApp(ttk.Window):
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 
-                # Update UI when done
+                # Schedule UI update on the main thread
                 self.after(0, lambda: [
                     self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
                     self.notebook.select(2)  # Switch focus to Referral tab
@@ -1913,14 +1950,11 @@ class MedicalDictationApp(ttk.Window):
                     # Store segment
                     self.audio_segments = [segment]
                     
-                    # Schedule UI update on the main thread
-                    self.after(0, lambda: [
-                        self.append_text(transcript),
-                        self.status_manager.success(f"Audio transcribed: {os.path.basename(file_path)}"),
-                        self.progress_bar.stop(),
-                        self.progress_bar.pack_forget(),
-                        self.notebook.select(0)  # Switch to Transcript tab (index 0)
-                    ])
+                    # Handle transcript result
+                    if transcript:
+                        self.after(0, self.handle_recognized_text, transcript)
+                    else:
+                        self.after(0, self.update_status, "No transcript was produced", "warning")
                 else:
                     self.after(0, lambda: [
                         self.status_manager.error("Failed to process audio file"),
