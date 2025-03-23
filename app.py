@@ -1538,9 +1538,9 @@ class MedicalDictationApp(ttk.Window):
         if source == "transcript":
             text = self.transcript_text.get("1.0", tk.END).strip()
             source_name = "Transcript"
-        else:  # dictation
-            text = self.referral_text.get("1.0", tk.END).strip()
-            source_name = "Referral"
+        else:  # soap
+            text = self.soap_text.get("1.0", tk.END).strip()
+            source_name = "SOAP"
         
         if not text:
             messagebox.showwarning("Empty Text", f"The {source_name} tab is empty. Please add content before creating a letter.")

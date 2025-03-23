@@ -1128,7 +1128,7 @@ def show_letter_options_dialog(parent: tk.Tk) -> tuple:
     """Show dialog to get letter source and specifications from user.
     
     Returns:
-        tuple: (source, specifications) where source is 'transcript' or 'dictation'
+        tuple: (source, specifications) where source is 'transcript' or 'soap'
     """
     # Increase dialog size from 600x400 to 700x550 for better fit
     dialog = create_toplevel_dialog(parent, "Letter Options", "700x700")
@@ -1145,7 +1145,7 @@ def show_letter_options_dialog(parent: tk.Tk) -> tuple:
     
     source_var = tk.StringVar(value="transcript")
     ttk.Radiobutton(source_frame, text="Use text from Transcript tab", variable=source_var, value="transcript").pack(anchor="w", padx=20, pady=5)
-    ttk.Radiobutton(source_frame, text="Use text from Dictation tab", variable=source_var, value="dictation").pack(anchor="w", padx=20, pady=5)
+    ttk.Radiobutton(source_frame, text="Use text from SOAP tab", variable=source_var, value="soap").pack(anchor="w", padx=20, pady=5)
     
     ttk.Label(main_frame, text="Letter specifications:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
     ttk.Label(main_frame, text="Enter any specific requirements for the letter (tone, style, formality, purpose, etc.)", 
