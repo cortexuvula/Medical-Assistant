@@ -19,6 +19,8 @@ class UIComponents:
         self.parent = parent
         self.style = ttk.Style()
         self._configure_styles()
+        # Add dictionary to store references to UI components
+        self.components = {}
         
     def _configure_styles(self):
         """Configure custom styles for the application."""
@@ -82,6 +84,9 @@ class UIComponents:
         )
         refresh_btn.pack(side=LEFT, padx=(0, 10))
         ToolTip(refresh_btn, "Refresh microphone list")
+        
+        # Store reference to the refresh button in components dictionary
+        self.components['refresh_btn'] = refresh_btn
         
         # Middle - Provider selection
         provider_frame = ttk.Frame(mic_frame)

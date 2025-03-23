@@ -1181,27 +1181,73 @@ class MedicalDictationApp(ttk.Window):
         self.io_executor.submit(task)
 
     def refresh_microphones(self) -> None:
-        try:
-            # Get available microphones using common method
-            from utils import get_valid_microphones
-            mic_names = get_valid_microphones()
+        """Refresh the list of available microphones with simple animation."""
+        # Find the refresh button
+        refresh_btn = self.ui.components.get('refresh_btn')
+        
+        # If animation is already in progress, return
+        if hasattr(self, '_refreshing') and self._refreshing:
+            return
             
-            # Clear existing items
-            self.mic_combobox['values'] = []
+        # Mark as refreshing
+        self._refreshing = True
+        
+        # Disable the button during refresh
+        if refresh_btn:
+            refresh_btn.config(state=tk.DISABLED)
             
-            # Add device names to dropdown
-            if mic_names:
-                self.mic_combobox['values'] = mic_names
-                # Select first device
-                self.mic_combobox.current(0)
+        # Set wait cursor
+        self.config(cursor="wait")
+        
+        # Define the animation frames
+        animation_chars = ["⟳", "⟲", "↻", "↺", "⟳"]
+        
+        def animate_refresh(frame=0):
+            """Simple animation function to rotate the refresh button text."""
+            if frame < len(animation_chars) * 2:  # Repeat animation twice
+                if refresh_btn:
+                    refresh_btn.config(text=animation_chars[frame % len(animation_chars)])
+                self.after(100, lambda: animate_refresh(frame + 1))
             else:
-                self.mic_combobox['values'] = ["No microphones found"]
-                self.mic_combobox.current(0)
-                self.update_status("No microphones detected", "warning")
+                # Animation complete, perform actual refresh
+                do_refresh()
                 
-        except Exception as e:
-            logging.error("Error refreshing microphones", exc_info=True)
-            self.update_status("Error detecting microphones", "error")
+        def do_refresh():
+            """Perform the actual microphone refresh."""
+            try:
+                # Get available microphones using common method
+                from utils import get_valid_microphones
+                mic_names = get_valid_microphones()
+                
+                # Clear existing items
+                self.mic_combobox['values'] = []
+                
+                # Add device names to dropdown
+                if mic_names:
+                    self.mic_combobox['values'] = mic_names
+                    # Select first device
+                    self.mic_combobox.current(0)
+                else:
+                    self.mic_combobox['values'] = ["No microphones found"]
+                    self.mic_combobox.current(0)
+                    self.update_status("No microphones detected", "warning")
+                    
+            except Exception as e:
+                logging.error("Error refreshing microphones", exc_info=True)
+                self.update_status("Error detecting microphones", "error")
+            finally:
+                # Reset animation state
+                self._refreshing = False
+                
+                # Reset button state and cursor
+                if refresh_btn:
+                    refresh_btn.config(text="⟳", state=tk.NORMAL)
+                
+                # Reset cursor
+                self.config(cursor="")
+        
+        # Start animation
+        animate_refresh()
 
     def toggle_soap_recording(self) -> None:
         """Toggle SOAP note recording using AudioHandler."""
