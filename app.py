@@ -372,6 +372,7 @@ class MedicalDictationApp(ttk.Window):
         self.soap_recording = False
         self.soap_audio_segments = []
         self.soap_stop_listening_function = None
+        self.listening = False  # Initialize listening flag for recording state
 
         # Create UI using the component builder
         self.ui = UIComponents(self)
@@ -434,7 +435,7 @@ class MedicalDictationApp(ttk.Window):
 
         helpmenu = tk.Menu(menubar, tearoff=0)
         helpmenu.add_command(label="About", command=self.show_about)
-        helpmenu.add_command(label="Shortcuts & Voice Commands", command=self.show_shortcuts)
+        helpmenu.add_command(label="Keyboard Shortcuts", command=self.show_shortcuts)
         helpmenu.add_command(label="View Logs", command=self.view_logs)
         menubar.add_cascade(label="Help", menu=helpmenu)
 
@@ -571,7 +572,6 @@ class MedicalDictationApp(ttk.Window):
     def create_widgets(self) -> None:
         # Define command mapping for buttons
         command_map = {
-            "toggle_recording": self.toggle_recording,
             "new_session": self.new_session,
             "undo_text": self.undo_text,
             "redo_text": self.redo_text,
@@ -610,7 +610,7 @@ class MedicalDictationApp(ttk.Window):
         self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
         
         # Create notebook with text areas - inside main_content with expand=True
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.dictation_text = self.ui.create_notebook()
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text = self.ui.create_notebook()
         self.notebook.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         
         # Set initial active text widget and bind tab change event
@@ -618,7 +618,6 @@ class MedicalDictationApp(ttk.Window):
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
         # Access common buttons from self.buttons
-        self.record_button = self.buttons["record"]
         self.refine_button = self.buttons["refine"]
         self.improve_button = self.buttons["improve"]
         self.soap_button = self.buttons["soap"]
@@ -792,7 +791,7 @@ class MedicalDictationApp(ttk.Window):
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
             # Clear text and reset undo/redo history for all tabs
-            for widget in [self.transcript_text, self.soap_text, self.referral_text, self.dictation_text]:
+            for widget in [self.transcript_text, self.soap_text, self.referral_text]:
                 widget.delete("1.0", tk.END)
                 widget.edit_reset()  # Clear undo/redo history
             # Clear audio segments and other stored data
@@ -873,64 +872,6 @@ class MedicalDictationApp(ttk.Window):
 
     def reset_status(self) -> None:
         self.status_manager.reset_status()
-
-    def toggle_recording(self) -> None:
-        """Toggle between starting and stopping recording"""
-        if not self.listening:
-            # Start recording
-            self.start_recording()
-        else:
-            # Stop recording
-            self.stop_recording()
-
-    def start_recording(self) -> None:
-        # Switch focus to the Dictation tab (index 3)
-        self.notebook.select(3)
-        if not self.listening:
-            self.update_status("Listening...")
-            try:
-                selected_index = self.mic_combobox.current()
-                # Use AudioHandler's new methods for recording
-                self.stop_listening_function = self.audio_handler.listen_in_background(
-                    device_index=selected_index,
-                    callback=self.callback,
-                    phrase_time_limit=10
-                )
-                self.listening = True
-                self.record_button.config(text="Stop", bootstyle="danger")
-            except Exception as e:
-                logging.error("Error creating microphone", exc_info=True)
-                self.update_status(f"Error accessing microphone: {str(e)}")
-        else:
-            self.update_status("Already listening.")
-
-    def stop_recording(self) -> None:
-        if self.listening and self.stop_listening_function:
-            self.stop_listening_function(wait_for_stop=False)
-            self.listening = False
-            self.record_button.config(text="Start Dictation", bootstyle="success")
-            self.update_status("Stopped listening.")
-
-    def callback(self, audio_data) -> None:
-        """Handle speech recognition callback with better concurrency."""
-        # Use the I/O executor for speech recognition as it involves network and file I/O
-        self.io_executor.submit(self.process_audio, audio_data)
-
-    def process_audio(self, audio_data) -> None:
-        """Process audio with better error handling using AudioHandler."""
-        segment, transcript = self.audio_handler.process_audio_data(audio_data)
-        
-        if segment:
-            # Store segment
-            self.audio_segments.append(segment)
-            
-            # Handle transcript result
-            if transcript:
-                self.after(0, self.handle_recognized_text, transcript)
-            else:
-                self.after(0, self.update_status, "No transcript was produced", "warning")
-        else:
-            self.after(0, self.update_status, "Failed to process audio", "error")
 
     def process_soap_recording(self) -> None:
         """Process SOAP recording using AudioHandler with improved concurrency."""
@@ -1307,7 +1248,7 @@ class MedicalDictationApp(ttk.Window):
                 self.cancel_soap_button.config(state=tk.NORMAL)
                 
                 # Disable other buttons during recording
-                self.record_button.config(state=tk.DISABLED)
+                #self.record_button.config(state=tk.DISABLED)
                 
             except Exception as e:
                 logging.error("Error starting SOAP recording", exc_info=True)
@@ -1353,7 +1294,7 @@ class MedicalDictationApp(ttk.Window):
             self.record_soap_button.config(text="Record SOAP Note", state=tk.NORMAL, bootstyle="success"),
             self.pause_soap_button.config(text="Pause", state=tk.DISABLED, bootstyle="warning"),
             self.cancel_soap_button.config(state=tk.DISABLED),
-            self.record_button.config(state=tk.NORMAL)
+            #self.record_button.config(state=tk.NORMAL)
         ])
 
     def toggle_soap_pause(self) -> None:
@@ -1574,8 +1515,6 @@ class MedicalDictationApp(ttk.Window):
             self.active_text_widget = self.soap_text
         elif current == 2:
             self.active_text_widget = self.referral_text
-        elif current == 3:  # NEW: Dictation tab
-            self.active_text_widget = self.dictation_text
         else:
             self.active_text_widget = self.transcript_text
 
@@ -1600,8 +1539,8 @@ class MedicalDictationApp(ttk.Window):
             text = self.transcript_text.get("1.0", tk.END).strip()
             source_name = "Transcript"
         else:  # dictation
-            text = self.dictation_text.get("1.0", tk.END).strip()
-            source_name = "Dictation"
+            text = self.referral_text.get("1.0", tk.END).strip()
+            source_name = "Referral"
         
         if not text:
             messagebox.showwarning("Empty Text", f"The {source_name} tab is empty. Please add content before creating a letter.")
@@ -1759,7 +1698,7 @@ class MedicalDictationApp(ttk.Window):
         text_fg = "#f8f9fa" if is_dark else "#212529"
         
         # Update all text widgets with new colors
-        text_widgets = [self.transcript_text, self.soap_text, self.referral_text, self.dictation_text]
+        text_widgets = [self.transcript_text, self.soap_text, self.referral_text]
         for widget in text_widgets:
             widget.config(bg=text_bg, fg=text_fg, insertbackground=text_fg)
             
@@ -2003,8 +1942,7 @@ class MedicalDictationApp(ttk.Window):
         # Clear all text tabs
         self.transcript_text.delete(1.0, tk.END)
         self.soap_text.delete(1.0, tk.END)
-        self.referral_text.delete(1.0, tk.END)   # NEW: clear referral tab
-        self.dictation_text.delete(1.0, tk.END)   # NEW: clear dictation tab
+        self.referral_text.delete(1.0, tk.END)   
         
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
@@ -2023,7 +1961,7 @@ class MedicalDictationApp(ttk.Window):
                     if transcript:
                         self.after(0, self.handle_recognized_text, transcript)
                     else:
-                        self.after(0, self.update_status, "No transcript was produced", "warning")
+                        self.after(0, lambda: self.update_status("No transcript was produced", "warning"))
                 else:
                     self.after(0, lambda: [
                         self.status_manager.error("Failed to process audio file"),

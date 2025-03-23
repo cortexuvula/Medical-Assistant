@@ -1,14 +1,13 @@
 # Medical Assistant
 
-Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Perplexity, Grok, and Ollama) and offers voice command controls, ensuring efficient audio-to-text conversion and note generation.
+Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Perplexity, Grok, and Ollama) and offers efficient audio-to-text conversion and note generation.
 
 ## Features
-- **Real-time transcription:** Convert speech to text using Google Speech Recognition, Deepgram or Elevenlabs.
+- **Transcription:** Convert speech to text using Deepgram or Elevenlabs.
 - **AI Assistance:** Generate refined texts, improved clarity, SOAP notes, and referral paragraphs using OpenAI, Perplexity, Grok, or local Ollama models.
 - **Multiple AI Provider Support:** Choose between cloud services (OpenAI, Perplexity, Grok) or run models locally using Ollama.
-- **Voice Commands:** Control the application via voice commands (e.g., "new paragraph", "full stop").
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation.
-- **Audio Recording:** Record and save audio with options for live transcription and SOAP note extraction.
+- **SOAP Note Recording:** Record SOAP notes with options for transcription and automatic note extraction.
 - **File Logging System:** Track application activity with a built-in logging system that maintains the last 1000 entries.
 - **User-friendly Interface:** Built with Tkinter and ttkbootstrap for a modern UI experience.
 
@@ -56,11 +55,10 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
    - For cloud services, ensure you've entered valid API keys
    - For Ollama, click "Test Ollama Connection" in settings to verify your setup
 
-3. **Buttons and Voice Commands**  
-   - **Record/Stop:** Start and stop dictation.
-   - **SOAP Note / Referral:** Generate a SOAP note or referral paragraph without formatting markdown.
+3. **Main Features**  
+   - **SOAP Note Recording:** Start recording a conversation followed by auto-transcription and SOAP Note creation.
+   - **Text Processing:** Use buttons to refine text, improve clarity, generate SOAP notes or referral paragraphs.
    - **Prompt Settings:** Adjust prompts via the Settings menu.
-   - **Record SOAP Note:** Start recording a conversation followed by auto-transcription and SOAP Note creation. 
 
 4. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities. Each provider can have different model selections.

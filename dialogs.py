@@ -1089,39 +1089,27 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     dialog.wait_window()
 
 def show_shortcuts_dialog(parent: tk.Tk) -> None:
-    """Show keyboard shortcuts and voice commands dialog."""
+    """Show keyboard shortcuts dialog."""
     dialog = tk.Toplevel(parent)
-    dialog.title("Shortcuts & Voice Commands")
-    dialog.geometry("800x600")
+    dialog.title("Keyboard Shortcuts")
+    dialog.geometry("800x400")
     dialog.transient(parent)
     dialog.grab_set()
-    notebook = ttk.Notebook(dialog)
-    notebook.pack(expand=True, fill="both", padx=10, pady=10)
-    kb_frame = ttk.Frame(notebook)
-    notebook.add(kb_frame, text="Keyboard Shortcuts")
+    
+    # Create frame for keyboard shortcuts
+    kb_frame = ttk.Frame(dialog)
+    kb_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    
     kb_tree = ttk.Treeview(kb_frame, columns=("Command", "Description"), show="headings")
     kb_tree.heading("Command", text="Command")
     kb_tree.heading("Description", text="Description")
     kb_tree.column("Command", width=150, anchor="w")
     kb_tree.column("Description", width=500, anchor="w")
     kb_tree.pack(expand=True, fill="both", padx=10, pady=10)
-    for cmd, desc in {"Ctrl+N": "New dictation", "Ctrl+S": "Save", "Ctrl+C": "Copy text", "Ctrl+L": "Load Audio File"}.items():
+    
+    for cmd, desc in {"Ctrl+N": "New session", "Ctrl+S": "Save", "Ctrl+C": "Copy text", "Ctrl+L": "Load Audio File"}.items():
         kb_tree.insert("", tk.END, values=(cmd, desc))
-    vc_frame = ttk.Frame(notebook)
-    notebook.add(vc_frame, text="Voice Commands")
-    vc_tree = ttk.Treeview(vc_frame, columns=("Command", "Action"), show="headings")
-    vc_tree.heading("Command", text="Voice Command")
-    vc_tree.heading("Action", text="Action")
-    vc_tree.column("Command", width=200, anchor="w")
-    vc_tree.column("Action", width=450, anchor="w")
-    vc_tree.pack(expand=True, fill="both", padx=10, pady=10)
-    for cmd, act in {
-        "new paragraph": "Insert two newlines",
-        "new line": "Insert a newline",
-        "full stop": "Insert period & capitalize next",
-        "delete last word": "Delete last word"
-    }.items():
-        vc_tree.insert("", tk.END, values=(cmd, act))
+    
     ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
     
     # Center the dialog on screen

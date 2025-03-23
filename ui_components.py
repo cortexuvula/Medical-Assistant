@@ -176,10 +176,10 @@ class UIComponents:
         return mic_frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label
     
     def create_notebook(self) -> tuple:
-        """Create the notebook with tabs for transcript, soap note, referral, and dictation.
+        """Create the notebook with tabs for transcript, soap note, and referral.
         
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, dictation_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text)
         """
         notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
         
@@ -187,13 +187,11 @@ class UIComponents:
         transcript_frame = ttk.Frame(notebook)
         soap_frame = ttk.Frame(notebook)
         referral_frame = ttk.Frame(notebook)
-        dictation_frame = ttk.Frame(notebook)
         
         # Add tabs to notebook
         notebook.add(transcript_frame, text="Transcript")
         notebook.add(soap_frame, text="SOAP Note")
         notebook.add(referral_frame, text="Referral")
-        notebook.add(dictation_frame, text="Dictation")
         
         # Create text widgets for each tab - use relative sizing
         text_kwargs = {
@@ -212,10 +210,7 @@ class UIComponents:
         referral_text = tk.scrolledtext.ScrolledText(referral_frame, **text_kwargs)
         referral_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        dictation_text = tk.scrolledtext.ScrolledText(dictation_frame, **text_kwargs)
-        dictation_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        return notebook, transcript_text, soap_text, referral_text, dictation_text
+        return notebook, transcript_text, soap_text, referral_text
     
     def create_control_panel(self, command_map: Dict[str, Callable]) -> ttk.Frame:
         """Create the control panel with buttons for recording, editing, and AI features.
@@ -254,31 +249,27 @@ class UIComponents:
         
         # Main control buttons
         buttons = [
-            {"name": "record", "text": "Start Dictation", "width": 15, "column": 0, 
-             "command": command_map.get("toggle_recording"), "bootstyle": "success",
-             "tooltip": "Start or stop recording audio."},
-             
-            {"name": "new_session", "text": "New Session", "width": 12, "column": 1,
+            {"name": "new_session", "text": "New Session", "width": 12, "column": 0,
              "command": command_map.get("new_session"), "bootstyle": "warning",
              "tooltip": "Start a new session and clear all text."},
              
-            {"name": "undo", "text": "Undo", "width": 10, "column": 3,
+            {"name": "undo", "text": "Undo", "width": 10, "column": 1,
              "command": command_map.get("undo_text"), "bootstyle": "SECONDARY",
              "tooltip": "Undo the last change."},
              
-            {"name": "redo", "text": "Redo", "width": 10, "column": 4,
+            {"name": "redo", "text": "Redo", "width": 10, "column": 2,
              "command": command_map.get("redo_text"), "bootstyle": "SECONDARY",
              "tooltip": "Redo the last undone change."},
              
-            {"name": "copy", "text": "Copy Text", "width": 10, "column": 5,
+            {"name": "copy", "text": "Copy Text", "width": 10, "column": 3,
              "command": command_map.get("copy_text"), "bootstyle": "PRIMARY",
              "tooltip": "Copy the text to the clipboard."},
              
-            {"name": "save", "text": "Save", "width": 10, "column": 6,
+            {"name": "save", "text": "Save", "width": 10, "column": 4,
              "command": command_map.get("save_text"), "bootstyle": "PRIMARY",
              "tooltip": "Save the transcription and audio to files."},
              
-            {"name": "load", "text": "Load", "width": 10, "column": 7,
+            {"name": "load", "text": "Load", "width": 10, "column": 5,
              "command": command_map.get("load_audio_file"), "bootstyle": "PRIMARY",
              "tooltip": "Load an audio file and transcribe."}
         ]

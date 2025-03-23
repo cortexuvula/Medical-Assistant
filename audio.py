@@ -1262,10 +1262,10 @@ class AudioHandler:
                 # Log the maximum amplitude of this chunk
                 if indata is not None and indata.size > 0:
                     max_amp = np.abs(indata).max()
-                    if self.soap_mode:
-                        logging.info(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
-                    else:
-                        logging.debug(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
+                    # if self.soap_mode:
+                    #     logging.info(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
+                    # else:
+                    #     logging.debug(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
                     
                     # When in SOAP mode, normalize audio to ensure it's not too quiet
                     if self.soap_mode and max_amp > 0.0001:  # Only normalize if there's some sound
@@ -1308,7 +1308,7 @@ class AudioHandler:
                                 
                                 # In SOAP mode, always log the amplitude for debugging
                                 if self.soap_mode:
-                                    logging.info(f"SOAP audio chunk amplitude: {max_amp:.6f} (threshold: {self.silence_threshold:.6f})")
+                                    #logging.info(f"SOAP audio chunk amplitude: {max_amp:.6f} (threshold: {self.silence_threshold:.6f})")
                                     
                                     # For SOAP recording, we want to capture everything, so boost the signal if needed
                                     if max_amp > 0.0001 and max_amp < 0.1:  # Only boost if there's some sound but it's quiet
