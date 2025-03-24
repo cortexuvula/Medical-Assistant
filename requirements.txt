@@ -3,6 +3,12 @@ pydub
 deepgram-sdk
 ttkbootstrap
 python-dotenv
-openai
+openai>=1.0.0
 pyaudio
 requests
+numpy
+pathlib
+groq
+typing-extensions
+soundcard
+sounddevice
