@@ -1,10 +1,12 @@
 import tkinter as tk
+from tkinter import LEFT, RIGHT, TOP, BOTTOM, X, CENTER
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from typing import Callable, Dict, Any, List, Optional
+from ttkbootstrap.tooltip import ToolTip
+from typing import Callable, Dict, List, Optional, Any, Tuple
 import logging
 from tooltip import ToolTip
-from settings import SETTINGS
+from settings import SETTINGS, save_settings
 from utils import get_valid_microphones
 
 class UIComponents:
@@ -60,16 +62,26 @@ class UIComponents:
         
         ttk.Label(mic_select_frame, text="Select Microphone:").pack(side=LEFT, padx=(0, 10))
         
+        # Get available microphones
+        mic_names = get_valid_microphones() or []
+        
         mic_combobox = ttk.Combobox(
             mic_select_frame,
-            values=get_valid_microphones() or [],
+            values=mic_names,
             state="readonly",
             width=45
         )
         mic_combobox.pack(side=LEFT, padx=(0, 5), fill=None, expand=False)
         
-        if len(mic_combobox["values"]) > 0:
-            mic_combobox.current(0)
+        # Check if we have a previously saved microphone in settings
+        if len(mic_names) > 0:
+            saved_mic = SETTINGS.get("selected_microphone", "")
+            if saved_mic and saved_mic in mic_names:
+                # Select the saved microphone if it's available
+                mic_combobox.set(saved_mic)
+            else:
+                # Otherwise select the first microphone
+                mic_combobox.current(0)
         
         # Determine if currently in dark mode
         is_dark = self.parent.current_theme in ["darkly", "solar", "cyborg", "superhero"]

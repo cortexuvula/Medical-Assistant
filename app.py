@@ -605,6 +605,9 @@ class MedicalDictationApp(ttk.Window):
         )
         mic_frame.pack(side=TOP, fill=tk.X, padx=10, pady=(10, 5))
         
+        # Add binding to save microphone selection when it changes
+        self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
+        
         # Create control panel with buttons - inside main_content
         self.control_frame, self.buttons = self.ui.create_control_panel(command_map)
         self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
@@ -1217,6 +1220,8 @@ class MedicalDictationApp(ttk.Window):
             try:
                 # Get available microphones using common method
                 from utils import get_valid_microphones
+                from settings import SETTINGS, save_settings
+                
                 mic_names = get_valid_microphones()
                 
                 # Clear existing items
@@ -1225,8 +1230,16 @@ class MedicalDictationApp(ttk.Window):
                 # Add device names to dropdown
                 if mic_names:
                     self.mic_combobox['values'] = mic_names
-                    # Select first device
-                    self.mic_combobox.current(0)
+                    
+                    # Try to select previously saved microphone or select first one
+                    saved_mic = SETTINGS.get("selected_microphone", "")
+                    if saved_mic and saved_mic in mic_names:
+                        self.mic_combobox.set(saved_mic)
+                    else:
+                        # Select first device and save it
+                        self.mic_combobox.current(0)
+                        SETTINGS["selected_microphone"] = self.mic_combobox.get()
+                        save_settings(SETTINGS)
                 else:
                     self.mic_combobox['values'] = ["No microphones found"]
                     self.mic_combobox.current(0)
@@ -1648,7 +1661,7 @@ class MedicalDictationApp(ttk.Window):
             save_settings(SETTINGS)
             self.update_status(f"AI Provider set to {provider_display[selected_index]}")
 
-    def _on_stt_change(self, event):
+    def _on_stt_change(self, event) -> None:
         """Update STT provider when dropdown selection changes."""
         selected_index = self.stt_combobox.current()
         if selected_index >= 0:
@@ -1662,10 +1675,25 @@ class MedicalDictationApp(ttk.Window):
             SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
             
+            # Update the audio handler with the new provider
+            self.audio_handler.set_stt_provider(provider)
+            
             # Update status with the new provider info
             self.status_manager.update_provider_info()
             self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
 
+    def _on_microphone_change(self, event) -> None:
+        """Save the selected microphone to settings."""
+        selected_mic = self.mic_combobox.get()
+        if selected_mic and selected_mic != "No microphones found":
+            # Update the settings with the selected microphone
+            from settings import SETTINGS, save_settings
+            SETTINGS["selected_microphone"] = selected_mic
+            save_settings(SETTINGS)
+            logging.info(f"Saved selected microphone: {selected_mic}")
+    
+    # Handle notification of transcription service fallback.
+    #     
     def on_transcription_fallback(self, primary_provider: str, fallback_provider: str) -> None:
         """Handle notification of transcription service fallback.
         
