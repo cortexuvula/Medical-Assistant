@@ -963,13 +963,13 @@ class MedicalDictationApp(ttk.Window):
                 # Try the selected provider first
                 if selected_provider == "elevenlabs" and self.elevenlabs_api_key:
                     self.after(0, lambda: self.status_manager.progress("Transcribing with ElevenLabs..."))
-                    transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
+                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "elevenlabs")
                 elif selected_provider == "deepgram" and self.deepgram_api_key:
                     self.after(0, lambda: self.status_manager.progress("Transcribing with Deepgram..."))
-                    transcript = self.audio_handler._transcribe_with_deepgram(audio_segment)
+                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "deepgram")
                 elif selected_provider == "groq" and self.groq_api_key:
                     self.after(0, lambda: self.status_manager.progress("Transcribing with GROQ..."))
-                    transcript = self.audio_handler._transcribe_with_groq(audio_segment)
+                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "groq")
                 
                 # If the selected provider failed or isn't available, try the others as fallbacks
                 if not transcript:
@@ -978,21 +978,25 @@ class MedicalDictationApp(ttk.Window):
                     # Try in order of reliability: ElevenLabs, Deepgram, GROQ, Whisper
                     if selected_provider != "elevenlabs" and self.elevenlabs_api_key:
                         self.after(0, lambda: self.status_manager.progress("Trying ElevenLabs as fallback..."))
-                        transcript = self.audio_handler._transcribe_with_elevenlabs(audio_segment)
+                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "elevenlabs")
                     
                     if not transcript and selected_provider != "deepgram" and self.deepgram_api_key:
                         self.after(0, lambda: self.status_manager.progress("Trying Deepgram as fallback..."))
-                        transcript = self.audio_handler._transcribe_with_deepgram(audio_segment)
+                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "deepgram")
                         
                     if not transcript and selected_provider != "groq" and self.groq_api_key:
                         self.after(0, lambda: self.status_manager.progress("Trying GROQ as fallback..."))
-                        transcript = self.audio_handler._transcribe_with_groq(audio_segment)
+                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "groq")
                     
                     # Try Whisper as a last resort
-                    if not transcript and self.audio_handler.whisper_available:
+                    if not transcript and hasattr(self.audio_handler, "whisper_available") and self.audio_handler.whisper_available:
                         self.after(0, lambda: self.status_manager.progress("Trying local Whisper model as last resort..."))
                         logging.info("Trying local Whisper model as last resort")
-                        transcript = self.audio_handler._transcribe_with_whisper(audio_segment)
+                        # Check if the method exists before trying to call it
+                        if hasattr(self.audio_handler, "_transcribe_with_whisper"):
+                            transcript = self.audio_handler._transcribe_with_whisper(audio_segment)
+                        else:
+                            logging.warning("Whisper transcription method not available in AudioHandler")
                 
                 # If all transcription methods failed
                 if not transcript:
