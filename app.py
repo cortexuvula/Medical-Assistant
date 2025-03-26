@@ -1269,8 +1269,15 @@ class MedicalDictationApp(ttk.Window):
             # Switch focus to the SOAP tab
             self.notebook.select(1)
             
-            # Clear previous SOAP note content
-            self.soap_text.delete("1.0", tk.END)
+            # Clear all text fields and audio segments before starting a new recording
+            self.transcript_text.delete(1.0, tk.END)
+            self.soap_text.delete(1.0, tk.END)
+            self.referral_text.delete(1.0, tk.END)
+            
+            # Clear all audio segments
+            self.audio_segments = []
+            self.appended_chunks = []
+            self.soap_audio_segments = []
             
             # Start SOAP recording
             try:
