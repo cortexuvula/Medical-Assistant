@@ -605,7 +605,7 @@ class MedicalDictationApp(ttk.Window):
         )
         mic_frame.pack(side=TOP, fill=tk.X, padx=10, pady=(10, 5))
         
-        # Add binding to save microphone selection when it changes
+        # Add binding for window resize to save dimensions
         self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
         
         # Create control panel with buttons - inside main_content
@@ -1262,9 +1262,6 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Reset cursor
                 self.config(cursor="")
-        
-        # Start animation
-        animate_refresh()
 
     def toggle_soap_recording(self) -> None:
         """Toggle SOAP note recording using AudioHandler."""
@@ -2037,7 +2034,14 @@ class MedicalDictationApp(ttk.Window):
                     
                     # Handle transcript result
                     if transcript:
-                        self.after(0, self.handle_recognized_text, transcript)
+                        # Always append to transcript_text widget and switch to transcript tab
+                        self.after(0, lambda: [
+                            self.append_text_to_widget(transcript, self.transcript_text),
+                            self.notebook.select(0),  # Switch to transcript tab (index 0)
+                            self.status_manager.success(f"Audio file processed: {os.path.basename(file_path)}"),
+                            self.progress_bar.stop(),
+                            self.progress_bar.pack_forget()
+                        ])
                     else:
                         self.after(0, lambda: self.update_status("No transcript was produced", "warning"))
                 else:
