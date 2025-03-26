@@ -18,6 +18,7 @@ import threading
 import numpy as np
 from pydub import AudioSegment
 from datetime import datetime as dt
+from cleanup_utils import clear_all_content
 
 # Set up logging configuration
 def setup_logging():
@@ -793,14 +794,7 @@ class MedicalDictationApp(ttk.Window):
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
-            # Clear text and reset undo/redo history for all tabs
-            for widget in [self.transcript_text, self.soap_text, self.referral_text]:
-                widget.delete("1.0", tk.END)
-                widget.edit_reset()  # Clear undo/redo history
-            # Clear audio segments and other stored data
-            self.appended_chunks.clear()
-            self.audio_segments.clear()
-            self.soap_audio_segments.clear()
+            clear_all_content(self)
 
     def save_text(self) -> None:
         """Save text and audio to files using AudioHandler."""
@@ -1270,14 +1264,7 @@ class MedicalDictationApp(ttk.Window):
             self.notebook.select(1)
             
             # Clear all text fields and audio segments before starting a new recording
-            self.transcript_text.delete(1.0, tk.END)
-            self.soap_text.delete(1.0, tk.END)
-            self.referral_text.delete(1.0, tk.END)
-            
-            # Clear all audio segments
-            self.audio_segments = []
-            self.appended_chunks = []
-            self.soap_audio_segments = []
+            clear_all_content(self)
             
             # Start SOAP recording
             try:
@@ -1524,8 +1511,8 @@ class MedicalDictationApp(ttk.Window):
 
     def _cancel_soap_recording_finalize(self):
         """Finalize the cancellation of SOAP recording."""
-        # Clear the audio segments
-        self.soap_audio_segments.clear()
+        # Use the centralized cleanup function to clear all content
+        clear_all_content(self)
         
         # Reset state variables
         self.soap_recording = False
@@ -2018,13 +2005,7 @@ class MedicalDictationApp(ttk.Window):
             return
         
         # Clear audio chunks and text widgets
-        self.audio_segments = []
-        self.appended_chunks = []
-        
-        # Clear all text tabs
-        self.transcript_text.delete(1.0, tk.END)
-        self.soap_text.delete(1.0, tk.END)
-        self.referral_text.delete(1.0, tk.END)   
+        clear_all_content(self)
         
         self.status_manager.progress(f"Processing audio file: {os.path.basename(file_path)}...")
         self.progress_bar.pack(side=RIGHT, padx=10)
