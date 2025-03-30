@@ -1290,7 +1290,7 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Start recording using AudioHandler
                 self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                    device_index=device_index,
+                    mic_name=selected_device,
                     callback=self.soap_callback,
                     phrase_time_limit=10
                 )
@@ -1388,7 +1388,7 @@ class MedicalDictationApp(ttk.Window):
             
             # Start new recording session
             self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                device_index=device_index,
+                mic_name=selected_device,
                 callback=self.soap_callback,
                 phrase_time_limit=10
             )
@@ -1403,78 +1403,92 @@ class MedicalDictationApp(ttk.Window):
 
     def soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using AudioHandler."""
+        log_prefix = "SOAP callback:"
+        data_type = type(audio_data)
+        data_shape = getattr(audio_data, 'shape', 'N/A')
+        data_dtype = getattr(audio_data, 'dtype', 'N/A')
+        max_amp_raw = np.abs(audio_data).max() if isinstance(audio_data, np.ndarray) else 'N/A (not ndarray)'
+        logging.info(f"{log_prefix} Entered. Type={data_type}, Shape={data_shape}, Dtype={data_dtype}, MaxAmp(raw)={max_amp_raw}")
+        
+        logging.debug(f"SOAP callback received audio data of type: {type(audio_data)}")
         try:
-            # Log audio data information
-            logging.debug(f"SOAP audio data received: type={type(audio_data)}, shape={getattr(audio_data, 'shape', None)}")
-            
-            # Check if we have any data
-            if audio_data is None:
-                logging.warning("SOAP callback received None audio data")
-                return
-                
-            # For numpy arrays from sounddevice, bypass the normal process_audio_data
-            # and create AudioSegment directly to avoid losing data
+            # Directly handle numpy array data for potential efficiency
             if isinstance(audio_data, np.ndarray):
-                # Track max amplitude for debugging
                 max_amp = np.abs(audio_data).max()
-                logging.debug(f"SOAP direct numpy audio data max amplitude: {max_amp:.6f}")
+                logging.debug(f"SOAP callback processing np.ndarray, max_amp: {max_amp:.8f}")
                 
-                # For SOAP, process ALL audio data regardless of amplitude
-                # Skip only completely silent audio (essentially zeros)
-                if max_amp > 0.00001:  # Extremely low threshold to catch any non-zero audio
+                # Basic silence detection - adjust threshold as needed
+                if self.audio_handler.soap_mode or max_amp > 0.0001: # Avoid processing completely silent chunks unless in SOAP mode
                     try:
-                        # Convert float32 to int16 for compatibility with pydub
-                        # Use scaling to ensure we don't lose quiet sounds
-                        scaling_factor = 32767 * min(50.0, 0.1 / max(0.001, max_amp))  # Dynamic scaling
-                        audio_int16 = (audio_data * scaling_factor).astype(np.int16)
+                        # Ensure data is in the correct format (int16)
+                        if audio_data.dtype != np.int16:
+                            # Scale float32/64 [-1.0, 1.0] to int16 [-32768, 32767]
+                            if audio_data.dtype in [np.float32, np.float64]:
+                                audio_data = (audio_data * 32767).astype(np.int16)
+                            else:
+                                # Attempt conversion for other types, log warning
+                                logging.warning(f"Unexpected audio data type {audio_data.dtype}, attempting conversion to int16")
+                                audio_data = audio_data.astype(np.int16)
                         
-                        # Log the scaling applied
-                        logging.debug(f"Applied scaling factor of {scaling_factor:.2f} to SOAP audio")
-                        
-                        # Convert to bytes
-                        raw_data = audio_int16.tobytes()
-                        
-                        # Convert to AudioSegment
                         segment = AudioSegment(
-                            data=raw_data,
-                            sample_width=2,  # 2 bytes for int16
+                            data=audio_data.tobytes(), 
+                            sample_width=self.audio_handler.sample_width, 
                             frame_rate=self.audio_handler.sample_rate,
                             channels=self.audio_handler.channels
                         )
-                        
+                        logging.debug("SOAP callback: Successfully created AudioSegment from np.ndarray.")
                         # Add to segments list for later processing
                         self.soap_audio_segments.append(segment)
+                        logging.info(f"SOAP segment appended (from np.ndarray). Total segments: {len(self.soap_audio_segments)}")
                         
                         # Visual feedback that audio is being recorded
                         self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
-                        return
+                        return # Successfully processed, exit callback
                     except Exception as e:
-                        logging.error(f"Error processing direct SOAP audio data: {str(e)}", exc_info=True)
+                        logging.error(f"Error processing direct SOAP audio data (np.ndarray): {str(e)}", exc_info=True)
+                        # Fall through to standard processing if direct fails
+                        logging.warning("Falling back to standard audio processing for np.ndarray.")
                 else:
-                    logging.debug(f"SOAP audio segment skipped - completely silent ({max_amp:.8f})")
+                    logging.debug(f"SOAP audio segment skipped (np.ndarray) - amplitude too low ({max_amp:.8f})")
+                    # Do not return here, let it potentially fall through if needed, although unlikely for low amplitude
             
-            # Fall back to standard processing if direct method fails
-            # This is the path for AudioData objects or if the direct processing had an exception
+            # Fall back to standard processing for non-ndarray types or if direct processing failed
+            logging.debug("SOAP callback using standard process_audio_data.")
             segment, _ = self.audio_handler.process_audio_data(audio_data)
             
             if segment:
+                logging.debug("SOAP callback: Successfully created AudioSegment via standard process.")
                 # Add to segments list for later processing
                 self.soap_audio_segments.append(segment)
+                logging.info(f"SOAP segment appended (from standard process). Total segments: {len(self.soap_audio_segments)}")
                 
                 # Visual feedback that audio is being recorded
                 self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
             else:
                 # Log the issue with audio data
-                logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
-                max_amp = np.abs(audio_data).max() if hasattr(audio_data, 'max') else 0
-                logging.warning(f"SOAP recording: Max amplitude was {max_amp}")
+                logging.warning(f"SOAP recording: No audio segment created via standard process from data of type {type(audio_data)}")
+                max_amp_fallback = 0
+                if isinstance(audio_data, np.ndarray):
+                    max_amp_fallback = np.abs(audio_data).max()
+                elif hasattr(audio_data, 'max_dBFS'): # Check for AudioData attribute
+                    # Note: max_dBFS is logarithmic, not directly comparable to amplitude
+                    max_amp_fallback = audio_data.max_dBFS 
+                    logging.warning(f"SOAP recording: AudioData max_dBFS was {max_amp_fallback}")
+                else:
+                     logging.warning("SOAP recording: Could not determine max amplitude/dBFS for this data type.")
+                     
                 
-                # Visual feedback for user
-                if hasattr(audio_data, 'max') and np.abs(audio_data).max() < 0.005:
-                    self.after(0, lambda: self.update_status("Audio level too low - check your microphone settings", "warning"))
+                if isinstance(audio_data, np.ndarray):
+                     logging.warning(f"SOAP recording (standard process): Max amplitude was {max_amp_fallback}")
                 
+                # Visual feedback for user if likely low volume
+                if isinstance(audio_data, np.ndarray) and max_amp_fallback < 0.005:
+                    self.after(0, lambda: self.update_status("Audio level too low - check microphone settings", "warning"))
+                elif hasattr(audio_data, 'max_dBFS') and audio_data.max_dBFS < -40: # Heuristic for low dBFS
+                     self.after(0, lambda: self.update_status("Audio level might be low - check microphone settings", "warning"))
+                    
         except Exception as e:
-            logging.error("Error in SOAP callback", exc_info=True)
+            logging.error(f"Critical Error in SOAP callback: {str(e)}", exc_info=True)
 
     def cancel_soap_recording(self) -> None:
         """Cancel the current SOAP note recording without processing."""

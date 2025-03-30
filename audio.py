@@ -3,12 +3,13 @@ import json
 import uuid
 import time
 import logging
+import threading
+import queue
 from io import BytesIO
 import soundcard
 import sounddevice as sd
 import numpy as np
 import wave
-import threading
 from pydub import AudioSegment
 import requests
 from typing import List, Optional, Callable, Any, Dict, Tuple, Union, TYPE_CHECKING
@@ -368,350 +369,381 @@ class AudioHandler:
             logging.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
             
-    def listen_in_background(self, device_index: int, callback: Callable[[np.ndarray], None], 
+    def listen_in_background(self, mic_name: str, callback: Callable[[np.ndarray], None], 
                             phrase_time_limit: int = 10) -> Callable[[], None]:
-        """Start listening in the background using sounddevice.
-        
+        """Start listening in the background using the specified device name.
+
         Args:
-            device_index: Index of the microphone to use
-            callback: Function to call with the audio data
-            phrase_time_limit: Maximum duration of each audio chunk in seconds
-            
+            mic_name: Name of the microphone to use.
+            callback: Function to call with the audio data (numpy array).
+            phrase_time_limit: Maximum duration of each audio chunk in seconds (used by sounddevice).
+
         Returns:
-            Function to stop the background listening
+            Function to stop the background listening.
         """
         try:
-            # Store callback function
-            self.callback_function = callback
-            
-            # Get the list of microphones using the same method as utils.get_valid_microphones()
-            from utils import get_valid_microphones
-            mic_names = get_valid_microphones()
-            
-            if not mic_names:
-                raise ValueError("No microphone devices found")
-                
-            # Validate device index
-            if device_index >= len(mic_names):
-                logging.warning(f"Invalid device index {device_index}, using default device")
-                device_index = 0
-            
-            # Get the device name from the index
-            device_name = mic_names[device_index]
-            
-            # Check if this is a Voicemeeter device - these often have issues with soundcard
-            is_voicemeeter = "voicemeeter" in device_name.lower() or "vb-audio" in device_name.lower()
-            
-            # Choose recording method based on device type
-            if is_voicemeeter:
-                logging.info(f"Using sounddevice for Voicemeeter device: {device_name}")
-                return self._listen_with_sounddevice(device_name, callback, phrase_time_limit)
+            logging.info(f"Attempting to start background listening for device: {mic_name}")
+            self.listening_device = mic_name # Store the requested name
+            self.callback_function = callback # Store callback
+
+            # Determine if sounddevice should be used (typically for Voicemeeter/virtual cables)
+            # or if soundcard should be attempted (for physical devices, though problematic).
+            # Let's prefer sounddevice if possible as it seems more reliable with indexing.
+            use_sounddevice = True # Default to sounddevice for now based on previous issues
+
+            # Optional: Add logic here if we want to try soundcard for specific non-Voicemeeter devices
+            # is_voicemeeter = "voicemeeter" in mic_name.lower() or "vb-audio" in mic_name.lower()
+            # if not is_voicemeeter:
+            #    use_sounddevice = False
+
+            if use_sounddevice:
+                logging.info(f"Using sounddevice backend for: {mic_name}")
+                # Delegate to the sounddevice-specific method, passing the name
+                stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
+                return stop_function
             else:
-                logging.info(f"Using soundcard for device: {device_name}")
-                # Find the matching soundcard device
-                mics = soundcard.all_microphones()
-                selected_device = None
-                
+                # --- Soundcard Logic (currently disabled, potentially problematic) ---
+                logging.info(f"Attempting to use soundcard backend for: {mic_name}")
+                mics = soundcard.all_microphones(include_loopback=True)
+                selected_sc_device = None
                 for mic in mics:
-                    if mic.name == device_name:
-                        selected_device = mic
+                    # Need a robust way to match mic_name to soundcard mic object name
+                    if mic_name in mic.name: # Simple substring match, might be fragile
+                        selected_sc_device = mic
+                        logging.info(f"Found soundcard match: {mic.name}")
                         break
-                        
-                if not selected_device:
-                    # Fallback to first available device
-                    if mics:
-                        selected_device = mics[0]
-                        logging.warning(f"Could not find exact device match for {device_name}, using {selected_device.name}")
-                    else:
-                        raise ValueError(f"No microphone device found matching name: {device_name}")
-                
-                # Store the selected device
-                self.listening_device = {'name': device_name, 'object': selected_device}
-                
-                logging.info(f"Starting background listening on device: {device_name}")
-                
-                # Set recording flag
+
+                if not selected_sc_device:
+                    logging.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
+                    # Fallback to sounddevice if soundcard match fails
+                    return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
+
+                # Start recording thread using soundcard
                 self.recording = True
                 self.recorded_frames = []
-                
-                # Start recording thread
                 self.recording_thread = threading.Thread(
-                    target=self._background_recording_thread,
-                    args=(self.listening_device, phrase_time_limit),
+                    target=self._background_recording_thread_sc,
+                    args=(selected_sc_device, phrase_time_limit), # Pass soundcard device object
                     daemon=True
                 )
                 self.recording_thread.start()
-                
-                # Return a function to stop listening
+                logging.info(f"Started soundcard background thread for {selected_sc_device.name}")
                 return lambda wait_for_stop=True: self._stop_listening(wait_for_stop)
-            
+
         except Exception as e:
-            logging.error(f"Error starting background listening: {str(e)}", exc_info=True)
+            logging.error(f"Error in listen_in_background for '{mic_name}': {e}", exc_info=True)
+            # Return a no-op function on error
             return lambda wait_for_stop=True: None
-            
+
     def _listen_with_sounddevice(self, device_name: str, callback: Callable[[np.ndarray], None],
-                           phrase_time_limit: int = 10) -> Callable[[], None]:
-        """Listen using sounddevice library for microphone input.
-        
+                               phrase_time_limit: int = 10) -> Callable[[], None]:
+        """Listen using sounddevice library, resolving name to index just-in-time.
+
         Args:
-            device_name: Device name string
-            callback: Function to call with audio data
-            phrase_time_limit: Maximum length of audio capture in seconds
-            
+            device_name: The target device name string.
+            callback: Function to call with audio data.
+            phrase_time_limit: Maximum length of audio capture in seconds.
+
         Returns:
-            Function to stop listening
+            Function to stop listening.
         """
+        stream = None # Initialize stream variable
         try:
-            # Store the device name
-            self.listening_device = device_name
-            
-            # Find device by name - more thorough search for Voicemeeter devices
-            device_id = None
+            self.listening_device = device_name # Store the name being used
+            self.callback_function = callback # Store callback
+
+            # --- JIT Device Index Resolution ---
+            logging.info(f"Resolving sounddevice index for: '{device_name}'")
             devices = sd.query_devices()
-            
-            # Debug logging - print all available devices
-            logging.info("Available audio devices:")
-            for i, device in enumerate(devices):
-                device_name_lower = device['name'].lower()
-                is_input = device['max_input_channels'] > 0
-                channels = device['max_input_channels']
-                logging.info(f"  [{i}] {device['name']} - Input: {is_input}, Channels: {channels}")
-                
-                # More flexible matching for Voicemeeter devices
-                if device_name.lower() in device_name_lower and is_input:
+            device_id = None
+
+            # Log available devices for debugging
+            logging.debug("Sounddevice List for Index Resolution:")
+            input_device_indices = []
+            for i, dev in enumerate(devices):
+                is_input = dev['max_input_channels'] > 0
+                logging.debug(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
+                if is_input:
+                    input_device_indices.append(i)
+
+            # 1. Try exact name match
+            for i in input_device_indices:
+                if devices[i]['name'] == device_name:
                     device_id = i
-                    logging.info(f"Selected device {i}: {device['name']}")
+                    logging.info(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
-                    
+
+            # 2. If no exact match, try case-insensitive match
             if device_id is None:
-                logging.error(f"Could not find device: {device_name}, falling back to default input")
-                # Get default input device
-                device_info = sd.query_devices(kind='input')
-                device_id = device_info['index'] if 'index' in device_info else 0
-                logging.info(f"Using default input device: {device_info['name']}")
+                for i in input_device_indices:
+                    if devices[i]['name'].lower() == device_name.lower():
+                        device_id = i
+                        logging.info(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
+                        break
             
-            # Store callback
-            self.callback_function = callback
-            
-            # Calculate buffer size based on phrase time limit
-            buffer_size = int(self.sample_rate * phrase_time_limit)
-            
-            # Log buffer size
-            logging.info(f"Started sounddevice recording on {device_name} (ID: {device_id}) with buffer {buffer_size}")
-            
-            # Global variables for thread
-            accumulated_frames = np.array([], dtype=np.float32)
-            stop_event = threading.Event()
-            stream = None
-            
-            def audio_callback(indata, frames, time, status):
-                nonlocal accumulated_frames
-                
-                if status:
-                    # Log any errors but continue recording
-                    logging.warning(f"Recording status: {status}")
-                
-                # Log the maximum amplitude of this chunk
-                if indata is not None and indata.size > 0:
-                    max_amp = np.abs(indata).max()
-                    # if self.soap_mode:
-                    #     logging.info(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
-                    # else:
-                    #     logging.debug(f"Audio chunk received: shape={indata.shape}, max_amp={max_amp:.6f}")
-                    
-                    # When in SOAP mode, normalize audio to ensure it's not too quiet
-                    if self.soap_mode and max_amp > 0.0001:  # Only normalize if there's some sound
-                        # Normalize to reasonable level if the audio is too quiet
-                        if max_amp < 0.1:  # Boost quiet audio
-                            # Calculate scaling factor - boost quiet audio
-                            scale_factor = min(10.0, 0.5 / max(0.001, np.abs(indata).max()))
-                            indata = indata * scale_factor
-                            logging.debug(f"Boosted audio by factor {scale_factor:.2f}")
-                    
-                    # Always append data to accumulated buffer for SOAP recording
-                    # For stereo input, average the channels to get mono
-                    if indata.shape[1] > 1:  # If stereo
-                        mono_data = np.mean(indata, axis=1)
-                        accumulated_frames = np.append(accumulated_frames, mono_data)
-                        logging.debug(f"Converted stereo to mono, shape now: {mono_data.shape}")
-                    else:
-                        accumulated_frames = np.append(accumulated_frames, indata[:, 0])  # Take first channel
-                else:
-                    logging.warning("Received empty audio chunk")
-            
-            def audio_processing_thread():
-                nonlocal accumulated_frames, stream
-                
-                # Define chunk size (process in 100ms chunks)
-                chunk_seconds = 0.1
-                chunk_frames = int(self.sample_rate * chunk_seconds)
-                
+            # 3. Try partial match (e.g., user selected "Microphone (Realtek)" but sd lists "Microphone (Realtek High Definition Audio)")
+            if device_id is None:
+                 for i in input_device_indices:
+                     if device_name in devices[i]['name']:
+                         device_id = i
+                         logging.info(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
+                         break # Take the first partial match
+
+            # 4. Handle failure to find device
+            if device_id is None:
+                logging.error(f"Could not find '{device_name}' in sounddevice input list. Available devices logged above.")
+                # Attempt to use default input device as a fallback
                 try:
-                    # Start the audio processing loop
-                    while not stop_event.is_set():
-                        # Process accumulated frames in chunks
-                        if len(accumulated_frames) >= chunk_frames:
-                            try:
-                                # Extract current chunk
-                                current_chunk = accumulated_frames[:chunk_frames]
-                                
-                                # Process only if above silence threshold
-                                max_amp = np.abs(current_chunk).max()
-                                
-                                # In SOAP mode, always log the amplitude for debugging
-                                if self.soap_mode:
-                                    #logging.info(f"SOAP audio chunk amplitude: {max_amp:.6f} (threshold: {self.silence_threshold:.6f})")
-                                    
-                                    # For SOAP recording, we want to capture everything, so boost the signal if needed
-                                    if max_amp > 0.0001 and max_amp < 0.1:  # Only boost if there's some sound but it's quiet
-                                        scale_factor = min(10.0, 0.3 / max_amp)
-                                        current_chunk = current_chunk * scale_factor
-                                        new_max = np.abs(current_chunk).max()
-                                        logging.debug(f"Boosted SOAP chunk from {max_amp:.6f} to {new_max:.6f}")
-                                
-                                # Process all audio regardless of amplitude in SOAP mode
-                                # Force the callback to be called even with low amplitude
-                                if self.soap_mode or max_amp >= self.silence_threshold:
-                                    try:
-                                        # Always call the callback with the data in SOAP mode
-                                        if self.callback_function:
-                                            logging.debug(f"Calling audio callback with data: shape={current_chunk.shape}, max_amp={max_amp:.6f}")
-                                            self.callback_function(current_chunk)
-                                        else:
-                                            logging.warning("No callback function set")
-                                    except Exception as cb_error:
-                                        logging.error(f"Error in audio callback: {str(cb_error)}", exc_info=True)
-                                else:
-                                    # More verbose in normal mode
-                                    logging.debug(f"Skipping silent chunk with amplitude {max_amp:.6f} (below threshold {self.silence_threshold:.6f})")
-                                
-                                # Keep any remaining frames for next chunk
-                                accumulated_frames = accumulated_frames[chunk_frames:]
-                                
-                            except Exception as e:
-                                logging.error(f"Error processing audio chunk: {str(e)}", exc_info=True)
-                                accumulated_frames = np.array([], dtype=np.float32)  # Reset on error
-                                
-                        # Small sleep to prevent CPU hogging
-                        time.sleep(0.01)
-                        
-                except Exception as e:
-                    logging.error(f"Error in audio processing thread: {str(e)}", exc_info=True)
-                finally:
-                    # Ensure stream is stopped
-                    if stream is not None and stream.active:
-                        try:
-                            stream.stop()
-                            stream.close()
-                            logging.info(f"Closed sounddevice stream for {device_name}")
-                        except Exception as close_error:
-                            logging.error(f"Error closing stream: {str(close_error)}")
-            
-            # Start the audio stream
+                    default_input = sd.query_devices(kind='input')
+                    if default_input and isinstance(default_input, dict) and 'index' in default_input:
+                       device_id = default_input['index']
+                       logging.warning(f"Falling back to default sounddevice input: Index={device_id}, Name='{default_input['name']}'")
+                    else:
+                         raise ValueError("Could not find specified or default sounddevice input device.")
+                except Exception as e_def:
+                    logging.error(f"Failed to get default sounddevice input: {e_def}")
+                    raise ValueError(f"Device '{device_name}' not found and default could not be determined.")
+            # --- End JIT Resolution ---
+
+            device_info = devices[device_id]
+            channels = 1 # Default to mono
+            try:
+                channels = int(device_info['max_input_channels'])
+                # Clamp channels to 1 or 2 if device supports more, prefer mono
+                if channels >= 2:
+                     channels = 1 # Force mono for simplicity unless stereo is required
+                     logging.info(f"Device supports {device_info['max_input_channels']} channels, using {channels} for recording.")
+                elif channels == 0:
+                    logging.warning(f"Device '{device_info['name']}' reports 0 input channels, forcing to 1.")
+                    channels = 1
+            except Exception as e:
+                logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
+
+            self.channels = channels # Store the actual channels being used
+            self.sample_rate = int(device_info.get('default_samplerate', 44100))
+            buffer_size = int(self.sample_rate * phrase_time_limit) # Use phrase_time_limit for buffer
+
+            logging.info(f"Creating sounddevice InputStream: DeviceID={device_id}, Name='{device_info['name']}', Rate={self.sample_rate}, Channels={self.channels}, Buffer={buffer_size}")
+
+            # --- Internal Audio Callback ---
+            # This runs in a separate thread managed by sounddevice
+            def audio_callback_sd(indata, frames, time, status):
+                if status:
+                    # Log PortAudio statuses: https://python-sounddevice.readthedocs.io/en/0.4.6/api/status.html
+                    logging.warning(f"sounddevice status: {status}")
+                try:
+                    # Make a copy to avoid issues with buffer overwriting
+                    audio_data_copy = indata.copy()
+                    if self.callback_function:
+                        # Check data shape/type before calling external callback
+                        # logging.debug(f"SD Callback: Shape={audio_data_copy.shape}, Dtype={audio_data_copy.dtype}, MaxAmp={np.abs(audio_data_copy).max():.4f}")
+                        self.callback_function(audio_data_copy)
+                except Exception as e_cb:
+                    logging.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
+            # --- End Internal Audio Callback ---
+
             stream = sd.InputStream(
+                samplerate=self.sample_rate,
                 device=device_id,
                 channels=self.channels,
-                samplerate=self.sample_rate,
-                callback=audio_callback,
-                blocksize=1024  # Process in small blocks for lower latency
+                callback=audio_callback_sd,
+                blocksize=0, # Let sounddevice choose optimal block size based on buffer
+                dtype='float32' # Use float32 as it's common and allows easy amplitude checks
+                # latency='low' # Optional: can try 'low' latency if needed
             )
             stream.start()
-            logging.info(f"Started sounddevice stream for {device_name}")
-            
-            # Start the processing thread
-            processing_thread = threading.Thread(target=audio_processing_thread, daemon=True)
-            processing_thread.start()
-            
-            # Return stop function
-            def stop_listening(wait_for_stop=False):
-                try:
-                    stop_event.set()
-                    
-                    # Give the thread a chance to clean up
-                    if wait_for_stop:
-                        processing_thread.join(timeout=2.0)
-                        
-                    logging.info("Background listening stopped")
-                    return True
-                except Exception as e:
-                    logging.error(f"Error stopping listening: {str(e)}")
-                    return False
-                    
-            return stop_listening
-            
-        except Exception as e:
-            logging.error(f"Error setting up sounddevice listening: {str(e)}", exc_info=True)
-            return lambda wait_for_stop=False: None
+            logging.info(f"sounddevice InputStream started for '{device_info['name']}'")
 
-    def _stop_listening(self, wait_for_stop: bool = True) -> None:
-        """Stop the background listening.
+            # Define the stop function specific to this stream
+            def stop_stream(wait_for_stop=False): # wait_for_stop isn't used by sounddevice stream.stop
+                nonlocal stream
+                if stream:
+                    try:
+                        if not stream.stopped:
+                            stream.stop()
+                            logging.info(f"sounddevice InputStream stopped for '{self.listening_device}'")
+                        stream.close()
+                        logging.info(f"sounddevice InputStream closed for '{self.listening_device}'")
+                    except Exception as e_stop:
+                        logging.error(f"Error stopping/closing sounddevice stream: {e_stop}", exc_info=True)
+                    finally:
+                        stream = None
+                        self.listening_device = None
+                        self.callback_function = None
+            
+            return stop_stream # Return the specific closer for this stream
+
+        except sd.PortAudioError as pae:
+            logging.error(f"PortAudioError in _listen_with_sounddevice for '{device_name}': {pae}")
+            logging.error(f"PortAudio error details: Host Error={pae.hostApiErrorInfo}")
+            raise ValueError(f"Audio device error for '{device_name}': {pae}") from pae
+        except Exception as e:
+            logging.error(f"Error in _listen_with_sounddevice for '{device_name}': {e}", exc_info=True)
+            # Clean up stream if it was partially created
+            if stream:
+                 try:
+                     if not stream.stopped: stream.stop()
+                     stream.close()
+                 except Exception as e_clean:
+                     logging.error(f"Error during cleanup in _listen_with_sounddevice: {e_clean}")
+            raise e # Re-raise the exception
+
+    def _background_recording_thread(self, device_index, phrase_time_limit):
+        """ Background thread that records audio using soundcard (potentially problematic). """
+        # This method seems deprecated in favor of _listen_with_sounddevice and soundcard issues
+        # Keeping it for reference but should likely be removed or refactored if soundcard is needed.
+        logging.warning("_background_recording_thread (soundcard) is likely deprecated.")
+        try:
+            # Simplified - assumes device_index corresponds to soundcard's list which might not be true
+            mic = soundcard.get_microphone(device_index, include_loopback=True)
+            if not mic:
+                logging.error(f"Soundcard could not get microphone for index {device_index}")
+                self.recording = False
+                return
+
+            logging.info(f"Starting soundcard recording thread for {mic.name}")
+            with mic.recorder(samplerate=self.sample_rate, channels=self.channels) as recorder:
+                while self.recording:
+                    # Record data for the phrase time limit
+                    # Note: soundcard's record method blocks, which might not be ideal for continuous listening
+                    data = recorder.record(numframes=int(self.sample_rate * phrase_time_limit))
+                    if not self.recording: # Check again after blocking call
+                        break
+                    if data is not None and data.size > 0:
+                         # Convert soundcard data (usually float64) to float32 if needed
+                        if data.dtype != np.float32:
+                            data = data.astype(np.float32)
+                        logging.debug(f"Soundcard recorded chunk: Shape={data.shape}, Dtype={data.dtype}")
+                        if self.callback_function:
+                            self.callback_function(data)
+                    else:
+                        logging.debug("Soundcard recorder yielded empty data chunk.")
+                        time.sleep(0.01) # Small sleep if no data
+
+        except Exception as e:
+            logging.error(f"Error in soundcard recording thread: {e}", exc_info=True)
+        finally:
+            self.recording = False
+            logging.info(f"Soundcard recording thread finished.")
+
+    # --- Add a separate method for soundcard if needed ---
+    def _background_recording_thread_sc(self, selected_device: Any, phrase_time_limit: float):
+        """Background thread specifically for soundcard recording."""
+        try:
+            logging.info(f"Starting soundcard recording thread for {selected_device.name}")
+            num_frames_to_record = int(self.sample_rate * phrase_time_limit)
+            
+            with selected_device.recorder(samplerate=self.sample_rate, channels=self.channels, blocksize=num_frames_to_record) as recorder:
+                while self.recording:
+                    data = recorder.record(numframes=num_frames_to_record)
+                    if not self.recording:  # Check recording flag immediately after record returns
+                        break
+                    
+                    if data is not None and data.size > 0:
+                        # Ensure data is float32 for consistency
+                        if data.dtype != np.float32:
+                             processed_data = data.astype(np.float32)
+                        else:
+                             processed_data = data.copy()
+                        
+                        # logging.debug(f"Soundcard SC thread recorded chunk: Shape={processed_data.shape}, Dtype={processed_data.dtype}")
+                        
+                        if self.callback_function:
+                            try:
+                                self.callback_function(processed_data)
+                            except Exception as cb_err:
+                                logging.error(f"Error in soundcard callback execution: {cb_err}", exc_info=True)
+                    # else:
+                    #     logging.debug("Soundcard recorder SC thread yielded no data or recording stopped during record.")
+                    #     time.sleep(0.01) # Prevent busy-waiting if record returns None quickly
+
+        except Exception as e:
+            logging.error(f"Error in soundcard recording thread (_sc): {e}", exc_info=True)
+        finally:
+            self.recording = False
+            logging.info(f"Soundcard recording thread (_sc) finished for {selected_device.name}.")
+
+    def add_segment(self, audio_data: np.ndarray):
+        """
+        Add an audio segment to the list of segments.
+
+        Args:
+            audio_data: Audio data as a numpy array.
+        """
+        try:
+            if audio_data is None:
+                logging.warning("SOAP recording: Received None audio data")
+                return
+                
+            # Check if the audio data has a valid shape and type
+            if not hasattr(audio_data, 'shape'):
+                logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
+                return
+                
+            # Get the maximum amplitude
+            max_amp = np.max(np.abs(audio_data)) if audio_data.size > 0 else 0.0
+            
+            # Always log the max amplitude for debugging
+            if max_amp > 0.0:
+                logging.info(f"SOAP recording: Audio segment with max amplitude {max_amp:.6f}")
+            else:
+                logging.warning(f"SOAP recording: Max amplitude was {max_amp}")
+            
+            # Apply an aggressive boost to ensure we capture even quiet audio
+            if max_amp > 0.0001 and max_amp < 0.1:  # There's some audio but it's quiet
+                boost_factor = min(20.0, 0.5 / max_amp)  # Very high boost for quiet audio
+                audio_data = audio_data * boost_factor
+                logging.info(f"SOAP recording: Boosted audio by factor {boost_factor:.2f}")
+                
+            # For SOAP mode, always create a segment regardless of amplitude
+            # This is crucial for ensuring the recording works even with very quiet audio
+            if self.soap_mode or max_amp > 0.0001:  # Ultra-low threshold or SOAP mode
+                # Convert float32 to int16 for compatibility
+                if audio_data.dtype == np.float32:
+                    audio_int16 = (audio_data * 32767).astype(np.int16)
+                elif audio_data.dtype == np.int16:
+                    audio_int16 = audio_data
+                else:
+                    audio_int16 = audio_data.astype(np.int16)
+                
+                # Convert to bytes
+                raw_data = audio_int16.tobytes()
+                
+                # Create a new segment using the same pattern as process_audio_data
+                segment = AudioSegment(
+                    data=raw_data,
+                    sample_width=2,  # 2 bytes for int16
+                    frame_rate=self.sample_rate,
+                    channels=self.channels
+                )
+                
+                # Add the segment to the list
+                self.recorded_frames.append(segment)
+                logging.info(f"SOAP recording: Created segment, total segments: {len(self.recorded_frames)}")
+                
+                if self.callback_function:
+                    try:
+                        self.callback_function(segment)
+                    except Exception as e:
+                        logging.error(f"Error in new segment callback: {e}")
+            else:
+                logging.warning(f"SOAP recording: Amplitude {max_amp:.8f} too low to create segment")
+                
+        except Exception as e:
+            logging.error(f"Error adding segment: {e}", exc_info=True)
+
+    def _stop_listening(self, wait_for_stop=True):
+        """Stop the background listening thread.
         
         Args:
-            wait_for_stop: Whether to wait for the recording thread to stop
+            wait_for_stop: If True, wait for the thread to stop
         """
         if self.recording:
             self.recording = False
             
-            if wait_for_stop and self.recording_thread:
-                self.recording_thread.join(timeout=2)
+            if wait_for_stop and self.recording_thread and self.recording_thread.is_alive():
+                self.recording_thread.join(timeout=2.0)
                 
             logging.info("Background listening stopped")
-                
-    def _background_recording_thread(self, device: Dict[str, Any], phrase_time_limit: int) -> None:
-        """Background thread to record audio in chunks.
-        
-        Args:
-            device: Dictionary with device information
-            phrase_time_limit: Maximum duration of each audio chunk in seconds
-        """
-        try:
-            mic = device['object']
-            buffer_size = int(self.sample_rate * phrase_time_limit)
-            
-            logging.info(f"Recording thread started with buffer size: {buffer_size}")
-            
-            while self.recording:
-                try:
-                    # Record a chunk of audio
-                    with mic.recorder(samplerate=self.sample_rate, channels=self.channels) as recorder:
-                        # Record audio for phrase_time_limit seconds or until recording is stopped
-                        data = recorder.record(numframes=buffer_size)
-                        
-                        # Apply gain to boost low-level signals if needed (multiply to increase volume)
-                        # This helps with Voicemeeter outputs that might have lower levels
-                        if np.abs(data).max() < 0.01:  # If the signal is weak but not silent
-                            # Calculate scaling factor - boost quiet audio
-                            gain_factor = min(10.0, 0.01 / max(0.001, np.abs(data).max()))
-                            data = data * gain_factor
-                            logging.debug(f"Applied gain factor of {gain_factor:.2f} to boost low audio")
-                        
-                        # Skip processing if recording was stopped during this chunk
-                        if not self.recording:
-                            break
-                            
-                        # Get maximum amplitude for debug
-                        max_amplitude = np.abs(data).max()
-                        logging.debug(f"Audio chunk max amplitude: {max_amplitude:.6f}")
-                        
-                        # Skip processing if data is too quiet (silence) - using a much lower threshold
-                        if max_amplitude < self.silence_threshold:  # Use dynamic threshold
-                            # In SOAP mode, be more verbose about skipping audio
-                            if self.soap_mode:
-                                logging.debug(f"SOAP mode: Skipping audio chunk with amplitude {max_amplitude:.6f}")
-                            else:
-                                logging.debug("Skipping silent audio chunk")
-                            continue
-                            
-                        # Process this chunk of audio
-                        if self.callback_function:
-                            # Pass the numpy array directly to the callback function
-                            self.callback_function(data)
-                            
-                except Exception as chunk_error:
-                    logging.error(f"Error recording audio chunk: {str(chunk_error)}", exc_info=True)
-                    # Sleep briefly to avoid tight loop on error
-                    time.sleep(0.5)
-                    
-        except Exception as e:
-            logging.error(f"Background recording thread error: {str(e)}", exc_info=True)
-            self.recording = False
+            return True
+        return False
