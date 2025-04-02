@@ -12,3 +12,4 @@ groq
 typing-extensions
 soundcard
 sounddevice
+concurrent-log-handler>=0.9.1 # Use a specific version or latest as appropriate
