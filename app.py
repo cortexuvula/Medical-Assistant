@@ -371,7 +371,10 @@ class MedicalDictationApp(ttk.Window):
         self.capitalize_next = False
         self.audio_segments = []
         self.soap_recording = False
-        self.soap_audio_segments = []
+        # self.soap_audio_segments = [] # Replaced by pending_soap_segments and combined_soap_chunks
+        self.pending_soap_segments = [] # Segments collected since last combination
+        self.combined_soap_chunks = [] # List of larger, combined audio chunks
+        self.soap_combine_threshold = 100 # Combine every N pending segments
         self.soap_stop_listening_function = None
         self.listening = False  # Initialize listening flag for recording state
 
@@ -880,28 +883,48 @@ class MedicalDictationApp(ttk.Window):
                 # Turn off SOAP debug mode
                 self.audio_handler.soap_mode = False
                 
-                # Process the concatenated audio segments
-                if not self.soap_audio_segments:
-                    raise ValueError("No SOAP audio segments to process")
-                
-                total_samples = sum(len(segment) for segment in self.soap_audio_segments)
-                logging.info(f"Processing SOAP recording with {len(self.soap_audio_segments)} segments, " +
-                            f"total samples: {total_samples}")
+                # Combine any remaining pending segments
+                if self.pending_soap_segments:
+                    remaining_chunk = self.audio_handler.combine_audio_segments(self.pending_soap_segments)
+                    if remaining_chunk:
+                        self.combined_soap_chunks.append(remaining_chunk)
+                    self.pending_soap_segments = [] # Clear pending list
+                        
+                # Check if we have any combined chunks to process
+                if not self.combined_soap_chunks:
+                    logging.warning("No SOAP audio chunks were recorded or combined.")
+                    # Update UI to indicate no audio
+                    self.after(0, lambda: [
+                        self.status_manager.warning("No audio recorded for SOAP note."),
+                        self.progress_bar.stop(),
+                        self.progress_bar.pack_forget(),
+                        self.soap_button.config(state=NORMAL), # Re-enable button
+                        self.cancel_soap_button.config(state=DISABLED)
+                    ])
+                    return # Exit task early
+
+                # Log info about the combined chunks before final combination
+                num_chunks = len(self.combined_soap_chunks)
+                approx_total_duration = sum(len(chunk) for chunk in self.combined_soap_chunks)
+                logging.info(f"Processing {num_chunks} combined SOAP audio chunks, approx duration: {approx_total_duration}ms")
                 
                 # Update status on UI thread
                 self.after(0, lambda: [
-                    self.status_manager.progress("Preparing SOAP audio..."),
+                    self.status_manager.progress("Finalizing SOAP audio..."),
                     self.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
                 
-                # Concatenate all segments into one AudioSegment
-                audio_segment = None
-                if self.soap_audio_segments:
-                    audio_segment = self.audio_handler.combine_audio_segments(self.soap_audio_segments)
+                # Combine all the combined chunks into the final AudioSegment
+                audio_segment = self.audio_handler.combine_audio_segments(self.combined_soap_chunks)
+                
+                # Clear the list of combined chunks now that we have the final segment
+                self.combined_soap_chunks = []
                 
                 if not audio_segment:
-                    raise ValueError("Failed to create audio segment")
-                
+                     # This case should be rare if checks above are done, but handle defensively
+                    raise ValueError("Failed to create final audio segment from combined chunks")
+
+                # --- Rest of the processing (saving, transcription) remains largely the same ---                   
                 # Save the SOAP audio to the user's default storage folder
                 from settings import SETTINGS
                 
@@ -1086,7 +1109,7 @@ class MedicalDictationApp(ttk.Window):
                 # Use CPU executor for the actual AI processing which is CPU-intensive
                 result_future = self.cpu_executor.submit(api_func, text)
                 # Get result with timeout to prevent hanging
-                result = result_future.result(timeout=60)  # Add timeout to prevent hanging
+                result = result_future.result(timeout=60) # Add timeout to prevent hanging
                 
                 # Schedule UI update on the main thread
                 self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
@@ -1280,7 +1303,8 @@ class MedicalDictationApp(ttk.Window):
                 logging.info(f"Starting SOAP recording with device: {selected_device} (index {device_index})")
                 
                 # Initialize empty audio segments list
-                self.soap_audio_segments = []
+                self.pending_soap_segments = [] # Segments collected since last combination
+                self.combined_soap_chunks = [] # List of larger, combined audio chunks
                 
                 # Set debug flag for SOAP recording to help with troubleshooting
                 self.audio_handler.soap_mode = True
@@ -1430,7 +1454,7 @@ class MedicalDictationApp(ttk.Window):
                                 logging.warning(f"Unexpected audio data type {audio_data.dtype}, attempting conversion to int16")
                                 audio_data = audio_data.astype(np.int16)
                         
-                        segment = AudioSegment(
+                        new_segment = AudioSegment(
                             data=audio_data.tobytes(), 
                             sample_width=self.audio_handler.sample_width, 
                             frame_rate=self.audio_handler.sample_rate,
@@ -1438,8 +1462,8 @@ class MedicalDictationApp(ttk.Window):
                         )
                         # logging.debug("SOAP callback: Successfully created AudioSegment from np.ndarray.")
                         # Add to segments list for later processing
-                        self.soap_audio_segments.append(segment)
-                        #logging.info(f"SOAP segment appended (from np.ndarray). Total segments: {len(self.soap_audio_segments)}")
+                        self.pending_soap_segments.append(new_segment)
+                        #logging.info(f"SOAP segment appended (from np.ndarray). Total segments: {len(self.pending_soap_segments)}")
                         
                         # Visual feedback that audio is being recorded
                         self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
@@ -1454,13 +1478,13 @@ class MedicalDictationApp(ttk.Window):
             
             # Fall back to standard processing for non-ndarray types or if direct processing failed
             # logging.debug("SOAP callback using standard process_audio_data.")
-            segment, _ = self.audio_handler.process_audio_data(audio_data)
+            new_segment, _ = self.audio_handler.process_audio_data(audio_data)
             
-            if segment:
+            if new_segment:
                 # logging.debug("SOAP callback: Successfully created AudioSegment via standard process.")
                 # Add to segments list for later processing
-                self.soap_audio_segments.append(segment)
-                # logging.info(f"SOAP segment appended (from standard process). Total segments: {len(self.soap_audio_segments)}")
+                self.pending_soap_segments.append(new_segment)
+                # logging.info(f"SOAP segment appended (from standard process). Total segments: {len(self.pending_soap_segments)}")
                 
                 # Visual feedback that audio is being recorded
                 self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
@@ -1490,6 +1514,34 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             logging.error(f"Critical Error in SOAP callback: {str(e)}", exc_info=True)
 
+        # --- Incremental Combination Logic ---            
+        if new_segment:
+            # Add the newly created segment to the pending list
+            self.pending_soap_segments.append(new_segment)
+            
+            # Check if we reached the threshold to combine pending segments
+            if len(self.pending_soap_segments) >= self.soap_combine_threshold:
+                logging.debug(f"SOAP callback: Reached threshold ({self.soap_combine_threshold}), combining {len(self.pending_soap_segments)} pending segments.")
+                # Combine the pending segments
+                chunk_to_add = self.audio_handler.combine_audio_segments(self.pending_soap_segments)
+                
+                if chunk_to_add:
+                    # Add the newly combined chunk to our list of larger chunks
+                    self.combined_soap_chunks.append(chunk_to_add)
+                    # logging.info(f"SOAP chunk combined and added. Total chunks: {len(self.combined_soap_chunks)}")
+                else:
+                    logging.warning("SOAP callback: Combining pending segments resulted in None.")
+                    
+                # Clear the pending list
+                self.pending_soap_segments = []
+
+            # Visual feedback (can be less frequent if needed)
+            # Update status less frequently to avoid flooding UI updates
+            if len(self.pending_soap_segments) % 10 == 1: # Update status every 10 segments added
+                 self.after(0, lambda: self.update_status("Recording SOAP note...", "info"))
+        # else: # Removed logging for no segment created to reduce noise
+            # logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
+                
     def cancel_soap_recording(self) -> None:
         """Cancel the current SOAP note recording without processing."""
         if not self.soap_recording:
@@ -1723,7 +1775,10 @@ class MedicalDictationApp(ttk.Window):
         
         # Update status with warning about fallback
         message = f"{primary_display} transcription failed. Falling back to {fallback_display}."
-        self.after(0, lambda: self.status_manager.warning(message))
+        self.after(0, lambda: [
+            self.status_manager.warning(message),
+            self.stt_combobox.current(fallback_provider)
+        ])
         
         # Update STT provider dropdown to reflect actual service being used
         try:
