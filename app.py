@@ -1292,7 +1292,7 @@ class MedicalDictationApp(ttk.Window):
                 self.soap_stop_listening_function = self.audio_handler.listen_in_background(
                     mic_name=selected_device,
                     callback=self.soap_callback,
-                    phrase_time_limit=10
+                    phrase_time_limit=None  # Use the default phrase time limit (30 seconds)
                 )
                 
                 # Update state and UI
@@ -1390,7 +1390,7 @@ class MedicalDictationApp(ttk.Window):
             self.soap_stop_listening_function = self.audio_handler.listen_in_background(
                 mic_name=selected_device,
                 callback=self.soap_callback,
-                phrase_time_limit=10
+                phrase_time_limit=None  # Use the default phrase time limit (30 seconds)
             )
             
             # Update UI

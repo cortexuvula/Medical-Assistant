@@ -33,6 +33,9 @@ class AudioData:
 class AudioHandler:
     """Class to handle all audio-related functionality including recording, transcription, and file operations."""
     
+    # Default audio chunk duration in seconds
+    DEFAULT_PHRASE_TIME_LIMIT = 30
+    
     def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
         
@@ -370,17 +373,23 @@ class AudioHandler:
             return []
             
     def listen_in_background(self, mic_name: str, callback: Callable[[np.ndarray], None], 
-                            phrase_time_limit: int = 10) -> Callable[[], None]:
+                            phrase_time_limit: int = None) -> Callable[[], None]:
         """Start listening in the background using the specified device name.
 
         Args:
             mic_name: Name of the microphone to use.
             callback: Function to call with the audio data (numpy array).
-            phrase_time_limit: Maximum duration of each audio chunk in seconds (used by sounddevice).
+            phrase_time_limit: Maximum duration of each audio chunk in seconds (uses DEFAULT_PHRASE_TIME_LIMIT if None).
 
         Returns:
             Function to stop the background listening.
         """
+        # Use the default phrase time limit if none is provided
+        if phrase_time_limit is None:
+            phrase_time_limit = self.DEFAULT_PHRASE_TIME_LIMIT
+            
+        # Log the actual phrase time limit being used
+        logging.info(f"Starting background listening with phrase_time_limit: {phrase_time_limit} seconds")
         try:
             logging.info(f"Attempting to start background listening for device: {mic_name}")
             self.listening_device = mic_name # Store the requested name
@@ -436,17 +445,20 @@ class AudioHandler:
             return lambda wait_for_stop=True: None
 
     def _listen_with_sounddevice(self, device_name: str, callback: Callable[[np.ndarray], None],
-                               phrase_time_limit: int = 10) -> Callable[[], None]:
+                                phrase_time_limit: int = None) -> Callable[[], None]:
         """Listen using sounddevice library, resolving name to index just-in-time.
 
         Args:
             device_name: The target device name string.
             callback: Function to call with audio data.
-            phrase_time_limit: Maximum length of audio capture in seconds.
+            phrase_time_limit: Maximum length of audio capture in seconds (uses DEFAULT_PHRASE_TIME_LIMIT if None).
 
         Returns:
             Function to stop listening.
         """
+        # Use the default phrase time limit if none is provided
+        if phrase_time_limit is None:
+            phrase_time_limit = self.DEFAULT_PHRASE_TIME_LIMIT
         stream = None # Initialize stream variable
         try:
             self.listening_device = device_name # Store the name being used
@@ -525,21 +537,46 @@ class AudioHandler:
 
             logging.info(f"Creating sounddevice InputStream: DeviceID={device_id}, Name='{device_info['name']}', Rate={self.sample_rate}, Channels={self.channels}, Buffer={buffer_size}")
 
+            # Buffer to accumulate audio data until it reaches phrase_time_limit
+            accumulated_data = []
+            accumulated_frames = 0
+            target_frames = int(self.sample_rate * phrase_time_limit)
+            
+            logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
+
             # --- Internal Audio Callback ---
             # This runs in a separate thread managed by sounddevice
             def audio_callback_sd(indata, frames, time, status):
+                nonlocal accumulated_data, accumulated_frames
+                
                 if status:
                     # Log PortAudio statuses: https://python-sounddevice.readthedocs.io/en/0.4.6/api/status.html
                     logging.warning(f"sounddevice status: {status}")
                 try:
                     # Make a copy to avoid issues with buffer overwriting
                     audio_data_copy = indata.copy()
-                    if self.callback_function:
-                        # Check data shape/type before calling external callback
-                        # logging.debug(f"SD Callback: Shape={audio_data_copy.shape}, Dtype={audio_data_copy.dtype}, MaxAmp={np.abs(audio_data_copy).max():.4f}")
-                        self.callback_function(audio_data_copy)
+                    
+                    # Add to accumulated buffer
+                    accumulated_data.append(audio_data_copy)
+                    accumulated_frames += frames
+                    
+                    # Only call the callback when we've accumulated enough data
+                    # or if the SOAP recording was just stopped (to ensure we process remaining data)
+                    if accumulated_frames >= target_frames or not self.callback_function:
+                        if self.callback_function and accumulated_data:
+                            # Combine all accumulated chunks
+                            combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                            # Call the callback with the combined data
+                            self.callback_function(combined_data)
+                            
+                            # Reset for next accumulation
+                            accumulated_data = []
+                            accumulated_frames = 0
                 except Exception as e_cb:
                     logging.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
+                    # Reset accumulation on error
+                    accumulated_data = []
+                    accumulated_frames = 0
             # --- End Internal Audio Callback ---
 
             stream = sd.InputStream(
@@ -556,9 +593,22 @@ class AudioHandler:
 
             # Define the stop function specific to this stream
             def stop_stream(wait_for_stop=False): # wait_for_stop isn't used by sounddevice stream.stop
-                nonlocal stream
+                nonlocal stream, accumulated_data, accumulated_frames
                 if stream:
                     try:
+                        # Process any remaining accumulated data before stopping
+                        if self.callback_function and accumulated_data:
+                            try:
+                                combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                                self.callback_function(combined_data)
+                                logging.info(f"Processed final audio chunk of {accumulated_frames} frames before stopping")
+                            except Exception as e_final:
+                                logging.error(f"Error processing final audio chunk: {e_final}", exc_info=True)
+                        
+                        # Reset accumulation buffers
+                        accumulated_data = []
+                        accumulated_frames = 0
+                        
                         if not stream.stopped:
                             stream.stop()
                             logging.info(f"sounddevice InputStream stopped for '{self.listening_device}'")
