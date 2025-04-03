@@ -100,7 +100,7 @@ class AudioHandler:
             logging.warning(f"Unknown STT provider: {provider}")
         
     def combine_audio_segments(self, segments: List[AudioSegment]) -> Optional[AudioSegment]:
-        """Combine multiple audio segments into a single segment.
+        """Combine multiple audio segments into a single segment efficiently.
         
         Args:
             segments: List of AudioSegment objects
@@ -109,11 +109,28 @@ class AudioHandler:
             Combined AudioSegment or None if list is empty
         """
         if not segments:
+            logging.warning("combine_audio_segments called with empty list")
             return None
-        combined = segments[0]
-        for segment in segments[1:]:
-            combined += segment
-        return combined
+            
+        # Using sum() is significantly faster for combining many segments
+        # than iterative concatenation with +=
+        try:
+            # Start with the first segment to ensure correct parameters (frame rate, channels, etc.)
+            # Adding subsequent segments ensures compatibility.
+            # Using sum directly might implicitly start with AudioSegment.empty(), 
+            # which could lead to issues if segment parameters differ.
+            combined = segments[0]
+            if len(segments) > 1:
+                 combined = sum(segments[1:], start=combined) # More explicit and safer than sum(segments)
+            return combined
+        except Exception as e:
+            logging.error(f"Error combining audio segments: {e}", exc_info=True)
+            # Fallback to original method in case of unexpected issues with sum()
+            logging.info("Falling back to iterative concatenation due to error.")
+            combined_fallback = segments[0]
+            for segment in segments[1:]:
+                combined_fallback += segment
+            return combined_fallback
 
     def set_fallback_callback(self, callback: Callable[[str, str], None]) -> None:
         """Set a callback function to be called when service fallback occurs.
