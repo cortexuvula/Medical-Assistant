@@ -524,17 +524,161 @@ class MedicalDictationApp(ttk.Window):
         self.status_manager.success("Deepgram settings saved successfully")
 
     def set_default_folder(self) -> None:
-        folder = filedialog.askdirectory(title="Select Storage Folder")
-        if folder:
+        """
+        Set the default storage folder for the application using a custom folder selector
+        that avoids native file dialogs entirely to prevent UI freezing.
+        """
+        logging.info("STORAGE: Opening custom folder selection dialog")
+        
+        # Create a custom folder selection dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("Select Storage Folder")
+        dialog.geometry("600x500")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Center the dialog on the parent window
+        x = self.winfo_x() + (self.winfo_width() // 2) - (600 // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (500 // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Create main frame with padding
+        main_frame = ttk.Frame(dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Add explanation label
+        ttk.Label(main_frame, text="Select a folder for storing recordings and exports", 
+                 wraplength=580).pack(pady=(0, 10))
+        
+        # Create a frame for the path entry and navigation
+        path_frame = ttk.Frame(main_frame)
+        path_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Current path display
+        path_var = tk.StringVar(value=os.path.expanduser("~"))
+        path_entry = ttk.Entry(path_frame, textvariable=path_var, width=50)
+        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        # Use a simple default rather than dealing with file dialogs
+        def use_default_location():
+            # Use the 'exports' directory in the application folder
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            default_storage = os.path.join(app_dir, "storage")
+            
+            # Create the directory if it doesn't exist
             try:
-                from settings import SETTINGS, save_settings
-                # Set both keys for backwards compatibility
-                SETTINGS["storage_folder"] = folder
-                SETTINGS["default_storage_folder"] = folder
-                save_settings(SETTINGS)
-                self.update_status(f"Default storage folder set to: {folder}")
+                os.makedirs(default_storage, exist_ok=True)
+                path_var.set(default_storage)
+                refresh_file_list()
+                logging.info(f"STORAGE: Using default location: {default_storage}")
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to set folder: {e}")
+                messagebox.showerror("Error", f"Could not create default storage folder: {e}")
+                logging.error(f"STORAGE: Error creating default folder: {str(e)}", exc_info=True)
+        
+        # Button for default location
+        default_btn = ttk.Button(path_frame, text="Use Default", command=use_default_location)
+        default_btn.pack(side=tk.RIGHT)
+        
+        # Frame for directory listing with scrollbar
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Create scrollbar and listbox for directories
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        dir_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, font=("Segoe UI", 10))
+        dir_listbox.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=dir_listbox.yview)
+        
+        # Function to refresh the directory listing
+        def refresh_file_list():
+            current_path = path_var.get()
+            if not os.path.exists(current_path):
+                # If path doesn't exist, try to fall back to user's home directory
+                current_path = os.path.expanduser("~")
+                path_var.set(current_path)
+            
+            # Clear the listbox
+            dir_listbox.delete(0, tk.END)
+            
+            # Add parent directory option if not at root
+            if os.path.abspath(current_path) != os.path.abspath(os.path.dirname(current_path)):
+                dir_listbox.insert(tk.END, "..")
+            
+            try:
+                # List directories only
+                dirs = [d for d in os.listdir(current_path) 
+                       if os.path.isdir(os.path.join(current_path, d))]
+                dirs.sort()
+                
+                for d in dirs:
+                    dir_listbox.insert(tk.END, d)
+                    
+                status_var.set(f"Found {len(dirs)} directories")
+            except Exception as e:
+                status_var.set(f"Error: {str(e)}")
+                logging.error(f"STORAGE: Error listing directories: {str(e)}", exc_info=True)
+        
+        # Handle double-click on directory
+        def on_dir_double_click(event):
+            selection = dir_listbox.curselection()
+            if selection:
+                item = dir_listbox.get(selection[0])
+                current_path = path_var.get()
+                
+                if item == "..":
+                    # Go up one directory
+                    new_path = os.path.dirname(current_path)
+                else:
+                    # Enter selected directory
+                    new_path = os.path.join(current_path, item)
+                
+                path_var.set(new_path)
+                refresh_file_list()
+        
+        # Bind double-click event
+        dir_listbox.bind("<Double-1>", on_dir_double_click)
+        
+        # Status bar
+        status_var = tk.StringVar()
+        status_bar = ttk.Label(main_frame, textvariable=status_var, anchor="w")
+        status_bar.pack(fill=tk.X, pady=(5, 10))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        # Function to set the selected folder
+        def set_selected_folder():
+            selected_path = path_var.get()
+            if os.path.exists(selected_path) and os.path.isdir(selected_path):
+                try:
+                    from settings import SETTINGS, save_settings
+                    
+                    # Set both keys for backwards compatibility
+                    SETTINGS["storage_folder"] = selected_path
+                    SETTINGS["default_storage_folder"] = selected_path
+                    save_settings(SETTINGS)
+                    
+                    self.status_manager.success(f"Storage folder set to: {selected_path}")
+                    logging.info(f"STORAGE: Folder set to {selected_path}")
+                    dialog.destroy()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to set folder: {e}")
+                    logging.error(f"STORAGE: Error setting folder: {str(e)}", exc_info=True)
+            else:
+                messagebox.showerror("Invalid Directory", "The selected path is not a valid directory.")
+        
+        # Add Select and Cancel buttons
+        select_btn = ttk.Button(button_frame, text="Select This Folder", command=set_selected_folder, style="primary.TButton")
+        select_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
+        
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=dialog.destroy)
+        cancel_btn.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+        
+        # Initial directory listing
+        refresh_file_list()
 
     def export_prompts(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS
@@ -2500,42 +2644,117 @@ class MedicalDictationApp(ttk.Window):
         # Bind delete button
         delete_button.config(command=delete_selected_recordings)
         
-        # Function to export selected recordings
+        # Function to export selected recordings - simplified version
         def export_selected_recordings():
+            logging.info("Export Selected clicked - starting export process")
+            
+            # Get selected items
             selected_items = tree.selection()
             if not selected_items:
+                logging.info("No items selected for export")
                 messagebox.showinfo("Selection", "Please select recordings to export")
                 return
             
-            # Ask for export directory
-            export_dir = filedialog.askdirectory(title="Select Export Directory")
-            if not export_dir:
+            logging.info(f"Selected {len(selected_items)} items for export")
+            
+            # Create a list of recording IDs
+            recording_ids = []
+            try:
+                for item_id in selected_items:
+                    item = tree.item(item_id)
+                    recording_id = item['values'][0]
+                    recording_ids.append(recording_id)
+            except Exception as e:
+                logging.error(f"Error getting recording IDs: {str(e)}", exc_info=True)
+                messagebox.showerror("Export Error", f"Error preparing export: {str(e)}")
                 return
             
-            # Show a status message during export
-            status_label = ttk.Label(dialog, text="Exporting recordings... Please wait", foreground="blue")
-            status_label.pack(pady=5)
-            dialog.update()  # Force update of the UI
+            # Get storage folder from settings, or use a default if not set
+            from settings import SETTINGS
             
-            # Create a list of recordings to export
-            export_items = []
-            for item_id in selected_items:
-                item = tree.item(item_id)
-                recording_id = item["values"][0]
-                export_items.append(recording_id)
+            # Check for storage_folder in settings
+            storage_folder = SETTINGS.get("storage_folder", None) or SETTINGS.get("default_storage_folder", None)
+            
+            # If no storage folder is configured, create a default directory in the application folder
+            if not storage_folder or not os.path.exists(storage_folder):
+                export_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exports")
+                logging.info(f"No valid storage folder found in settings, using default: {export_dir}")
+            else:
+                # Use the configured storage folder
+                export_dir = storage_folder
+                logging.info(f"Using configured storage folder from settings: {export_dir}")
+            
+            # Create the directory if it doesn't exist
+            try:
+                if not os.path.exists(export_dir):
+                    os.makedirs(export_dir)
+                    logging.info(f"Created export directory: {export_dir}")
+                
+                logging.info(f"Using export directory: {export_dir}")
+            except Exception as e:
+                logging.error(f"Error creating exports directory: {str(e)}", exc_info=True)
+                messagebox.showerror("Export Error", f"Error creating exports directory: {str(e)}")
+                return
+            
+            # Show a processing message
+            processing_dialog = tk.Toplevel(dialog)
+            processing_dialog.title("Exporting Records")
+            processing_dialog.geometry("300x100")
+            processing_dialog.transient(dialog)
+            processing_dialog.resizable(False, False)
+            processing_dialog.grab_set()
+            
+            # Center the dialog
+            processing_dialog.geometry("+%d+%d" % (
+                dialog.winfo_rootx() + (dialog.winfo_width() // 2) - 150,
+                dialog.winfo_rooty() + (dialog.winfo_height() // 2) - 50))
+            
+            # Add a label
+            progress_label = ttk.Label(processing_dialog, text="Exporting records...")
+            progress_label.pack(pady=20)
+            
+            # Update the UI
+            processing_dialog.update()
             
             # Perform the export in a background thread
             def export_task():
+                # Get reference to the progress dialog label
+                progress_label_ref = progress_label
+                
                 # Log the export directory selection
-                logging.info(f"Selected export directory: {export_dir} for {len(export_items)} recordings")
+                logging.info(f"EXPORT: Starting export task for {len(recording_ids)} recordings to {export_dir}")
+                logging.info(f"EXPORT: Thread ID: {threading.get_ident()}")
                 
                 success_count = 0
                 error_messages = []
+                total_count = len(recording_ids)
+                
+                # Update the progress dialog from the main thread
+                def update_progress(message):
+                    try:
+                        self.after(0, lambda: progress_label_ref.config(text=message))
+                    except Exception as ui_err:
+                        logging.error(f"EXPORT: Progress update error: {str(ui_err)}")
                 
                 # Export each selected item
-                for recording_id in export_items:
+                for idx, recording_id in enumerate(recording_ids):
+                    current_count = idx + 1
+                    
+                    # Update progress
+                    progress_message = f"Exporting recording {current_count} of {total_count} (ID: {recording_id})"
+                    logging.info(f"EXPORT: {progress_message}")
+                    update_progress(progress_message)
+                    
                     try:
-                        recording = self.db.get_recording(recording_id)
+                        # Create a separate database connection for the export thread
+                        logging.info(f"EXPORT: Creating database connection for export")
+                        from database import Database
+                        db_thread = Database()
+                        
+                        # Get the recording
+                        logging.info(f"EXPORT: Getting recording ID {recording_id}")
+                        recording = db_thread.get_recording(recording_id)
+                        
                         if recording:
                             # Use a simpler, more robust filename without characters that could cause issues
                             # Use recording ID to ensure uniqueness
@@ -2549,41 +2768,61 @@ class MedicalDictationApp(ttk.Window):
                             if recording["transcript"]:
                                 transcript_file = os.path.join(export_dir, f"{base_filename}_transcript.txt")
                                 try:
+                                    logging.info(f"EXPORT: Writing transcript file at {transcript_file}")
+                                    logging.debug(f"EXPORT: Transcript size: {len(recording['transcript'])} characters")
+                                    
                                     with open(transcript_file, "w", encoding="utf-8") as f:
                                         f.write(recording["transcript"])
-                                    logging.info(f"Saved transcript to {transcript_file}")
+                                    
+                                    logging.info(f"EXPORT: Successfully saved transcript to {transcript_file}")
                                 except Exception as file_err:
-                                    logging.error(f"Error saving transcript file: {str(file_err)}")
+                                    error_msg = f"Error saving transcript file: {str(file_err)}"
+                                    logging.error(f"EXPORT: {error_msg}", exc_info=True)
                                     error_messages.append(f"Error saving transcript for recording ID {recording_id}: {str(file_err)}")
                             
                             if recording["soap_note"]:
                                 soap_file = os.path.join(export_dir, f"{base_filename}_soap.txt")
                                 try:
+                                    logging.info(f"EXPORT: Writing SOAP note file at {soap_file}")
+                                    logging.debug(f"EXPORT: SOAP note size: {len(recording['soap_note'])} characters")
+                                    
                                     with open(soap_file, "w", encoding="utf-8") as f:
                                         f.write(recording["soap_note"])
-                                    logging.info(f"Saved SOAP note to {soap_file}")
+                                    
+                                    logging.info(f"EXPORT: Successfully saved SOAP note to {soap_file}")
                                 except Exception as file_err:
-                                    logging.error(f"Error saving SOAP note file: {str(file_err)}")
+                                    error_msg = f"Error saving SOAP note file: {str(file_err)}"
+                                    logging.error(f"EXPORT: {error_msg}", exc_info=True)
                                     error_messages.append(f"Error saving SOAP note for recording ID {recording_id}: {str(file_err)}")
                             
                             if recording["referral"]:
                                 referral_file = os.path.join(export_dir, f"{base_filename}_referral.txt")
                                 try:
+                                    logging.info(f"EXPORT: Writing referral file at {referral_file}")
+                                    logging.debug(f"EXPORT: Referral size: {len(recording['referral'])} characters")
+                                    
                                     with open(referral_file, "w", encoding="utf-8") as f:
                                         f.write(recording["referral"])
-                                    logging.info(f"Saved referral to {referral_file}")
+                                    
+                                    logging.info(f"EXPORT: Successfully saved referral to {referral_file}")
                                 except Exception as file_err:
-                                    logging.error(f"Error saving referral file: {str(file_err)}")
+                                    error_msg = f"Error saving referral file: {str(file_err)}"
+                                    logging.error(f"EXPORT: {error_msg}", exc_info=True)
                                     error_messages.append(f"Error saving referral for recording ID {recording_id}: {str(file_err)}")
                             
                             if recording["letter"]:
                                 letter_file = os.path.join(export_dir, f"{base_filename}_letter.txt")
                                 try:
+                                    logging.info(f"EXPORT: Writing letter file at {letter_file}")
+                                    logging.debug(f"EXPORT: Letter size: {len(recording['letter'])} characters")
+                                    
                                     with open(letter_file, "w", encoding="utf-8") as f:
                                         f.write(recording["letter"])
-                                    logging.info(f"Saved letter to {letter_file}")
+                                    
+                                    logging.info(f"EXPORT: Successfully saved letter to {letter_file}")
                                 except Exception as file_err:
-                                    logging.error(f"Error saving letter file: {str(file_err)}")
+                                    error_msg = f"Error saving letter file: {str(file_err)}"
+                                    logging.error(f"EXPORT: {error_msg}", exc_info=True)
                                     error_messages.append(f"Error saving letter for recording ID {recording_id}: {str(file_err)}")
                             
                             success_count += 1
@@ -2592,32 +2831,69 @@ class MedicalDictationApp(ttk.Window):
                         logging.error(error_msg)
                         error_messages.append(error_msg)
                 
-                # Use after to update UI from the main thread
-                self.after(0, lambda: update_ui_after_export(success_count, error_messages))
+                # Update UI with completion message
+                update_progress("Export complete!")
+                
+                # Final report
+                report_message = f"Export complete! Successfully exported {success_count} recording(s) to {export_dir}"
+                logging.info(f"EXPORT: {report_message}")
+                
+                # Close the progress dialog and show completion message after a short delay
+                self.after(500, lambda: complete_export(success_count, error_messages))
             
-            # Update UI after export is complete
-            def update_ui_after_export(success_count, error_messages):
-                # Remove the status label
-                status_label.pack_forget()
-                dialog.update()
-                
-                # Show success message
-                if success_count > 0:
-                    messagebox.showinfo("Export Complete", 
-                                    f"Successfully exported {success_count} recording(s) to {export_dir}")
-                
-                # Show error message if there were any errors
-                if error_messages:
-                    combined_errors = "\n".join(error_messages[:5])  # Show first 5 errors
-                    if len(error_messages) > 5:
-                        combined_errors += f"\n...and {len(error_messages) - 5} more errors."
-                    messagebox.showwarning("Export Warning", 
-                                        f"There were {len(error_messages)} errors during export:\n{combined_errors}")
-                elif success_count == 0:
-                    messagebox.showwarning("Export Warning", "No recordings were exported. Check the logs for details.")
+            # Function to show completion message and clean up
+            def complete_export(success_count, error_messages):
+                try:
+                    # Close the progress dialog
+                    if processing_dialog.winfo_exists():
+                        processing_dialog.destroy()
+                        
+                    # Show success message
+                    if success_count > 0:
+                        # Open the exports folder automatically (as a convenience)
+                        try:
+                            if os.name == 'nt':  # Windows
+                                os.startfile(export_dir)
+                            elif os.name == 'posix':  # macOS or Linux
+                                import subprocess
+                                subprocess.Popen(['open', export_dir] if sys.platform == 'darwin' else ['xdg-open', export_dir])
+                        except Exception as folder_err:
+                            logging.error(f"EXPORT: Error opening export folder: {str(folder_err)}", exc_info=True)
+                        
+                        # Show success message
+                        messagebox.showinfo("Export Complete", 
+                                        f"Successfully exported {success_count} recording(s) to:\n{export_dir}")
+                    
+                    # Show error message if there were any errors
+                    if error_messages:
+                        combined_errors = "\n".join(error_messages[:5])  # Show first 5 errors
+                        if len(error_messages) > 5:
+                            combined_errors += f"\n...and {len(error_messages) - 5} more errors."
+                        messagebox.showwarning("Export Warning", 
+                                            f"There were {len(error_messages)} errors during export:\n{combined_errors}")
+                    elif success_count == 0:
+                        messagebox.showwarning("Export Warning", "No recordings were exported. Check the logs for details.")
+                except Exception as ui_error:
+                    logging.error(f"EXPORT: Error showing completion message: {str(ui_error)}", exc_info=True)
+                    try:
+                        messagebox.showerror("Export Error", f"Error completing export: {str(ui_error)}")
+                    except:
+                        pass
             
             # Start the export task in a background thread
-            self.io_executor.submit(export_task)
+            try:
+                logging.info("EXPORT: Creating export thread")
+                export_thread = threading.Thread(target=export_task)
+                export_thread.daemon = True  # Allow app to exit if thread is still running
+                
+                logging.info("EXPORT: Starting export thread")
+                export_thread.start()
+                logging.info("EXPORT: Export thread started successfully")
+            except Exception as e:
+                logging.error(f"EXPORT: Error starting export thread: {str(e)}", exc_info=True)
+                messagebox.showerror("Export Error", f"Error starting export: {str(e)}")
+                if processing_dialog.winfo_exists():
+                    processing_dialog.destroy()
         
         # Bind export button
         export_button.config(command=export_selected_recordings)

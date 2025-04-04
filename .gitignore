@@ -188,3 +188,7 @@ temp.wav
 
 # Setttings
 settings.json
+
+# Exported files
+exports/*
+exports
