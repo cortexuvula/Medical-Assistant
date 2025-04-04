@@ -1045,10 +1045,16 @@ class MedicalDictationApp(ttk.Window):
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 
-                # Schedule UI update on the main thread
+                # Store the values we need for database operations
+                soap_note = result
+                filename = os.path.basename(audio_path)
+                
+                # Schedule UI update on the main thread and save to database
                 self.after(0, lambda: [
-                    self._update_text_area(result, "SOAP note created", self.soap_button, self.soap_text),
-                    self.notebook.select(1)  # Switch to SOAP tab
+                    self._update_text_area(soap_note, "SOAP note created", self.soap_button, self.soap_text),
+                    self.notebook.select(1),  # Switch to SOAP tab
+                    # Save to database on the main thread
+                    self._save_soap_recording_to_database(filename, transcript, soap_note)
                 ])
             except concurrent.futures.TimeoutError:
                 self.after(0, lambda: [
@@ -1216,10 +1222,16 @@ class MedicalDictationApp(ttk.Window):
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 
-                # Schedule UI update on the main thread
+                # Store the values we need for database operations
+                soap_note = result
+                filename = os.path.basename(audio_path)
+                
+                # Schedule UI update on the main thread and save to database
                 self.after(0, lambda: [
-                    self._update_text_area(result, "SOAP note created", self.soap_button, self.soap_text),
-                    self.notebook.select(1)  # Switch to SOAP tab
+                    self._update_text_area(soap_note, "SOAP note created", self.soap_button, self.soap_text),
+                    self.notebook.select(1),  # Switch to SOAP tab
+                    # Save to database on the main thread
+                    self._save_soap_recording_to_database(filename, transcript, soap_note)
                 ])
             except concurrent.futures.TimeoutError:
                 self.after(0, lambda: [
@@ -1787,6 +1799,31 @@ class MedicalDictationApp(ttk.Window):
             error_msg = f"Error updating database: {str(db_error)}"
             logging.error(error_msg, exc_info=True)
             # Show error in the status bar
+            self.status_manager.error(error_msg)
+    
+    def _save_soap_recording_to_database(self, filename: str, transcript: str, soap_note: str) -> None:
+        """Save a SOAP recording to the database.
+        
+        Args:
+            filename: The filename of the recorded audio
+            transcript: The transcript from the recording
+            soap_note: The generated SOAP note content
+        """
+        try:
+            # Add a new recording to the database
+            new_id = self.db.add_recording(filename=filename, transcript=transcript, soap_note=soap_note)
+            
+            if new_id:
+                # Update the current recording ID to the newly created record
+                self.current_recording_id = new_id
+                logging.info(f"Saved SOAP recording to database with ID {new_id}")
+                self.status_manager.success(f"Recording saved to database")
+            else:
+                logging.warning("Failed to save SOAP recording to database")
+                self.status_manager.warning("Failed to save recording to database")
+        except Exception as db_error:
+            error_msg = f"Error saving to database: {str(db_error)}"
+            logging.error(error_msg, exc_info=True)
             self.status_manager.error(error_msg)
 
     def show_elevenlabs_settings(self) -> None:
