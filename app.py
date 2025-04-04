@@ -1089,8 +1089,13 @@ class MedicalDictationApp(ttk.Window):
                     storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                     os.makedirs(storage_folder, exist_ok=True)
                     
-                timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-                audio_path = os.path.join(storage_folder, f"soap_recording_{timestamp}.mp3")
+                # Create a user-friendly timestamp format: DD-MM-YY_HH-MM as requested
+                date_formatted = dt.now().strftime("%d-%m-%y")
+                time_formatted = dt.now().strftime("%H-%M")
+                
+                # Combine into a user-friendly filename
+                # Format: recording_DD-MM-YY_HH-MM.mp3
+                audio_path = os.path.join(storage_folder, f"recording_{date_formatted}_{time_formatted}.mp3")
                 
                 # Save the audio file
                 if audio_segment:
@@ -2756,10 +2761,62 @@ class MedicalDictationApp(ttk.Window):
                         recording = db_thread.get_recording(recording_id)
                         
                         if recording:
-                            # Use a simpler, more robust filename without characters that could cause issues
-                            # Use recording ID to ensure uniqueness
-                            timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-                            base_filename = f"recording_{recording_id}_{timestamp}"
+                            # Create a more user-friendly filename
+                            # Extract original recording date from the database timestamp
+                            try:
+                                # Parse the recording timestamp from the database
+                                db_timestamp = recording["timestamp"]
+                                if db_timestamp:
+                                    # Try to parse the timestamp in ISO format
+                                    try:
+                                        # First try direct parsing
+                                        recording_date = dt.fromisoformat(db_timestamp)
+                                    except (ValueError, TypeError):
+                                        # Fallback if the format is different
+                                        try:
+                                            # Try parsing with different formats
+                                            from datetime import datetime
+                                            formats_to_try = [
+                                                "%Y-%m-%d %H:%M:%S",  # Standard format
+                                                "%Y-%m-%d %H:%M:%S.%f",  # With microseconds
+                                                "%Y-%m-%dT%H:%M:%S",  # ISO-like format
+                                                "%Y-%m-%dT%H:%M:%S.%f"  # ISO with microseconds
+                                            ]
+                                            
+                                            for fmt in formats_to_try:
+                                                try:
+                                                    recording_date = dt.strptime(db_timestamp, fmt)
+                                                    break
+                                                except (ValueError, TypeError):
+                                                    continue
+                                            else:
+                                                # If loop completed without breaks, use current time
+                                                recording_date = dt.now()
+                                        except:
+                                            recording_date = dt.now()
+                                else:
+                                    recording_date = dt.now()
+                            except:
+                                # If any error occurs, use current time
+                                recording_date = dt.now()
+                                
+                            # Format the date in a readable way (YYYY-MM-DD)
+                            date_str = recording_date.strftime("%Y-%m-%d")
+                            
+                            # Extract original filename and clean it to use as part of the new filename
+                            original_filename = recording.get("filename", "").replace(".wav", "")
+                            # If the original filename is empty or None, use a generic name
+                            if not original_filename:
+                                original_filename = f"recording_{recording_id}"
+                            
+                            # Remove any problematic characters from the filename
+                            import re
+                            cleaned_filename = re.sub(r'[^\w\s-]', '', original_filename)[:40]
+                            cleaned_filename = cleaned_filename.strip().replace(' ', '_')
+                            
+                            # Create the base filename with date and cleaned original name
+                            # Format: YYYY-MM-DD_OriginalName_ID
+                            base_filename = f"{date_str}_{cleaned_filename}_{recording_id}"
                             
                             # Log each export operation
                             logging.info(f"Exporting recording ID {recording_id} to {export_dir}")
