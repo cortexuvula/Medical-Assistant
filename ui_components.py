@@ -193,10 +193,10 @@ class UIComponents:
         return mic_frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label
     
     def create_notebook(self) -> tuple:
-        """Create the notebook with tabs for transcript, soap note, and referral.
+        """Create the notebook with tabs for transcript, soap note, referral, and letter.
         
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text)
         """
         notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
         
@@ -204,11 +204,13 @@ class UIComponents:
         transcript_frame = ttk.Frame(notebook)
         soap_frame = ttk.Frame(notebook)
         referral_frame = ttk.Frame(notebook)
+        letter_frame = ttk.Frame(notebook)  # New letter frame
         
         # Add tabs to notebook
         notebook.add(transcript_frame, text="Transcript")
         notebook.add(soap_frame, text="SOAP Note")
         notebook.add(referral_frame, text="Referral")
+        notebook.add(letter_frame, text="Letter")  # New letter tab
         
         # Create text widgets for each tab - use relative sizing
         text_kwargs = {
@@ -227,7 +229,10 @@ class UIComponents:
         referral_text = tk.scrolledtext.ScrolledText(referral_frame, **text_kwargs)
         referral_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        return notebook, transcript_text, soap_text, referral_text
+        letter_text = tk.scrolledtext.ScrolledText(letter_frame, **text_kwargs)  # New letter text widget
+        letter_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        return notebook, transcript_text, soap_text, referral_text, letter_text
     
     def create_control_panel(self, command_map: Dict[str, Callable]) -> ttk.Frame:
         """Create the control panel with buttons for recording, editing, and AI features.

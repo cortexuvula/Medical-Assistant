@@ -22,7 +22,7 @@ def clear_all_content(app_instance):
     logging.info("Clearing all application content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text]:
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -57,7 +57,7 @@ def clear_text_only(app_instance):
     logging.info("Clearing all text content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text]:
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history

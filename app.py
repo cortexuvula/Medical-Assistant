@@ -624,7 +624,7 @@ class MedicalDictationApp(ttk.Window):
         self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
         
         # Create notebook with text areas - inside main_content with expand=True
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text = self.ui.create_notebook()
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text = self.ui.create_notebook()
         self.notebook.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         
         # Set initial active text widget and bind tab change event
@@ -1711,26 +1711,83 @@ class MedicalDictationApp(ttk.Window):
         
         def task() -> None:
             try:
-                # Generate letter using the imported AI function
-                letter = create_letter_with_ai(text, specs)
+                # Use our custom scheduler for status updates
+                self.schedule_status_update(3000, f"Still generating letter from {source_name}...", "progress")
+                self.schedule_status_update(10000, f"Processing letter (this may take a moment)...", "progress")
                 
-                # Update UI when done
+                # Log that we're starting letter generation
+                logging.info(f"Starting letter generation from {source_name} with specs: {specs}")
+                
+                # Import locally to avoid potential circular import
+                from ai import create_letter_with_ai
+                
+                # Use CPU executor for the AI processing which is CPU-intensive
+                future = self.cpu_executor.submit(create_letter_with_ai, text, specs)
+                
+                # Get result with a longer timeout to prevent hanging (5 minutes)
+                result = future.result(timeout=300)
+                
+                # Log the successful completion
+                logging.info("Successfully generated letter")
+                
+                # Check if result contains error message
+                if result.startswith("Error creating letter:"):
+                    raise Exception(result)
+                
+                # Schedule UI update on the main thread
                 self.after(0, lambda: [
-                    self._update_text_area(letter, f"Letter generated from {source_name}", self.letter_button, self.referral_text),
-                    self.notebook.select(2)  # Show letter in Referral tab
+                    self._update_text_area(result, f"Letter generated from {source_name}", self.letter_button, self.letter_text),
+                    self.notebook.select(3)  # Show letter in Letter tab (index 3)
+                ])
+                
+                # Store the generated letter and recording ID for database update
+                # We'll pass these to the main thread for database update
+                generated_letter = result
+                recording_id = self.current_recording_id
+                
+                # For database operations, schedule them on the main thread
+                if recording_id:
+                    # Schedule database update on main thread to avoid threading issues
+                    self.after(0, lambda: self._save_letter_to_database(recording_id, generated_letter))
+                        
+            except concurrent.futures.TimeoutError:
+                self.after(0, lambda: [
+                    self.status_manager.error("Letter creation timed out. Please try again."),
+                    self.letter_button.config(state=NORMAL),
+                    self.progress_bar.stop(),
+                    self.progress_bar.pack_forget()
                 ])
             except Exception as e:
                 error_msg = f"Error creating letter: {str(e)}"
                 logging.error(error_msg, exc_info=True)
                 self.after(0, lambda: [
-                    self.update_status(error_msg, status_type="error"),
+                    self.status_manager.error(error_msg),
                     self.letter_button.config(state=NORMAL),
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
 
-        # Use IO executor for the task since it involves UI coordination
-        self.executor.submit(task)
+        # Actually submit the task to be executed
+        self.io_executor.submit(task)
+
+    def _save_letter_to_database(self, recording_id: int, letter_text: str) -> None:
+        """Safely save letter to database from the main thread.
+        
+        Args:
+            recording_id: ID of the recording to update
+            letter_text: The generated letter text to save
+        """
+        try:
+            # This runs on the main thread, so it's safe to use the database connection
+            if self.db.update_recording(recording_id, letter=letter_text):
+                logging.info(f"Saved letter to database for recording ID {recording_id}")
+            else:
+                logging.warning(f"Failed to save letter to database - no rows updated for ID {recording_id}")
+        except Exception as db_error:
+            error_msg = f"Error updating database: {str(db_error)}"
+            logging.error(error_msg, exc_info=True)
+            # Show error in the status bar
+            self.status_manager.error(error_msg)
 
     def show_elevenlabs_settings(self) -> None:
         # Call the refactored function from dialogs.py
@@ -2418,74 +2475,112 @@ class MedicalDictationApp(ttk.Window):
             if not export_dir:
                 return
             
-            # Log the export directory selection
-            logging.info(f"Selected export directory: {export_dir}")
+            # Show a status message during export
+            status_label = ttk.Label(dialog, text="Exporting recordings... Please wait", foreground="blue")
+            status_label.pack(pady=5)
+            dialog.update()  # Force update of the UI
             
-            # Export each selected item
-            success_count = 0
+            # Create a list of recordings to export
+            export_items = []
             for item_id in selected_items:
                 item = tree.item(item_id)
                 recording_id = item["values"][0]
-                
-                try:
-                    recording = self.db.get_recording(recording_id)
-                    if recording:
-                        # Use a simpler, more robust filename without characters that could cause issues
-                        # Use recording ID to ensure uniqueness
-                        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-                        base_filename = f"recording_{recording_id}_{timestamp}"
-                        
-                        # Log each export operation
-                        logging.info(f"Exporting recording ID {recording_id} to {export_dir}")
-                        
-                        # Export each component that exists
-                        if recording["transcript"]:
-                            transcript_file = os.path.join(export_dir, f"{base_filename}_transcript.txt")
-                            try:
-                                with open(transcript_file, "w", encoding="utf-8") as f:
-                                    f.write(recording["transcript"])
-                                logging.info(f"Saved transcript to {transcript_file}")
-                            except Exception as file_err:
-                                logging.error(f"Error saving transcript file: {str(file_err)}")
-                        
-                        if recording["soap_note"]:
-                            soap_file = os.path.join(export_dir, f"{base_filename}_soap.txt")
-                            try:
-                                with open(soap_file, "w", encoding="utf-8") as f:
-                                    f.write(recording["soap_note"])
-                                logging.info(f"Saved SOAP note to {soap_file}")
-                            except Exception as file_err:
-                                logging.error(f"Error saving SOAP note file: {str(file_err)}")
-                        
-                        if recording["referral"]:
-                            referral_file = os.path.join(export_dir, f"{base_filename}_referral.txt")
-                            try:
-                                with open(referral_file, "w", encoding="utf-8") as f:
-                                    f.write(recording["referral"])
-                                logging.info(f"Saved referral to {referral_file}")
-                            except Exception as file_err:
-                                logging.error(f"Error saving referral file: {str(file_err)}")
-                        
-                        if recording["letter"]:
-                            letter_file = os.path.join(export_dir, f"{base_filename}_letter.txt")
-                            try:
-                                with open(letter_file, "w", encoding="utf-8") as f:
-                                    f.write(recording["letter"])
-                                logging.info(f"Saved letter to {letter_file}")
-                            except Exception as file_err:
-                                logging.error(f"Error saving letter file: {str(file_err)}")
-                        
-                        success_count += 1
-                except Exception as e:
-                    logging.error(f"Error exporting recording ID {recording_id}: {str(e)}")
-                    messagebox.showerror("Export Error", f"Error exporting recording ID {recording_id}: {str(e)}")
+                export_items.append(recording_id)
             
-            # Show success message
-            if success_count > 0:
-                messagebox.showinfo("Export Complete", 
-                                f"Successfully exported {success_count} recording(s) to {export_dir}")
-            else:
-                messagebox.showwarning("Export Warning", "No recordings were exported. Check the logs for details.")
+            # Perform the export in a background thread
+            def export_task():
+                # Log the export directory selection
+                logging.info(f"Selected export directory: {export_dir} for {len(export_items)} recordings")
+                
+                success_count = 0
+                error_messages = []
+                
+                # Export each selected item
+                for recording_id in export_items:
+                    try:
+                        recording = self.db.get_recording(recording_id)
+                        if recording:
+                            # Use a simpler, more robust filename without characters that could cause issues
+                            # Use recording ID to ensure uniqueness
+                            timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+                            base_filename = f"recording_{recording_id}_{timestamp}"
+                            
+                            # Log each export operation
+                            logging.info(f"Exporting recording ID {recording_id} to {export_dir}")
+                            
+                            # Export each component that exists
+                            if recording["transcript"]:
+                                transcript_file = os.path.join(export_dir, f"{base_filename}_transcript.txt")
+                                try:
+                                    with open(transcript_file, "w", encoding="utf-8") as f:
+                                        f.write(recording["transcript"])
+                                    logging.info(f"Saved transcript to {transcript_file}")
+                                except Exception as file_err:
+                                    logging.error(f"Error saving transcript file: {str(file_err)}")
+                                    error_messages.append(f"Error saving transcript for recording ID {recording_id}: {str(file_err)}")
+                            
+                            if recording["soap_note"]:
+                                soap_file = os.path.join(export_dir, f"{base_filename}_soap.txt")
+                                try:
+                                    with open(soap_file, "w", encoding="utf-8") as f:
+                                        f.write(recording["soap_note"])
+                                    logging.info(f"Saved SOAP note to {soap_file}")
+                                except Exception as file_err:
+                                    logging.error(f"Error saving SOAP note file: {str(file_err)}")
+                                    error_messages.append(f"Error saving SOAP note for recording ID {recording_id}: {str(file_err)}")
+                            
+                            if recording["referral"]:
+                                referral_file = os.path.join(export_dir, f"{base_filename}_referral.txt")
+                                try:
+                                    with open(referral_file, "w", encoding="utf-8") as f:
+                                        f.write(recording["referral"])
+                                    logging.info(f"Saved referral to {referral_file}")
+                                except Exception as file_err:
+                                    logging.error(f"Error saving referral file: {str(file_err)}")
+                                    error_messages.append(f"Error saving referral for recording ID {recording_id}: {str(file_err)}")
+                            
+                            if recording["letter"]:
+                                letter_file = os.path.join(export_dir, f"{base_filename}_letter.txt")
+                                try:
+                                    with open(letter_file, "w", encoding="utf-8") as f:
+                                        f.write(recording["letter"])
+                                    logging.info(f"Saved letter to {letter_file}")
+                                except Exception as file_err:
+                                    logging.error(f"Error saving letter file: {str(file_err)}")
+                                    error_messages.append(f"Error saving letter for recording ID {recording_id}: {str(file_err)}")
+                            
+                            success_count += 1
+                    except Exception as e:
+                        error_msg = f"Error exporting recording ID {recording_id}: {str(e)}"
+                        logging.error(error_msg)
+                        error_messages.append(error_msg)
+                
+                # Use after to update UI from the main thread
+                self.after(0, lambda: update_ui_after_export(success_count, error_messages))
+            
+            # Update UI after export is complete
+            def update_ui_after_export(success_count, error_messages):
+                # Remove the status label
+                status_label.pack_forget()
+                dialog.update()
+                
+                # Show success message
+                if success_count > 0:
+                    messagebox.showinfo("Export Complete", 
+                                    f"Successfully exported {success_count} recording(s) to {export_dir}")
+                
+                # Show error message if there were any errors
+                if error_messages:
+                    combined_errors = "\n".join(error_messages[:5])  # Show first 5 errors
+                    if len(error_messages) > 5:
+                        combined_errors += f"\n...and {len(error_messages) - 5} more errors."
+                    messagebox.showwarning("Export Warning", 
+                                        f"There were {len(error_messages)} errors during export:\n{combined_errors}")
+                elif success_count == 0:
+                    messagebox.showwarning("Export Warning", "No recordings were exported. Check the logs for details.")
+            
+            # Start the export task in a background thread
+            self.io_executor.submit(export_task)
         
         # Bind export button
         export_button.config(command=export_selected_recordings)
