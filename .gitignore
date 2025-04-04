@@ -192,3 +192,6 @@ settings.json
 # Exported files
 exports/*
 exports
+
+# Database
+database.db
