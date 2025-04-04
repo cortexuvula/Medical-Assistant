@@ -37,6 +37,11 @@ def clear_all_content(app_instance):
     if hasattr(app_instance, "soap_audio_segments"):
         app_instance.soap_audio_segments = []
     
+    # Reset the current recording ID - this ensures we don't update the wrong database record
+    if hasattr(app_instance, "current_recording_id"):
+        app_instance.current_recording_id = None
+        logging.info("Reset current recording ID")
+    
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
         app_instance.update_status("All content cleared", "info")

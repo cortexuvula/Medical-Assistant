@@ -19,6 +19,7 @@ import numpy as np
 from pydub import AudioSegment
 from datetime import datetime as dt
 from cleanup_utils import clear_all_content
+from database import Database
 
 # Set up logging configuration
 def setup_logging():
@@ -377,6 +378,7 @@ class MedicalDictationApp(ttk.Window):
         self.soap_combine_threshold = 100 # Combine every N pending segments
         self.soap_stop_listening_function = None
         self.listening = False  # Initialize listening flag for recording state
+        self.current_recording_id = None  # Track the ID of the currently loaded recording
 
         # Create UI using the component builder
         self.ui = UIComponents(self)
@@ -403,12 +405,17 @@ class MedicalDictationApp(ttk.Window):
         # Add a list to track all scheduled status updates
         self.status_timers = []
         self.status_timer = None
+        
+        # Initialize database
+        self.db = Database()
+        self.db.create_tables()
 
     def create_menu(self) -> None:
         menubar = tk.Menu(self)
         filemenu = tk.Menu(menubar, tearoff=0)
         filemenu.add_command(label="New", command=self.new_session, accelerator="Ctrl+N")
         filemenu.add_command(label="Save", command=self.save_text, accelerator="Ctrl+S")
+        filemenu.add_command(label="View Recordings", command=self.show_recordings_dialog)
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
@@ -1138,6 +1145,36 @@ class MedicalDictationApp(ttk.Window):
         target_widget.delete("1.0", tk.END)
         target_widget.insert(tk.END, new_text)
         target_widget.edit_separator()
+        
+        # Update database if we have a current recording and this is one of the main content areas
+        if self.current_recording_id is not None:
+            try:
+                # Determine which field to update based on the target widget
+                field_name = None
+                if target_widget == self.soap_text:
+                    field_name = 'soap_note'
+                elif target_widget == self.referral_text:
+                    field_name = 'referral'
+                elif target_widget == self.letter_text:
+                    field_name = 'letter'
+                elif target_widget == self.transcript_text:
+                    field_name = 'transcript'
+                
+                # Update database if we identified a field to update
+                if field_name:
+                    # Create kwargs dictionary with just the field to update
+                    update_kwargs = {field_name: new_text}
+                    
+                    # Update the database
+                    if self.db.update_recording(self.current_recording_id, **update_kwargs):
+                        logging.info(f"Updated recording ID {self.current_recording_id} with new {field_name}")
+                        # Add database update confirmation to success message
+                        success_message = f"{success_message} and saved to database"
+                    else:
+                        logging.warning(f"Failed to update recording ID {self.current_recording_id} with {field_name}")
+            except Exception as e:
+                logging.error(f"Error updating database: {str(e)}", exc_info=True)
+        
         self.status_manager.success(success_message)
         button.config(state=NORMAL)
         self.status_manager.show_progress(False)
@@ -2029,12 +2066,22 @@ class MedicalDictationApp(ttk.Window):
                 self.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
                 self.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
                 
+                # Log that we're waiting for result
+                logging.info(f"Starting referral generation for conditions: {focus}")
+                
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.cpu_executor.submit(create_referral_with_openai, transcript, focus)
                 
-                # Get result with timeout to prevent hanging
-                result = future.result(timeout=120)
+                # Get result with a longer timeout to prevent hanging (5 minutes instead of 2)
+                result = future.result(timeout=300)
                 
+                # Log the successful completion
+                logging.info(f"Successfully generated referral for conditions: {focus}")
+                
+                # Check if result contains error message
+                if result.startswith("Error creating referral:"):
+                    raise Exception(result)
+                    
                 # Schedule UI update on the main thread
                 self.after(0, lambda: [
                     self._update_text_area(result, f"Referral created for: {focus}", self.referral_button, self.referral_text),
@@ -2056,8 +2103,8 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
-
-        # Use I/O executor for task management since it involves UI coordination
+        
+        # Actually submit the task to be executed
         self.io_executor.submit(task)
 
     def load_audio_file(self) -> None:
@@ -2091,11 +2138,20 @@ class MedicalDictationApp(ttk.Window):
                     
                     # Handle transcript result
                     if transcript:
+                        # Add to database
+                        filename = os.path.basename(file_path)
+                        try:
+                            recording_id = self.db.add_recording(filename=filename, transcript=transcript)
+                            self.current_recording_id = recording_id  # Track the current recording ID
+                            logging.info(f"Added recording to database with ID: {recording_id}")
+                        except Exception as db_err:
+                            logging.error(f"Failed to add to database: {str(db_err)}", exc_info=True)
+                        
                         # Always append to transcript_text widget and switch to transcript tab
                         self.after(0, lambda: [
                             self.append_text_to_widget(transcript, self.transcript_text),
                             self.notebook.select(0),  # Switch to transcript tab (index 0)
-                            self.status_manager.success(f"Audio file processed: {os.path.basename(file_path)}"),
+                            self.status_manager.success(f"Audio file processed and saved to database: {filename}"),
                             self.progress_bar.stop(),
                             self.progress_bar.pack_forget()
                         ])
@@ -2121,11 +2177,327 @@ class MedicalDictationApp(ttk.Window):
 
     def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
         current = widget.get("1.0", "end-1c")
-        if (self.capitalize_next or not current or current[-1] in ".!?") and text:
+        if self.capitalize_next and text:
             text = text[0].upper() + text[1:]
             self.capitalize_next = False
         widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
         widget.see(tk.END)
+        
+    def show_recordings_dialog(self) -> None:
+        """Show a dialog with all recordings from the database"""
+        dialog = create_toplevel_dialog(self, "Recordings Database", "1000x600")
+        
+        # Create a frame for the top controls
+        controls_frame = ttk.Frame(dialog)
+        controls_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Add a search entry
+        ttk.Label(controls_frame, text="Search:").pack(side="left", padx=(0, 5))
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(controls_frame, textvariable=search_var, width=30)
+        search_entry.pack(side="left", padx=(0, 10))
+        
+        # Add a refresh button
+        refresh_button = ttk.Button(controls_frame, text="🔄 Refresh", bootstyle="outline")
+        refresh_button.pack(side="right", padx=5)
+        
+        # Create a frame for the Treeview
+        tree_frame = ttk.Frame(dialog)
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # Create scrollbars
+        y_scrollbar = ttk.Scrollbar(tree_frame)
+        y_scrollbar.pack(side="right", fill="y")
+        
+        x_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal")
+        x_scrollbar.pack(side="bottom", fill="x")
+        
+        # Create the Treeview
+        columns = ("id", "filename", "timestamp", "has_transcript", "has_soap", "has_referral", "has_letter")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", 
+                           yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+        
+        # Configure scrollbars
+        y_scrollbar.config(command=tree.yview)
+        x_scrollbar.config(command=tree.xview)
+        
+        # Define column headings and widths
+        tree.heading("id", text="ID", anchor="center")
+        tree.heading("filename", text="Filename", anchor="center")
+        tree.heading("timestamp", text="Date/Time", anchor="center")
+        tree.heading("has_transcript", text="Transcript", anchor="center")
+        tree.heading("has_soap", text="SOAP Note", anchor="center")
+        tree.heading("has_referral", text="Referral", anchor="center")
+        tree.heading("has_letter", text="Letter", anchor="center")
+        
+        # Set column widths and alignment
+        tree.column("id", width=60, minwidth=60, anchor="center")
+        tree.column("filename", width=300, minwidth=200, anchor="center")
+        tree.column("timestamp", width=180, minwidth=150, anchor="center")
+        tree.column("has_transcript", width=100, minwidth=80, anchor="center")
+        tree.column("has_soap", width=100, minwidth=80, anchor="center")
+        tree.column("has_referral", width=100, minwidth=80, anchor="center")
+        tree.column("has_letter", width=100, minwidth=80, anchor="center")
+        
+        tree.pack(fill="both", expand=True)
+        
+        # Create a frame for the buttons
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Add buttons
+        load_button = ttk.Button(button_frame, text="Load Selected", bootstyle="primary")
+        load_button.pack(side="left", padx=5)
+        
+        delete_button = ttk.Button(button_frame, text="Delete Selected", bootstyle="danger")
+        delete_button.pack(side="left", padx=5)
+        
+        export_button = ttk.Button(button_frame, text="Export Selected", bootstyle="success")
+        export_button.pack(side="left", padx=5)
+        
+        close_button = ttk.Button(button_frame, text="Close", command=dialog.destroy)
+        close_button.pack(side="right", padx=5)
+        
+        # Create a function to load records from the database
+        def load_recordings(search_term=None):
+            # Clear existing items
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            try:
+                # Get recordings from database
+                if search_term:
+                    recordings = self.db.search_recordings(search_term)
+                else:
+                    recordings = self.db.get_all_recordings()
+                
+                # Insert records into the treeview
+                for rec in recordings:
+                    # Check if each field has content
+                    has_transcript = "✓" if rec["transcript"] else "-"
+                    has_soap = "✓" if rec["soap_note"] else "-"
+                    has_referral = "✓" if rec["referral"] else "-"
+                    has_letter = "✓" if rec["letter"] else "-"
+                    
+                    # Format timestamp
+                    timestamp = rec["timestamp"]
+                    if timestamp:
+                        # Try to convert string timestamp to datetime if needed
+                        if isinstance(timestamp, str):
+                            try:
+                                dt_obj = dt.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                formatted_time = dt_obj.strftime("%Y-%m-%d %H:%M")
+                            except ValueError:
+                                formatted_time = timestamp
+                        else:
+                            formatted_time = timestamp.strftime("%Y-%m-%d %H:%M")
+                    else:
+                        formatted_time = "-"
+                    
+                    tree.insert("", tk.END, values=(rec["id"], rec["filename"], formatted_time, 
+                                              has_transcript, has_soap, has_referral, has_letter))
+            except Exception as e:
+                messagebox.showerror("Database Error", f"Error loading recordings: {str(e)}")
+        
+        # Function to handle search
+        def on_search(*args):
+            search_term = search_var.get().strip()
+            if search_term:
+                load_recordings(search_term)
+            else:
+                load_recordings()
+        
+        # Bind search entry to search function
+        search_var.trace("w", on_search)
+        
+        # Function to refresh the list
+        def refresh_recordings():
+            search_var.set("")  # Clear search
+            load_recordings()
+        
+        # Bind refresh button
+        refresh_button.config(command=refresh_recordings)
+        
+        # Function to load a selected recording
+        def load_selected_recording():
+            selected_items = tree.selection()
+            if not selected_items:
+                messagebox.showinfo("Selection", "Please select a recording to load")
+                return
+            
+            # Get the first selected item's ID
+            item = tree.item(selected_items[0])
+            recording_id = item["values"][0]
+            
+            try:
+                # Get the recording from the database
+                recording = self.db.get_recording(recording_id)
+                if recording:
+                    # Clear current content
+                    clear_all_content(self)
+                    
+                    # Set the current recording ID
+                    self.current_recording_id = recording_id
+                    
+                    # Load transcript if available
+                    if recording["transcript"]:
+                        self.append_text_to_widget(recording["transcript"], self.transcript_text)
+                        
+                    # Load SOAP note if available
+                    if recording["soap_note"]:
+                        self.append_text_to_widget(recording["soap_note"], self.soap_text)
+                    
+                    # Load referral if available
+                    if recording["referral"]:
+                        self.append_text_to_widget(recording["referral"], self.referral_text)
+                    
+                    # Load letter if available
+                    if recording["letter"]:
+                        self.append_text_to_widget(recording["letter"], self.letter_text)
+                    
+                    # Close the dialog
+                    dialog.destroy()
+                    
+                    # Show success message
+                    self.status_manager.success(f"Loaded recording: {recording['filename']}")
+                else:
+                    messagebox.showerror("Error", f"Recording ID {recording_id} not found")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error loading recording: {str(e)}")
+        
+        # Bind load button
+        load_button.config(command=load_selected_recording)
+        
+        # Function to delete selected recordings
+        def delete_selected_recordings():
+            selected_items = tree.selection()
+            if not selected_items:
+                messagebox.showinfo("Selection", "Please select recordings to delete")
+                return
+            
+            # Confirm deletion
+            count = len(selected_items)
+            if not messagebox.askyesno("Confirm Deletion", 
+                                    f"Are you sure you want to delete {count} recording(s)?"):
+                return
+            
+            # Delete each selected item
+            success_count = 0
+            for item_id in selected_items:
+                item = tree.item(item_id)
+                recording_id = item["values"][0]
+                
+                try:
+                    if self.db.delete_recording(recording_id):
+                        success_count += 1
+                    else:
+                        logging.warning(f"Failed to delete recording ID {recording_id}")
+                except Exception as e:
+                    logging.error(f"Error deleting recording ID {recording_id}: {str(e)}")
+            
+            # Refresh the list
+            refresh_recordings()
+            
+            # Show success message
+            if success_count > 0:
+                messagebox.showinfo("Deletion Complete", 
+                                f"Successfully deleted {success_count} recording(s)")
+        
+        # Bind delete button
+        delete_button.config(command=delete_selected_recordings)
+        
+        # Function to export selected recordings
+        def export_selected_recordings():
+            selected_items = tree.selection()
+            if not selected_items:
+                messagebox.showinfo("Selection", "Please select recordings to export")
+                return
+            
+            # Ask for export directory
+            export_dir = filedialog.askdirectory(title="Select Export Directory")
+            if not export_dir:
+                return
+            
+            # Log the export directory selection
+            logging.info(f"Selected export directory: {export_dir}")
+            
+            # Export each selected item
+            success_count = 0
+            for item_id in selected_items:
+                item = tree.item(item_id)
+                recording_id = item["values"][0]
+                
+                try:
+                    recording = self.db.get_recording(recording_id)
+                    if recording:
+                        # Use a simpler, more robust filename without characters that could cause issues
+                        # Use recording ID to ensure uniqueness
+                        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+                        base_filename = f"recording_{recording_id}_{timestamp}"
+                        
+                        # Log each export operation
+                        logging.info(f"Exporting recording ID {recording_id} to {export_dir}")
+                        
+                        # Export each component that exists
+                        if recording["transcript"]:
+                            transcript_file = os.path.join(export_dir, f"{base_filename}_transcript.txt")
+                            try:
+                                with open(transcript_file, "w", encoding="utf-8") as f:
+                                    f.write(recording["transcript"])
+                                logging.info(f"Saved transcript to {transcript_file}")
+                            except Exception as file_err:
+                                logging.error(f"Error saving transcript file: {str(file_err)}")
+                        
+                        if recording["soap_note"]:
+                            soap_file = os.path.join(export_dir, f"{base_filename}_soap.txt")
+                            try:
+                                with open(soap_file, "w", encoding="utf-8") as f:
+                                    f.write(recording["soap_note"])
+                                logging.info(f"Saved SOAP note to {soap_file}")
+                            except Exception as file_err:
+                                logging.error(f"Error saving SOAP note file: {str(file_err)}")
+                        
+                        if recording["referral"]:
+                            referral_file = os.path.join(export_dir, f"{base_filename}_referral.txt")
+                            try:
+                                with open(referral_file, "w", encoding="utf-8") as f:
+                                    f.write(recording["referral"])
+                                logging.info(f"Saved referral to {referral_file}")
+                            except Exception as file_err:
+                                logging.error(f"Error saving referral file: {str(file_err)}")
+                        
+                        if recording["letter"]:
+                            letter_file = os.path.join(export_dir, f"{base_filename}_letter.txt")
+                            try:
+                                with open(letter_file, "w", encoding="utf-8") as f:
+                                    f.write(recording["letter"])
+                                logging.info(f"Saved letter to {letter_file}")
+                            except Exception as file_err:
+                                logging.error(f"Error saving letter file: {str(file_err)}")
+                        
+                        success_count += 1
+                except Exception as e:
+                    logging.error(f"Error exporting recording ID {recording_id}: {str(e)}")
+                    messagebox.showerror("Export Error", f"Error exporting recording ID {recording_id}: {str(e)}")
+            
+            # Show success message
+            if success_count > 0:
+                messagebox.showinfo("Export Complete", 
+                                f"Successfully exported {success_count} recording(s) to {export_dir}")
+            else:
+                messagebox.showwarning("Export Warning", "No recordings were exported. Check the logs for details.")
+        
+        # Bind export button
+        export_button.config(command=export_selected_recordings)
+        
+        # Double-click on item to load it
+        tree.bind("<Double-1>", lambda event: load_selected_recording())
+        
+        # Initial load of recordings
+        load_recordings()
+        
+        # Set focus to search entry
+        search_entry.focus_set()
 
     def view_logs(self) -> None:
         """Open the logs directory in file explorer or view log contents"""
