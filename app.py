@@ -1335,7 +1335,21 @@ class MedicalDictationApp(ttk.Window):
         self.status_manager.show_progress(False)
 
     def get_active_text_widget(self) -> tk.Widget:
-        return self.active_text_widget
+        # Get the currently selected tab index
+        selected_tab = self.notebook.index('current')
+        
+        # Return the appropriate text widget based on the selected tab
+        if selected_tab == 0:  # Transcript tab
+            return self.transcript_text
+        elif selected_tab == 1:  # SOAP Note tab
+            return self.soap_text
+        elif selected_tab == 2:  # Referral tab
+            return self.referral_text
+        elif selected_tab == 3:  # Letter tab
+            return self.letter_text
+        else:
+            # Default to transcript text if for some reason we can't determine the active tab
+            return self.transcript_text
 
     def refine_text(self) -> None:
         active_widget = self.get_active_text_widget()
