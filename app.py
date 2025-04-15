@@ -1196,7 +1196,7 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Store the values we need for database operations
                 soap_note = result
-                filename = os.path.basename(audio_path)
+                filename = "Transcript"
                 
                 # Schedule UI update on the main thread and save to database
                 self.after(0, lambda: [
@@ -1387,7 +1387,7 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Store the values we need for database operations
                 soap_note = result
-                filename = os.path.basename(audio_path)
+                filename = "Transcript"
                 
                 # Schedule UI update on the main thread and save to database
                 self.after(0, lambda: [
