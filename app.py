@@ -537,7 +537,14 @@ class MedicalDictationApp(ttk.Window):
         
         # Create microphone selection variable
         mic_var = tk.StringVar(prefix_dialog)
-        if available_mics:
+        
+        # Get the currently selected microphone from settings
+        selected_mic = SETTINGS.get("selected_microphone", "")
+        
+        # Set the dropdown to the currently selected microphone if available
+        if selected_mic and selected_mic in available_mics:
+            mic_var.set(selected_mic)
+        elif available_mics:
             mic_var.set(available_mics[0])
         
         # Create dropdown menu
