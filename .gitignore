@@ -195,3 +195,5 @@ exports
 
 # Database
 database.db
+
+prefix_audio.mp3

@@ -18,6 +18,7 @@ import threading
 import numpy as np
 from pydub import AudioSegment
 from datetime import datetime as dt
+import tempfile
 from cleanup_utils import clear_all_content
 from database import Database
 
@@ -441,6 +442,7 @@ class MedicalDictationApp(ttk.Window):
         settings_menu.add_command(label="Export Prompts", command=self.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.import_prompts)
         settings_menu.add_command(label="Set Storage Folder", command=self.set_default_folder)
+        settings_menu.add_command(label="Record Prefix Audio", command=self.record_prefix_audio)
         settings_menu.add_command(label="Toggle Theme", command=self.toggle_theme)  # NEW: Add toggle theme option
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
@@ -508,6 +510,188 @@ class MedicalDictationApp(ttk.Window):
             recognition_language=self.recognition_language
         )
         self.status_manager.success("ElevenLabs settings saved successfully")
+        
+    def record_prefix_audio(self) -> None:
+        """Shows a dialog to record and save a prefix audio file."""
+        # Create a toplevel dialog for prefix audio recording
+        prefix_dialog = create_toplevel_dialog(self, "Record Prefix Audio", "600x400")
+        
+        # Create instruction label
+        instruction_text = "This audio will be prepended to all recordings before sending to the STT provider.\n"
+        instruction_text += "Record a short introduction or context that you want to include at the beginning of all your dictations."
+        ttk.Label(prefix_dialog, text=instruction_text, wraplength=550).pack(pady=(20, 10))
+        
+        # Status variable and label
+        status_var = tk.StringVar(value="Ready to record")
+        status_label = ttk.Label(prefix_dialog, textvariable=status_var)
+        status_label.pack(pady=10)
+        
+        # Create microphone selection dropdown
+        mic_frame = ttk.Frame(prefix_dialog)
+        mic_frame.pack(pady=5, fill="x", padx=20)
+        
+        ttk.Label(mic_frame, text="Select Microphone:").pack(side="left", padx=(0, 10))
+        
+        # Get available microphones
+        available_mics = get_valid_microphones()
+        
+        # Create microphone selection variable
+        mic_var = tk.StringVar(prefix_dialog)
+        if available_mics:
+            mic_var.set(available_mics[0])
+        
+        # Create dropdown menu
+        mic_dropdown = ttk.Combobox(mic_frame, textvariable=mic_var, width=40)
+        mic_dropdown["values"] = available_mics
+        mic_dropdown.pack(side="left", fill="x", expand=True)
+        
+        # Create frame for buttons
+        button_frame = ttk.Frame(prefix_dialog)
+        button_frame.pack(pady=10)
+        
+        # Recording state variables
+        recording_active = False
+        stop_recording_func = None
+        preview_segment = None
+        
+        # Path to the prefix audio file
+        prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
+        
+        # Function to handle audio data from recording
+        def on_audio_data(audio_data):
+            nonlocal preview_segment
+            try:
+                # Process the audio data into a segment
+                segment, _ = self.audio_handler.process_audio_data(audio_data)
+                if segment:
+                    preview_segment = segment
+                    status_var.set("Recording captured! You can now preview or save it.")
+                    preview_button.config(state=NORMAL)
+                    save_button.config(state=NORMAL)
+            except Exception as e:
+                logging.error(f"Error processing prefix audio: {e}", exc_info=True)
+                status_var.set(f"Error: {str(e)}")
+        
+        # Function to start recording
+        def start_recording():
+            nonlocal recording_active, stop_recording_func
+            if recording_active:
+                return
+                
+            # Get the selected microphone
+            mic_name = mic_var.get()
+            if not mic_name:
+                status_var.set("Error: No microphone selected")
+                return
+                
+            try:
+                # Start recording
+                recording_active = True
+                status_var.set("Recording... speak now")
+                record_button.config(state=DISABLED)
+                stop_button.config(state=NORMAL)
+                preview_button.config(state=DISABLED)
+                save_button.config(state=DISABLED)
+                
+                # Use the audio handler to start listening
+                stop_recording_func = self.audio_handler.listen_in_background(
+                    mic_name, 
+                    on_audio_data,
+                    phrase_time_limit=10  # Limit to 10 seconds for prefix
+                )
+            except Exception as e:
+                recording_active = False
+                logging.error(f"Error starting prefix recording: {e}", exc_info=True)
+                status_var.set(f"Error: {str(e)}")
+                record_button.config(state=NORMAL)
+                stop_button.config(state=DISABLED)
+        
+        # Function to stop recording
+        def stop_recording():
+            nonlocal recording_active, stop_recording_func
+            if not recording_active or not stop_recording_func:
+                return
+                
+            try:
+                # Stop the recording
+                stop_recording_func()
+                recording_active = False
+                stop_recording_func = None
+                status_var.set("Recording stopped")
+                record_button.config(state=NORMAL)
+                stop_button.config(state=DISABLED)
+            except Exception as e:
+                logging.error(f"Error stopping prefix recording: {e}", exc_info=True)
+                status_var.set(f"Error: {str(e)}")
+        
+        # Function to preview the recorded audio
+        def preview_audio():
+            nonlocal preview_segment
+            if not preview_segment:
+                status_var.set("No recording to preview")
+                return
+                
+            try:
+                # Create a temporary file for preview
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+                    preview_segment.export(temp_file.name, format="mp3")
+                    # Open the file with the default audio player
+                    os.startfile(temp_file.name)
+                status_var.set("Playing preview")
+            except Exception as e:
+                logging.error(f"Error previewing audio: {e}", exc_info=True)
+                status_var.set(f"Error previewing: {str(e)}")
+        
+        # Function to save the recorded audio
+        def save_audio():
+            nonlocal preview_segment
+            if not preview_segment:
+                status_var.set("No recording to save")
+                return
+                
+            try:
+                # Export the audio segment to the application directory
+                preview_segment.export(prefix_audio_path, format="mp3")
+                status_var.set(f"Prefix audio saved successfully to {prefix_audio_path}")
+                self.status_manager.success("Prefix audio saved successfully")
+                prefix_dialog.destroy()
+            except Exception as e:
+                logging.error(f"Error saving prefix audio: {e}", exc_info=True)
+                status_var.set(f"Error saving: {str(e)}")
+        
+        # Add buttons
+        record_button = ttk.Button(button_frame, text="Record", command=start_recording)
+        record_button.pack(side=tk.LEFT, padx=5)
+        
+        stop_button = ttk.Button(button_frame, text="Stop", command=stop_recording, state=DISABLED)
+        stop_button.pack(side=tk.LEFT, padx=5)
+        
+        preview_button = ttk.Button(button_frame, text="Preview", command=preview_audio, state=DISABLED)
+        preview_button.pack(side=tk.LEFT, padx=5)
+        
+        save_button = ttk.Button(button_frame, text="Save", command=save_audio, state=DISABLED)
+        save_button.pack(side=tk.LEFT, padx=5)
+        
+        # Add cancel button
+        ttk.Button(prefix_dialog, text="Cancel", command=prefix_dialog.destroy).pack(pady=20)
+        
+        # Check if prefix audio already exists and show info
+        if os.path.exists(prefix_audio_path):
+            file_info = f"Existing prefix audio found. Recording will replace the current file."
+            ttk.Label(prefix_dialog, text=file_info, foreground="blue").pack(pady=10)
+            
+            # Add button to delete existing prefix
+            def delete_prefix():
+                try:
+                    os.remove(prefix_audio_path)
+                    status_var.set("Existing prefix audio deleted")
+                    delete_button.config(state=DISABLED)
+                except Exception as e:
+                    logging.error(f"Error deleting prefix audio: {e}", exc_info=True)
+                    status_var.set(f"Error deleting: {str(e)}")
+            
+            delete_button = ttk.Button(prefix_dialog, text="Delete Existing Prefix", command=delete_prefix)
+            delete_button.pack(pady=5)
 
     def show_deepgram_settings(self) -> None:
         """Show dialog to configure Deepgram settings."""
@@ -1123,54 +1307,17 @@ class MedicalDictationApp(ttk.Window):
                     self.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
                 
-                # Try transcription with the selected STT provider first, then fall back to others
-                transcript = None
+                # Try transcription with the unified transcribe_audio method that handles prefix audio
+                self.after(0, lambda: self.status_manager.progress("Transcribing SOAP audio with prefix..."))
                 
-                # Get the currently selected STT provider from settings
-                from settings import SETTINGS
-                selected_provider = SETTINGS.get("stt_provider", "groq").lower()
+                # Use the transcribe_audio method which already handles prefix audio and fallbacks
+                transcript = self.audio_handler.transcribe_audio(audio_segment)
                 
-                # Log the selected provider
-                logging.info(f"Using selected STT provider: {selected_provider}")
-                
-                # Try the selected provider first
-                if selected_provider == "elevenlabs" and self.elevenlabs_api_key:
-                    self.after(0, lambda: self.status_manager.progress("Transcribing with ElevenLabs..."))
-                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "elevenlabs")
-                elif selected_provider == "deepgram" and self.deepgram_api_key:
-                    self.after(0, lambda: self.status_manager.progress("Transcribing with Deepgram..."))
-                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "deepgram")
-                elif selected_provider == "groq" and self.groq_api_key:
-                    self.after(0, lambda: self.status_manager.progress("Transcribing with GROQ..."))
-                    transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "groq")
-                
-                # If the selected provider failed or isn't available, try the others as fallbacks
-                if not transcript:
-                    self.after(0, lambda: self.status_manager.progress("Selected provider failed, trying alternatives..."))
-                    
-                    # Try in order of reliability: ElevenLabs, Deepgram, GROQ, Whisper
-                    if selected_provider != "elevenlabs" and self.elevenlabs_api_key:
-                        self.after(0, lambda: self.status_manager.progress("Trying ElevenLabs as fallback..."))
-                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "elevenlabs")
-                    
-                    if not transcript and selected_provider != "deepgram" and self.deepgram_api_key:
-                        self.after(0, lambda: self.status_manager.progress("Trying Deepgram as fallback..."))
-                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "deepgram")
-                        
-                    if not transcript and selected_provider != "groq" and self.groq_api_key:
-                        self.after(0, lambda: self.status_manager.progress("Trying GROQ as fallback..."))
-                        transcript = self.audio_handler._try_transcription_with_provider(audio_segment, "groq")
-                    
-                    # Try Whisper as a last resort
-                    if not transcript and hasattr(self.audio_handler, "whisper_available") and self.audio_handler.whisper_available:
-                        self.after(0, lambda: self.status_manager.progress("Trying local Whisper model as last resort..."))
-                        logging.info("Trying local Whisper model as last resort")
-                        # Check if the method exists before trying to call it
-                        if hasattr(self.audio_handler, "_transcribe_with_whisper"):
-                            transcript = self.audio_handler._transcribe_with_whisper(audio_segment)
-                        else:
-                            logging.warning("Whisper transcription method not available in AudioHandler")
-                
+                # Log the result
+                if transcript:
+                    logging.info("Successfully transcribed SOAP audio with prefix")
+                else:
+                    logging.warning("Failed to transcribe SOAP audio with any provider")
                 # If all transcription methods failed
                 if not transcript:
                     raise ValueError("All transcription methods failed - no text recognized")

@@ -149,6 +149,24 @@ class AudioHandler:
         Returns:
             Transcription text or empty string if transcription failed
         """
+        # Check if there's a prefix audio file to prepend
+        prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
+        if os.path.exists(prefix_audio_path):
+            try:
+                # Load the prefix audio
+                logging.info(f"Found prefix audio at {prefix_audio_path}, prepending to recording")
+                prefix_segment = AudioSegment.from_file(prefix_audio_path)
+                
+                # Prepend the prefix audio to the segment
+                combined_segment = prefix_segment + segment
+                
+                # Use the combined segment for transcription
+                segment = combined_segment
+                logging.info(f"Successfully prepended prefix audio (length: {len(prefix_segment)}ms) to recording")
+            except Exception as e:
+                logging.error(f"Error prepending prefix audio: {e}", exc_info=True)
+                # Continue with original segment if there's an error
+        
         # Get the selected STT provider from settings
         primary_provider = SETTINGS.get("stt_provider", "deepgram")
         
