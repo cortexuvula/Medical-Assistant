@@ -661,21 +661,38 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     ollama_select_button = ttk.Button(ollama_frame, text="Select Model", command=select_ollama_model)
     ollama_select_button.pack(side=tk.RIGHT, padx=(5, 0))
     
-    # Try to pre-populate all models
-    openai_models = get_openai_models()
-    if openai_models:
-        openai_entry.delete(0, tk.END)
-        openai_entry.insert(0, openai_models[0])
+    # Initialize model entries with previously stored values first, fall back to defaults if not available
+    # OpenAI model
+    openai_entry.delete(0, tk.END)
+    if current_model:  # Use stored model if available
+        openai_entry.insert(0, current_model)
+    else:  # Otherwise use default from config/default dict or hard-coded default
+        default_openai = config.get("model", default.get("model", "gpt-3.5-turbo"))
+        openai_entry.insert(0, default_openai)
     
-    perplexity_models = get_perplexity_models()
-    if perplexity_models:
-        perplexity_entry.delete(0, tk.END)
-        perplexity_entry.insert(0, perplexity_models[0])
+    # Perplexity model
+    perplexity_entry.delete(0, tk.END)
+    if current_perplexity:  # Use stored model if available
+        perplexity_entry.insert(0, current_perplexity)
+    else:  # Otherwise use default from config/default dict or hard-coded default
+        default_perplexity = config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro"))
+        perplexity_entry.insert(0, default_perplexity)
     
-    grok_models = get_grok_models()
-    if grok_models:
-        grok_entry.delete(0, tk.END)
-        grok_entry.insert(0, grok_models[0])
+    # Grok model
+    grok_entry.delete(0, tk.END)
+    if current_grok:  # Use stored model if available
+        grok_entry.insert(0, current_grok)
+    else:  # Otherwise use default from config/default dict or hard-coded default
+        default_grok = config.get("grok_model", default.get("grok_model", "grok-1"))
+        grok_entry.insert(0, default_grok)
+    
+    # Ollama model
+    ollama_entry.delete(0, tk.END)
+    if current_ollama:  # Use stored model if available
+        ollama_entry.insert(0, current_ollama)
+    else:  # Otherwise use default from config/default dict or hard-coded default
+        default_ollama = config.get("ollama_model", default.get("ollama_model", "llama3"))
+        ollama_entry.insert(0, default_ollama)
     
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
@@ -721,15 +738,18 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         prompt_text.insert("1.0", default_prompt)
         system_prompt_text.insert("1.0", default_system)
         
-        # Reset combo boxes to default values
+        # Reset combo boxes to default values or values from config/default parameters if available
         openai_entry.delete(0, tk.END)
-        openai_entry.insert(0, "gpt-3.5-turbo")  # Default OpenAI model
+        openai_entry.insert(0, config.get("model", default.get("model", "gpt-3.5-turbo")))  # Use defaults from config
+        
         perplexity_entry.delete(0, tk.END)
-        perplexity_entry.insert(0, "sonar-medium-chat")  # Default Perplexity model
+        perplexity_entry.insert(0, config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
+        
         grok_entry.delete(0, tk.END)
-        grok_entry.insert(0, "grok-1")  # Default Grok model
+        grok_entry.insert(0, config.get("grok_model", default.get("grok_model", "grok-1")))
+        
         ollama_entry.delete(0, tk.END)
-        ollama_entry.insert(0, "llama3")  # Default Ollama model
+        ollama_entry.insert(0, config.get("ollama_model", default.get("ollama_model", "llama3")))
         
         # Set focus
         prompt_text.focus_set()

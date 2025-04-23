@@ -1013,11 +1013,11 @@ class MedicalDictationApp(ttk.Window):
             config=cfg,
             default=_DEFAULT_SETTINGS["refine_text"],
             current_prompt=cfg.get("prompt", REFINE_PROMPT),
-            current_model=cfg.get("model", ""),
-            current_perplexity=cfg.get("perplexity_model", ""),
-            current_grok=cfg.get("grok_model", ""),
+            current_model=cfg.get("model", _DEFAULT_SETTINGS["refine_text"].get("model", "gpt-3.5-turbo")),
+            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["refine_text"].get("perplexity_model", "sonar-reasoning-pro")),
+            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["refine_text"].get("grok_model", "grok-1")),
             save_callback=self.save_refine_settings,
-            current_ollama=cfg.get("ollama_model", ""),
+            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE)
         )
 
@@ -1031,11 +1031,11 @@ class MedicalDictationApp(ttk.Window):
             config=cfg,
             default=_DEFAULT_SETTINGS["improve_text"],
             current_prompt=cfg.get("prompt", IMPROVE_PROMPT),
-            current_model=cfg.get("model", ""),
-            current_perplexity=cfg.get("perplexity_model", ""),
-            current_grok=cfg.get("grok_model", ""),
+            current_model=cfg.get("model", _DEFAULT_SETTINGS["improve_text"].get("model", "gpt-3.5-turbo")),
+            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["improve_text"].get("perplexity_model", "sonar-reasoning-pro")),
+            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["improve_text"].get("grok_model", "grok-1")),
             save_callback=self.save_improve_settings,
-            current_ollama=cfg.get("ollama_model", ""),
+            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE)
         )
 
@@ -1052,10 +1052,10 @@ class MedicalDictationApp(ttk.Window):
             default=_DEFAULT_SETTINGS["soap_note"],
             current_prompt=cfg.get("prompt", SOAP_PROMPT_TEMPLATE),
             current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", ""),
-            current_grok=cfg.get("grok_model", ""),
+            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["soap_note"].get("perplexity_model", "sonar-reasoning-pro")),
+            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["soap_note"].get("grok_model", "grok-1")),
             save_callback=self.save_soap_settings,
-            current_ollama=cfg.get("ollama_model", ""),
+            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt)
         )
 
@@ -1072,10 +1072,10 @@ class MedicalDictationApp(ttk.Window):
             default=_DEFAULT_SETTINGS["referral"],
             current_prompt=cfg.get("prompt", default_prompt),
             current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", ""),
-            current_grok=cfg.get("grok_model", ""),
+            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["referral"].get("perplexity_model", "sonar-reasoning-pro")),
+            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["referral"].get("grok_model", "grok-1")),
             save_callback=self.save_referral_settings,
-            current_ollama=cfg.get("ollama_model", ""),
+            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt)
         )
 
