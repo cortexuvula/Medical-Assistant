@@ -36,6 +36,9 @@ class AudioHandler:
     # Default audio chunk duration in seconds
     DEFAULT_PHRASE_TIME_LIMIT = 30
     
+    # Track active listening sessions for proper cleanup
+    _active_streams = []  # Class variable to track all active streams
+    
     def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
         
@@ -132,13 +135,46 @@ class AudioHandler:
                 combined_fallback += segment
             return combined_fallback
 
-    def set_fallback_callback(self, callback: Callable[[str, str], None]) -> None:
-        """Set a callback function to be called when service fallback occurs.
+    def set_fallback_callback(self, callback: Callable) -> None:
+        """Set the fallback callback for when transcription fails.
         
         Args:
-            callback: Function taking (primary_provider, fallback_provider) as parameters
+            callback: Function to call when transcription fails
         """
         self.fallback_callback = callback
+        
+    def cleanup_resources(self) -> None:
+        """Cleanup all audio resources before the application closes.
+        
+        This method ensures all audio streams are properly closed and resources
+        are released to prevent issues on application restart.
+        """
+        logging.info("AudioHandler: Cleaning up audio resources...")
+        
+        # Clean up any active streams from the class list
+        while AudioHandler._active_streams:
+            try:
+                stop_func = AudioHandler._active_streams.pop()
+                if callable(stop_func):
+                    logging.info("AudioHandler: Stopping active stream")
+                    stop_func(wait_for_stop=True)
+                    # Give it a tiny bit of time to fully release resources
+                    time.sleep(0.1)
+            except Exception as e:
+                logging.error(f"AudioHandler: Error stopping stream: {str(e)}", exc_info=True)
+        
+        # Terminate sounddevice streams if any are active
+        try:
+            logging.info("AudioHandler: Ensuring sounddevice streams are closed")
+            sd.stop()
+        except Exception as e:
+            logging.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
+            
+        # Reset any internal state variables that might persist
+        self.soap_mode = False
+        
+        # Final log indication that cleanup is complete
+        logging.info("AudioHandler: Audio resources cleanup complete")
 
     def transcribe_audio(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider with fallback options.
@@ -407,17 +443,16 @@ class AudioHandler:
             logging.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
             
-    def listen_in_background(self, mic_name: str, callback: Callable[[np.ndarray], None], 
-                            phrase_time_limit: int = None) -> Callable[[], None]:
-        """Start listening in the background using the specified device name.
-
+    def listen_in_background(self, mic_name: str, callback: Callable, phrase_time_limit: Optional[int] = None) -> Callable:
+        """Start listening in the background for phrases.
+        
         Args:
-            mic_name: Name of the microphone to use.
-            callback: Function to call with the audio data (numpy array).
-            phrase_time_limit: Maximum duration of each audio chunk in seconds (uses DEFAULT_PHRASE_TIME_LIMIT if None).
-
+            mic_name: Name of the microphone to use
+            callback: Function to call for each detected phrase
+            phrase_time_limit: Max seconds for a phrase, or None for no limit
+            
         Returns:
-            Function to stop the background listening.
+            Function that when called stops the background listener
         """
         # Use the default phrase time limit if none is provided
         if phrase_time_limit is None:
@@ -479,8 +514,7 @@ class AudioHandler:
             # Return a no-op function on error
             return lambda wait_for_stop=True: None
 
-    def _listen_with_sounddevice(self, device_name: str, callback: Callable[[np.ndarray], None],
-                                phrase_time_limit: int = None) -> Callable[[], None]:
+    def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None) -> Callable:
         """Listen using sounddevice library, resolving name to index just-in-time.
 
         Args:

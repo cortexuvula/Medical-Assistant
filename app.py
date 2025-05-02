@@ -1979,18 +1979,47 @@ class MedicalDictationApp(ttk.Window):
         self.save_window_dimensions()
         
         try:
-            # Shutdown all executor pools properly
+            # Explicitly stop the background listener if it's running (e.g., SOAP recording)
+            if hasattr(self, 'soap_stop_listening_function') and self.soap_stop_listening_function:
+                logging.info("Stopping SOAP recording before exit...")
+                try:
+                    self.soap_stop_listening_function(wait_for_stop=True)
+                    self.soap_stop_listening_function = None  # Prevent double calls
+                    # Give the audio thread a moment to release resources
+                    time.sleep(0.2)
+                except Exception as e:
+                    logging.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
+                    
+            # Stop any active listening in the audio handler
+            if hasattr(self, 'audio_handler'):
+                logging.info("Ensuring audio handler is properly closed...")
+                try:
+                    self.audio_handler.cleanup_resources()
+                except Exception as e:
+                    logging.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
+            
+            # Shutdown all executor pools properly - wait for tasks to complete
+            logging.info("Shutting down executor pools...")
             for executor_name in ['io_executor', 'cpu_executor', 'executor']:
                 if hasattr(self, executor_name) and getattr(self, executor_name) is not None:
                     try:
                         executor = getattr(self, executor_name)
                         logging.info(f"Shutting down {executor_name}")
-                        executor.shutdown(wait=False)
+                        # Use wait=True to ensure all tasks complete before closing
+                        executor.shutdown(wait=True, cancel_futures=True)
+                    except TypeError:
+                        # Handle older Python versions without cancel_futures parameter
+                        executor.shutdown(wait=True)
                     except Exception as e:
                         logging.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
+                        
+            # Final logging message before closing
+            logging.info("Application shutdown complete")
+            
         except Exception as e:
-            logging.error(f"Error during executor shutdown: {str(e)}", exc_info=True)
+            logging.error(f"Error during application cleanup: {str(e)}", exc_info=True)
         
+        # Destroy the window
         self.destroy()
 
     def on_tab_changed(self, event: tk.Event) -> None:
