@@ -1,25 +1,26 @@
 import sqlite3
 import os
 import datetime
+from typing import Optional, Dict, List, Any, Union
 
 class Database:
-    def __init__(self, db_path="database.db"):
+    def __init__(self, db_path: str = "database.db") -> None:
         """Initialize database connection"""
         self.db_path = db_path
         self.conn = None
         self.cursor = None
         
-    def connect(self):
+    def connect(self) -> None:
         """Establish connection to the database"""
         self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()
         
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Close the database connection"""
         if self.conn:
             self.conn.close()
             
-    def create_tables(self):
+    def create_tables(self) -> None:
         """Create the recordings table if it doesn't exist"""
         self.connect()
         self.cursor.execute('''
@@ -36,7 +37,7 @@ class Database:
         self.conn.commit()
         self.disconnect()
     
-    def add_recording(self, filename, transcript=None, soap_note=None, referral=None, letter=None):
+    def add_recording(self, filename: str, transcript: Optional[str] = None, soap_note: Optional[str] = None, referral: Optional[str] = None, letter: Optional[str] = None) -> int:
         """Add a new recording to the database
         
         Parameters:
@@ -59,7 +60,7 @@ class Database:
         self.disconnect()
         return row_id
     
-    def update_recording(self, recording_id, **kwargs):
+    def update_recording(self, recording_id: int, **kwargs: Any) -> bool:
         """
         Update a recording in the database
         
@@ -91,7 +92,7 @@ class Database:
         
         return rows_affected > 0
     
-    def delete_recording(self, recording_id):
+    def delete_recording(self, recording_id: int) -> bool:
         """
         Delete a recording from the database
         
@@ -109,7 +110,7 @@ class Database:
         
         return rows_affected > 0
     
-    def get_recording(self, recording_id):
+    def get_recording(self, recording_id: int) -> Optional[Dict[str, Any]]:
         """Get a recording by ID"""
         self.connect()
         self.cursor.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,))
@@ -121,7 +122,7 @@ class Database:
             return dict(zip(columns, recording))
         return None
     
-    def get_all_recordings(self):
+    def get_all_recordings(self) -> List[Dict[str, Any]]:
         """Get all recordings"""
         self.connect()
         self.cursor.execute("SELECT * FROM recordings ORDER BY timestamp DESC")
@@ -131,7 +132,7 @@ class Database:
         columns = ['id', 'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
         return [dict(zip(columns, recording)) for recording in recordings]
         
-    def search_recordings(self, search_term):
+    def search_recordings(self, search_term: str) -> List[Dict[str, Any]]:
         """Search for recordings containing the search term in any text field
         
         Parameters:
@@ -158,7 +159,7 @@ class Database:
         columns = ['id', 'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
         return [dict(zip(columns, recording)) for recording in recordings]
     
-    def get_recordings_by_date_range(self, start_date, end_date):
+    def get_recordings_by_date_range(self, start_date: Union[str, datetime.datetime], end_date: Union[str, datetime.datetime]) -> List[Dict[str, Any]]:
         """Get recordings created within a date range
         
         Parameters:

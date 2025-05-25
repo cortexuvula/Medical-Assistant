@@ -27,7 +27,7 @@ class AudioData:
         self.sample_width = sample_width
         self.channels = channels
         
-    def get_raw_data(self):
+    def get_raw_data(self) -> bytes:
         return self.frame_data
 
 class AudioHandler:
@@ -615,7 +615,7 @@ class AudioHandler:
 
             # --- Internal Audio Callback ---
             # This runs in a separate thread managed by sounddevice
-            def audio_callback_sd(indata, frames, time, status):
+            def audio_callback_sd(indata: np.ndarray, frames: int, time: Any, status: sd.CallbackFlags) -> None:
                 nonlocal accumulated_data, accumulated_frames
                 
                 if status:
@@ -661,7 +661,7 @@ class AudioHandler:
             logging.info(f"sounddevice InputStream started for '{device_info['name']}'")
 
             # Define the stop function specific to this stream
-            def stop_stream(wait_for_stop=False): # wait_for_stop isn't used by sounddevice stream.stop
+            def stop_stream(wait_for_stop: bool = False) -> None: # wait_for_stop isn't used by sounddevice stream.stop
                 nonlocal stream, accumulated_data, accumulated_frames
                 if stream:
                     try:
@@ -707,7 +707,7 @@ class AudioHandler:
                      logging.error(f"Error during cleanup in _listen_with_sounddevice: {e_clean}")
             raise e # Re-raise the exception
 
-    def _background_recording_thread(self, device_index, phrase_time_limit):
+    def _background_recording_thread(self, device_index: int, phrase_time_limit: float) -> None:
         """ Background thread that records audio using soundcard (potentially problematic). """
         # This method seems deprecated in favor of _listen_with_sounddevice and soundcard issues
         # Keeping it for reference but should likely be removed or refactored if soundcard is needed.
@@ -746,7 +746,7 @@ class AudioHandler:
             logging.info(f"Soundcard recording thread finished.")
 
     # --- Add a separate method for soundcard if needed ---
-    def _background_recording_thread_sc(self, selected_device: Any, phrase_time_limit: float):
+    def _background_recording_thread_sc(self, selected_device: Any, phrase_time_limit: float) -> None:
         """Background thread specifically for soundcard recording."""
         try:
             logging.info(f"Starting soundcard recording thread for {selected_device.name}")
@@ -782,7 +782,7 @@ class AudioHandler:
             self.recording = False
             logging.info(f"Soundcard recording thread (_sc) finished for {selected_device.name}.")
 
-    def add_segment(self, audio_data: np.ndarray):
+    def add_segment(self, audio_data: np.ndarray) -> None:
         """
         Add an audio segment to the list of segments.
 

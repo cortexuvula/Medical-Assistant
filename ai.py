@@ -197,7 +197,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     # If all retries failed
     return f"Error: Failed to get a response from Ollama after {max_retries} attempts. Please try again later or choose a different model."
 
-def fallback_ollama_chat(model, system_message, prompt, temperature, timeout):
+def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperature: float, timeout: int) -> str:
     """Fallback method to use the chat API endpoint if generate fails"""
     import requests
     import json
