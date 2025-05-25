@@ -72,12 +72,14 @@ class Database:
         - True if successful, False otherwise
         """
         allowed_fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter']
-        update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        # Validate field names to prevent any potential injection through kwargs keys
+        update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields and k.isidentifier()}
         
         if not update_fields:
             return False
         
         self.connect()
+        # Build parameterized query - field names are validated above, values use ? placeholders
         query = "UPDATE recordings SET "
         query += ", ".join([f"{field} = ?" for field in update_fields.keys()])
         query += " WHERE id = ?"
