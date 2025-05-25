@@ -9,6 +9,7 @@ on:
 jobs:
   test-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v4
@@ -20,8 +21,8 @@ jobs:
 
     - name: Install system dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-tk python3.12-tk
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-tk python3.12-tk
 
     - name: Install Python dependencies
       run: |

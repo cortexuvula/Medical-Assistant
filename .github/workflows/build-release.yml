@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    timeout-minutes: 30  # Add timeout to prevent hanging builds
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -38,8 +39,8 @@ jobs:
     - name: Install system dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-tk python3.12-tk
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-tk python3.12-tk
 
     - name: Make build script executable (Unix)
       if: runner.os != 'Windows'
