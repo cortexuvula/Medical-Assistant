@@ -1156,6 +1156,15 @@ class MedicalDictationApp(ttk.Window):
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
         )
         if file_path:
+            from validation import validate_file_path
+            
+            # Validate file path before saving
+            is_valid, error = validate_file_path(file_path, must_be_writable=True)
+            if not is_valid:
+                from error_codes import show_error_dialog
+                show_error_dialog(self, "SYS_FILE_ACCESS", error)
+                return
+            
             try:
                 with open(file_path, "w", encoding="utf-8") as file:
                     file.write(text)
@@ -2563,6 +2572,15 @@ class MedicalDictationApp(ttk.Window):
             )
         )
         if not file_path:
+            return
+        
+        from validation import validate_audio_file
+        
+        # Validate audio file before processing
+        is_valid, error = validate_audio_file(file_path)
+        if not is_valid:
+            from error_codes import show_error_dialog
+            show_error_dialog(self, "SYS_FILE_ACCESS", error)
             return
         
         # Clear audio chunks and text widgets

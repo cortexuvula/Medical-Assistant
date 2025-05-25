@@ -10,8 +10,19 @@ from prompts import (
 )
 from settings import SETTINGS, _DEFAULT_SETTINGS, load_settings
 from error_codes import get_error_message, format_api_error
+from validation import validate_api_key, sanitize_prompt, validate_model_name
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
+    # Validate inputs
+    is_valid, error = validate_model_name(model, "openai")
+    if not is_valid:
+        title, message = get_error_message("CFG_INVALID_SETTINGS", error)
+        return f"[Error: {title}] {message}"
+    
+    # Sanitize prompt
+    prompt = sanitize_prompt(prompt)
+    system_message = sanitize_prompt(system_message)
+    
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
         
@@ -47,6 +58,17 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         logging.error("Perplexity API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Validate API key format
+    is_valid, error = validate_api_key("perplexity", api_key)
+    if not is_valid:
+        logging.error(f"Invalid Perplexity API key: {error}")
+        title, message = get_error_message("API_KEY_INVALID", error)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Sanitize inputs
+    prompt = sanitize_prompt(prompt)
+    system_message = sanitize_prompt(system_message)
     client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
     
     # Get model from the appropriate settings based on the task
@@ -87,6 +109,10 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     import requests
     import json
     import time
+    
+    # Sanitize inputs first
+    prompt = sanitize_prompt(prompt)
+    system_message = sanitize_prompt(system_message)
     
     # Get Ollama API URL from environment or use default
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
@@ -263,6 +289,17 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
         logging.error("Grok API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Grok API key not found")
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Validate API key and inputs
+    is_valid, error = validate_api_key("grok", api_key)
+    if not is_valid:
+        logging.error(f"Invalid Grok API key: {error}")
+        title, message = get_error_message("API_KEY_INVALID", error)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Sanitize inputs
+    prompt = sanitize_prompt(prompt)
+    system_message = sanitize_prompt(system_message)
     
     logging.info(f"Making Grok API call with model: {model}")
     

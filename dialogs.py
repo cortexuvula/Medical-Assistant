@@ -1041,6 +1041,45 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
         new_ollama_url = ollama_entry.get().strip()  # Get Ollama URL
         new_groq = groq_entry.get().strip()  # NEW: Get GROQ key
         
+        from validation import validate_api_key
+        
+        # Validate API keys if provided
+        validation_errors = []
+        
+        if new_openai:
+            is_valid, error = validate_api_key("openai", new_openai)
+            if not is_valid:
+                validation_errors.append(f"OpenAI: {error}")
+        
+        if new_grok:
+            is_valid, error = validate_api_key("grok", new_grok)
+            if not is_valid:
+                validation_errors.append(f"Grok: {error}")
+        
+        if new_perplexity:
+            is_valid, error = validate_api_key("perplexity", new_perplexity)
+            if not is_valid:
+                validation_errors.append(f"Perplexity: {error}")
+        
+        if new_deepgram:
+            is_valid, error = validate_api_key("deepgram", new_deepgram)
+            if not is_valid:
+                validation_errors.append(f"Deepgram: {error}")
+        
+        if new_elevenlabs:
+            is_valid, error = validate_api_key("elevenlabs", new_elevenlabs)
+            if not is_valid:
+                validation_errors.append(f"ElevenLabs: {error}")
+        
+        if new_groq:
+            is_valid, error = validate_api_key("groq", new_groq)
+            if not is_valid:
+                validation_errors.append(f"GROQ: {error}")
+        
+        if validation_errors:
+            error_var.set("Validation errors:\n" + "\n".join(validation_errors))
+            return
+        
         # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
         if not (new_openai or new_grok or new_perplexity or new_ollama_url):
             error_var.set("Error: At least one of OpenAI, Grok, Perplexity, or Ollama API key/URL is required.")
