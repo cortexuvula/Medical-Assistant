@@ -1,6 +1,5 @@
 import os
 import logging
-import requests
 import tkinter as tk
 from tkinter import messagebox, scrolledtext  # Add scrolledtext here
 import ttkbootstrap as ttk
@@ -126,7 +125,6 @@ def get_perplexity_models() -> list:
     try:
         import requests
         import os
-        import json
         
         # Get API key from environment
         api_key = os.getenv("PERPLEXITY_API_KEY")
@@ -181,7 +179,6 @@ def get_grok_models() -> list:
     try:
         import requests
         import os
-        import json
         from openai import OpenAI
         
         # Get API key from environment
@@ -255,8 +252,6 @@ def get_fallback_grok_models() -> list:
 def get_ollama_models() -> list:
     """Fetch available models from Ollama API."""
     import requests
-    import json
-    import os
     
     try:
         # Make a request to the Ollama API to list models
@@ -1143,7 +1138,7 @@ def show_shortcuts_dialog(parent: tk.Tk) -> None:
     y = (dialog.winfo_screenheight() // 2) - (height // 2)
     dialog.geometry(f'{width}x{height}+{x}+{y}')
 
-def show_about_dialog(parent: tk.Tk) -> None:
+def show_about_dialog(_: tk.Tk) -> None:
     """Show about dialog with app information."""
     messagebox.showinfo("About", "Medical Assistant App\nDeveloped using Vibe Coding.")
 
@@ -1185,7 +1180,7 @@ def show_letter_options_dialog(parent: tk.Tk) -> tuple:
     specs_text.tag_config("gray", foreground="gray")
     
     # Clear example text when user clicks in the field
-    def clear_example(event):
+    def clear_example(_):
         if specs_text.get("1.0", "end-1c").strip() == example_text.strip():
             specs_text.delete("1.0", "end")
             specs_text.tag_remove("gray", "1.0", "end")
@@ -1347,7 +1342,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     # Configure scrolling
     scrollable_frame.bind(
         "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        lambda _: canvas.configure(scrollregion=canvas.bbox("all"))
     )
     
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -1481,7 +1476,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
         
     dialog.protocol("WM_DELETE_WINDOW", on_close)
 
-def test_ollama_connection(parent: tk.Tk, ollama_url: str = None) -> bool:
+def test_ollama_connection(_: tk.Tk, ollama_url: str = None) -> bool:
     """
     Test the connection to Ollama server and show a message with the results.
     

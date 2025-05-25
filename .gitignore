@@ -200,3 +200,6 @@ prefix_audio.mp3
 
 # FFmpeg binaries
 ffmpeg/
+
+# Development documentation
+code_improvements.txt

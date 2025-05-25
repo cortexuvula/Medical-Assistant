@@ -1,22 +1,15 @@
 import os
-import json
-import uuid
 import time
 import logging
 import threading
-import queue
-from io import BytesIO
 import soundcard
 import sounddevice as sd
 import numpy as np
-import wave
 from pydub import AudioSegment
-import requests
-from typing import List, Optional, Callable, Any, Dict, Tuple, Union, TYPE_CHECKING
+from typing import List, Optional, Callable, Any, Dict, Tuple, Union
 from pathlib import Path
 from settings import SETTINGS
-import tempfile
-from stt_providers import BaseSTTProvider, DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
+from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
 
 # Define AudioData type for annotations
 class AudioData:
@@ -512,7 +505,7 @@ class AudioHandler:
         except Exception as e:
             logging.error(f"Error in listen_in_background for '{mic_name}': {e}", exc_info=True)
             # Return a no-op function on error
-            return lambda wait_for_stop=True: None
+            return lambda _=True: None
 
     def _resolve_device_index(self, device_name: str) -> Optional[int]:
         """Resolve device name to sounddevice index.
@@ -602,7 +595,7 @@ class AudioHandler:
         Returns:
             Function to stop the stream.
         """
-        def stop_stream(wait_for_stop: bool = False) -> None:
+        def stop_stream(_: bool = False) -> None:
             if stream:
                 try:
                     stream.stop()
@@ -637,7 +630,7 @@ class AudioHandler:
         
         logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
 
-        def audio_callback_sd(indata: np.ndarray, frames: int, time: Any, status: sd.CallbackFlags) -> None:
+        def audio_callback_sd(indata: np.ndarray, frames: int, _: Any, status: sd.CallbackFlags) -> None:
             nonlocal accumulated_data, accumulated_frames
             
             if status:
@@ -704,7 +697,7 @@ class AudioHandler:
                     raise ValueError(f"Device '{device_name}' not found and default could not be determined.")
             
             # Setup audio parameters
-            channels, sample_rate = self._setup_audio_parameters(device_id)
+            self._setup_audio_parameters(device_id)
             
             # Create audio callback
             audio_callback_sd = self._create_audio_callback(phrase_time_limit)

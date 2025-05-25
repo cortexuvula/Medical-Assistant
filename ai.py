@@ -1,6 +1,5 @@
 import openai
 import os
-import requests
 import logging
 import re  
 from prompts import (
@@ -8,7 +7,7 @@ from prompts import (
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
     SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
 )
-from settings import SETTINGS, _DEFAULT_SETTINGS, load_settings
+from settings import SETTINGS, _DEFAULT_SETTINGS
 from error_codes import get_error_message, format_api_error
 from validation import validate_api_key, sanitize_prompt, validate_model_name
 
@@ -482,8 +481,6 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     system_message = _get_letter_system_message()
     
     # Use the currently selected AI provider
-    from settings import SETTINGS
-    current_provider = SETTINGS.get("ai_provider", "openai")
     
     # Make the AI call
     result = call_ai("gpt-4o", system_message, prompt, 0.7)

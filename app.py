@@ -2,18 +2,20 @@ import json
 import string
 import logging
 import os
+import sys
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing
 import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext, ttk
+from tkinter import messagebox, filedialog, ttk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
+# Import tkinter constants for compatibility
+from tkinter import TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 from dotenv import load_dotenv
 import openai
-import pyaudio
-from typing import Callable, Optional
+from typing import Callable
 import threading
 import numpy as np
 from pydub import AudioSegment
@@ -63,19 +65,15 @@ setup_logging()
 # Add this import for creating .env file
 from pathlib import Path
 
-# Add to imports
-import requests
+# Requests is imported later if needed
 
 from utils import get_valid_microphones
-from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai, get_possible_conditions, create_letter_with_ai
-from tooltip import ToolTip
+from ai import adjust_text_with_openai, improve_text_with_openai, create_soap_note_with_openai, get_possible_conditions
 from settings import SETTINGS, save_settings  # Add save_settings here
-from dialogs import create_toplevel_dialog, show_settings_dialog, askstring_min, ask_conditions_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog  # Add this import
+from dialogs import create_toplevel_dialog, show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog  # Add this import
 
 # Add near the top of the file
 import time
-import uuid
-from requests.exceptions import RequestException, Timeout, ConnectionError
 
 # Add to imports section
 from audio import AudioHandler
@@ -263,7 +261,7 @@ def main() -> None:
     app = MedicalDictationApp()
     
     # Configure exception handler to log uncaught exceptions
-    def handle_exception(exc_type, exc_value, exc_traceback, *args):
+    def handle_exception(exc_type, exc_value, exc_traceback):
         logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
         # Show error message to user
         messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
@@ -816,7 +814,7 @@ class MedicalDictationApp(ttk.Window):
                 logging.error(f"STORAGE: Error listing directories: {str(e)}", exc_info=True)
         
         # Handle double-click on directory
-        def on_dir_double_click(event):
+        def on_dir_double_click(_):
             selection = dir_listbox.curselection()
             if selection:
                 item = dir_listbox.get(selection[0])
@@ -989,15 +987,15 @@ class MedicalDictationApp(ttk.Window):
         # status_frame.pack(side=BOTTOM, fill=tk.X)
 
     def bind_shortcuts(self) -> None:
-        self.bind("<Control-n>", lambda event: self.new_session())
-        self.bind("<Control-s>", lambda event: self.save_text())
-        self.bind("<Control-c>", lambda event: self.copy_text())
-        self.bind("<Control-l>", lambda event: self.load_audio_file())
-        self.bind("<Control-z>", lambda event: self.undo_text())
-        self.bind("<Control-y>", lambda event: self.redo_text())
-        self.bind("<F5>", lambda event: self.toggle_recording())
-        self.bind("<Control-Shift-S>", lambda event: self.toggle_soap_recording())
-        self.bind("<Alt-t>", lambda event: self.toggle_theme())
+        self.bind("<Control-n>", lambda _: self.new_session())
+        self.bind("<Control-s>", lambda _: self.save_text())
+        self.bind("<Control-c>", lambda _: self.copy_text())
+        self.bind("<Control-l>", lambda _: self.load_audio_file())
+        self.bind("<Control-z>", lambda _: self.undo_text())
+        self.bind("<Control-y>", lambda _: self.redo_text())
+        self.bind("<F5>", lambda _: self.toggle_recording())
+        self.bind("<Control-Shift-S>", lambda _: self.toggle_soap_recording())
+        self.bind("<Alt-t>", lambda _: self.toggle_theme())
 
     def show_about(self) -> None:
         # Call the refactored function from dialogs.py
@@ -1541,9 +1539,6 @@ class MedicalDictationApp(ttk.Window):
 
         def task() -> None:
             try:
-                # Get the current AI provider from settings
-                provider = SETTINGS.get("ai_provider", "openai")
-                
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.cpu_executor.submit(
                     create_soap_note_with_openai,
@@ -1646,7 +1641,7 @@ class MedicalDictationApp(ttk.Window):
                     self.mic_combobox.current(0)
                     self.update_status("No microphones detected", "warning")
                     
-            except Exception as e:
+            except Exception:
                 logging.error("Error refreshing microphones", exc_info=True)
                 self.update_status("Error detecting microphones", "error")
             finally:
@@ -1671,7 +1666,6 @@ class MedicalDictationApp(ttk.Window):
             
             # Start SOAP recording
             try:
-                selected_index = self.mic_combobox.current()
                 selected_device = self.mic_combobox.get()
                 self.update_status("Recording SOAP note...", "info")
                 
@@ -1779,8 +1773,7 @@ class MedicalDictationApp(ttk.Window):
     def resume_soap_recording(self) -> None:
         """Resume SOAP recording after pause using the selected microphone."""
         try:
-            # Get selected microphone index and name
-            selected_index = self.mic_combobox.current()
+            # Get selected microphone name
             selected_device = self.mic_combobox.get()
             
             # Get the actual device index if using the new naming format
@@ -1807,14 +1800,6 @@ class MedicalDictationApp(ttk.Window):
 
     def soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using AudioHandler."""
-        log_prefix = "SOAP callback:"
-        data_type = type(audio_data)
-        data_shape = getattr(audio_data, 'shape', 'N/A')
-        data_dtype = getattr(audio_data, 'dtype', 'N/A')
-        max_amp_raw = np.abs(audio_data).max() if isinstance(audio_data, np.ndarray) else 'N/A (not ndarray)'
-        # logging.info(f"{log_prefix} Entered. Type={data_type}, Shape={data_shape}, Dtype={data_dtype}, MaxAmp(raw)={max_amp_raw}")
-        
-        # logging.debug(f"SOAP callback received audio data of type: {type(audio_data)}")
         try:
             # Directly handle numpy array data for potential efficiency
             if isinstance(audio_data, np.ndarray):
@@ -1976,7 +1961,7 @@ class MedicalDictationApp(ttk.Window):
             widget = self.get_active_text_widget()
             widget.edit_undo()
             self.update_status("Undo performed.")
-        except Exception as e:
+        except Exception:
             self.update_status("Nothing to undo.")
 
     def redo_text(self) -> None:
@@ -1984,7 +1969,7 @@ class MedicalDictationApp(ttk.Window):
             widget = self.get_active_text_widget()
             widget.edit_redo()
             self.update_status("Redo performed.")
-        except Exception as e:
+        except Exception:
             self.update_status("Nothing to redo.")
 
     def on_closing(self) -> None:
@@ -2036,7 +2021,7 @@ class MedicalDictationApp(ttk.Window):
         # Destroy the window
         self.destroy()
 
-    def on_tab_changed(self, event: tk.Event) -> None:
+    def on_tab_changed(self, _) -> None:
         current = self.notebook.index(self.notebook.select())
         if current == 0:
             self.active_text_widget = self.transcript_text
@@ -2200,7 +2185,7 @@ class MedicalDictationApp(ttk.Window):
         )
         self.status_manager.success("ElevenLabs settings saved successfully")
 
-    def _on_provider_change(self, event):
+    def _on_provider_change(self, _):
         from settings import SETTINGS, save_settings  # Import locally if preferred
         
         selected_index = self.provider_combobox.current()
@@ -2213,7 +2198,7 @@ class MedicalDictationApp(ttk.Window):
             save_settings(SETTINGS)
             self.update_status(f"AI Provider set to {provider_display[selected_index]}")
 
-    def _on_stt_change(self, event) -> None:
+    def _on_stt_change(self, _) -> None:
         """Update STT provider when dropdown selection changes."""
         selected_index = self.stt_combobox.current()
         if selected_index >= 0:
@@ -2234,7 +2219,7 @@ class MedicalDictationApp(ttk.Window):
             self.status_manager.update_provider_info()
             self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
 
-    def _on_microphone_change(self, event) -> None:
+    def _on_microphone_change(self, _) -> None:
         """Save the selected microphone to settings."""
         selected_mic = self.mic_combobox.get()
         if selected_mic and selected_mic != "No microphones found":
@@ -2341,7 +2326,7 @@ class MedicalDictationApp(ttk.Window):
                 frame.configure(background=control_bg)
                 
         # Update all button frames specifically - handle tk vs ttk frames differently
-        for btn_name, btn in self.buttons.items():
+        for _, btn in self.buttons.items():
             btn_frame = btn.master
             if isinstance(btn_frame, tk.Frame):  # Only standard tk frames support 'background'
                 btn_frame.configure(background=control_bg)
@@ -2764,7 +2749,7 @@ class MedicalDictationApp(ttk.Window):
                 show_error_dialog(self, "SYS_FILE_ACCESS", f"Database error: {str(e)}")
         
         # Function to handle search
-        def on_search(*args):
+        def on_search(*_):
             search_term = search_var.get().strip()
             if search_term:
                 load_recordings(search_term)
@@ -2772,7 +2757,7 @@ class MedicalDictationApp(ttk.Window):
                 load_recordings()
         
         # Bind search entry to search function
-        search_var.trace("w", on_search)
+        search_var.trace_add("write", on_search)
         
         # Function to refresh the list
         def refresh_recordings():
@@ -2996,7 +2981,6 @@ class MedicalDictationApp(ttk.Window):
                                         # Fallback if the format is different
                                         try:
                                             # Try parsing with different formats
-                                            from datetime import datetime
                                             formats_to_try = [
                                                 "%Y-%m-%d %H:%M:%S",  # Standard format
                                                 "%Y-%m-%d %H:%M:%S.%f",  # With microseconds
@@ -3177,7 +3161,7 @@ class MedicalDictationApp(ttk.Window):
         export_button.config(command=export_selected_recordings)
         
         # Double-click on item to load it
-        tree.bind("<Double-1>", lambda event: load_selected_recording())
+        tree.bind("<Double-1>", lambda _: load_selected_recording())
         
         # Initial load of recordings
         load_recordings()
@@ -3224,100 +3208,6 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
             logging.error(f"Error opening logs directory: {str(e)}")
-
-    def _show_log_contents(self, log_file):
-        """Show log contents in a dialog window"""
-        if not os.path.exists(log_file):
-            messagebox.showinfo("Logs", "No log file exists yet.")
-            return
-            
-        # Create a dialog to show the log contents
-        log_dialog = ttk.Toplevel(self)
-        log_dialog.title("Log Contents")
-        
-        # Calculate dialog size based on parent window size (responsive design)
-        width = min(int(self.winfo_width() * 0.8), 900)
-        height = min(int(self.winfo_height() * 0.8), 700)
-        log_dialog.geometry(f"{width}x{height}")
-        log_dialog.minsize(600, 400)  # Set minimum size for usability
-        
-        # Make the dialog modal
-        log_dialog.transient(self)
-        log_dialog.grab_set()
-        
-        # Configure dialog to be resizable
-        log_dialog.rowconfigure(0, weight=1)
-        log_dialog.columnconfigure(0, weight=1)
-        
-        # Create main frame to respect theme
-        main_frame = ttk.Frame(log_dialog)
-        main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        main_frame.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
-        
-        # Create a text widget to display the log contents
-        log_text = ttk.ScrolledText(main_frame, wrap=tk.WORD)
-        log_text.grid(row=0, column=0, sticky="nsew")
-        
-        # Use a monospace font for better log readability
-        log_text.configure(font=("Consolas", 10))
-        
-        # Read the log file and display its contents
-        try:
-            with open(log_file, 'r') as f:
-                log_contents = f.read()
-                log_text.insert(tk.END, log_contents)
-                log_text.see(tk.END)  # Scroll to the end
-        except Exception as e:
-            log_text.insert(tk.END, f"Error reading log file: {str(e)}")
-            logging.error(f"Error reading log file: {str(e)}")
-        
-        # Make text read-only
-        log_text.configure(state='disabled')
-        
-        # Add a refresh button
-        def refresh_logs():
-            log_text.configure(state='normal')
-            log_text.delete(1.0, tk.END)
-            try:
-                with open(log_file, 'r') as f:
-                    log_contents = f.read()
-                    log_text.insert(tk.END, log_contents)
-                    log_text.see(tk.END)
-            except Exception as e:
-                log_text.insert(tk.END, f"Error reading log file: {str(e)}")
-            log_text.configure(state='disabled')
-        
-        # Add buttons for actions
-        button_frame = ttk.Frame(log_dialog)
-        button_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        
-        # Configure button frame for responsive layout
-        button_frame.columnconfigure(0, weight=1)  # Left side expands
-        button_frame.columnconfigure(1, weight=0)  # Buttons don't expand
-        button_frame.columnconfigure(2, weight=0)  # Buttons don't expand
-        
-        # Add label showing log file path
-        path_label = ttk.Label(button_frame, text=f"Log file: {log_file}", font=("Segoe UI", 9))
-        path_label.grid(row=0, column=0, sticky="w", padx=5)
-        
-        refresh_button = ttk.Button(button_frame, text="Refresh", command=refresh_logs, width=10)
-        refresh_button.grid(row=0, column=1, padx=5, pady=5)
-        
-        close_button = ttk.Button(button_frame, text="Close", command=log_dialog.destroy, width=10)
-        close_button.grid(row=0, column=2, padx=5, pady=5)
-        
-        # Create tooltip for refresh button
-        from tooltip import ToolTip
-        ToolTip(refresh_button, "Reload the log file contents")
-        
-        # Center the dialog on the parent window
-        log_dialog.update_idletasks()
-        dialog_width = log_dialog.winfo_width()
-        dialog_height = log_dialog.winfo_height()
-        x = self.winfo_rootx() + (self.winfo_width() // 2) - (dialog_width // 2)
-        y = self.winfo_rooty() + (self.winfo_height() // 2) - (dialog_height // 2)
-        log_dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
 
     def on_window_configure(self, event):
         """
