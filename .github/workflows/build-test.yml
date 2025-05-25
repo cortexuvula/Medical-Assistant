@@ -21,8 +21,9 @@ jobs:
 
     - name: Install system dependencies
       run: |
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-tk python3.12-tk
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq -o=Dpkg::Use-Pty=0
+        sudo apt-get install -y -qq -o=Dpkg::Use-Pty=0 python3-tk python3.12-tk
 
     - name: Install Python dependencies
       run: |

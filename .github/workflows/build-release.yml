@@ -36,11 +36,17 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Install system dependencies (Linux)
+    - name: Update package list (Linux)
       if: runner.os == 'Linux'
       run: |
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-tk python3.12-tk
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq -o=Dpkg::Use-Pty=0
+    
+    - name: Install tkinter (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get install -y -qq -o=Dpkg::Use-Pty=0 --no-install-recommends python3-tk python3.12-tk
 
     - name: Make build script executable (Unix)
       if: runner.os != 'Windows'
