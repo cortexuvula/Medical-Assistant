@@ -9,6 +9,7 @@ from prompts import (
     SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
 )
 from settings import SETTINGS, _DEFAULT_SETTINGS, load_settings
+from error_codes import get_error_message, format_api_error
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     try:
@@ -34,14 +35,18 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
-        return prompt
+        error_code, details = format_api_error("openai", e)
+        title, message = get_error_message(error_code, details, model)
+        # Return error message that includes troubleshooting hints
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
 def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
     from openai import OpenAI
     api_key = os.getenv("PERPLEXITY_API_KEY")
     if not api_key:
         logging.error("Perplexity API key not provided")
-        return prompt
+        title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
     
     # Get model from the appropriate settings based on the task
@@ -74,7 +79,9 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         return result
     except Exception as e:
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
-        return prompt
+        error_code, details = format_api_error("perplexity", e)
+        title, message = get_error_message(error_code, details, model)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
 def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     import requests
@@ -124,13 +131,15 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
                 if health_check.status_code != 200:
                     logging.error(f"Ollama service health check failed: {health_check.status_code}")
                     if attempt == max_retries - 1:  # Last attempt
-                        return f"Error: Ollama service not available. Please check if Ollama is running at {ollama_url}"
+                        title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", f"Service at {ollama_url} returned status {health_check.status_code}")
+                        return f"[Error: {title}] {message}"
                     time.sleep(2)  # Wait before next retry
                     continue
             except Exception as e:
                 logging.error(f"Ollama service health check error: {str(e)}")
                 if attempt == max_retries - 1:  # Last attempt
-                    return f"Error: Cannot connect to Ollama service at {ollama_url}. Please check if Ollama is running."
+                    title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", str(e))
+                    return f"[Error: {title}] {message}"
                 time.sleep(2)  # Wait before next retry
                 continue
             
@@ -183,19 +192,26 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
         except requests.exceptions.Timeout:
             logging.error(f"Ollama API timeout with model {model} (attempt {attempt+1}/{max_retries})")
             if attempt == max_retries - 1:  # Last attempt
-                return f"Error: The request to Ollama timed out after {timeout_values[attempt]} seconds. The model '{model}' might be too large or complex for the current setup."
+                title, message = get_error_message("CONN_TIMEOUT", f"Model '{model}' took longer than {timeout_values[attempt]} seconds to respond")
+                return f"[Error: {title}] {message}"
             time.sleep(2)  # Wait before next retry
             continue
             
         except Exception as e:
             logging.error(f"Ollama API error with model {model}: {str(e)}")
             if attempt == max_retries - 1:  # Last attempt
-                return f"Error connecting to Ollama: {str(e)}. Please check your connection and try again."
+                # Check if it's a model not found error
+                if "model" in str(e).lower() and "not found" in str(e).lower():
+                    title, message = get_error_message("CFG_MODEL_NOT_INSTALLED", str(e), model)
+                else:
+                    title, message = get_error_message("UNKNOWN_ERROR", str(e))
+                return f"[Error: {title}] {message}"
             time.sleep(2)  # Wait before next retry
             continue
     
     # If all retries failed
-    return f"Error: Failed to get a response from Ollama after {max_retries} attempts. Please try again later or choose a different model."
+    title, message = get_error_message("CONN_SERVICE_DOWN", f"Failed after {max_retries} attempts with model '{model}'")
+    return f"[Error: {title}] {message}"
 
 def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperature: float, timeout: int) -> str:
     """Fallback method to use the chat API endpoint if generate fails"""
@@ -245,7 +261,8 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
     api_key = os.getenv("GROK_API_KEY")
     if not api_key:
         logging.error("Grok API key not provided")
-        return prompt
+        title, message = get_error_message("API_KEY_MISSING", "Grok API key not found")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     
     logging.info(f"Making Grok API call with model: {model}")
     
@@ -272,7 +289,9 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
         return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"Grok API error with model {model}: {str(e)}")
-        return prompt
+        error_code, details = format_api_error("grok", e)
+        title, message = get_error_message(error_code, details, model)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
 def adjust_text_with_openai(text: str) -> str:
     model = _DEFAULT_SETTINGS["refine_text"]["model"]  # Default model as fallback
@@ -350,7 +369,8 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
         return clean_text(result, remove_citations=False)
     except Exception as e:
         logging.error(f"Error creating referral: {str(e)}")
-        return f"Error creating referral: {str(e)}"
+        title, message = get_error_message("UNKNOWN_ERROR", f"Failed to create referral: {str(e)}")
+        return f"[Error: {title}] {message}"
 
 # Helper function to determine which model key to use based on the task
 def get_model_key_for_task(system_message: str, prompt: str) -> str:

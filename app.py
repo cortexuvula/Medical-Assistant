@@ -1169,7 +1169,8 @@ class MedicalDictationApp(ttk.Window):
                 
                 messagebox.showinfo("Save Text", "Text saved successfully.")
             except Exception as e:
-                messagebox.showerror("Save Text", f"Error: {e}")
+                from error_codes import show_error_dialog
+                show_error_dialog(self, "SYS_FILE_ACCESS", f"Could not save file: {str(e)}")
 
     def copy_text(self) -> None:
         active_widget = self.get_active_text_widget()
@@ -2741,7 +2742,8 @@ class MedicalDictationApp(ttk.Window):
                     tree.insert("", tk.END, values=(rec["id"], rec["filename"], formatted_time, 
                                               has_transcript, has_soap, has_referral, has_letter))
             except Exception as e:
-                messagebox.showerror("Database Error", f"Error loading recordings: {str(e)}")
+                from error_codes import show_error_dialog
+                show_error_dialog(self, "SYS_FILE_ACCESS", f"Database error: {str(e)}")
         
         # Function to handle search
         def on_search(*args):
