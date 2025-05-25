@@ -6,6 +6,63 @@ from tkinter import messagebox, scrolledtext  # Add scrolledtext here
 import ttkbootstrap as ttk
 import re
 
+def create_model_selector(parent, frame, model_var, provider_name, get_models_func, row, column=1):
+    """Create a model selection widget with a select button.
+    
+    Args:
+        parent: Parent window
+        frame: Frame to place the widget in
+        model_var: tkinter variable to store selected model
+        provider_name: Name of the provider (e.g., "OpenAI", "Perplexity")
+        get_models_func: Function to call to get available models
+        row: Grid row position
+        column: Grid column position
+    
+    Returns:
+        The frame containing the entry and button
+    """
+    # Create container frame
+    container_frame = ttk.Frame(frame)
+    container_frame.grid(row=row, column=column, sticky="ew", padx=(10, 0))
+    
+    # Create entry field
+    entry = ttk.Entry(container_frame, textvariable=model_var)
+    entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    def select_model():
+        # Create progress dialog
+        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
+        progress_frame = ttk.Frame(progress_dialog, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(progress_frame, text=f"Fetching {provider_name} models...").pack(pady=(0, 10))
+        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
+        progress.pack(fill=tk.X)
+        progress.start()
+        progress_dialog.update()
+        
+        # Fetch models
+        models = get_models_func()
+        
+        # Close progress dialog
+        progress_dialog.destroy()
+        
+        if not models:
+            messagebox.showerror("Error", 
+                f"Failed to fetch {provider_name} models. Check your API key and internet connection.")
+            return
+        
+        # Open model selection dialog
+        model_selection = create_model_selection_dialog(parent, 
+            f"Select {provider_name} Model", models, model_var.get())
+        if model_selection:
+            model_var.set(model_selection)
+    
+    # Add select button
+    select_button = ttk.Button(container_frame, text="Select Model", command=select_model)
+    select_button.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    return container_frame
+
 # Function to get OpenAI models
 def get_openai_models() -> list:
     """Fetch available models from OpenAI API."""
@@ -945,21 +1002,27 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     row_offset += 1
     
     # Add toggle buttons to show/hide keys with dynamic row positioning
-    def toggle_show_hide(entry):
-        current = entry['show']
-        entry['show'] = '' if current else '•'
+    def create_toggle_button(parent, entry, row, column=2, padx=5, pady=15):
+        """Create a toggle button to show/hide password entries."""
+        def toggle():
+            current = entry['show']
+            entry['show'] = '' if current else '•'
+        
+        return ttk.Button(parent, text="👁", width=3, command=toggle).grid(
+            row=row, column=column, padx=padx, pady=pady
+        )
     
     # Fixed eye button positions for LLM API keys
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(openai_entry)).grid(row=1, column=2, padx=5, pady=15)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(grok_entry)).grid(row=2, column=2, padx=5, pady=15)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(perplexity_entry)).grid(row=3, column=2, padx=5, pady=15)
+    create_toggle_button(frame, openai_entry, row=1)
+    create_toggle_button(frame, grok_entry, row=2)
+    create_toggle_button(frame, perplexity_entry, row=3)
     # Ollama URL doesn't need a show/hide button as it's not a key
     
     # Calculate eye button positions for STT API keys based on deepgram's row
     deepgram_row = 8  # Based on the row_offset after separator and STT label
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(deepgram_entry)).grid(row=deepgram_row, column=2, padx=5, pady=15)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(elevenlabs_entry)).grid(row=deepgram_row+1, column=2, padx=5, pady=15)
-    ttk.Button(frame, text="👁", width=3, command=lambda: toggle_show_hide(groq_entry)).grid(row=deepgram_row+2, column=2, padx=5, pady=15)
+    create_toggle_button(frame, deepgram_entry, row=deepgram_row)
+    create_toggle_button(frame, elevenlabs_entry, row=deepgram_row+1)
+    create_toggle_button(frame, groq_entry, row=deepgram_row+2)
 
     # Error variable for validation messages
     error_var = tk.StringVar()

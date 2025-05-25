@@ -290,23 +290,33 @@ def improve_text_with_openai(text: str) -> str:
     temperature = SETTINGS.get("improve_text", {}).get("temperature", 0.5)
     return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, temperature)
 
-# NEW: Helper function to remove markdown formatting from text
-def remove_markdown(text: str) -> str:
-    import re
-    # Remove code blocks
-    text = re.sub(r"```.+?```", "", text, flags=re.DOTALL)
-    # Remove inline code
-    text = re.sub(r"`(.+?)`", r"\1", text)
-    # Remove markdown headings
-    text = re.sub(r"^\s*#+\s*", "", text, flags=re.MULTILINE)
-    # Remove bold and italic markers
-    text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
-    text = re.sub(r"(\*|_)(.*?)\1", r"\2", text)
+def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool = True) -> str:
+    """Clean text by removing markdown formatting and/or citation markers.
+    
+    Args:
+        text: The text to clean
+        remove_markdown: Whether to remove markdown formatting
+        remove_citations: Whether to remove citation markers like [1], [2]
+    
+    Returns:
+        Cleaned text
+    """
+    if remove_markdown:
+        # Remove code blocks
+        text = re.sub(r"```.+?```", "", text, flags=re.DOTALL)
+        # Remove inline code
+        text = re.sub(r"`(.+?)`", r"\1", text)
+        # Remove markdown headings
+        text = re.sub(r"^\s*#+\s*", "", text, flags=re.MULTILINE)
+        # Remove bold and italic markers
+        text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+        text = re.sub(r"(\*|_)(.*?)\1", r"\2", text)
+    
+    if remove_citations:
+        # Remove citation markers like [1], [2] etc.
+        text = re.sub(r'(\[\d+\])+', '', text)
+    
     return text.strip()
-
-# New helper to remove citation markers like [1], [2] etc.
-def remove_citations(text: str) -> str:
-    return re.sub(r'(\[\d+\])+', '', text)
 
 def create_soap_note_with_openai(text: str) -> str:
     # We don't need to check the provider here since call_ai will handle it
@@ -315,10 +325,8 @@ def create_soap_note_with_openai(text: str) -> str:
     
     full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
     result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
-    cleaned = remove_markdown(result)
-    # Remove citation markers from the result
-    cleaned = remove_citations(cleaned)
-    return cleaned.strip()
+    # Clean both markdown and citations
+    return clean_text(result)
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
     model = _DEFAULT_SETTINGS["referral"]["model"]  # Default model as fallback
@@ -339,7 +347,7 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
             new_prompt, 
             0.7
         )
-        return remove_markdown(result)
+        return clean_text(result, remove_citations=False)
     except Exception as e:
         logging.error(f"Error creating referral: {str(e)}")
         return f"Error creating referral: {str(e)}"
@@ -371,9 +379,8 @@ def get_possible_conditions(text: str) -> str:
               "Keep the condition names simple and specific and not longer that 3 words. "
               "Return them as a comma-separated list. Text: " + text)
     result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7)
-    conditions = remove_markdown(result).strip()
-    conditions = remove_citations(conditions)
-    return conditions
+    # Clean both markdown and citations
+    return clean_text(result)
 
 def create_letter_with_ai(text: str, specs: str = "") -> str:
     """Generate a professional medical letter based on provided text and specifications.
@@ -401,11 +408,8 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     
     result = call_ai("gpt-4o", system_message, prompt, 0.7)
     
-    # Clean up any markdown formatting from the result
-    clean_result = remove_markdown(result)
-    clean_result = remove_citations(clean_result)
-    
-    return clean_result
+    # Clean up any markdown formatting and citations from the result
+    return clean_text(result)
 
 def call_ai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     """
