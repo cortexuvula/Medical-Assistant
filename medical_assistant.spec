@@ -23,13 +23,25 @@ if os.path.exists(ffmpeg_dir):
             if os.path.exists(ffprobe_path):
                 ffmpeg_files.append((ffprobe_path, 'ffmpeg'))
 
+# Find soundcard module path
+import importlib.util
+soundcard_spec = importlib.util.find_spec('soundcard')
+soundcard_datas = []
+if soundcard_spec and soundcard_spec.origin:
+    soundcard_path = os.path.dirname(soundcard_spec.origin)
+    # Include all .h files from soundcard
+    for h_file in ['pulseaudio.py.h', 'coreaudio.py.h', 'mediafoundation.py.h']:
+        h_path = os.path.join(soundcard_path, h_file)
+        if os.path.exists(h_path):
+            soundcard_datas.append((h_path, 'soundcard'))
+
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=ffmpeg_files,
     datas=[
         ('env.example', '.'),
-    ],
+    ] + soundcard_datas,
     hiddenimports=[
         'tkinter',
         'ttkbootstrap',
@@ -48,7 +60,7 @@ a = Analysis(
         'stt_providers.groq',
         'stt_providers.whisper',
     ],
-    hookspath=[],
+    hookspath=['.'],  # Look for hooks in current directory
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
