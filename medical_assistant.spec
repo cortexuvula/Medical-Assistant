@@ -58,12 +58,14 @@ exe = EXE(
 )
 
 # For macOS, create an app bundle
-app = BUNDLE(
-    exe,
-    name='MedicalAssistant.app',
-    icon=None,  # Add your icon file path here if you have one
-    bundle_identifier='com.medicalassistant.app',
-    info_plist={
-        'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
-    },
-)
+import sys
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='MedicalAssistant.app',
+        icon=None,  # Add your icon file path here if you have one
+        bundle_identifier='com.medicalassistant.app',
+        info_plist={
+            'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
+        },
+    )

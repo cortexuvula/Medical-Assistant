@@ -58,8 +58,17 @@ jobs:
     - name: Compress macOS app
       if: runner.os == 'macOS'
       run: |
-        cd dist
-        zip -r ../MedicalAssistant-macOS.zip MedicalAssistant.app
+        if [ -d "dist/MedicalAssistant.app" ]; then
+          cd dist
+          zip -r ../MedicalAssistant-macOS.zip MedicalAssistant.app
+        else
+          echo "Error: dist/MedicalAssistant.app not found!"
+          echo "Contents of current directory:"
+          ls -la
+          echo "Contents of dist directory (if exists):"
+          ls -la dist/ || echo "dist directory does not exist"
+          exit 1
+        fi
 
     - name: Upload artifact (Windows/Linux)
       if: runner.os != 'macOS'
