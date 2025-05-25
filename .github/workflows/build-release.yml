@@ -6,6 +6,9 @@ on:
       - 'v*'  # Triggers on version tags like v1.0.0
   workflow_dispatch:  # Allows manual triggering
 
+permissions:
+  contents: write  # Required for creating releases
+
 jobs:
   build:
     timeout-minutes: 30  # Add timeout to prevent hanging builds
@@ -117,5 +120,7 @@ jobs:
           artifacts/MedicalAssistant-macOS/MedicalAssistant-macOS.zip
         draft: false
         prerelease: false
+        fail_on_unmatched_files: false
+        generate_release_notes: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
