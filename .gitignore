@@ -35,7 +35,6 @@ medical_dictation.log*
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
@@ -139,6 +138,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+assistant/
 
 # Spyder project settings
 .spyderproject

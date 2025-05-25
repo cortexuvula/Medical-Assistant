@@ -42,6 +42,42 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
    FFmpeg is required for audio processing. Download FFmpeg from [ffmpeg.org](https://ffmpeg.org) and follow the instructions for Windows.  
    For a step-by-step guide, watch this YouTube tutorial: [How to Install FFmpeg on Windows](https://youtu.be/JR36oH35Fgg?si=MoabHE-pi3NrJo4U).
 
+## Building Standalone Executables
+
+The application can be packaged as a standalone executable for Windows, macOS, and Linux using PyInstaller.
+
+### Prerequisites
+- Ensure all dependencies are installed: `pip install -r requirements.txt`
+- For Windows: Have Python and pip in your PATH
+- For macOS: May need to install Xcode command line tools
+- For Linux: Ensure python3-tk is installed system-wide
+
+### Building
+
+**Windows:**
+```batch
+build_windows.bat
+```
+The executable will be in `dist/MedicalAssistant.exe`
+
+**macOS:**
+```bash
+./build_macos.sh
+```
+The app bundle will be in `dist/MedicalAssistant.app`
+
+**Linux:**
+```bash
+./build_linux.sh
+```
+The executable will be in `dist/MedicalAssistant`
+
+### Distribution Notes
+- The executable includes all Python dependencies
+- Users still need to have FFmpeg installed separately
+- API keys can be configured via the application's settings dialog
+- First run may be slower as antivirus software scans the executable
+
 ## Usage
 
 1. **Launching the Application**  

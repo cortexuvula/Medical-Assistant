@@ -1,0 +1,92 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: MedicalAssistant-Linux
+            build_script: ./build_linux.sh
+            dist_path: dist/MedicalAssistant
+          - os: windows-latest
+            artifact_name: MedicalAssistant-Windows
+            build_script: build_windows.bat
+            dist_path: dist/MedicalAssistant.exe
+          - os: macos-latest
+            artifact_name: MedicalAssistant-macOS
+            build_script: ./build_macos.sh
+            dist_path: dist/MedicalAssistant.app
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk python3.12-tk
+
+    - name: Make build script executable (Unix)
+      if: runner.os != 'Windows'
+      run: chmod +x ${{ matrix.build_script }}
+
+    - name: Build application
+      run: ${{ matrix.build_script }}
+
+    - name: Compress macOS app
+      if: runner.os == 'macOS'
+      run: |
+        cd dist
+        zip -r ../MedicalAssistant-macOS.zip MedicalAssistant.app
+
+    - name: Upload artifact (Windows/Linux)
+      if: runner.os != 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.dist_path }}
+
+    - name: Upload artifact (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: MedicalAssistant-macOS.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/MedicalAssistant-Linux/MedicalAssistant
+          artifacts/MedicalAssistant-Windows/MedicalAssistant.exe
+          artifacts/MedicalAssistant-macOS/MedicalAssistant-macOS.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

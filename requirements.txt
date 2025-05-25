@@ -7,9 +7,9 @@ openai>=1.0.0
 pyaudio
 requests
 numpy
-pathlib
 groq
 typing-extensions
 soundcard
 sounddevice
 concurrent-log-handler>=0.9.1 # Use a specific version or latest as appropriate
+pyinstaller>=6.3.0
