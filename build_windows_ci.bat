@@ -1,5 +1,6 @@
 @echo off
 REM Special batch file for CI/CD environments to avoid prompts
+setlocal
 
 echo Building Medical Assistant for Windows (CI Mode)...
 echo Python: %PYTHON%
@@ -9,21 +10,27 @@ REM Clean previous builds
 if exist dist rd /s /q dist 2>nul
 if exist build rd /s /q build 2>nul
 
-REM Download FFmpeg if not present
-if not exist "ffmpeg\ffmpeg.exe" (
-    echo Downloading FFmpeg...
-    %PYTHON% download_ffmpeg.py
-    if %errorlevel% neq 0 (
-        echo Warning: FFmpeg download failed. Build will continue without bundled FFmpeg.
+REM Download FFmpeg if not present and not skipped
+if "%SKIP_FFMPEG_DOWNLOAD%"=="1" (
+    echo Skipping FFmpeg download in CI environment
+) else (
+    if not exist "ffmpeg\ffmpeg.exe" (
+        echo Downloading FFmpeg...
+        %PYTHON% download_ffmpeg.py
+        if %errorlevel% neq 0 (
+            echo Warning: FFmpeg download failed. Build will continue without bundled FFmpeg.
+        )
     )
 )
 
 REM Install dependencies
 echo Installing dependencies...
-%PYTHON% -m pip install --upgrade pip
+echo Upgrading pip...
+%PYTHON% -m pip install --upgrade pip --no-warn-script-location
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-%PYTHON% -m pip install --no-cache-dir -r requirements.txt
+echo Installing requirements...
+%PYTHON% -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 REM Verify PyInstaller

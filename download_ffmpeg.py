@@ -33,10 +33,21 @@ FFMPEG_URLS = {
 }
 
 def download_file(url, destination):
-    """Download a file from URL to destination"""
+    """Download a file from URL to destination with progress"""
     logging.info(f"Downloading from {url}")
-    urllib.request.urlretrieve(url, destination)
-    logging.info(f"Downloaded to {destination}")
+    
+    def download_progress(block_num, block_size, total_size):
+        downloaded = block_num * block_size
+        percent = min(100, (downloaded / total_size) * 100) if total_size > 0 else 0
+        if block_num % 100 == 0:  # Log every 100 blocks
+            logging.info(f"Download progress: {percent:.1f}%")
+    
+    try:
+        urllib.request.urlretrieve(url, destination, reporthook=download_progress)
+        logging.info(f"Downloaded to {destination}")
+    except Exception as e:
+        logging.error(f"Download failed: {e}")
+        raise
 
 def extract_archive(archive_path, extract_to):
     """Extract archive based on file extension"""

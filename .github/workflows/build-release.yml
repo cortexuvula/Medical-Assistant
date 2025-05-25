@@ -64,11 +64,14 @@ jobs:
       shell: cmd
       env:
         PYTHON: python
+        SKIP_FFMPEG_DOWNLOAD: "1"  # Skip FFmpeg download in CI to avoid timeouts
       run: ${{ matrix.build_script }}
     
     - name: Build application (Unix)
       if: runner.os != 'Windows'
       shell: bash
+      env:
+        SKIP_FFMPEG_DOWNLOAD: "1"  # Skip FFmpeg download in CI to avoid timeouts
       run: ${{ matrix.build_script }}
 
     - name: Compress macOS app
