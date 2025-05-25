@@ -19,7 +19,7 @@ jobs:
             dist_path: dist/MedicalAssistant
           - os: windows-latest
             artifact_name: MedicalAssistant-Windows
-            build_script: build_windows.bat
+            build_script: build_windows_ci.bat
             dist_path: dist/MedicalAssistant.exe
           - os: macos-latest
             artifact_name: MedicalAssistant-macOS
@@ -56,14 +56,17 @@ jobs:
       if: runner.os != 'Windows'
       run: chmod +x ${{ matrix.build_script }}
 
-    - name: Build application
+    - name: Build application (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      env:
+        PYTHON: python
+      run: ${{ matrix.build_script }}
+    
+    - name: Build application (Unix)
+      if: runner.os != 'Windows'
       shell: bash
-      run: |
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          cmd //c ${{ matrix.build_script }}
-        else
-          ${{ matrix.build_script }}
-        fi
+      run: ${{ matrix.build_script }}
 
     - name: Compress macOS app
       if: runner.os == 'macOS'
