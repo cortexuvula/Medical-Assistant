@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext  # Add scrolledtext here
 import ttkbootstrap as ttk
 import re
+from typing import Dict, Tuple
 
 def create_model_selector(parent, frame, model_var, provider_name, get_models_func, row, column=1):
     """Create a model selection widget with a select button.
@@ -487,6 +488,121 @@ def create_model_selection_dialog(parent, title, models_list, current_selection)
     
     return result[0]
 
+def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_prompt: str) -> Tuple[tk.Text, tk.Text]:
+    """Create the prompts tab content.
+    
+    Args:
+        parent: Parent frame for the tab
+        current_prompt: Current user prompt
+        current_system_prompt: Current system prompt
+        
+    Returns:
+        Tuple of (user_prompt_text, system_prompt_text) widgets
+    """
+    # User Prompt
+    ttk.Label(parent, text="User Prompt:").grid(row=0, column=0, sticky="nw", pady=(10, 5))
+    import tkinter.scrolledtext as scrolledtext
+    prompt_text = scrolledtext.ScrolledText(parent, width=60, height=5)
+    prompt_text.grid(row=0, column=1, padx=5, pady=(10, 5))
+    prompt_text.insert("1.0", current_prompt)
+    
+    # System Prompt
+    ttk.Label(parent, text="System Prompt:").grid(row=1, column=0, sticky="nw", pady=(5, 10))
+    system_prompt_text = scrolledtext.ScrolledText(parent, width=60, height=15)
+    system_prompt_text.grid(row=1, column=1, padx=5, pady=(5, 10))
+    system_prompt_text.insert("1.0", current_system_prompt)
+    
+    return prompt_text, system_prompt_text
+
+def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity: str, 
+                      current_grok: str, current_ollama: str) -> Dict[str, tk.StringVar]:
+    """Create the models tab content.
+    
+    Args:
+        parent: Parent frame for the tab
+        current_model: Current OpenAI model
+        current_perplexity: Current Perplexity model
+        current_grok: Current Grok model
+        current_ollama: Current Ollama model
+        
+    Returns:
+        Dictionary of model StringVars
+    """
+    model_vars = {}
+    
+    # OpenAI Model
+    ttk.Label(parent, text="OpenAI Model:").grid(row=0, column=0, sticky="nw", pady=(10, 5))
+    openai_model_var = tk.StringVar(value=current_model)
+    model_vars['openai'] = openai_model_var
+    create_model_selector(parent, parent, openai_model_var, "OpenAI", get_openai_models, row=0)
+    
+    # Perplexity Model
+    ttk.Label(parent, text="Perplexity Model:").grid(row=1, column=0, sticky="nw", pady=(5, 5))
+    perplexity_model_var = tk.StringVar(value=current_perplexity)
+    model_vars['perplexity'] = perplexity_model_var
+    create_model_selector(parent, parent, perplexity_model_var, "Perplexity", get_perplexity_models, row=1)
+    
+    # Grok Model
+    ttk.Label(parent, text="Grok Model:").grid(row=2, column=0, sticky="nw", pady=(5, 5))
+    grok_model_var = tk.StringVar(value=current_grok)
+    model_vars['grok'] = grok_model_var
+    grok_entry = ttk.Entry(parent, textvariable=grok_model_var, width=50)
+    grok_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=(5, 5))
+    
+    # Ollama Model
+    ttk.Label(parent, text="Ollama Model:").grid(row=3, column=0, sticky="nw", pady=(5, 10))
+    ollama_model_var = tk.StringVar(value=current_ollama)
+    model_vars['ollama'] = ollama_model_var
+    create_model_selector(parent, parent, ollama_model_var, "Ollama", get_ollama_models, row=3)
+    
+    return model_vars
+
+def _create_temperature_tab(parent: ttk.Frame, current_temp: float, default_temp: float) -> Tuple[tk.Scale, tk.StringVar]:
+    """Create the temperature tab content.
+    
+    Args:
+        parent: Parent frame for the tab
+        current_temp: Current temperature value
+        default_temp: Default temperature value
+        
+    Returns:
+        Tuple of (temperature_scale, temp_value_var)
+    """
+    # Temperature setting
+    ttk.Label(parent, text="Temperature:").grid(row=0, column=0, sticky="w", pady=(10, 5))
+    
+    temp_frame = ttk.Frame(parent)
+    temp_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=(10, 5))
+    
+    temp_value_var = tk.StringVar(value=f"{current_temp:.1f}")
+    temp_scale = tk.Scale(temp_frame, from_=0.0, to=2.0, resolution=0.1, 
+                         orient=tk.HORIZONTAL, length=400,
+                         command=lambda v: temp_value_var.set(f"{float(v):.1f}"))
+    temp_scale.set(current_temp)
+    temp_scale.pack(side=tk.LEFT, padx=(0, 10))
+    
+    ttk.Label(temp_frame, textvariable=temp_value_var).pack(side=tk.LEFT)
+    
+    # Temperature explanation
+    explanation = ttk.Label(parent, text=
+        "Temperature controls the randomness of the AI's responses:\n"
+        "• 0.0 = Most focused and deterministic\n"
+        "• 0.7 = Balanced creativity and consistency (recommended)\n"
+        "• 1.0 = More creative and varied\n"
+        "• 2.0 = Maximum randomness (may produce unusual results)",
+        justify=tk.LEFT, foreground="gray")
+    explanation.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 5), padx=(10, 0))
+    
+    # Reset to default button
+    def reset_temperature():
+        temp_scale.set(default_temp)
+        temp_value_var.set(f"{default_temp:.1f}")
+    
+    ttk.Button(parent, text=f"Reset to Default ({default_temp})", 
+               command=reset_temperature).grid(row=2, column=1, sticky="w", padx=(10, 0), pady=(5, 10))
+    
+    return temp_scale, temp_value_var
+
 def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict, 
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
                          save_callback: callable, current_ollama: str = "", current_system_prompt: str = "") -> None:
@@ -508,7 +624,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     # Create dialog
     dialog = tk.Toplevel(parent)
     dialog.title(title)
-    dialog.geometry("950x900")  # Increased height by 100 pixels (from 800 to 900)
+    dialog.geometry("950x700")
     dialog.transient(parent)
     dialog.grab_set()
     
@@ -517,254 +633,35 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     screen_width = dialog.winfo_screenwidth()
     screen_height = dialog.winfo_screenheight()
     x = (screen_width // 2) - (950 // 2)
-    y = (screen_height // 2) - (900 // 2)  # Updated height
-    dialog.geometry(f"950x900+{x}+{y}")  # Updated dimensions
+    y = (screen_height // 2) - (700 // 2)
+    dialog.geometry(f"950x700+{x}+{y}")
     
-    # Create main frame for the dialog
-    frame = ttk.LabelFrame(dialog, text=title, padding=10)
-    frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    # Create notebook for tabs
+    notebook = ttk.Notebook(dialog)
+    notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
-    # User Prompt
-    ttk.Label(frame, text="User Prompt:").grid(row=0, column=0, sticky="nw")
-    import tkinter.scrolledtext as scrolledtext
-    prompt_text = scrolledtext.ScrolledText(frame, width=60, height=5)
-    prompt_text.grid(row=0, column=1, padx=5, pady=5)
-    prompt_text.insert("1.0", current_prompt)
+    # Create tabs
+    prompts_tab = ttk.Frame(notebook)
+    models_tab = ttk.Frame(notebook)
+    temperature_tab = ttk.Frame(notebook)
     
-    # System Prompt
-    ttk.Label(frame, text="System Prompt:").grid(row=1, column=0, sticky="nw")
-    system_prompt_text = scrolledtext.ScrolledText(frame, width=60, height=15)
-    system_prompt_text.grid(row=1, column=1, padx=5, pady=5)
-    system_prompt_text.insert("1.0", current_system_prompt)
+    notebook.add(prompts_tab, text="Prompts")
+    notebook.add(models_tab, text="Models")
+    notebook.add(temperature_tab, text="Temperature")
     
-    # OpenAI Model
-    ttk.Label(frame, text="OpenAI Model:").grid(row=2, column=0, sticky="nw")
-    openai_frame = ttk.Frame(frame)
-    openai_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+    # Populate tabs
+    prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
+    model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama)
     
-    # Create a listbox with scrollbar for displaying models instead of combobox
-    openai_model_var = tk.StringVar(value=current_model if current_model else "")
-    openai_entry = ttk.Entry(openai_frame, textvariable=openai_model_var, width=48)
-    openai_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    # Get temperature from config
+    current_temp = config.get("temperature", default.get("temperature", 0.7))
+    default_temp = default.get("temperature", 0.7)
+    temp_scale, temp_value_var = _create_temperature_tab(temperature_tab, current_temp, default_temp)
     
-    # Function to show model selection dialog
-    def select_openai_model():
-        # Make a fresh API call to get the latest models
-        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
-        progress_frame = ttk.Frame(progress_dialog, padding=20)
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(progress_frame, text="Fetching OpenAI models...").pack(pady=(0, 10))
-        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
-        progress.pack(fill=tk.X)
-        progress.start()
-        
-        # Update the dialog to show progress
-        progress_dialog.update()
-        
-        # Make API call
-        models = get_openai_models()
-        
-        # Close progress dialog
-        progress_dialog.destroy()
-        
-        if not models:
-            # If API call failed, show error message
-            messagebox.showerror("Error", "Failed to fetch OpenAI models. Check your API key and internet connection.")
-            return
-            
-        # Open the model selection dialog with the fetched models
-        model_selection = create_model_selection_dialog(parent, "Select OpenAI Model", models, openai_model_var.get())
-        if model_selection:
-            openai_model_var.set(model_selection)
-    
-    # Add select model button
-    openai_select_button = ttk.Button(openai_frame, text="Select Model", command=select_openai_model)
-    openai_select_button.pack(side=tk.RIGHT, padx=(5, 0))
-    
-    # Perplexity Model
-    ttk.Label(frame, text="Perplexity Model:").grid(row=3, column=0, sticky="nw")
-    perplexity_frame = ttk.Frame(frame)
-    perplexity_frame.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-    
-    # Create a text entry with selection dialog for Perplexity models
-    perplexity_model_var = tk.StringVar(value=current_perplexity if current_perplexity else "")
-    perplexity_entry = ttk.Entry(perplexity_frame, textvariable=perplexity_model_var, width=48)
-    perplexity_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    
-    # Function to show model selection dialog
-    def select_perplexity_model():
-        # Make a fresh API call to get the latest models
-        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
-        progress_frame = ttk.Frame(progress_dialog, padding=20)
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(progress_frame, text="Fetching Perplexity models...").pack(pady=(0, 10))
-        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
-        progress.pack(fill=tk.X)
-        progress.start()
-        
-        # Update the dialog to show progress
-        progress_dialog.update()
-        
-        # Make API call
-        models = get_perplexity_models()
-        
-        # Close progress dialog
-        progress_dialog.destroy()
-        
-        if not models:
-            # If API call failed, show error message
-            messagebox.showerror("Error", "Failed to fetch Perplexity models. Check your API key and internet connection.")
-            return
-            
-        # Open the model selection dialog with the fetched models
-        model_selection = create_model_selection_dialog(parent, "Select Perplexity Model", models, perplexity_model_var.get())
-        if model_selection:
-            perplexity_model_var.set(model_selection)
-    
-    # Add select model button
-    perplexity_select_button = ttk.Button(perplexity_frame, text="Select Model", command=select_perplexity_model)
-    perplexity_select_button.pack(side=tk.RIGHT, padx=(5, 0))
-    
-    # Grok Model
-    ttk.Label(frame, text="Grok Model:").grid(row=4, column=0, sticky="nw")
-    grok_frame = ttk.Frame(frame)
-    grok_frame.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
-    
-    # Create a text entry with selection dialog for Grok models
-    grok_model_var = tk.StringVar(value=current_grok if current_grok else "")
-    grok_entry = ttk.Entry(grok_frame, textvariable=grok_model_var, width=48)
-    grok_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    
-    # Function to show model selection dialog
-    def select_grok_model():
-        # Make a fresh API call to get the latest models
-        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
-        progress_frame = ttk.Frame(progress_dialog, padding=20)
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(progress_frame, text="Fetching Grok models...").pack(pady=(0, 10))
-        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
-        progress.pack(fill=tk.X)
-        progress.start()
-        
-        # Update the dialog to show progress
-        progress_dialog.update()
-        
-        # Make API call
-        models = get_grok_models()
-        
-        # Close progress dialog
-        progress_dialog.destroy()
-        
-        if not models:
-            messagebox.showerror("Error", "Failed to fetch Grok models. Check your API key and internet connection.")
-            fallback_models = get_fallback_grok_models()
-            model_selection = create_model_selection_dialog(parent, "Select Grok Model", fallback_models, grok_model_var.get())
-            if model_selection:
-                grok_model_var.set(model_selection)
-            return
-            
-        # Open the model selection dialog with the fetched models
-        model_selection = create_model_selection_dialog(parent, "Select Grok Model", models, grok_model_var.get())
-        if model_selection:
-            grok_model_var.set(model_selection)
-    
-    # Add select model button
-    grok_select_button = ttk.Button(grok_frame, text="Select Model", command=select_grok_model)
-    grok_select_button.pack(side=tk.RIGHT, padx=(5, 0))
-    
-    # Ollama Model
-    ttk.Label(frame, text="Ollama Model:").grid(row=5, column=0, sticky="nw")
-    ollama_frame = ttk.Frame(frame)
-    ollama_frame.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
-    
-    # Create a text entry with selection dialog for Ollama models
-    ollama_model_var = tk.StringVar(value=current_ollama if current_ollama else "llama3")
-    ollama_entry = ttk.Entry(ollama_frame, textvariable=ollama_model_var, width=48)
-    ollama_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    
-    # Populate common Ollama models
-    ollama_models = ["llama3", "llama3:70b", "llama3:8b", "mistral", "mixtral", "phi3", "codellama", "gemma", "gemma:7b"]
-    
-    # Function to show model selection dialog
-    def select_ollama_model():
-        # Make a fresh API call to get the latest models
-        progress_dialog = create_toplevel_dialog(parent, "Fetching Models", "300x100")
-        progress_frame = ttk.Frame(progress_dialog, padding=20)
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(progress_frame, text="Fetching Ollama models...").pack(pady=(0, 10))
-        progress = ttk.Progressbar(progress_frame, mode="indeterminate")
-        progress.pack(fill=tk.X)
-        progress.start()
-        
-        # Update the dialog to show progress
-        progress_dialog.update()
-        
-        # Get fresh models list
-        models = get_ollama_models()
-        
-        # Close progress dialog
-        progress_dialog.destroy()
-        
-        if not models:
-            models = ollama_models
-            messagebox.showwarning("Warning", "Could not connect to Ollama API. Using default models instead.")
-        
-        # Show model selection dialog
-        model_selection = create_model_selection_dialog(parent, "Select Ollama Model", models, ollama_model_var.get())
-        if model_selection:
-            ollama_model_var.set(model_selection)
-    
-    # Add select model button
-    ollama_select_button = ttk.Button(ollama_frame, text="Select Model", command=select_ollama_model)
-    ollama_select_button.pack(side=tk.RIGHT, padx=(5, 0))
-    
-    # Initialize model entries with previously stored values first, fall back to defaults if not available
-    # OpenAI model
-    openai_entry.delete(0, tk.END)
-    if current_model:  # Use stored model if available
-        openai_entry.insert(0, current_model)
-    else:  # Otherwise use default from config/default dict or hard-coded default
-        default_openai = config.get("model", default.get("model", "gpt-3.5-turbo"))
-        openai_entry.insert(0, default_openai)
-    
-    # Perplexity model
-    perplexity_entry.delete(0, tk.END)
-    if current_perplexity:  # Use stored model if available
-        perplexity_entry.insert(0, current_perplexity)
-    else:  # Otherwise use default from config/default dict or hard-coded default
-        default_perplexity = config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro"))
-        perplexity_entry.insert(0, default_perplexity)
-    
-    # Grok model
-    grok_entry.delete(0, tk.END)
-    if current_grok:  # Use stored model if available
-        grok_entry.insert(0, current_grok)
-    else:  # Otherwise use default from config/default dict or hard-coded default
-        default_grok = config.get("grok_model", default.get("grok_model", "grok-1"))
-        grok_entry.insert(0, default_grok)
-    
-    # Ollama model
-    ollama_entry.delete(0, tk.END)
-    if current_ollama:  # Use stored model if available
-        ollama_entry.insert(0, current_ollama)
-    else:  # Otherwise use default from config/default dict or hard-coded default
-        default_ollama = config.get("ollama_model", default.get("ollama_model", "llama3"))
-        ollama_entry.insert(0, default_ollama)
-    
+    # Create button frame
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    # Create buttons FIRST then define the reset_fields function
-    reset_button = ttk.Button(btn_frame, text="Reset")
-    reset_button.pack(side=tk.LEFT, padx=5)
-    
-    save_button = ttk.Button(btn_frame, text="Save")
-    save_button.pack(side=tk.RIGHT, padx=5)
-    
-    cancel_button = ttk.Button(btn_frame, text="Cancel", command=dialog.destroy)
-    cancel_button.pack(side=tk.RIGHT, padx=5)
-    
-    # Simple reset function - get default values directly from default dict
+    # Define reset function
     def reset_fields():
         # Import default prompts directly from prompts.py
         from prompts import REFINE_PROMPT, IMPROVE_PROMPT, SOAP_PROMPT_TEMPLATE, REFINE_SYSTEM_MESSAGE, IMPROVE_SYSTEM_MESSAGE, SOAP_SYSTEM_MESSAGE
@@ -795,39 +692,43 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         prompt_text.insert("1.0", default_prompt)
         system_prompt_text.insert("1.0", default_system)
         
-        # Reset combo boxes to default values or values from config/default parameters if available
-        openai_entry.delete(0, tk.END)
-        openai_entry.insert(0, config.get("model", default.get("model", "gpt-3.5-turbo")))  # Use defaults from config
+        # Reset model fields to defaults
+        model_vars['openai'].set(config.get("model", default.get("model", "gpt-3.5-turbo")))
+        model_vars['perplexity'].set(config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
+        model_vars['grok'].set(config.get("grok_model", default.get("grok_model", "grok-1")))
+        model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
         
-        perplexity_entry.delete(0, tk.END)
-        perplexity_entry.insert(0, config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
-        
-        grok_entry.delete(0, tk.END)
-        grok_entry.insert(0, config.get("grok_model", default.get("grok_model", "grok-1")))
-        
-        ollama_entry.delete(0, tk.END)
-        ollama_entry.insert(0, config.get("ollama_model", default.get("ollama_model", "llama3")))
+        # Reset temperature
+        temp_scale.set(default_temp)
+        temp_value_var.set(f"{default_temp:.1f}")
         
         # Set focus
         prompt_text.focus_set()
     
-    # Now assign the function to the button
-    reset_button.config(command=reset_fields)
-    
     # Define save function
     def save_fields():
+        # Add temperature to config
+        config["temperature"] = temp_scale.get()
+        
         save_callback(
             prompt_text.get("1.0", tk.END).strip(),
-            openai_entry.get().strip(),
-            perplexity_entry.get().strip(),
-            grok_entry.get().strip(),
-            ollama_entry.get().strip(),
+            model_vars['openai'].get().strip(),
+            model_vars['perplexity'].get().strip(),
+            model_vars['grok'].get().strip(),
+            model_vars['ollama'].get().strip(),
             system_prompt_text.get("1.0", tk.END).strip()
         )
         dialog.destroy()
     
-    # Assign save function to save button
-    save_button.config(command=save_fields)
+    # Create buttons
+    reset_button = ttk.Button(btn_frame, text="Reset", command=reset_fields)
+    reset_button.pack(side=tk.LEFT, padx=5)
+    
+    save_button = ttk.Button(btn_frame, text="Save", command=save_fields)
+    save_button.pack(side=tk.RIGHT, padx=5)
+    
+    cancel_button = ttk.Button(btn_frame, text="Cancel", command=dialog.destroy)
+    cancel_button.pack(side=tk.RIGHT, padx=5)
 
 def askstring_min(parent: tk.Tk, title: str, prompt: str, initialvalue: str = "") -> str:
     dialog = create_toplevel_dialog(parent, title, "400x300")

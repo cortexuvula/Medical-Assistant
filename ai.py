@@ -439,6 +439,32 @@ def get_possible_conditions(text: str) -> str:
     # Clean both markdown and citations
     return clean_text(result)
 
+def _build_letter_prompt(text: str, specs: str = "") -> str:
+    """Build the prompt for letter generation.
+    
+    Args:
+        text: Content to base the letter on
+        specs: Special instructions for letter formatting/content
+        
+    Returns:
+        Complete prompt for AI
+    """
+    prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
+    if specs.strip():
+        prompt += f"Special instructions: {specs}\n\n"
+    
+    prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
+    return prompt
+
+def _get_letter_system_message() -> str:
+    """Get the system message for letter generation.
+    
+    Returns:
+        System message for letter AI
+    """
+    return ("You are an expert medical professional specializing in writing professional medical letters. "
+            "Create well-formatted correspondence that is clear, concise, and appropriate for medical communication.")
+
 def create_letter_with_ai(text: str, specs: str = "") -> str:
     """Generate a professional medical letter based on provided text and specifications.
     
@@ -449,20 +475,17 @@ def create_letter_with_ai(text: str, specs: str = "") -> str:
     Returns:
         Complete formatted letter
     """
-    # Create a prompt for the AI
-    prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
-    if specs.strip():
-        prompt += f"Special instructions: {specs}\n\n"
+    # Build the prompt
+    prompt = _build_letter_prompt(text, specs)
     
-    prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
-    
-    # Call the AI with the letter generation prompt
-    system_message = "You are an expert medical professional specializing in writing professional medical letters. Create well-formatted correspondence that is clear, concise, and appropriate for medical communication."
+    # Get system message
+    system_message = _get_letter_system_message()
     
     # Use the currently selected AI provider
     from settings import SETTINGS
     current_provider = SETTINGS.get("ai_provider", "openai")
     
+    # Make the AI call
     result = call_ai("gpt-4o", system_message, prompt, 0.7)
     
     # Clean up any markdown formatting and citations from the result

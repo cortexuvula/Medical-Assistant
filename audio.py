@@ -514,6 +514,161 @@ class AudioHandler:
             # Return a no-op function on error
             return lambda wait_for_stop=True: None
 
+    def _resolve_device_index(self, device_name: str) -> Optional[int]:
+        """Resolve device name to sounddevice index.
+        
+        Args:
+            device_name: The target device name string.
+            
+        Returns:
+            Device index or None if not found.
+        """
+        logging.info(f"Resolving sounddevice index for: '{device_name}'")
+        devices = sd.query_devices()
+        device_id = None
+
+        # Log available devices for debugging
+        logging.debug("Sounddevice List for Index Resolution:")
+        input_device_indices = []
+        for i, dev in enumerate(devices):
+            is_input = dev['max_input_channels'] > 0
+            logging.debug(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
+            if is_input:
+                input_device_indices.append(i)
+
+        # 1. Try exact name match
+        for i in input_device_indices:
+            if devices[i]['name'] == device_name:
+                device_id = i
+                logging.info(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
+                break
+
+        # 2. If no exact match, try case-insensitive match
+        if device_id is None:
+            for i in input_device_indices:
+                if devices[i]['name'].lower() == device_name.lower():
+                    device_id = i
+                    logging.info(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    break
+        
+        # 3. Try partial match
+        if device_id is None:
+            for i in input_device_indices:
+                if device_name in devices[i]['name'] or devices[i]['name'] in device_name:
+                    device_id = i
+                    logging.info(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    break
+
+        if device_id is None:
+            logging.error(f"Could not find device '{device_name}' in sounddevice list")
+            
+        return device_id
+
+    def _setup_audio_parameters(self, device_id: int) -> Tuple[int, int]:
+        """Setup audio parameters for the device.
+        
+        Args:
+            device_id: The sounddevice device index.
+            
+        Returns:
+            Tuple of (channels, sample_rate).
+        """
+        device_info = sd.query_devices(device_id)
+        
+        # Determine optimal channel count
+        channels = 1  # Default to mono
+        max_channels = device_info.get('max_input_channels', 1)
+        
+        try:
+            # Try to use mono if available
+            if max_channels >= 1:
+                channels = 1
+            else:
+                logging.warning(f"Device {device_info['name']} reports {max_channels} input channels")
+        except Exception as e:
+            logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
+
+        self.channels = channels
+        self.sample_rate = int(device_info.get('default_samplerate', 44100))
+        
+        return channels, self.sample_rate
+
+    def _create_stop_function(self, stream: sd.InputStream) -> Callable:
+        """Create the stop function for the audio stream.
+        
+        Args:
+            stream: The sounddevice InputStream.
+            
+        Returns:
+            Function to stop the stream.
+        """
+        def stop_stream(wait_for_stop: bool = False) -> None:
+            if stream:
+                try:
+                    stream.stop()
+                    stream.close()
+                    logging.info("sounddevice InputStream stopped and closed")
+                except Exception as e:
+                    logging.error(f"Error stopping sounddevice stream: {e}", exc_info=True)
+                finally:
+                    # Clear references
+                    self.listening_device = None
+                    self.callback_function = None
+                    
+                    # Remove from active streams
+                    if stream in self._active_streams:
+                        self._active_streams.remove(stream)
+        
+        return stop_stream
+
+    def _create_audio_callback(self, phrase_time_limit: int) -> Callable:
+        """Create the audio callback function for sounddevice.
+        
+        Args:
+            phrase_time_limit: Maximum length of audio capture in seconds.
+            
+        Returns:
+            The callback function.
+        """
+        # Buffer to accumulate audio data
+        accumulated_data = []
+        accumulated_frames = 0
+        target_frames = int(self.sample_rate * phrase_time_limit)
+        
+        logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
+
+        def audio_callback_sd(indata: np.ndarray, frames: int, time: Any, status: sd.CallbackFlags) -> None:
+            nonlocal accumulated_data, accumulated_frames
+            
+            if status:
+                logging.warning(f"sounddevice status: {status}")
+            try:
+                # Make a copy to avoid issues with buffer overwriting
+                audio_data_copy = indata.copy()
+                
+                # Add to accumulated buffer
+                accumulated_data.append(audio_data_copy)
+                accumulated_frames += frames
+                
+                # Only call the callback when we've accumulated enough data
+                if accumulated_frames >= target_frames or not self.callback_function:
+                    if self.callback_function and accumulated_data:
+                        # Combine all accumulated chunks
+                        combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                        # Call the callback with the combined data
+                        self.callback_function(combined_data)
+                        
+                        # Reset for next accumulation
+                        accumulated_data = []
+                        accumulated_frames = 0
+            except Exception as e_cb:
+                logging.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
+                # Reset accumulation on error
+                accumulated_data = []
+                accumulated_frames = 0
+        
+        return audio_callback_sd
+
     def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None) -> Callable:
         """Listen using sounddevice library, resolving name to index just-in-time.
 
@@ -533,121 +688,30 @@ class AudioHandler:
             self.listening_device = device_name # Store the name being used
             self.callback_function = callback # Store callback
 
-            # --- JIT Device Index Resolution ---
-            logging.info(f"Resolving sounddevice index for: '{device_name}'")
-            devices = sd.query_devices()
-            device_id = None
-
-            # Log available devices for debugging
-            logging.debug("Sounddevice List for Index Resolution:")
-            input_device_indices = []
-            for i, dev in enumerate(devices):
-                is_input = dev['max_input_channels'] > 0
-                logging.debug(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
-                if is_input:
-                    input_device_indices.append(i)
-
-            # 1. Try exact name match
-            for i in input_device_indices:
-                if devices[i]['name'] == device_name:
-                    device_id = i
-                    logging.info(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
-                    break
-
-            # 2. If no exact match, try case-insensitive match
+            # Resolve device name to index
+            device_id = self._resolve_device_index(device_name)
             if device_id is None:
-                for i in input_device_indices:
-                    if devices[i]['name'].lower() == device_name.lower():
-                        device_id = i
-                        logging.info(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
-                        break
-            
-            # 3. Try partial match (e.g., user selected "Microphone (Realtek)" but sd lists "Microphone (Realtek High Definition Audio)")
-            if device_id is None:
-                 for i in input_device_indices:
-                     if device_name in devices[i]['name']:
-                         device_id = i
-                         logging.info(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
-                         break # Take the first partial match
-
-            # 4. Handle failure to find device
-            if device_id is None:
-                logging.error(f"Could not find '{device_name}' in sounddevice input list. Available devices logged above.")
-                # Attempt to use default input device as a fallback
+                # Try to use default input device as a fallback
                 try:
                     default_input = sd.query_devices(kind='input')
                     if default_input and isinstance(default_input, dict) and 'index' in default_input:
-                       device_id = default_input['index']
-                       logging.warning(f"Falling back to default sounddevice input: Index={device_id}, Name='{default_input['name']}'")
+                        device_id = default_input['index']
+                        logging.warning(f"Falling back to default sounddevice input: Index={device_id}, Name='{default_input['name']}'")
                     else:
-                         raise ValueError("Could not find specified or default sounddevice input device.")
+                        raise ValueError("Could not find specified or default sounddevice input device.")
                 except Exception as e_def:
                     logging.error(f"Failed to get default sounddevice input: {e_def}")
                     raise ValueError(f"Device '{device_name}' not found and default could not be determined.")
-            # --- End JIT Resolution ---
-
-            device_info = devices[device_id]
-            channels = 1 # Default to mono
-            try:
-                channels = int(device_info['max_input_channels'])
-                # Clamp channels to 1 or 2 if device supports more, prefer mono
-                if channels >= 2:
-                     channels = 1 # Force mono for simplicity unless stereo is required
-                     logging.info(f"Device supports {device_info['max_input_channels']} channels, using {channels} for recording.")
-                elif channels == 0:
-                    logging.warning(f"Device '{device_info['name']}' reports 0 input channels, forcing to 1.")
-                    channels = 1
-            except Exception as e:
-                logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
-
-            self.channels = channels # Store the actual channels being used
-            self.sample_rate = int(device_info.get('default_samplerate', 44100))
-            buffer_size = int(self.sample_rate * phrase_time_limit) # Use phrase_time_limit for buffer
-
-            logging.info(f"Creating sounddevice InputStream: DeviceID={device_id}, Name='{device_info['name']}', Rate={self.sample_rate}, Channels={self.channels}, Buffer={buffer_size}")
-
-            # Buffer to accumulate audio data until it reaches phrase_time_limit
-            accumulated_data = []
-            accumulated_frames = 0
-            target_frames = int(self.sample_rate * phrase_time_limit)
             
-            logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
+            # Setup audio parameters
+            channels, sample_rate = self._setup_audio_parameters(device_id)
+            
+            # Create audio callback
+            audio_callback_sd = self._create_audio_callback(phrase_time_limit)
 
-            # --- Internal Audio Callback ---
-            # This runs in a separate thread managed by sounddevice
-            def audio_callback_sd(indata: np.ndarray, frames: int, time: Any, status: sd.CallbackFlags) -> None:
-                nonlocal accumulated_data, accumulated_frames
-                
-                if status:
-                    # Log PortAudio statuses: https://python-sounddevice.readthedocs.io/en/0.4.6/api/status.html
-                    logging.warning(f"sounddevice status: {status}")
-                try:
-                    # Make a copy to avoid issues with buffer overwriting
-                    audio_data_copy = indata.copy()
-                    
-                    # Add to accumulated buffer
-                    accumulated_data.append(audio_data_copy)
-                    accumulated_frames += frames
-                    
-                    # Only call the callback when we've accumulated enough data
-                    # or if the SOAP recording was just stopped (to ensure we process remaining data)
-                    if accumulated_frames >= target_frames or not self.callback_function:
-                        if self.callback_function and accumulated_data:
-                            # Combine all accumulated chunks
-                            combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
-                            # Call the callback with the combined data
-                            self.callback_function(combined_data)
-                            
-                            # Reset for next accumulation
-                            accumulated_data = []
-                            accumulated_frames = 0
-                except Exception as e_cb:
-                    logging.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
-                    # Reset accumulation on error
-                    accumulated_data = []
-                    accumulated_frames = 0
-            # --- End Internal Audio Callback ---
-
+            # Get device info for logging
+            device_info = sd.query_devices(device_id)
+            
             stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 device=device_id,
@@ -660,37 +724,13 @@ class AudioHandler:
             stream.start()
             logging.info(f"sounddevice InputStream started for '{device_info['name']}'")
 
-            # Define the stop function specific to this stream
-            def stop_stream(wait_for_stop: bool = False) -> None: # wait_for_stop isn't used by sounddevice stream.stop
-                nonlocal stream, accumulated_data, accumulated_frames
-                if stream:
-                    try:
-                        # Process any remaining accumulated data before stopping
-                        if self.callback_function and accumulated_data:
-                            try:
-                                combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
-                                self.callback_function(combined_data)
-                                logging.info(f"Processed final audio chunk of {accumulated_frames} frames before stopping")
-                            except Exception as e_final:
-                                logging.error(f"Error processing final audio chunk: {e_final}", exc_info=True)
-                        
-                        # Reset accumulation buffers
-                        accumulated_data = []
-                        accumulated_frames = 0
-                        
-                        if not stream.stopped:
-                            stream.stop()
-                            logging.info(f"sounddevice InputStream stopped for '{self.listening_device}'")
-                        stream.close()
-                        logging.info(f"sounddevice InputStream closed for '{self.listening_device}'")
-                    except Exception as e_stop:
-                        logging.error(f"Error stopping/closing sounddevice stream: {e_stop}", exc_info=True)
-                    finally:
-                        stream = None
-                        self.listening_device = None
-                        self.callback_function = None
+            # Add to active streams
+            self._active_streams.append(stream)
             
-            return stop_stream # Return the specific closer for this stream
+            # Create stop function
+            stop_function = self._create_stop_function(stream)
+            
+            return stop_function # Return the specific closer for this stream
 
         except sd.PortAudioError as pae:
             logging.error(f"PortAudioError in _listen_with_sounddevice for '{device_name}': {pae}")
