@@ -1,9 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import platform
+
+# Determine FFmpeg files based on platform
+ffmpeg_files = []
+ffmpeg_dir = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'ffmpeg')
+
+if os.path.exists(ffmpeg_dir):
+    if platform.system() == 'Windows':
+        ffmpeg_files = [
+            (os.path.join(ffmpeg_dir, 'ffmpeg.exe'), 'ffmpeg'),
+            (os.path.join(ffmpeg_dir, 'ffprobe.exe'), 'ffmpeg'),
+        ]
+    else:
+        ffmpeg_files = [
+            (os.path.join(ffmpeg_dir, 'ffmpeg'), 'ffmpeg'),
+        ]
+        # Add ffprobe for Linux
+        if platform.system() == 'Linux':
+            ffprobe_path = os.path.join(ffmpeg_dir, 'ffprobe')
+            if os.path.exists(ffprobe_path):
+                ffmpeg_files.append((ffprobe_path, 'ffmpeg'))
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=ffmpeg_files,
     datas=[
         ('env.example', '.'),
     ],

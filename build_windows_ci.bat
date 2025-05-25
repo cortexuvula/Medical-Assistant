@@ -9,6 +9,15 @@ REM Clean previous builds
 if exist dist rd /s /q dist 2>nul
 if exist build rd /s /q build 2>nul
 
+REM Download FFmpeg if not present
+if not exist "ffmpeg\ffmpeg.exe" (
+    echo Downloading FFmpeg...
+    %PYTHON% download_ffmpeg.py
+    if %errorlevel% neq 0 (
+        echo Warning: FFmpeg download failed. Build will continue without bundled FFmpeg.
+    )
+)
+
 REM Install dependencies
 echo Installing dependencies...
 %PYTHON% -m pip install --upgrade pip

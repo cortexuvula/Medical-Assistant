@@ -197,3 +197,6 @@ exports
 database.db
 
 prefix_audio.mp3
+
+# FFmpeg binaries
+ffmpeg/

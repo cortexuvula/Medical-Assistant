@@ -86,6 +86,7 @@ from text_processor import TextProcessor
 
 # Add this import at the top with other imports
 from status_manager import StatusManager
+from ffmpeg_utils import configure_pydub
 
 # Completely revised check_env_file function to handle the tkinter window properly
 def check_env_file():
@@ -245,6 +246,9 @@ def check_env_file():
 # Modify the main function to only create the app if check_env_file returns True
 def main() -> None:
     """Main function to start the application."""
+    # Configure FFmpeg paths before anything else
+    configure_pydub()
+    
     # Load environment variables from .env file
     load_dotenv()
     

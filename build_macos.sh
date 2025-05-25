@@ -6,6 +6,15 @@ echo "Building Medical Assistant for macOS..."
 # Clean previous builds
 rm -rf dist build
 
+# Download FFmpeg if not present
+if [ ! -d "ffmpeg" ] || [ ! -f "ffmpeg/ffmpeg" ]; then
+    echo "Downloading FFmpeg..."
+    python download_ffmpeg.py
+    if [ $? -ne 0 ]; then
+        echo "Warning: FFmpeg download failed. Build will continue without bundled FFmpeg."
+    fi
+fi
+
 # Install dependencies
 echo "Installing dependencies..."
 pip install -r requirements.txt
