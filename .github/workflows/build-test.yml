@@ -30,6 +30,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Test PyInstaller build
+      shell: bash
       run: |
         chmod +x build_linux.sh
         ./build_linux.sh

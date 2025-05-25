@@ -47,7 +47,13 @@ jobs:
       run: chmod +x ${{ matrix.build_script }}
 
     - name: Build application
-      run: ${{ matrix.build_script }}
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          cmd //c ${{ matrix.build_script }}
+        else
+          ${{ matrix.build_script }}
+        fi
 
     - name: Compress macOS app
       if: runner.os == 'macOS'
