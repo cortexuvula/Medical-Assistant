@@ -3116,7 +3116,7 @@ class MedicalDictationApp(ttk.Window):
                         try:
                             if os.name == 'nt':  # Windows
                                 os.startfile(export_dir)
-                            elif os.name == 'posix':  # macOS or Linux
+                            else:  # macOS or Linux
                                 import subprocess
                                 subprocess.Popen(['open', export_dir] if sys.platform == 'darwin' else ['xdg-open', export_dir])
                         except Exception as folder_err:
@@ -3200,11 +3200,9 @@ class MedicalDictationApp(ttk.Window):
         try:
             if os.name == 'nt':  # Windows
                 os.startfile(log_dir)
-            elif os.name == 'posix':  # macOS or Linux
+            else:  # macOS or Linux
                 import subprocess
                 subprocess.Popen(['open', log_dir] if sys.platform == 'darwin' else ['xdg-open', log_dir])
-            else:
-                messagebox.showinfo("Logs", f"Logs are located at: {log_dir}")
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
             logging.error(f"Error opening logs directory: {str(e)}")
