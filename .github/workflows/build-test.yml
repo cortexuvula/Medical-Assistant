@@ -8,7 +8,7 @@ on:
 
 jobs:
   test-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
 
     steps:
@@ -22,8 +22,10 @@ jobs:
     - name: Install system dependencies
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get update -qq -o=Dpkg::Use-Pty=0
-        sudo apt-get install -y -qq -o=Dpkg::Use-Pty=0 python3-tk python3.12-tk
+        export NEEDRESTART_MODE=a
+        export NEEDRESTART_SUSPEND=1
+        sudo -E apt-get update -qq -o=Dpkg::Use-Pty=0
+        sudo -E apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o=Dpkg::Options::="--force-confold" -o=Dpkg::Options::="--force-confdef" --no-install-recommends python3-tk python3.12-tk
 
     - name: Install Python dependencies
       run: |

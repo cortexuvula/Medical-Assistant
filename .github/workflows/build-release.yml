@@ -11,9 +11,9 @@ jobs:
     timeout-minutes: 30  # Add timeout to prevent hanging builds
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-22.04, windows-latest, macos-latest]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact_name: MedicalAssistant-Linux
             build_script: ./build_linux.sh
             dist_path: dist/MedicalAssistant
@@ -36,17 +36,14 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Update package list (Linux)
+    - name: Install system dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get update -qq -o=Dpkg::Use-Pty=0
-    
-    - name: Install tkinter (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get install -y -qq -o=Dpkg::Use-Pty=0 --no-install-recommends python3-tk python3.12-tk
+        export NEEDRESTART_MODE=a
+        export NEEDRESTART_SUSPEND=1
+        sudo -E apt-get update -qq -o=Dpkg::Use-Pty=0
+        sudo -E apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o=Dpkg::Options::="--force-confold" -o=Dpkg::Options::="--force-confdef" --no-install-recommends python3-tk python3.12-tk
     
     - name: Install system dependencies (macOS)
       if: runner.os == 'macOS'
