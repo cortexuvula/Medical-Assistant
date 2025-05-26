@@ -16,6 +16,7 @@ from settings import SETTINGS, _DEFAULT_SETTINGS
 from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from resilience import resilient_api_call, retry
 from config import get_config
+from security_decorators import secure_api_call
 
 class DeepgramProvider(BaseSTTProvider):
     """Implementation of the Deepgram STT provider."""
@@ -30,6 +31,7 @@ class DeepgramProvider(BaseSTTProvider):
         super().__init__(api_key, language)
         self.client = DeepgramClient(api_key=api_key) if api_key else None
     
+    @secure_api_call("deepgram")
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,

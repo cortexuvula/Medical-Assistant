@@ -12,7 +12,10 @@ from error_codes import get_error_message, format_api_error
 from validation import validate_api_key, sanitize_prompt, validate_model_name
 from exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError
 from resilience import resilient_api_call
+from security import get_security_manager
+from security_decorators import secure_api_call, rate_limited
 
+@secure_api_call("openai")
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -53,15 +56,18 @@ def _openai_api_call(model: str, messages: list, temperature: float):
             raise APIError(f"OpenAI API error: {error_msg}")
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
+    # Get security manager
+    security_manager = get_security_manager()
+    
     # Validate inputs
     is_valid, error = validate_model_name(model, "openai")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return f"[Error: {title}] {message}"
     
-    # Sanitize prompt
-    prompt = sanitize_prompt(prompt)
-    system_message = sanitize_prompt(system_message)
+    # Enhanced sanitization
+    prompt = security_manager.sanitize_input(prompt, "prompt")
+    system_message = security_manager.sanitize_input(system_message, "prompt")
     
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
@@ -93,6 +99,7 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
+@secure_api_call("perplexity")
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -135,7 +142,12 @@ def _perplexity_api_call(client, model: str, messages: list, temperature: float)
 
 def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
     from openai import OpenAI
-    api_key = os.getenv("PERPLEXITY_API_KEY")
+    
+    # Get security manager
+    security_manager = get_security_manager()
+    
+    # Get API key from secure storage or environment
+    api_key = security_manager.get_api_key("perplexity")
     if not api_key:
         logging.error("Perplexity API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
@@ -148,9 +160,9 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         title, message = get_error_message("API_KEY_INVALID", error)
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     
-    # Sanitize inputs
-    prompt = sanitize_prompt(prompt)
-    system_message = sanitize_prompt(system_message)
+    # Enhanced sanitization
+    prompt = security_manager.sanitize_input(prompt, "prompt")
+    system_message = security_manager.sanitize_input(system_message, "prompt")
     client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
     
     # Get model from the appropriate settings based on the task

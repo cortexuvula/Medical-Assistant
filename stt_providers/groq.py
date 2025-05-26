@@ -14,6 +14,8 @@ from .base import BaseSTTProvider
 from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from resilience import resilient_api_call
 from config import get_config
+from security_decorators import secure_api_call
+from security import get_security_manager
 
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""
@@ -37,7 +39,7 @@ class GroqProvider(BaseSTTProvider):
             Transcription text
         """
         if not self._check_api_key():
-            return ""
+            raise TranscriptionError("GROQ API key not configured")
         
         temp_file = None
         file_obj = None
@@ -61,8 +63,14 @@ class GroqProvider(BaseSTTProvider):
             # Using OpenAI client since GROQ uses a compatible API
             from openai import OpenAI
             
+            # Get API key from secure storage if needed
+            security_manager = get_security_manager()
+            api_key = self.api_key or security_manager.get_api_key("groq")
+            if not api_key:
+                raise TranscriptionError("GROQ API key not found")
+            
             # Initialize client with GROQ base URL
-            client = OpenAI(api_key=self.api_key, base_url="https://api.groq.com/openai/v1")
+            client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
             
             # Print API call details to terminal
             print("\n===== GROQ API CALL =====")

@@ -13,3 +13,4 @@ soundcard
 sounddevice
 concurrent-log-handler>=0.9.1 # Use a specific version or latest as appropriate
 pyinstaller>=6.3.0
+cryptography>=45.0.0  # For secure API key storage
