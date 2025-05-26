@@ -10,6 +10,47 @@ from prompts import (
 from settings import SETTINGS, _DEFAULT_SETTINGS
 from error_codes import get_error_message, format_api_error
 from validation import validate_api_key, sanitize_prompt, validate_model_name
+from exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError
+from resilience import resilient_api_call
+
+@resilient_api_call(
+    max_retries=3,
+    initial_delay=1.0,
+    backoff_factor=2.0,
+    failure_threshold=5,
+    recovery_timeout=60
+)
+def _openai_api_call(model: str, messages: list, temperature: float):
+    """Make the actual API call to OpenAI.
+    
+    Args:
+        model: Model name
+        messages: List of messages
+        temperature: Temperature setting
+        
+    Returns:
+        API response
+        
+    Raises:
+        APIError: On API failures
+    """
+    try:
+        response = openai.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+        )
+        return response
+    except Exception as e:
+        error_msg = str(e)
+        if "rate limit" in error_msg.lower():
+            raise RateLimitError(f"OpenAI rate limit exceeded: {error_msg}")
+        elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
+            raise AuthenticationError(f"OpenAI authentication failed: {error_msg}")
+        elif "timeout" in error_msg.lower():
+            raise ServiceUnavailableError(f"OpenAI request timeout: {error_msg}")
+        else:
+            raise APIError(f"OpenAI API error: {error_msg}")
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     # Validate inputs
@@ -34,21 +75,63 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         print(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
         print(f"====================================\n")
         
-        response = openai.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=temperature,
-        )
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = _openai_api_call(model, messages, temperature)
         return response.choices[0].message.content.strip()
-    except Exception as e:
+    except (APIError, ServiceUnavailableError) as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
         error_code, details = format_api_error("openai", e)
         title, message = get_error_message(error_code, details, model)
         # Return error message that includes troubleshooting hints
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    except Exception as e:
+        logging.error(f"Unexpected error calling OpenAI: {str(e)}")
+        title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+
+@resilient_api_call(
+    max_retries=3,
+    initial_delay=1.0,
+    backoff_factor=2.0,
+    failure_threshold=5,
+    recovery_timeout=60
+)
+def _perplexity_api_call(client, model: str, messages: list, temperature: float):
+    """Make the actual API call to Perplexity.
+    
+    Args:
+        client: OpenAI client configured for Perplexity
+        model: Model name
+        messages: List of messages
+        temperature: Temperature setting
+        
+    Returns:
+        API response
+        
+    Raises:
+        APIError: On API failures
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+        )
+        return response
+    except Exception as e:
+        error_msg = str(e)
+        if "rate limit" in error_msg.lower():
+            raise RateLimitError(f"Perplexity rate limit exceeded: {error_msg}")
+        elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
+            raise AuthenticationError(f"Perplexity authentication failed: {error_msg}")
+        elif "timeout" in error_msg.lower():
+            raise ServiceUnavailableError(f"Perplexity request timeout: {error_msg}")
+        else:
+            raise APIError(f"Perplexity API error: {error_msg}")
 
 def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
     from openai import OpenAI
@@ -89,15 +172,16 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         {"role": "user", "content": prompt}
     ]
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-        )
+        response = _perplexity_api_call(client, model, messages, temperature)
         result = response.choices[0].message.content.strip()
         # Remove text between <think> and </think>
         result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
         return result
+    except (APIError, ServiceUnavailableError) as e:
+        logging.error(f"Perplexity API error with model {model}: {str(e)}")
+        error_code, details = format_api_error("perplexity", e)
+        title, message = get_error_message(error_code, details, model)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     except Exception as e:
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         error_code, details = format_api_error("perplexity", e)

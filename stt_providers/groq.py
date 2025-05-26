@@ -88,20 +88,16 @@ class GroqProvider(BaseSTTProvider):
                     print(f"Text preview: {text_preview}")
                 print("============================\n")
             else:
-                self.logger.error("Unexpected response format from GROQ API")
-                print("\n===== GROQ API ERROR =====")
-                print(f"Unexpected response format: {response}")
-                print("==========================\n")
+                raise TranscriptionError("Unexpected response format from GROQ API")
                 
+        except TranscriptionError:
+            # Re-raise transcription errors
+            raise
         except Exception as e:
-            error_msg = f"Error with GROQ transcription: {str(e)}"
+            # Wrap unexpected errors
+            error_msg = f"Unexpected error during GROQ transcription: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            
-            # Print exception details to terminal
-            print("\n===== GROQ EXCEPTION =====")
-            print(f"Error: {str(e)}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("==========================\n")
+            raise TranscriptionError(error_msg)
                 
         finally:
             # Make sure file handle is closed
