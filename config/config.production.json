@@ -1,0 +1,23 @@
+{
+  "api": {
+    "timeout": 30,
+    "max_retries": 2,
+    "circuit_breaker_threshold": 3
+  },
+  "audio": {
+    "silence_threshold": 700,
+    "max_recording_duration": 300
+  },
+  "storage": {
+    "auto_save": true,
+    "auto_save_interval": 120,
+    "temp_file_cleanup_age_hours": 48
+  },
+  "ui": {
+    "animation_speed": 300,
+    "show_tooltips": false
+  },
+  "transcription": {
+    "min_confidence": 0.8
+  }
+}

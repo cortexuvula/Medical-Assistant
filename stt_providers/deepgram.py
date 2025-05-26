@@ -15,6 +15,7 @@ from .base import BaseSTTProvider
 from settings import SETTINGS, _DEFAULT_SETTINGS
 from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from resilience import resilient_api_call, retry
+from config import get_config
 
 class DeepgramProvider(BaseSTTProvider):
     """Implementation of the Deepgram STT provider."""
@@ -116,7 +117,9 @@ class DeepgramProvider(BaseSTTProvider):
             print("==============================\n")
             
             # Set higher timeout for large files
-            timeout_seconds = max(60, int(buf.getbuffer().nbytes / (500 * 1024)) * 60)
+            config = get_config()
+            base_timeout = config.api.timeout
+            timeout_seconds = max(base_timeout, int(buf.getbuffer().nbytes / (500 * 1024)) * 60)
             self.logger.info(f"Setting Deepgram timeout to {timeout_seconds} seconds")
             
             # Make API call with resilience patterns

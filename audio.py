@@ -10,6 +10,7 @@ from typing import List, Optional, Callable, Any, Dict, Tuple, Union
 from pathlib import Path
 from settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
+from config import get_config
 
 # Define AudioData type for annotations
 class AudioData:
@@ -26,8 +27,11 @@ class AudioData:
 class AudioHandler:
     """Class to handle all audio-related functionality including recording, transcription, and file operations."""
     
+    # Get configuration
+    _config = get_config()
+    
     # Default audio chunk duration in seconds
-    DEFAULT_PHRASE_TIME_LIMIT = 30
+    DEFAULT_PHRASE_TIME_LIMIT = _config.transcription.chunk_duration_seconds
     
     # Track active listening sessions for proper cleanup
     _active_streams = []  # Class variable to track all active streams

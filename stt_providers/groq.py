@@ -11,6 +11,9 @@ from typing import Optional
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
+from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from resilience import resilient_api_call
+from config import get_config
 
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""
@@ -49,8 +52,10 @@ class GroqProvider(BaseSTTProvider):
             # Get file size and adjust timeout accordingly
             file_size_kb = os.path.getsize(temp_file) / 1024
             
-            # Add a minute of timeout for each 500KB of audio, with a minimum of 60 seconds
-            timeout_seconds = max(60, int(file_size_kb / 500) * 60)
+            # Add a minute of timeout for each 500KB of audio, with a minimum of base timeout
+            config = get_config()
+            base_timeout = config.api.timeout
+            timeout_seconds = max(base_timeout, int(file_size_kb / 500) * 60)
             self.logger.info(f"Setting GROQ timeout to {timeout_seconds} seconds for {file_size_kb:.2f} KB file")
 
             # Using OpenAI client since GROQ uses a compatible API

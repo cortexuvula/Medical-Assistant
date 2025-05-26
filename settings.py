@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+from config import get_config
+from settings_migrator import get_migrator
 
 SETTINGS_FILE = "settings.json"
 DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
@@ -181,3 +183,14 @@ def save_settings(settings: dict) -> None:
 
 # Load settings on module import
 SETTINGS = load_settings()
+
+# Initialize new configuration system
+_config = get_config()
+_migrator = get_migrator()
+
+# Migrate old settings to new config if needed
+if SETTINGS != _DEFAULT_SETTINGS:
+    _migrator.migrate_from_dict(SETTINGS)
+
+# Override SETTINGS with migrated values for backward compatibility
+SETTINGS = _migrator.get_legacy_format()

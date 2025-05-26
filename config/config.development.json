@@ -1,0 +1,18 @@
+{
+  "api": {
+    "timeout": 120,
+    "max_retries": 5
+  },
+  "audio": {
+    "silence_threshold": 300,
+    "max_recording_duration": 600
+  },
+  "storage": {
+    "auto_save_interval": 30,
+    "temp_file_cleanup_age_hours": 1
+  },
+  "ui": {
+    "animation_speed": 100,
+    "show_tooltips": true
+  }
+}

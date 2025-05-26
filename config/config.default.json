@@ -1,0 +1,131 @@
+{
+  "api": {
+    "timeout": 60,
+    "max_retries": 3,
+    "initial_retry_delay": 1.0,
+    "backoff_factor": 2.0,
+    "max_retry_delay": 60.0,
+    "circuit_breaker_threshold": 5,
+    "circuit_breaker_timeout": 60
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "chunk_size": 1024,
+    "format": "wav",
+    "silence_threshold": 500,
+    "silence_duration": 1.0,
+    "max_recording_duration": 300,
+    "playback_speed": 1.0,
+    "buffer_size": 4096
+  },
+  "storage": {
+    "database_name": "medical_assistant.db",
+    "export_formats": ["txt", "pdf", "docx"],
+    "auto_save": true,
+    "auto_save_interval": 60,
+    "max_file_size_mb": 100,
+    "temp_file_cleanup_age_hours": 24
+  },
+  "ui": {
+    "theme": "flatly",
+    "window_width": 0,
+    "window_height": 0,
+    "min_window_width": 800,
+    "min_window_height": 600,
+    "font_size": 10,
+    "font_family": "Segoe UI",
+    "show_tooltips": true,
+    "animation_speed": 200,
+    "autoscroll_transcript": true
+  },
+  "transcription": {
+    "default_provider": "groq",
+    "chunk_duration_seconds": 30,
+    "overlap_seconds": 2,
+    "min_confidence": 0.7,
+    "enable_punctuation": true,
+    "enable_diarization": false,
+    "max_alternatives": 1,
+    "language": "en-US"
+  },
+  "deepgram": {
+    "model": "nova-2-medical",
+    "language": "en-US",
+    "smart_format": true,
+    "diarize": false,
+    "profanity_filter": false,
+    "redact": false,
+    "alternatives": 1
+  },
+  "elevenlabs": {
+    "model_id": "scribe_v1",
+    "language_code": "",
+    "tag_audio_events": true,
+    "num_speakers": null,
+    "timestamps_granularity": "word",
+    "diarize": true
+  },
+  "ai_tasks": {
+    "refine_text": {
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.0,
+      "provider_models": {
+        "grok": "grok-1",
+        "perplexity": "sonar-medium-chat",
+        "ollama": "llama3"
+      },
+      "provider_temperatures": {
+        "openai": 0.0,
+        "grok": 0.0,
+        "perplexity": 0.0,
+        "ollama": 0.0
+      }
+    },
+    "improve_text": {
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.7,
+      "provider_models": {
+        "grok": "grok-1",
+        "perplexity": "sonar-medium-chat",
+        "ollama": "llama3"
+      },
+      "provider_temperatures": {
+        "openai": 0.7,
+        "grok": 0.7,
+        "perplexity": 0.7,
+        "ollama": 0.7
+      }
+    },
+    "soap_note": {
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.7,
+      "provider_models": {
+        "grok": "grok-1",
+        "perplexity": "sonar-medium-chat",
+        "ollama": "llama3"
+      },
+      "provider_temperatures": {
+        "openai": 0.7,
+        "grok": 0.7,
+        "perplexity": 0.7,
+        "ollama": 0.7
+      }
+    },
+    "referral": {
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.7,
+      "provider_models": {
+        "grok": "grok-1",
+        "perplexity": "sonar-medium-chat",
+        "ollama": "llama3"
+      },
+      "provider_temperatures": {
+        "openai": 0.7,
+        "grok": 0.7,
+        "perplexity": 0.7,
+        "ollama": 0.7
+      }
+    }
+  }
+}

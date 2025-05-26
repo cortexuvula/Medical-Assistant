@@ -1,0 +1,22 @@
+{
+  "api": {
+    "timeout": 5,
+    "max_retries": 0,
+    "circuit_breaker_threshold": 1,
+    "circuit_breaker_timeout": 1
+  },
+  "audio": {
+    "max_recording_duration": 30,
+    "buffer_size": 1024
+  },
+  "storage": {
+    "auto_save": false,
+    "database_name": "test_medical_assistant.db",
+    "temp_file_cleanup_age_hours": 0
+  },
+  "ui": {
+    "animation_speed": 0,
+    "min_window_width": 600,
+    "min_window_height": 400
+  }
+}
