@@ -13,7 +13,7 @@ if sys.version_info < (3, 10):
 
 # Import configuration and validate before starting app
 from config import init_config, get_config
-from exceptions import ConfigurationError
+from exceptions import ConfigurationError, DatabaseError
 import logging
 import os
 
@@ -41,6 +41,27 @@ try:
     logger.info(f"Storage folder: {config.storage.base_folder}")
     logger.info(f"Default STT provider: {config.transcription.default_provider}")
     logger.info(f"UI theme: {config.ui.theme}")
+    
+    # Initialize database and run migrations
+    logger.info("Initializing database...")
+    from db_migrations import get_migration_manager
+    
+    try:
+        migration_manager = get_migration_manager()
+        current_version = migration_manager.get_current_version()
+        pending = migration_manager.get_pending_migrations()
+        
+        if pending:
+            logger.info(f"Database at version {current_version}, applying {len(pending)} migrations...")
+            migration_manager.migrate()
+            logger.info(f"Database updated to version {migration_manager.get_current_version()}")
+        else:
+            logger.info(f"Database up to date (version {current_version})")
+    except DatabaseError as e:
+        logger.error(f"Database initialization failed: {e}")
+        print(f"\nDatabase Error: {e}")
+        print("\nPlease run 'python migrate_database.py' to fix database issues.")
+        sys.exit(1)
     
 except ConfigurationError as e:
     logger.error(f"Configuration error: {e}")
