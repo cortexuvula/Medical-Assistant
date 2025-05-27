@@ -1,6 +1,7 @@
 import soundcard
 import sounddevice as sd
 import logging
+import platform
 
 def get_valid_microphones() -> list[str]:
     """Get list of valid microphone names using both soundcard and sounddevice."""
@@ -8,19 +9,62 @@ def get_valid_microphones() -> list[str]:
     
     try:
         # First try using soundcard
-        soundcard_mics = soundcard.all_microphones()
-        sc_names = [mic.name for mic in soundcard_mics]
+        try:
+            soundcard_mics = soundcard.all_microphones()
+            sc_names = [mic.name for mic in soundcard_mics]
+        except Exception as e:
+            # Soundcard may fail on some platforms
+            logging.warning(f"Soundcard enumeration failed: {e}")
+            sc_names = []
         
         # Then get sounddevice microphones
         sd_devices = sd.query_devices()
         sd_names = []
         
+        # Get the current platform
+        current_platform = platform.system().lower()
+        
         for i, device in enumerate(sd_devices):
             # Only include input devices
             if device['max_input_channels'] > 0:
+                device_name_lower = device['name'].lower()
+                
+                # Platform-specific filtering
+                if current_platform == 'linux':
+                    # On Linux, skip virtual devices unless they're the only options
+                    if any(skip in device_name_lower for skip in ['pipewire', 'pulse', 'sysdefault', 'lavrate', 'samplerate', 'speexrate', 'speex', 'upmix', 'vdownmix']):
+                        continue
+                elif current_platform == 'windows':
+                    # On Windows, skip mapper devices which are usually duplicates
+                    if 'microsoft sound mapper' in device_name_lower:
+                        continue
+                elif current_platform == 'darwin':  # macOS
+                    # On macOS, all devices are typically valid
+                    pass
+                    
                 # Add device ID to name for proper identification
                 name = f"{device['name']} (Device {i})"
                 sd_names.append(name)
+        
+        # If no suitable hardware devices found, add the default device
+        if not sd_names:
+            # Add default device as a fallback
+            try:
+                default_device = sd.query_devices(kind='input')
+                if default_device and isinstance(default_device, dict):
+                    name = f"{default_device['name']} (Device {default_device.get('index', 0)})"
+                    sd_names.append(name)
+                else:
+                    # Try to get any input device
+                    for i, device in enumerate(sd_devices):
+                        if device['max_input_channels'] > 0:
+                            name = f"{device['name']} (Device {i})"
+                            sd_names.append(name)
+                            break
+            except Exception as e:
+                logging.error(f"Error getting default device: {e}")
+                # As a last resort, add a generic default
+                sd_names.append("Default Input (Device 0)")
         
         # Combine both lists, prioritizing sounddevice for Voicemeeter
         if sd_names:
@@ -48,6 +92,7 @@ def get_device_index_from_name(device_name: str) -> int:
     """Get device index from name for sounddevice.
     
     For names that include a device ID (e.g., "Device 3"), extract that ID.
+    This function is cross-platform compatible.
     Otherwise, search for a matching device by name.
     
     Args:

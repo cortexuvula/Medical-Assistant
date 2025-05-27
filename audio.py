@@ -5,6 +5,7 @@ import threading
 import soundcard
 import sounddevice as sd
 import numpy as np
+import platform
 from pydub import AudioSegment
 from typing import List, Optional, Callable, Any, Dict, Tuple, Union
 from pathlib import Path
@@ -480,18 +481,22 @@ class AudioHandler:
             else:
                 # --- Soundcard Logic (currently disabled, potentially problematic) ---
                 logging.info(f"Attempting to use soundcard backend for: {mic_name}")
-                mics = soundcard.all_microphones(include_loopback=True)
-                selected_sc_device = None
-                for mic in mics:
-                    # Need a robust way to match mic_name to soundcard mic object name
-                    if mic_name in mic.name: # Simple substring match, might be fragile
-                        selected_sc_device = mic
-                        logging.info(f"Found soundcard match: {mic.name}")
-                        break
+                try:
+                    mics = soundcard.all_microphones(include_loopback=True)
+                    selected_sc_device = None
+                    for mic in mics:
+                        # Need a robust way to match mic_name to soundcard mic object name
+                        if mic_name in mic.name: # Simple substring match, might be fragile
+                            selected_sc_device = mic
+                            logging.info(f"Found soundcard match: {mic.name}")
+                            break
 
-                if not selected_sc_device:
-                    logging.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
-                    # Fallback to sounddevice if soundcard match fails
+                    if not selected_sc_device:
+                        logging.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
+                        # Fallback to sounddevice if soundcard match fails
+                        return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
+                except Exception as e:
+                    logging.error(f"Soundcard backend failed: {e}. Falling back to sounddevice.")
                     return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
 
                 # Start recording thread using soundcard
@@ -523,13 +528,14 @@ class AudioHandler:
         logging.info(f"Resolving sounddevice index for: '{device_name}'")
         devices = sd.query_devices()
         device_id = None
+        current_platform = platform.system().lower()
 
         # Log available devices for debugging
-        logging.debug("Sounddevice List for Index Resolution:")
+        logging.info("Sounddevice List for Index Resolution:")
         input_device_indices = []
         for i, dev in enumerate(devices):
             is_input = dev['max_input_channels'] > 0
-            logging.debug(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
+            logging.info(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
             if is_input:
                 input_device_indices.append(i)
 
@@ -555,6 +561,36 @@ class AudioHandler:
                     device_id = i
                     logging.info(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
+        
+        # 3.5 Platform-specific matching
+        if device_id is None and current_platform == 'windows':
+            # On Windows, try matching without WASAPI/WDM suffixes
+            device_name_clean = device_name.replace(' (Device ', '|').split('|')[0]
+            for i in input_device_indices:
+                dev_name = devices[i]['name']
+                # Remove Windows API suffixes for comparison
+                dev_name_clean = dev_name
+                for suffix in [' (Windows WASAPI)', ' (Windows WDM-KS)', ' (Windows DirectSound)']:
+                    dev_name_clean = dev_name_clean.replace(suffix, '')
+                
+                if device_name_clean.lower() in dev_name_clean.lower() or dev_name_clean.lower() in device_name_clean.lower():
+                    device_id = i
+                    logging.info(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    break
+        
+        # 4. Special handling for device names with "(Device X)" suffix
+        if device_id is None and "(Device " in device_name:
+            # Extract device index from name like "HDA Intel PCH: 92HD95 Analog (hw:0,0) (Device 0)"
+            try:
+                import re
+                match = re.search(r'\(Device (\d+)\)', device_name)
+                if match:
+                    potential_id = int(match.group(1))
+                    if potential_id in input_device_indices:
+                        device_id = potential_id
+                        logging.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
+            except Exception as e:
+                logging.debug(f"Failed to extract device index from name: {e}")
 
         if device_id is None:
             logging.error(f"Could not find device '{device_name}' in sounddevice list")
@@ -647,11 +683,22 @@ class AudioHandler:
                 accumulated_data.append(audio_data_copy)
                 accumulated_frames += frames
                 
+                # Log first few callbacks to verify audio is being received
+                if len(accumulated_data) <= 3:
+                    max_val = np.abs(audio_data_copy).max()
+                    mean_val = np.abs(audio_data_copy).mean()
+                    # Check if audio is clipping
+                    if max_val >= 0.99:
+                        logging.warning(f"Audio callback {len(accumulated_data)}: CLIPPING DETECTED! frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
+                    else:
+                        logging.info(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
+                
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames or not self.callback_function:
                     if self.callback_function and accumulated_data:
                         # Combine all accumulated chunks
                         combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                        logging.info(f"Audio callback triggered: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
                         # Call the callback with the combined data
                         self.callback_function(combined_data)
                         
@@ -687,6 +734,7 @@ class AudioHandler:
 
             # Resolve device name to index
             device_id = self._resolve_device_index(device_name)
+            logging.info(f"Device resolution result: device_name='{device_name}' -> device_id={device_id}")
             if device_id is None:
                 # Try to use default input device as a fallback
                 try:
@@ -709,6 +757,10 @@ class AudioHandler:
             # Get device info for logging
             device_info = sd.query_devices(device_id)
             
+            # Log detailed device information before starting stream
+            logging.info(f"Creating stream with parameters: samplerate={self.sample_rate}, device={device_id}, channels={self.channels}")
+            logging.info(f"Device info: name='{device_info['name']}', hostapi={device_info['hostapi']}, max_input_channels={device_info['max_input_channels']}")
+            
             stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 device=device_id,
@@ -719,7 +771,7 @@ class AudioHandler:
                 # latency='low' # Optional: can try 'low' latency if needed
             )
             stream.start()
-            logging.info(f"sounddevice InputStream started for '{device_info['name']}'")
+            logging.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
 
             # Add to active streams
             self._active_streams.append(stream)

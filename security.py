@@ -423,8 +423,12 @@ class SecurityManager:
         if not api_key.startswith("sk-"):
             return False, "OpenAI API keys should start with 'sk-'"
         
-        if len(api_key) != 51:  # sk- + 48 characters
-            return False, "Invalid OpenAI API key length"
+        # OpenAI keys can have varying lengths now (sk-proj-*, etc.)
+        if len(api_key) < 20:  # Minimum reasonable length
+            return False, "OpenAI API key is too short"
+        
+        if len(api_key) > 200:  # Maximum reasonable length
+            return False, "OpenAI API key is too long"
         
         return True, None
     
@@ -440,13 +444,16 @@ class SecurityManager:
     
     def _validate_deepgram_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Deepgram API key format."""
-        if len(api_key) != 32:
-            return False, "Invalid Deepgram API key length"
+        # Deepgram keys are typically 40+ character alphanumeric strings
+        if len(api_key) < 32:
+            return False, "Deepgram API key is too short"
         
-        try:
-            int(api_key, 16)  # Should be hexadecimal
-        except ValueError:
-            return False, "Deepgram API key should be hexadecimal"
+        if len(api_key) > 100:
+            return False, "Deepgram API key is too long"
+        
+        # Allow alphanumeric characters
+        if not api_key.isalnum():
+            return False, "Deepgram API key should contain only letters and numbers"
         
         return True, None
     

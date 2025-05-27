@@ -262,12 +262,22 @@ def main() -> None:
     
     # Configure exception handler to log uncaught exceptions
     def handle_exception(exc_type, exc_value, exc_traceback):
-        logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+        try:
+            # Try to log the error
+            logging.error(f"Uncaught exception: {exc_type.__name__}: {exc_value}")
+        except:
+            # If logging fails, just print to stderr
+            import sys
+            print(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
+        
         # Show error message to user
-        messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
+        try:
+            messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
+        except:
+            pass
     
-    # Set exception handler for uncaught exceptions
-    tk.Tk.report_callback_exception = handle_exception
+    # Set exception handler for uncaught exceptions - bind to the app instance
+    app.report_callback_exception = lambda exc, val, tb: handle_exception(exc.__class__, exc, tb)
     
     # Start the app
     app.mainloop()
@@ -1595,8 +1605,12 @@ class MedicalDictationApp(ttk.Window):
         if refresh_btn:
             refresh_btn.config(state=tk.DISABLED)
             
-        # Set wait cursor
-        self.config(cursor="wait")
+        # Set wait cursor (use watch which is cross-platform)
+        try:
+            self.config(cursor="watch")
+        except:
+            # Some platforms may not support cursor changes
+            pass
         
         # Define the animation frames
         animation_chars = ["⟳", "⟲", "↻", "↺", "⟳"]
@@ -1653,7 +1667,10 @@ class MedicalDictationApp(ttk.Window):
                     refresh_btn.config(text="⟳", state=tk.NORMAL)
                 
                 # Reset cursor
-                self.config(cursor="")
+                try:
+                    self.config(cursor="")
+                except:
+                    pass
 
     def toggle_soap_recording(self) -> None:
         """Toggle SOAP note recording using AudioHandler."""
@@ -1667,6 +1684,10 @@ class MedicalDictationApp(ttk.Window):
             # Start SOAP recording
             try:
                 selected_device = self.mic_combobox.get()
+                
+                # Play recording start sound
+                self.play_recording_sound(start=True)
+                
                 self.update_status("Recording SOAP note...", "info")
                 
                 # Get the actual device index if using the new naming format
@@ -1687,10 +1708,11 @@ class MedicalDictationApp(ttk.Window):
                 self.audio_handler.silence_threshold = 0.0001  # Much lower for SOAP recording
                 
                 # Start recording using AudioHandler
+                # Use shorter phrase time limit for SOAP to get more frequent callbacks
                 self.soap_stop_listening_function = self.audio_handler.listen_in_background(
                     mic_name=selected_device,
                     callback=self.soap_callback,
-                    phrase_time_limit=None  # Use the default phrase time limit (30 seconds)
+                    phrase_time_limit=3  # Use 3 seconds for more frequent processing
                 )
                 
                 # Update state and UI
@@ -1710,7 +1732,7 @@ class MedicalDictationApp(ttk.Window):
             def stop_recording_task():
                 try:
                     if self.soap_stop_listening_function:
-                        self.soap_stop_listening_function(wait_for_stop=True)
+                        self.soap_stop_listening_function()
                         self.soap_stop_listening_function = None
                     
                     # Reset SOAP mode
@@ -1727,7 +1749,8 @@ class MedicalDictationApp(ttk.Window):
                     
                 except Exception as e:
                     logging.error("Error stopping SOAP recording", exc_info=True)
-                    self.after(0, lambda: self.update_status(f"Error stopping SOAP recording: {str(e)}", "error"))
+                    error_msg = str(e)
+                    self.after(0, lambda: self.update_status(f"Error stopping SOAP recording: {error_msg}", "error"))
             
             # Run the cancellation process in a separate thread to avoid freezing the UI
             threading.Thread(target=stop_recording_task, daemon=True).start()
@@ -1738,6 +1761,9 @@ class MedicalDictationApp(ttk.Window):
 
     def _finalize_soap_recording(self):
         """Complete the SOAP recording process after ensuring all audio is captured."""
+        # Play recording stop sound
+        self.play_recording_sound(start=False)
+        
         # Process the recorded audio segments
         self.process_soap_recording()
         
@@ -1762,8 +1788,11 @@ class MedicalDictationApp(ttk.Window):
     def pause_soap_recording(self) -> None:
         """Pause SOAP recording."""
         if self.soap_stop_listening_function:
+            # Play pause sound (quick beep)
+            self.play_recording_sound(start=False)
+            
             # Stop the current recording
-            self.soap_stop_listening_function(wait_for_stop=True)
+            self.soap_stop_listening_function()
             self.soap_stop_listening_function = None
             
             # Update UI
@@ -1773,6 +1802,9 @@ class MedicalDictationApp(ttk.Window):
     def resume_soap_recording(self) -> None:
         """Resume SOAP recording after pause using the selected microphone."""
         try:
+            # Play resume sound
+            self.play_recording_sound(start=True)
+            
             # Get selected microphone name
             selected_device = self.mic_combobox.get()
             
@@ -1787,7 +1819,7 @@ class MedicalDictationApp(ttk.Window):
             self.soap_stop_listening_function = self.audio_handler.listen_in_background(
                 mic_name=selected_device,
                 callback=self.soap_callback,
-                phrase_time_limit=None  # Use the default phrase time limit (30 seconds)
+                phrase_time_limit=3  # Use 3 seconds for more frequent processing
             )
             
             # Update UI
@@ -3195,6 +3227,40 @@ class MedicalDictationApp(ttk.Window):
             # Make sure to release the grab
             log_menu.grab_release()
     
+    def _show_log_contents(self, log_file):
+        """Show the contents of the log file in a new window"""
+        try:
+            if os.path.exists(log_file):
+                # Create a new top-level window
+                log_window = tk.Toplevel(self)
+                log_window.title("Log Contents")
+                log_window.geometry("800x600")
+                
+                # Create text widget with scrollbar
+                frame = ttk.Frame(log_window)
+                frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+                
+                text_widget = tk.Text(frame, wrap=tk.WORD)
+                scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=text_widget.yview)
+                text_widget.configure(yscrollcommand=scrollbar.set)
+                
+                text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                
+                # Read and display log contents
+                with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                    text_widget.insert('1.0', content)
+                    text_widget.config(state=tk.DISABLED)  # Make read-only
+                
+                # Add close button
+                close_btn = ttk.Button(log_window, text="Close", command=log_window.destroy)
+                close_btn.pack(pady=5)
+            else:
+                messagebox.showwarning("File Not Found", "Log file not found.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open log file: {str(e)}")
+    
     def _open_logs_folder(self, log_dir):
         """Open the logs directory using file explorer"""
         try:
@@ -3235,6 +3301,31 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         # No status message needed for this automatic action
         self.resize_timer = None  # Clear the timer reference
+    
+    def play_recording_sound(self, start=True):
+        """Play a sound to indicate recording start/stop."""
+        try:
+            import winsound
+            if start:
+                # Play a higher pitch beep for start
+                winsound.Beep(1000, 200)  # 1000 Hz for 200ms
+            else:
+                # Play a lower pitch beep for stop
+                winsound.Beep(500, 200)  # 500 Hz for 200ms
+        except ImportError:
+            # winsound is Windows-only, try cross-platform solution
+            try:
+                if start:
+                    # Use system bell/beep
+                    print('\a', end='', flush=True)  # ASCII bell character
+                else:
+                    # Double beep for stop
+                    print('\a', end='', flush=True)
+                    time.sleep(0.1)
+                    print('\a', end='', flush=True)
+            except:
+                # If all else fails, just log it
+                logging.debug(f"Recording {'started' if start else 'stopped'} (no audio feedback available)")
 
 if __name__ == "__main__":
     main()
