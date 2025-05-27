@@ -309,22 +309,33 @@ class AudioHandler:
                 max_amp = np.abs(audio_data).max()
                 logging.debug(f"Audio max amplitude before processing: {max_amp:.6f}")
                 
-                # For Voicemeeter devices or in SOAP mode, apply gain boost
+                # Check if audio is already clipping
+                if max_amp >= 0.99:
+                    logging.warning(f"Input audio is clipping! Max amplitude: {max_amp:.6f}")
+                    # Normalize the audio to prevent further clipping
+                    audio_data = audio_data * 0.8  # Scale down to 80% to give headroom
+                    max_amp = np.abs(audio_data).max()
+                
+                # For Voicemeeter devices or in SOAP mode, apply gain boost only if needed
                 if (self.listening_device and "voicemeeter" in str(self.listening_device).lower()) or self.soap_mode:
-                    # In SOAP mode, apply much higher gain boost
-                    if self.soap_mode:
-                        boost_factor = 50.0  # More aggressive boost in SOAP mode
-                        logging.debug(f"SOAP mode: Applying aggressive boost factor of {boost_factor}x")
+                    # Only boost if the signal is weak
+                    if max_amp < 0.1:  # Only boost quiet signals
+                        # In SOAP mode, apply much higher gain boost
+                        if self.soap_mode:
+                            boost_factor = min(10.0, 0.8 / max_amp)  # Limit boost to prevent clipping
+                            logging.debug(f"SOAP mode: Applying boost factor of {boost_factor:.2f}x")
+                        else:
+                            boost_factor = min(5.0, 0.8 / max_amp)  # Standard boost for Voicemeeter
+                            logging.debug(f"Applying boost factor of {boost_factor:.2f}x for Voicemeeter")
+                        
+                        # Apply the boost
+                        audio_data = audio_data * boost_factor
+                        
+                        # Log the new max amplitude
+                        new_max_amp = np.abs(audio_data).max()
+                        logging.debug(f"After gain boost: max amplitude is now {new_max_amp:.6f}")
                     else:
-                        boost_factor = 10.0  # Standard boost for Voicemeeter
-                        logging.debug(f"Applying standard boost factor of {boost_factor}x for Voicemeeter")
-                    
-                    # Apply the boost
-                    audio_data = audio_data * boost_factor
-                    
-                    # Log the new max amplitude
-                    new_max_amp = np.abs(audio_data).max()
-                    logging.debug(f"After gain boost: max amplitude is now {new_max_amp:.6f}")
+                        logging.debug(f"Audio level sufficient ({max_amp:.3f}), no boost needed")
                 
                 # Skip if amplitude is still too low after boosting
                 # Use a more permissive threshold for SOAP mode
@@ -679,6 +690,14 @@ class AudioHandler:
                 # Make a copy to avoid issues with buffer overwriting
                 audio_data_copy = indata.copy()
                 
+                # Check for clipping and normalize if needed
+                max_val = np.abs(audio_data_copy).max()
+                if max_val >= 0.99:
+                    # Audio is clipping, normalize it
+                    audio_data_copy = audio_data_copy * 0.8
+                    if len(accumulated_data) <= 3:
+                        logging.warning(f"Audio callback {len(accumulated_data) + 1}: CLIPPING DETECTED AND NORMALIZED! Original max={max_val:.6f}")
+                
                 # Add to accumulated buffer
                 accumulated_data.append(audio_data_copy)
                 accumulated_frames += frames
@@ -687,11 +706,7 @@ class AudioHandler:
                 if len(accumulated_data) <= 3:
                     max_val = np.abs(audio_data_copy).max()
                     mean_val = np.abs(audio_data_copy).mean()
-                    # Check if audio is clipping
-                    if max_val >= 0.99:
-                        logging.warning(f"Audio callback {len(accumulated_data)}: CLIPPING DETECTED! frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
-                    else:
-                        logging.info(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
+                    logging.info(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
                 
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames or not self.callback_function:

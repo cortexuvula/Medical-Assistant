@@ -572,28 +572,29 @@ class MedicalDictationApp(ttk.Window):
         recording_active = False
         stop_recording_func = None
         preview_segment = None
+        audio_segments = []  # Accumulate segments
+        original_soap_mode = False  # Store original SOAP mode
         
         # Path to the prefix audio file
         prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
         
         # Function to handle audio data from recording
         def on_audio_data(audio_data):
-            nonlocal preview_segment
+            nonlocal audio_segments
             try:
                 # Process the audio data into a segment
                 segment, _ = self.audio_handler.process_audio_data(audio_data)
                 if segment:
-                    preview_segment = segment
-                    status_var.set("Recording captured! You can now preview or save it.")
-                    preview_button.config(state=NORMAL)
-                    save_button.config(state=NORMAL)
+                    audio_segments.append(segment)
+                    duration = sum(seg.duration_seconds for seg in audio_segments)
+                    status_var.set(f"Recording... {duration:.1f} seconds captured")
             except Exception as e:
                 logging.error(f"Error processing prefix audio: {e}", exc_info=True)
                 status_var.set(f"Error: {str(e)}")
         
         # Function to start recording
         def start_recording():
-            nonlocal recording_active, stop_recording_func
+            nonlocal recording_active, stop_recording_func, audio_segments, original_soap_mode
             if recording_active:
                 return
                 
@@ -604,6 +605,16 @@ class MedicalDictationApp(ttk.Window):
                 return
                 
             try:
+                # Clear previous segments
+                audio_segments = []
+                
+                # Make sure SOAP mode is disabled for prefix recording
+                original_soap_mode = self.audio_handler.soap_mode
+                self.audio_handler.soap_mode = False
+                
+                # Play start sound
+                self.play_recording_sound(start=True)
+                
                 # Start recording
                 recording_active = True
                 status_var.set("Recording... speak now")
@@ -616,7 +627,7 @@ class MedicalDictationApp(ttk.Window):
                 stop_recording_func = self.audio_handler.listen_in_background(
                     mic_name, 
                     on_audio_data,
-                    phrase_time_limit=10  # Limit to 10 seconds for prefix
+                    phrase_time_limit=2  # Use 2 seconds for more responsive recording
                 )
             except Exception as e:
                 recording_active = False
@@ -630,18 +641,58 @@ class MedicalDictationApp(ttk.Window):
             nonlocal recording_active, stop_recording_func
             if not recording_active or not stop_recording_func:
                 return
-                
-            try:
-                # Stop the recording
-                stop_recording_func()
-                recording_active = False
-                stop_recording_func = None
-                status_var.set("Recording stopped")
-                record_button.config(state=NORMAL)
-                stop_button.config(state=DISABLED)
-            except Exception as e:
-                logging.error(f"Error stopping prefix recording: {e}", exc_info=True)
-                status_var.set(f"Error: {str(e)}")
+            
+            # Disable buttons immediately
+            stop_button.config(state=DISABLED)
+            status_var.set("Processing recording...")
+            
+            # Run the actual stop process in a thread to avoid blocking UI
+            def stop_recording_thread():
+                nonlocal preview_segment, audio_segments, recording_active, stop_recording_func
+                try:
+                    # Play stop sound
+                    self.play_recording_sound(start=False)
+                    
+                    # Stop the recording
+                    stop_recording_func()
+                    recording_active = False
+                    stop_recording_func = None
+                    
+                    # Restore original SOAP mode
+                    self.audio_handler.soap_mode = original_soap_mode
+                    
+                    # Combine all segments if we have any
+                    if audio_segments:
+                        # Combine all segments into one
+                        preview_segment = self.audio_handler.combine_audio_segments(audio_segments)
+                        if preview_segment:
+                            duration = preview_segment.duration_seconds
+                            # Update UI on main thread
+                            prefix_dialog.after(0, lambda: [
+                                status_var.set(f"Recording stopped - {duration:.1f} seconds captured"),
+                                preview_button.config(state=NORMAL),
+                                save_button.config(state=NORMAL),
+                                record_button.config(state=NORMAL)
+                            ])
+                        else:
+                            prefix_dialog.after(0, lambda: [
+                                status_var.set("Recording stopped - no audio captured"),
+                                record_button.config(state=NORMAL)
+                            ])
+                    else:
+                        prefix_dialog.after(0, lambda: [
+                            status_var.set("Recording stopped - no audio captured"),
+                            record_button.config(state=NORMAL)
+                        ])
+                except Exception as e:
+                    logging.error(f"Error stopping prefix recording: {e}", exc_info=True)
+                    prefix_dialog.after(0, lambda: [
+                        status_var.set(f"Error: {str(e)}"),
+                        record_button.config(state=NORMAL)
+                    ])
+            
+            # Start the thread
+            threading.Thread(target=stop_recording_thread, daemon=True).start()
         
         # Function to preview the recorded audio
         def preview_audio():
@@ -655,7 +706,11 @@ class MedicalDictationApp(ttk.Window):
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
                     preview_segment.export(temp_file.name, format="mp3")
                     # Open the file with the default audio player
-                    os.startfile(temp_file.name)
+                    if os.name == 'nt':  # Windows
+                        os.startfile(temp_file.name)
+                    else:  # macOS or Linux
+                        import subprocess
+                        subprocess.Popen(['open', temp_file.name] if sys.platform == 'darwin' else ['xdg-open', temp_file.name])
                 status_var.set("Playing preview")
             except Exception as e:
                 logging.error(f"Error previewing audio: {e}", exc_info=True)
