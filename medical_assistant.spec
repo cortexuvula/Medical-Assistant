@@ -59,6 +59,9 @@ a = Analysis(
         'stt_providers.elevenlabs',
         'stt_providers.groq',
         'stt_providers.whisper',
+        'PIL._tkinter_finder',
+        'PIL._imagingtk',
+        'PIL.ImageTk',
     ],
     hookspath=['.'],  # Look for hooks in current directory
     hooksconfig={},
