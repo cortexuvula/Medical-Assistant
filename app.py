@@ -2010,7 +2010,7 @@ class MedicalDictationApp(ttk.Window):
         def cancel_task():
             # Stop listening with wait_for_stop=True to ensure clean shutdown
             if self.soap_stop_listening_function:
-                self.soap_stop_listening_function(wait_for_stop=True)
+                self.soap_stop_listening_function(True)
                 
             # Wait a small additional time to ensure processing completes
             time.sleep(0.5)
@@ -2069,7 +2069,7 @@ class MedicalDictationApp(ttk.Window):
             if hasattr(self, 'soap_stop_listening_function') and self.soap_stop_listening_function:
                 logging.info("Stopping SOAP recording before exit...")
                 try:
-                    self.soap_stop_listening_function(wait_for_stop=True)
+                    self.soap_stop_listening_function(True)
                     self.soap_stop_listening_function = None  # Prevent double calls
                     # Give the audio thread a moment to release resources
                     time.sleep(0.2)

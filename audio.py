@@ -152,12 +152,12 @@ class AudioHandler:
         # Clean up any active streams from the class list
         while AudioHandler._active_streams:
             try:
-                stop_func = AudioHandler._active_streams.pop()
-                if callable(stop_func):
-                    logging.info("AudioHandler: Stopping active stream")
-                    stop_func(wait_for_stop=True)
-                    # Give it a tiny bit of time to fully release resources
-                    time.sleep(0.1)
+                stream = AudioHandler._active_streams.pop()
+                logging.info("AudioHandler: Stopping active stream")
+                stream.stop()
+                stream.close()
+                # Give it a tiny bit of time to fully release resources
+                time.sleep(0.1)
             except Exception as e:
                 logging.error(f"AudioHandler: Error stopping stream: {str(e)}", exc_info=True)
         
@@ -646,7 +646,7 @@ class AudioHandler:
         Returns:
             Function to stop the stream.
         """
-        def stop_stream(_: bool = False) -> None:
+        def stop_stream(wait_for_stop: bool = False) -> None:
             if stream:
                 try:
                     stream.stop()
