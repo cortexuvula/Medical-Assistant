@@ -810,15 +810,6 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     
     ttk.Label(header_frame, text="API Key Configuration", 
              font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 15))
-    
-    ttk.Label(header_frame, text="• At least one LLM provider API key (OpenAI, Grok, or Perplexity) is required.",
-             wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
-    
-    ttk.Label(header_frame, text="• GROQ API Key is REQUIRED for dictation (default STT provider).",
-             wraplength=700, font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=3)
-             
-    ttk.Label(header_frame, text="• Deepgram or ElevenLabs API key is also needed as fallback for dictation.",
-             wraplength=700, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
 
     # Get current API keys from environment
     openai_key = os.getenv("OPENAI_API_KEY", "")
