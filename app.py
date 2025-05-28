@@ -648,7 +648,7 @@ class MedicalDictationApp(ttk.Window):
                 stop_recording_func = self.audio_handler.listen_in_background(
                     mic_name, 
                     on_audio_data,
-                    phrase_time_limit=2  # Use 2 seconds for more responsive recording
+                    phrase_time_limit=10  # Use 10 seconds to prevent cutoffs
                 )
             except Exception as e:
                 recording_active = False
@@ -725,7 +725,7 @@ class MedicalDictationApp(ttk.Window):
             try:
                 # Create a temporary file for preview
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                    preview_segment.export(temp_file.name, format="mp3")
+                    preview_segment.export(temp_file.name, format="mp3", bitrate="192k")
                     # Open the file with the default audio player
                     if os.name == 'nt':  # Windows
                         os.startfile(temp_file.name)
@@ -746,7 +746,7 @@ class MedicalDictationApp(ttk.Window):
                 
             try:
                 # Export the audio segment to the application directory
-                preview_segment.export(prefix_audio_path, format="mp3")
+                preview_segment.export(prefix_audio_path, format="mp3", bitrate="192k")
                 status_var.set(f"Prefix audio saved successfully to {prefix_audio_path}")
                 self.status_manager.success("Prefix audio saved successfully")
                 prefix_dialog.destroy()
@@ -3380,28 +3380,8 @@ class MedicalDictationApp(ttk.Window):
     
     def play_recording_sound(self, start=True):
         """Play a sound to indicate recording start/stop."""
-        try:
-            import winsound
-            if start:
-                # Play a higher pitch beep for start
-                winsound.Beep(1000, 200)  # 1000 Hz for 200ms
-            else:
-                # Play a lower pitch beep for stop
-                winsound.Beep(500, 200)  # 500 Hz for 200ms
-        except ImportError:
-            # winsound is Windows-only, try cross-platform solution
-            try:
-                if start:
-                    # Use system bell/beep
-                    print('\a', end='', flush=True)  # ASCII bell character
-                else:
-                    # Double beep for stop
-                    print('\a', end='', flush=True)
-                    time.sleep(0.1)
-                    print('\a', end='', flush=True)
-            except:
-                # If all else fails, just log it
-                logging.debug(f"Recording {'started' if start else 'stopped'} (no audio feedback available)")
+        # Sound disabled - just log the event
+        logging.debug(f"Recording {'started' if start else 'stopped'}")
 
 if __name__ == "__main__":
     main()

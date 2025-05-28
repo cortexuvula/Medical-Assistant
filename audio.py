@@ -61,7 +61,7 @@ class AudioHandler:
         self.fallback_callback = None
         
         # Default audio parameters for recording
-        self.sample_rate = 44100  # Hz
+        self.sample_rate = 48000  # Hz - Higher sample rate for better quality
         self.channels = 1  # Mono
         self.sample_width = 2  # Bytes (16-bit)
         self.recording = False
@@ -419,7 +419,7 @@ class AudioHandler:
             if combined:
                 # Ensure directory exists
                 Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-                combined.export(file_path, format="mp3")
+                combined.export(file_path, format="mp3", bitrate="192k")
                 logging.info(f"Audio saved to {file_path}")
                 return True
             return False
@@ -633,7 +633,9 @@ class AudioHandler:
             logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
 
         self.channels = channels
-        self.sample_rate = int(device_info.get('default_samplerate', 44100))
+        # Use 48000 Hz for better quality, falling back to device default if not supported
+        device_default = int(device_info.get('default_samplerate', 48000))
+        self.sample_rate = 48000 if device_default >= 48000 else device_default
         
         return channels, self.sample_rate
 
