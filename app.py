@@ -1416,8 +1416,8 @@ class MedicalDictationApp(ttk.Window):
                     self.status_manager.progress("Creating SOAP note from transcript...")
                 ])
                 
-                # Use CPU executor for the AI-intensive SOAP note creation
-                future = self.cpu_executor.submit(
+                # Use IO executor for the AI API call (I/O-bound operation)
+                future = self.io_executor.submit(
                     create_soap_note_with_openai,
                     transcript
                 )
@@ -1499,8 +1499,8 @@ class MedicalDictationApp(ttk.Window):
         
         def task() -> None:
             try:
-                # Use CPU executor for the actual AI processing which is CPU-intensive
-                result_future = self.cpu_executor.submit(api_func, text)
+                # Use IO executor for the AI API call (I/O-bound operation)
+                result_future = self.io_executor.submit(api_func, text)
                 # Get result with timeout to prevent hanging
                 result = result_future.result(timeout=60) # Add timeout to prevent hanging
                 
@@ -1604,8 +1604,8 @@ class MedicalDictationApp(ttk.Window):
 
         def task() -> None:
             try:
-                # Use CPU executor for the AI processing which is CPU-intensive
-                future = self.cpu_executor.submit(
+                # Use IO executor for the AI API call (I/O-bound operation)
+                future = self.io_executor.submit(
                     create_soap_note_with_openai,
                     transcript
                 )
@@ -2166,7 +2166,7 @@ class MedicalDictationApp(ttk.Window):
                 from ai import create_letter_with_ai
                 
                 # Use CPU executor for the AI processing which is CPU-intensive
-                future = self.cpu_executor.submit(create_letter_with_ai, text, specs)
+                future = self.io_executor.submit(create_letter_with_ai, text, specs)
                 
                 # Get result with a longer timeout to prevent hanging (5 minutes)
                 result = future.result(timeout=300)
@@ -2531,7 +2531,7 @@ class MedicalDictationApp(ttk.Window):
         def get_conditions_task() -> str:
             try:
                 # Use CPU executor for the condition analysis which is CPU-intensive
-                future = self.cpu_executor.submit(get_possible_conditions, text)
+                future = self.io_executor.submit(get_possible_conditions, text)
                 # Get result with timeout to prevent hanging
                 return future.result(timeout=60) or ""
             except concurrent.futures.TimeoutError:
@@ -2596,7 +2596,7 @@ class MedicalDictationApp(ttk.Window):
                 logging.info(f"Starting referral generation for conditions: {focus}")
                 
                 # Use CPU executor for the AI processing which is CPU-intensive
-                future = self.cpu_executor.submit(create_referral_with_openai, transcript, focus)
+                future = self.io_executor.submit(create_referral_with_openai, transcript, focus)
                 
                 # Get result with a longer timeout to prevent hanging (5 minutes instead of 2)
                 result = future.result(timeout=300)

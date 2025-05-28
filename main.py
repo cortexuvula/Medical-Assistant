@@ -1,4 +1,5 @@
 import sys
+import multiprocessing
 
 # Check Python version before importing app
 if sys.version_info < (3, 10):
@@ -77,4 +78,6 @@ except Exception as e:
 from app import main
 
 if __name__ == "__main__":
+    # Required for Windows when using multiprocessing in frozen executables
+    multiprocessing.freeze_support()
     main()
