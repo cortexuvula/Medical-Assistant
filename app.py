@@ -351,18 +351,36 @@ class MedicalDictationApp(ttk.Window):
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
         
-        # Check for necessary API keys for at least one STT provider
+        # Check for necessary API keys
         elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         deepgram_key = os.getenv("DEEPGRAM_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        grok_key = os.getenv("GROK_API_KEY")
+        perplexity_key = os.getenv("PERPLEXITY_API_KEY")
+        ollama_url = os.getenv("OLLAMA_API_URL")
         
-        if not (elevenlabs_key or deepgram_key or groq_key):
-            messagebox.showwarning(
-                "Missing STT API Keys", 
-                "No Speech-to-Text API keys found. Either GROQ, Deepgram, or ElevenLabs API key " +
-                "is required for speech recognition functionality.\n\n" +
-                "Please add at least one of these API keys in the settings."
+        # Check if we have at least one LLM and one STT provider
+        has_llm = bool(openai_key or grok_key or perplexity_key or ollama_url)
+        has_stt = bool(elevenlabs_key or deepgram_key or groq_key)
+        
+        if not has_llm or not has_stt:
+            messagebox.showinfo(
+                "API Keys Required", 
+                "Welcome to Medical Assistant!\n\n" +
+                "To use this application, you need:\n" +
+                "• At least one LLM provider (OpenAI, Grok, Perplexity, or Ollama)\n" +
+                "• At least one STT provider (Groq, Deepgram, or ElevenLabs)\n\n" +
+                "Please configure your API keys."
             )
+            # Open the API key dialog
+            result = show_api_keys_dialog(self)
+            if result:
+                # Update the keys after dialog closes
+                self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+                self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+                self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+                openai.api_key = os.getenv("OPENAI_API_KEY")
         
         # Initialize audio handler
         self.audio_handler = AudioHandler(

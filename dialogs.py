@@ -796,9 +796,14 @@ def ask_conditions_dialog(parent: tk.Tk, title: str, prompt: str, conditions: li
     dialog.wait_window()
     return ", ".join(selected) if selected else ""
 
-def show_api_keys_dialog(parent: tk.Tk) -> None:
-    """Shows a dialog to update API keys and updates the .env file."""
+def show_api_keys_dialog(parent: tk.Tk) -> dict:
+    """Shows a dialog to update API keys and updates the .env file.
+    
+    Returns:
+        dict: Updated API keys or None if cancelled
+    """
     dialog = create_toplevel_dialog(parent, "Update API Keys", "900x1000")
+    result = {"keys": None}  # Store result in mutable object
     
     # Increase main frame padding for more spacing around all content
     frame = ttk.Frame(dialog, padding=20)
@@ -1065,12 +1070,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
             if new_groq:
                 os.environ["GROQ_API_KEY"] = new_groq
             
-            # Success message and close dialog
-            messagebox.showinfo("API Keys", "API keys updated successfully")
-            dialog.destroy()
-            
-            # Return results for app to handle UI updates
-            return {
+            # Store results before showing message
+            result["keys"] = {
                 "openai": new_openai,
                 "deepgram": new_deepgram,
                 "grok": new_grok,
@@ -1079,6 +1080,10 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
                 "ollama_url": new_ollama_url,
                 "groq": new_groq
             }
+            
+            # Success message and close dialog
+            messagebox.showinfo("API Keys", "API keys updated successfully")
+            dialog.destroy()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
             return None
@@ -1091,6 +1096,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
     
     # Wait for dialog to close
     dialog.wait_window()
+    
+    # Return the result
+    return result.get("keys")
 
 def show_shortcuts_dialog(parent: tk.Tk) -> None:
     """Show keyboard shortcuts dialog."""
