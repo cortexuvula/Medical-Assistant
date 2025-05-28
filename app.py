@@ -254,8 +254,9 @@ def main() -> None:
     logging.info("Medical Dictation application starting")
     
     # Check for .env file
-    if not check_env_file():
-        return
+    # Commented out to skip API key dialog
+    # if not check_env_file():
+    #     return
         
     # Create and start main app
     app = MedicalDictationApp()
