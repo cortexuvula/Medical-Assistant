@@ -68,9 +68,23 @@ The app bundle will be in `dist/MedicalAssistant.app`
 
 **Linux:**
 ```bash
+# First, ensure FFmpeg is installed:
+sudo apt-get install ffmpeg  # For Ubuntu/Debian
+# or
+sudo dnf install ffmpeg      # For Fedora
+# or
+sudo pacman -S ffmpeg        # For Arch
+
+# Then build:
 ./build_linux.sh
 ```
 The executable will be in `dist/MedicalAssistant`
+
+**Important for Linux:** Run the application using the launcher script:
+```bash
+./dist/linux_launcher.sh
+```
+This ensures system FFmpeg libraries are used correctly.
 
 ### Distribution Notes
 - The executable includes all Python dependencies

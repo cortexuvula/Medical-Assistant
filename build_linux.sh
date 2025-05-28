@@ -42,10 +42,19 @@ pyinstaller medical_assistant.spec --clean --log-level=INFO || {
 
 # Verify the build output
 if [ -f "dist/MedicalAssistant" ]; then
+    # Copy the launcher script to dist
+    cp linux_launcher.sh dist/
+    chmod +x dist/linux_launcher.sh
+    
     echo ""
     echo "Build complete! Executable is in dist/MedicalAssistant"
     echo "Executable size: $(du -h dist/MedicalAssistant)"
-    echo "To run: ./dist/MedicalAssistant"
+    echo ""
+    echo "To run the application, use ONE of these methods:"
+    echo "1. Using the launcher (recommended): ./dist/linux_launcher.sh"
+    echo "2. Direct with cleared environment: unset LD_LIBRARY_PATH && ./dist/MedicalAssistant"
+    echo ""
+    echo "The launcher ensures system FFmpeg libraries are used correctly."
 else
     echo "Error: Expected output dist/MedicalAssistant not found!"
     echo "Contents of dist directory:"
