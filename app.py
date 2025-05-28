@@ -269,7 +269,7 @@ def main() -> None:
         except:
             # If logging fails, just print to stderr
             import sys
-            print(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
+            logging.debug(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
         
         # Don't show popup for TclErrors - these are usually harmless UI timing issues
         if exc_type.__name__ != "TclError":
@@ -2468,7 +2468,7 @@ class MedicalDictationApp(ttk.Window):
         # Update theme button icon and tooltip if available
         if hasattr(self, 'theme_btn') and self.theme_btn:
             # Log the current state for debugging
-            print(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
+            logging.debug(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
             
             # Update icon and text based on new theme
             icon = "🌙" if not is_dark else "☀️"
@@ -2486,13 +2486,13 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Update tooltip text
                 self.theme_btn._tooltip.text = tooltip_text
-                print(f"Updated tooltip text to: {tooltip_text}")
+                logging.debug(f"Updated tooltip text to: {tooltip_text}")
         
         # Update the theme label if available
         if hasattr(self, 'theme_label') and self.theme_label:
             mode_text = "Light Mode" if not is_dark else "Dark Mode"
             self.theme_label.config(text=f"({mode_text})")
-            print(f"Updated theme label to: ({mode_text})")
+            logging.debug(f"Updated theme label to: ({mode_text})")
             
         # Update shortcut label in status bar to show theme toggle shortcut
         self.status_manager.info("Theme toggle shortcut: Alt+T")

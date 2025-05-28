@@ -90,14 +90,14 @@ class ElevenLabsProvider(BaseSTTProvider):
                     data['timestamps_granularity'] = timestamps_granularity
             
             # Print API call details to terminal
-            print("\n===== ELEVENLABS API CALL =====")
-            print(f"URL: {url}")
-            print(f"Headers: {{'xi-api-key': '****API_KEY_HIDDEN****'}}")
-            print(f"Data parameters: {data}")
-            print(f"File: {os.path.basename(temp_file)} (audio/wav)")
-            print(f"Audio file size: {file_size_kb:.2f} KB")
-            print(f"Timeout set to: {timeout_seconds} seconds")
-            print("===============================\n")
+            logging.debug("\n===== ELEVENLABS API CALL =====")
+            logging.debug(f"URL: {url}")
+            logging.debug(f"Headers: {{'xi-api-key': '****API_KEY_HIDDEN****'}}")
+            logging.debug(f"Data parameters: {data}")
+            logging.debug(f"File: {os.path.basename(temp_file)} (audio/wav)")
+            logging.debug(f"Audio file size: {file_size_kb:.2f} KB")
+            logging.debug(f"Timeout set to: {timeout_seconds} seconds")
+            logging.debug("===============================\n")
             
             self.logger.info(f"ElevenLabs request data: {data}")
             
@@ -128,28 +128,28 @@ class ElevenLabsProvider(BaseSTTProvider):
                 result = response.json()
                 
                 # Print successful response info to terminal
-                print("\n===== ELEVENLABS API RESPONSE =====")
-                print(f"Status: {response.status_code} OK")
-                print(f"Response size: {len(response.text)} bytes")
+                logging.debug("\n===== ELEVENLABS API RESPONSE =====")
+                logging.debug(f"Status: {response.status_code} OK")
+                logging.debug(f"Response size: {len(response.text)} bytes")
                 
                 if 'words' in result:
                     word_count = len(result['words'])
-                    print(f"Words transcribed: {word_count}")
+                    logging.debug(f"Words transcribed: {word_count}")
                 if 'text' in result:
                     text_preview = result['text'][:100] + "..." if len(result['text']) > 100 else result['text']
-                    print(f"Text preview: {text_preview}")
+                    logging.debug(f"Text preview: {text_preview}")
 
                 # Print response structure for debugging
-                print("\n=== Response Structure ===")
+                logging.debug("\n=== Response Structure ===")
                 for key in result:
-                    print(f"Key: {key}, Type: {type(result[key])}")
+                    logging.debug(f"Key: {key}, Type: {type(result[key])}")
                     if key == 'words' and result['words']:
-                        print(f"Sample word entry: {result['words'][0]}")
-                        print(f"Available fields in word entry: {list(result['words'][0].keys())}")
+                        logging.debug(f"Sample word entry: {result['words'][0]}")
+                        logging.debug(f"Available fields in word entry: {list(result['words'][0].keys())}")
                 
                 # More detailed debug info for speaker diarization
-                print("\n=== Diarization Debug ===")
-                print(f"Diarization requested: {diarize}")
+                logging.debug("\n=== Diarization Debug ===")
+                logging.debug(f"Diarization requested: {diarize}")
                 
                 # Check for diarization data in different possible locations
                 has_speaker_info = False
@@ -159,13 +159,13 @@ class ElevenLabsProvider(BaseSTTProvider):
                 if 'speakers' in result:
                     has_speaker_info = True
                     diarization_location = "root.speakers"
-                    print(f"Found speakers data at root level: {result['speakers']}")
+                    logging.debug(f"Found speakers data at root level: {result['speakers']}")
                 
                 # Check if there's a separate 'diarization' field
                 if 'diarization' in result:
                     has_speaker_info = True
                     diarization_location = "root.diarization"
-                    print(f"Found diarization data: {result['diarization']}")
+                    logging.debug(f"Found diarization data: {result['diarization']}")
                 
                 # Check word-level speaker information
                 if 'words' in result and result['words']:
@@ -176,16 +176,16 @@ class ElevenLabsProvider(BaseSTTProvider):
                             has_speaker_info = True
                             diarization_location = f"words.{key}"
                     
-                    print(f"Word-level fields: {word_fields}")
+                    logging.debug(f"Word-level fields: {word_fields}")
                     
                     # Print first 3 words with full details
-                    print("\nFirst 3 word entries (full details):")
+                    logging.debug("\nFirst 3 word entries (full details):")
                     for i, word in enumerate(result['words'][:3]):
-                        print(f"Word {i+1}: {word}")
+                        logging.debug(f"Word {i+1}: {word}")
                 
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
-                    print(f"\nFound speaker information at: {diarization_location}")
+                    logging.debug(f"\nFound speaker information at: {diarization_location}")
                     
                     # Method 1: If we have word-level speaker info
                     if diarization_location and diarization_location.startswith("words."):
@@ -204,29 +204,29 @@ class ElevenLabsProvider(BaseSTTProvider):
                     else:
                         transcript = self._format_diarized_transcript(result['words'])
                     
-                    print(f"\nGenerated diarized transcript with speaker labels")
+                    logging.debug(f"\nGenerated diarized transcript with speaker labels")
                 else:
                     # Use plain text if not diarized
                     transcript = result.get("text", "")
-                    print(f"\nUsing plain text transcript (no speaker information found)")
+                    logging.debug(f"\nUsing plain text transcript (no speaker information found)")
                     
             else:
                 error_msg = f"ElevenLabs API error: {response.status_code} - {response.text}"
                 self.logger.error(error_msg)
-                print(f"\n===== ELEVENLABS ERROR =====")
-                print(f"Status: {response.status_code}")
-                print(f"Response: {response.text}")
-                print("============================\n")
+                logging.debug(f"\n===== ELEVENLABS ERROR =====")
+                logging.debug(f"Status: {response.status_code}")
+                logging.debug(f"Response: {response.text}")
+                logging.debug("============================\n")
                 
         except Exception as e:
             error_msg = f"Error with ElevenLabs transcription: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             
             # Print exception details to terminal
-            print("\n===== ELEVENLABS EXCEPTION =====")
-            print(f"Error: {str(e)}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("================================\n")
+            logging.debug("\n===== ELEVENLABS EXCEPTION =====")
+            logging.debug(f"Error: {str(e)}")
+            logging.debug(f"Traceback: {traceback.format_exc()}")
+            logging.debug("================================\n")
                 
         finally:
             # Make sure file handle is closed
@@ -267,10 +267,10 @@ class ElevenLabsProvider(BaseSTTProvider):
         current_text = []
         
         # Debug the first few words to understand structure
-        print("\nFormatting transcript with the following word data structure:")
+        logging.debug("\nFormatting transcript with the following word data structure:")
         sample_words = words[:3] if len(words) > 3 else words
         for i, word in enumerate(sample_words):
-            print(f"Sample word {i}: {word}")
+            logging.debug(f"Sample word {i}: {word}")
         
         for word_data in words:
             # Check various possible field names for speaker information
@@ -293,7 +293,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this word or use default
             if speaker is None:
                 # For debugging, print the problematic word data
-                print(f"Warning: No speaker info found in word data: {word_data}")
+                logging.debug(f"Warning: No speaker info found in word data: {word_data}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -352,7 +352,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this word or use default
             if speaker is None:
                 # For debugging, print the problematic word data
-                print(f"Warning: No speaker info found in word data: {word_data}")
+                logging.debug(f"Warning: No speaker info found in word data: {word_data}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -414,7 +414,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this segment or use default
             if speaker is None:
                 # For debugging, print the problematic segment data
-                print(f"Warning: No speaker info found in segment data: {segment}")
+                logging.debug(f"Warning: No speaker info found in segment data: {segment}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -472,7 +472,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this speaker or use default
             if speaker_id is None:
                 # For debugging, print the problematic speaker data
-                print(f"Warning: No speaker info found in speaker data: {speaker}")
+                logging.debug(f"Warning: No speaker info found in speaker data: {speaker}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker_id = current_speaker if current_speaker is not None else "Unknown"
             

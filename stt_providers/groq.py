@@ -73,11 +73,11 @@ class GroqProvider(BaseSTTProvider):
             client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
             
             # Print API call details to terminal
-            print("\n===== GROQ API CALL =====")
-            print(f"File: {os.path.basename(temp_file)} (audio/wav)")
-            print(f"Audio file size: {file_size_kb:.2f} KB")
-            print(f"Timeout set to: {timeout_seconds} seconds")
-            print("=========================\n")
+            logging.debug("\n===== GROQ API CALL =====")
+            logging.debug(f"File: {os.path.basename(temp_file)} (audio/wav)")
+            logging.debug(f"Audio file size: {file_size_kb:.2f} KB")
+            logging.debug(f"Timeout set to: {timeout_seconds} seconds")
+            logging.debug("=========================\n")
             
             # Open and read the audio file
             with open(temp_file, "rb") as audio_file:
@@ -94,12 +94,12 @@ class GroqProvider(BaseSTTProvider):
                 transcript = response.text
                 
                 # Print successful response info to terminal
-                print("\n===== GROQ API RESPONSE =====")
-                print(f"Response successfully received")
+                logging.debug("\n===== GROQ API RESPONSE =====")
+                logging.debug(f"Response successfully received")
                 if transcript:
                     text_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
-                    print(f"Text preview: {text_preview}")
-                print("============================\n")
+                    logging.debug(f"Text preview: {text_preview}")
+                logging.debug("============================\n")
             else:
                 raise TranscriptionError("Unexpected response format from GROQ API")
                 
