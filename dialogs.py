@@ -967,19 +967,14 @@ def show_api_keys_dialog(parent: tk.Tk) -> None:
             error_var.set("Validation errors:\n" + "\n".join(validation_errors))
             return
         
-        # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
+        # Check if at least one LLM provider (OpenAI, Grok, or Perplexity) is provided
         if not (new_openai or new_grok or new_perplexity or new_ollama_url):
-            error_var.set("Error: At least one of OpenAI, Grok, Perplexity, or Ollama API key/URL is required.")
+            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Grok, Perplexity, or Ollama).")
             return
             
-        # Check if GROQ API key is provided
-        if not new_groq:
-            error_var.set("Error: GROQ API key is required for dictation.")
-            return
-            
-        # Check if at least one speech-to-text API key is provided
-        if not (new_deepgram or new_elevenlabs):
-            error_var.set("Error: Either Deepgram or ElevenLabs API key is required for speech recognition.")
+        # Check if at least one STT provider (Groq, Deepgram, or ElevenLabs) is provided
+        if not (new_groq or new_deepgram or new_elevenlabs):
+            error_var.set("Error: At least one STT provider API key is required (Groq, Deepgram, or ElevenLabs).")
             return
             
         # Clear any error messages
