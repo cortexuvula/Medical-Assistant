@@ -13,7 +13,8 @@ API_KEY_PATTERNS = {
     "openai": re.compile(r'^sk-[a-zA-Z0-9\-_]{20,}$'),
     # Deepgram keys can be various formats, often 40+ character alphanumeric
     "deepgram": re.compile(r'^[a-zA-Z0-9]{32,}$'),
-    "elevenlabs": re.compile(r'^[a-f0-9]{32}$'),
+    # ElevenLabs keys are alphanumeric strings of various lengths
+    "elevenlabs": re.compile(r'^[a-zA-Z0-9]{20,}$'),
     "groq": re.compile(r'^gsk_[a-zA-Z0-9]{52}$'),
     "perplexity": re.compile(r'^pplx-[a-f0-9]{48}$'),
     "grok": re.compile(r'^xai-[a-zA-Z0-9]+$'),
