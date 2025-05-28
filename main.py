@@ -1,6 +1,12 @@
 import sys
 import multiprocessing
 
+# Import console suppression patch first (Windows only)
+try:
+    import suppress_console
+except ImportError:
+    pass  # Not critical if it fails
+
 # Check Python version before importing app
 if sys.version_info < (3, 10):
     print("Error: This application requires Python 3.10 or higher.")

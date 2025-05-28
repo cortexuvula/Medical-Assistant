@@ -1,3 +1,9 @@
+# Import console suppression patch first (Windows only)
+try:
+    import suppress_console
+except ImportError:
+    pass  # Not critical if it fails
+
 import json
 import string
 import logging

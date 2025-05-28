@@ -40,6 +40,7 @@ a = Analysis(
     binaries=ffmpeg_files,
     datas=[
         ('env.example', '.'),
+        ('suppress_console.py', '.'),
     ] + soundcard_datas,
     hiddenimports=[
         'tkinter',
