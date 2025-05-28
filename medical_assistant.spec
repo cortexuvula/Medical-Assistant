@@ -7,21 +7,20 @@ import platform
 ffmpeg_files = []
 ffmpeg_dir = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'ffmpeg')
 
-if os.path.exists(ffmpeg_dir):
+# Only bundle FFmpeg for Windows and macOS, not Linux
+if os.path.exists(ffmpeg_dir) and platform.system() != 'Linux':
     if platform.system() == 'Windows':
         ffmpeg_files = [
             (os.path.join(ffmpeg_dir, 'ffmpeg.exe'), 'ffmpeg'),
             (os.path.join(ffmpeg_dir, 'ffprobe.exe'), 'ffmpeg'),
         ]
-    else:
+    else:  # macOS
         ffmpeg_files = [
             (os.path.join(ffmpeg_dir, 'ffmpeg'), 'ffmpeg'),
         ]
-        # Add ffprobe for Linux
-        if platform.system() == 'Linux':
-            ffprobe_path = os.path.join(ffmpeg_dir, 'ffprobe')
-            if os.path.exists(ffprobe_path):
-                ffmpeg_files.append((ffprobe_path, 'ffmpeg'))
+        ffprobe_path = os.path.join(ffmpeg_dir, 'ffprobe')
+        if os.path.exists(ffprobe_path):
+            ffmpeg_files.append((ffprobe_path, 'ffmpeg'))
 
 # Find soundcard module path
 import importlib.util

@@ -9,9 +9,14 @@ echo "Python version: $(python --version)"
 echo "Cleaning previous builds..."
 rm -rf dist build
 
-# Download FFmpeg if not present and not skipped
-if [ "$SKIP_FFMPEG_DOWNLOAD" = "1" ]; then
-    echo "Skipping FFmpeg download in CI environment"
+# Note about FFmpeg on Linux
+echo "Note: Linux builds use system FFmpeg to avoid library dependency issues."
+echo "Please ensure FFmpeg is installed: sudo apt-get install ffmpeg (on Ubuntu/Debian)"
+echo ""
+
+# Skip FFmpeg download for Linux as we'll use system version
+if [ "$SKIP_FFMPEG_DOWNLOAD" = "1" ] || [ "$(uname)" = "Linux" ]; then
+    echo "Skipping FFmpeg download on Linux (using system FFmpeg)"
 else
     if [ ! -d "ffmpeg" ] || [ ! -f "ffmpeg/ffmpeg" ]; then
         echo "Downloading FFmpeg..."

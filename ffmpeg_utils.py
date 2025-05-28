@@ -10,6 +10,11 @@ from pathlib import Path
 def get_ffmpeg_path():
     """Get the path to FFmpeg executable, preferring bundled version if available."""
     
+    # For Linux, always use system ffmpeg to avoid library dependency issues
+    if platform.system() == 'Linux':
+        logging.info("Using system FFmpeg on Linux")
+        return 'ffmpeg'
+    
     # Check if we're running as a PyInstaller bundle
     if getattr(sys, 'frozen', False):
         # We're running as a bundle
@@ -34,6 +39,11 @@ def get_ffmpeg_path():
 
 def get_ffprobe_path():
     """Get the path to FFprobe executable, preferring bundled version if available."""
+    
+    # For Linux, always use system ffprobe to avoid library dependency issues
+    if platform.system() == 'Linux':
+        logging.info("Using system FFprobe on Linux")
+        return 'ffprobe'
     
     # Check if we're running as a PyInstaller bundle
     if getattr(sys, 'frozen', False):
