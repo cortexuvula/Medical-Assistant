@@ -264,17 +264,19 @@ def main() -> None:
     def handle_exception(exc_type, exc_value, exc_traceback):
         try:
             # Try to log the error
-            logging.error(f"Uncaught exception: {exc_type.__name__}: {exc_value}")
+            logging.error(f"Uncaught exception: type: {exc_type}")
         except:
             # If logging fails, just print to stderr
             import sys
             print(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
         
-        # Show error message to user
-        try:
-            messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
-        except:
-            pass
+        # Don't show popup for TclErrors - these are usually harmless UI timing issues
+        if exc_type.__name__ != "TclError":
+            # Show error message to user for other types of errors
+            try:
+                messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
+            except:
+                pass
     
     # Set exception handler for uncaught exceptions - bind to the app instance
     app.report_callback_exception = lambda exc, val, tb: handle_exception(exc.__class__, exc, tb)
@@ -2356,18 +2358,18 @@ class MedicalDictationApp(ttk.Window):
         
         # Update status with warning about fallback
         message = f"{primary_display} transcription failed. Falling back to {fallback_display}."
-        self.after(0, lambda: [
-            self.status_manager.warning(message),
-            self.stt_combobox.current(fallback_provider)
-        ])
         
         # Update STT provider dropdown to reflect actual service being used
         try:
             stt_providers = ["groq", "elevenlabs", "deepgram"]
             fallback_index = stt_providers.index(fallback_provider)
-            self.after(0, lambda: self.stt_combobox.current(fallback_index))
+            self.after(0, lambda: [
+                self.status_manager.warning(message),
+                self.stt_combobox.current(fallback_index)
+            ])
         except (ValueError, IndexError):
-            pass
+            # Just show the warning if we can't update the dropdown
+            self.after(0, lambda: self.status_manager.warning(message))
 
     def toggle_theme(self):
         """Toggle between light and dark themes"""
