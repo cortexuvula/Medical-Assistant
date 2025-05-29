@@ -69,6 +69,7 @@ def get_ffprobe_path():
 
 def configure_pydub():
     """Configure pydub to use bundled FFmpeg if available."""
+    import subprocess
     from pydub.utils import which
     
     ffmpeg_path = get_ffmpeg_path()
@@ -80,4 +81,28 @@ def configure_pydub():
     AudioSegment.ffmpeg = ffmpeg_path
     AudioSegment.ffprobe = ffprobe_path
     
+    # On Windows, configure pydub to suppress console windows
+    if platform.system() == 'Windows':
+        # Monkey patch pydub's subprocess calls to use CREATE_NO_WINDOW
+        import pydub.utils
+        original_popen = pydub.utils.Popen
+        
+        def no_window_popen(*args, **kwargs):
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            return original_popen(*args, **kwargs)
+        
+        pydub.utils.Popen = no_window_popen
+        logging.debug("Configured pydub to suppress console windows on Windows")
+    
     logging.info(f"Configured pydub with FFmpeg: {ffmpeg_path}")
+    
+    # Pre-initialize pydub by creating a tiny silent segment
+    # This forces pydub to check FFmpeg availability at startup
+    # preventing window flicker on first actual use
+    try:
+        # Create a 1ms silent audio segment
+        silent = AudioSegment.silent(duration=1)
+        logging.debug("Pre-initialized pydub with silent segment")
+    except Exception as e:
+        logging.warning(f"Could not pre-initialize pydub: {e}")
