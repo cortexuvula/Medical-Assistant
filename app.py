@@ -316,6 +316,33 @@ class MedicalDictationApp(ttk.Window):
         super().__init__(themename=self.current_theme)
         self.title("Medical Assistant")
         
+        # Set window icon
+        try:
+            # Determine if we're running as a PyInstaller bundle
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                # PyInstaller sets sys._MEIPASS to the temp folder where files are extracted
+                bundle_dir = sys._MEIPASS
+            else:
+                # Running as script
+                bundle_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # Try to load the icon file
+            icon_path = os.path.join(bundle_dir, 'icon.ico')
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+                logging.debug(f"Window icon set from: {icon_path}")
+            else:
+                # Try alternate icon in case of different resolutions
+                alt_icon_path = os.path.join(bundle_dir, 'icon256x256.ico')
+                if os.path.exists(alt_icon_path):
+                    self.iconbitmap(alt_icon_path)
+                    logging.debug(f"Window icon set from alternate: {alt_icon_path}")
+                else:
+                    logging.warning(f"Icon file not found at: {icon_path} or {alt_icon_path}")
+        except Exception as e:
+            logging.warning(f"Could not set window icon: {e}")
+        
         # Get screen dimensions and calculate appropriate window size
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()

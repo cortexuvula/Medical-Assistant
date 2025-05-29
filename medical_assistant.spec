@@ -41,6 +41,8 @@ a = Analysis(
     datas=[
         ('env.example', '.'),
         ('suppress_console.py', '.'),
+        ('icon.ico', '.'),
+        ('icon256x256.ico', '.'),  # Include as backup
     ] + soundcard_datas,
     hiddenimports=[
         'tkinter',
