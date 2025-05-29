@@ -92,7 +92,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add your icon file path here if you have one
+    icon='icon.ico' if platform.system() == 'Windows' else ('icon.icns' if platform.system() == 'Darwin' else None),
 )
 
 # For macOS, create an app bundle
@@ -101,7 +101,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name='MedicalAssistant.app',
-        icon=None,  # Add your icon file path here if you have one
+        icon='icon.icns',
         bundle_identifier='com.medicalassistant.app',
         info_plist={
             'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',

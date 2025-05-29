@@ -5,6 +5,7 @@ import os
 import sys
 import platform
 import logging
+import subprocess
 from pathlib import Path
 
 def get_ffmpeg_path():
@@ -85,15 +86,28 @@ def configure_pydub():
     if platform.system() == 'Windows':
         # Monkey patch pydub's subprocess calls to use CREATE_NO_WINDOW
         import pydub.utils
-        original_popen = pydub.utils.Popen
+        original_popen = subprocess.Popen
         
         def no_window_popen(*args, **kwargs):
             if platform.system() == 'Windows':
-                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                # Ensure creationflags is set for Windows
+                if 'creationflags' not in kwargs:
+                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                else:
+                    kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+                
+                # Also set startupinfo to hide the window
+                if 'startupinfo' not in kwargs:
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = si
             return original_popen(*args, **kwargs)
         
+        # Replace both pydub's Popen and the global subprocess.Popen
         pydub.utils.Popen = no_window_popen
-        logging.debug("Configured pydub to suppress console windows on Windows")
+        subprocess.Popen = no_window_popen
+        logging.debug("Configured pydub and subprocess to suppress console windows on Windows")
     
     logging.info(f"Configured pydub with FFmpeg: {ffmpeg_path}")
     

@@ -76,6 +76,10 @@ class AudioHandler:
         # Special SOAP mode flag
         self.soap_mode = False
         
+        # Cache for prefix audio to avoid repeated file loading
+        self._prefix_audio_cache = None
+        self._prefix_audio_checked = False
+        
     @property
     def whisper_available(self) -> bool:
         """Check if Whisper is available on the system.
@@ -183,20 +187,28 @@ class AudioHandler:
         Returns:
             Transcription text or empty string if transcription failed
         """
-        # Check if there's a prefix audio file to prepend
-        prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
-        if os.path.exists(prefix_audio_path):
+        # Check if there's a prefix audio file to prepend (use cache to avoid repeated loading)
+        if not self._prefix_audio_checked:
+            self._prefix_audio_checked = True
+            prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
+            if os.path.exists(prefix_audio_path):
+                try:
+                    # Load the prefix audio once and cache it
+                    logging.info(f"Loading prefix audio from {prefix_audio_path}")
+                    self._prefix_audio_cache = AudioSegment.from_file(prefix_audio_path)
+                    logging.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
+                except Exception as e:
+                    logging.error(f"Error loading prefix audio: {e}", exc_info=True)
+                    self._prefix_audio_cache = None
+        
+        # If we have cached prefix audio, prepend it
+        if self._prefix_audio_cache:
             try:
-                # Load the prefix audio
-                logging.info(f"Found prefix audio at {prefix_audio_path}, prepending to recording")
-                prefix_segment = AudioSegment.from_file(prefix_audio_path)
-                
                 # Prepend the prefix audio to the segment
-                combined_segment = prefix_segment + segment
-                
+                combined_segment = self._prefix_audio_cache + segment
                 # Use the combined segment for transcription
                 segment = combined_segment
-                logging.info(f"Successfully prepended prefix audio (length: {len(prefix_segment)}ms) to recording")
+                logging.debug("Successfully prepended cached prefix audio to recording")
             except Exception as e:
                 logging.error(f"Error prepending prefix audio: {e}", exc_info=True)
                 # Continue with original segment if there's an error
