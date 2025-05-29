@@ -65,7 +65,7 @@ a = Analysis(
     ],
     hookspath=['.'],  # Look for hooks in current directory
     hooksconfig={},
-    runtime_hooks=['runtime_hook_linux.py'] if platform.system() == 'Linux' else [],
+    runtime_hooks=['runtime_hook_linux.py'] if platform.system() == 'Linux' else (['runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
     excludes=[],
     noarchive=False,
     optimize=0,
