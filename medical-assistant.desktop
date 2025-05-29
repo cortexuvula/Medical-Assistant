@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Medical Assistant
+Comment=Voice-powered medical documentation
+Exec=/path/to/Medical-Assistant/dist/MedicalAssistant
+Icon=/path/to/Medical-Assistant/icon.ico
+Terminal=false
+Type=Application
+Categories=Office;Medical;AudioVideo;
+StartupNotify=true
