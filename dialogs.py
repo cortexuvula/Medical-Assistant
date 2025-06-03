@@ -1,10 +1,13 @@
 import os
 import logging
 import tkinter as tk
-from tkinter import messagebox, scrolledtext  # Add scrolledtext here
+from tkinter import messagebox, scrolledtext
 import ttkbootstrap as ttk
 import re
 from typing import Dict, Tuple
+import requests
+import json
+from openai import OpenAI
 
 def create_model_selector(parent, frame, model_var, provider_name, get_models_func, row, column=1):
     """Create a model selection widget with a select button.
@@ -120,66 +123,10 @@ def get_openai_models() -> list:
             "gpt-4-32k"
         ]
 
-def get_perplexity_models() -> list:
-    """Fetch available models from Perplexity API."""
-    try:
-        import requests
-        import os
-        
-        # Get API key from environment
-        api_key = os.getenv("PERPLEXITY_API_KEY")
-        if not api_key:
-            logging.error("Perplexity API key not found in environment variables")
-            return get_fallback_perplexity_models()
-            
-        # Make API call to get models
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.get(
-            "https://api.perplexity.ai/models",
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Extract model IDs
-            models = [model["id"] for model in data if "id" in model]
-            # Add any common models that might be missing
-            common_models = ["sonar-small-chat", "sonar-medium-chat", "sonar-large-chat", "sonar-small-online", "sonar-medium-online", "codellama-70b-instruct", "mixtral-8x7b-instruct", "llama-2-70b-chat", "llama-3-8b-instruct"]
-            for model in common_models:
-                if model not in models:
-                    models.append(model)
-            return sorted(models)
-        else:
-            logging.error(f"Error fetching Perplexity models: {response.status_code}")
-            return get_fallback_perplexity_models()
-    except Exception as e:
-        logging.error(f"Error fetching Perplexity models: {str(e)}")
-        return get_fallback_perplexity_models()
-
-def get_fallback_perplexity_models() -> list:
-    """Return fallback list of common Perplexity models."""
-    return [
-        "sonar-small-chat", 
-        "sonar-medium-chat", 
-        "sonar-large-chat", 
-        "sonar-small-online", 
-        "sonar-medium-online", 
-        "codellama-70b-instruct", 
-        "mixtral-8x7b-instruct", 
-        "llama-2-70b-chat", 
-        "llama-3-8b-instruct"
-    ]
 
 def get_grok_models() -> list:
     """Fetch available models from Grok API."""
     try:
-        import requests
-        import os
-        from openai import OpenAI
         
         # Get API key from environment
         api_key = os.getenv("GROK_API_KEY")
@@ -496,7 +443,6 @@ def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_pr
     """
     # User Prompt
     ttk.Label(parent, text="User Prompt:").grid(row=0, column=0, sticky="nw", pady=(10, 5))
-    import tkinter.scrolledtext as scrolledtext
     prompt_text = scrolledtext.ScrolledText(parent, width=60, height=5)
     prompt_text.grid(row=0, column=1, padx=5, pady=(10, 5))
     prompt_text.insert("1.0", current_prompt)

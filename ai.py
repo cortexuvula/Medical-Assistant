@@ -1,7 +1,10 @@
 import openai
 import os
 import logging
-import re  
+import re
+import requests
+import json
+from openai import OpenAI  
 from prompts import (
     REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
@@ -141,7 +144,6 @@ def _perplexity_api_call(client, model: str, messages: list, temperature: float)
             raise APIError(f"Perplexity API error: {error_msg}")
 
 def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
-    from openai import OpenAI
     
     # Get security manager
     security_manager = get_security_manager()
@@ -378,7 +380,6 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
         return f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed."
 
 def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
-    from openai import OpenAI
     api_key = os.getenv("GROK_API_KEY")
     if not api_key:
         logging.error("Grok API key not provided")

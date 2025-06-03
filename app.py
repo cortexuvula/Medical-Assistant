@@ -5,13 +5,13 @@ except ImportError:
     pass  # Not critical if it fails
 
 # json import removed - not needed after refactoring
-import string
+from string import punctuation
 import logging
 import os
 import sys
 import concurrent.futures
 import tkinter as tk
-from tkinter import messagebox, filedialog, ttk
+from tkinter import messagebox, filedialog
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 # Import tkinter constants for compatibility
@@ -22,7 +22,6 @@ from typing import Callable
 import threading
 import numpy as np
 from pydub import AudioSegment
-from datetime import datetime as dt
 import tempfile
 from cleanup_utils import clear_all_content, clear_content_except_context
 from database import Database
@@ -76,7 +75,6 @@ def main() -> None:
             logging.error(f"Uncaught exception: type: {exc_type}")
         except:
             # If logging fails, just print to stderr
-            import sys
             logging.debug(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
         
         # Don't show popup for TclErrors - these are usually harmless UI timing issues
@@ -514,7 +512,7 @@ class MedicalDictationApp(ttk.Window):
             "copy text": self.copy_text,
             "save text": self.save_text,
         }
-        cleaned = text.lower().strip().translate(str.maketrans('', '', string.punctuation))
+        cleaned = text.lower().strip().translate(str.maketrans('', '', punctuation))
         if cleaned in commands:
             commands[cleaned]()
         else:
