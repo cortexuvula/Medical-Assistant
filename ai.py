@@ -469,12 +469,17 @@ def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool =
     
     return text.strip()
 
-def create_soap_note_with_openai(text: str) -> str:
+def create_soap_note_with_openai(text: str, context: str = "") -> str:
     # We don't need to check the provider here since call_ai will handle it
     # Just pass the model name based on the type of note we're creating
     model = _DEFAULT_SETTINGS["soap_note"]["model"]  # Default model as fallback
     
-    full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
+    # If context is provided, prepend it to the prompt
+    if context and context.strip():
+        full_prompt = f"Previous medical information:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=text)}"
+    else:
+        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
+    
     result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
     # Clean both markdown and citations
     return clean_text(result)

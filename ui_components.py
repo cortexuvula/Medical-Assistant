@@ -193,10 +193,10 @@ class UIComponents:
         return mic_frame, mic_combobox, provider_combobox, stt_combobox, theme_btn, theme_label
     
     def create_notebook(self) -> tuple:
-        """Create the notebook with tabs for transcript, soap note, referral, and letter.
+        """Create the notebook with tabs for transcript, soap note, referral, letter, and context.
         
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, context_text)
         """
         notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
         
@@ -205,12 +205,14 @@ class UIComponents:
         soap_frame = ttk.Frame(notebook)
         referral_frame = ttk.Frame(notebook)
         letter_frame = ttk.Frame(notebook)  # New letter frame
+        context_frame = ttk.Frame(notebook)  # New context frame
         
         # Add tabs to notebook
         notebook.add(transcript_frame, text="Transcript")
         notebook.add(soap_frame, text="SOAP Note")
         notebook.add(referral_frame, text="Referral")
         notebook.add(letter_frame, text="Letter")  # New letter tab
+        notebook.add(context_frame, text="Context")  # New context tab
         
         # Create text widgets for each tab - use relative sizing
         text_kwargs = {
@@ -232,7 +234,23 @@ class UIComponents:
         letter_text = tk.scrolledtext.ScrolledText(letter_frame, **text_kwargs)  # New letter text widget
         letter_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        return notebook, transcript_text, soap_text, referral_text, letter_text
+        # Create context tab with text widget and clear button
+        context_text = tk.scrolledtext.ScrolledText(context_frame, **text_kwargs)  # New context text widget
+        context_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=(5, 0))
+        
+        # Add clear button at the bottom of context tab
+        context_button_frame = ttk.Frame(context_frame)
+        context_button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        clear_context_btn = ttk.Button(
+            context_button_frame, 
+            text="Clear Context", 
+            command=lambda: context_text.delete("1.0", tk.END),
+            bootstyle="danger"
+        )
+        clear_context_btn.pack(side=tk.RIGHT)
+        
+        return notebook, transcript_text, soap_text, referral_text, letter_text, context_text
     
     def create_control_panel(self, command_map: Dict[str, Callable]) -> ttk.Frame:
         """Create the control panel with buttons for recording, editing, and AI features.

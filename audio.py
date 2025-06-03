@@ -651,11 +651,12 @@ class AudioHandler:
         
         return channels, self.sample_rate
 
-    def _create_stop_function(self, stream: sd.InputStream) -> Callable:
+    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None) -> Callable:
         """Create the stop function for the audio stream.
         
         Args:
             stream: The sounddevice InputStream.
+            flush_callback: Optional callback to flush any remaining audio data.
             
         Returns:
             Function to stop the stream.
@@ -663,6 +664,10 @@ class AudioHandler:
         def stop_stream(wait_for_stop: bool = False) -> None:
             if stream:
                 try:
+                    # First, flush any accumulated audio if callback provided
+                    if flush_callback:
+                        flush_callback()
+                    
                     stream.stop()
                     stream.close()
                     logging.info("sounddevice InputStream stopped and closed")
@@ -679,14 +684,14 @@ class AudioHandler:
         
         return stop_stream
 
-    def _create_audio_callback(self, phrase_time_limit: int) -> Callable:
+    def _create_audio_callback(self, phrase_time_limit: int) -> Tuple[Callable, Callable]:
         """Create the audio callback function for sounddevice.
         
         Args:
             phrase_time_limit: Maximum length of audio capture in seconds.
             
         Returns:
-            The callback function.
+            Tuple of (callback_function, flush_function).
         """
         # Buffer to accumulate audio data
         accumulated_data = []
@@ -694,6 +699,23 @@ class AudioHandler:
         target_frames = int(self.sample_rate * phrase_time_limit)
         
         logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
+
+        def flush_accumulated_audio():
+            """Flush any accumulated audio data."""
+            nonlocal accumulated_data, accumulated_frames
+            if self.callback_function and accumulated_data and accumulated_frames > 0:
+                try:
+                    # Combine all accumulated chunks
+                    combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                    logging.info(f"Flushing accumulated audio: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
+                    # Call the callback with the combined data
+                    self.callback_function(combined_data)
+                except Exception as e:
+                    logging.error(f"Error flushing accumulated audio: {e}", exc_info=True)
+                finally:
+                    # Reset for next accumulation
+                    accumulated_data = []
+                    accumulated_frames = 0
 
         def audio_callback_sd(indata: np.ndarray, frames: int, _: Any, status: sd.CallbackFlags) -> None:
             nonlocal accumulated_data, accumulated_frames
@@ -723,7 +745,7 @@ class AudioHandler:
                     logging.info(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
                 
                 # Only call the callback when we've accumulated enough data
-                if accumulated_frames >= target_frames or not self.callback_function:
+                if accumulated_frames >= target_frames:
                     if self.callback_function and accumulated_data:
                         # Combine all accumulated chunks
                         combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
@@ -740,7 +762,7 @@ class AudioHandler:
                 accumulated_data = []
                 accumulated_frames = 0
         
-        return audio_callback_sd
+        return audio_callback_sd, flush_accumulated_audio
 
     def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None) -> Callable:
         """Listen using sounddevice library, resolving name to index just-in-time.
@@ -781,7 +803,7 @@ class AudioHandler:
             self._setup_audio_parameters(device_id)
             
             # Create audio callback
-            audio_callback_sd = self._create_audio_callback(phrase_time_limit)
+            audio_callback_sd, flush_callback = self._create_audio_callback(phrase_time_limit)
 
             # Get device info for logging
             device_info = sd.query_devices(device_id)
@@ -805,8 +827,8 @@ class AudioHandler:
             # Add to active streams
             self._active_streams.append(stream)
             
-            # Create stop function
-            stop_function = self._create_stop_function(stream)
+            # Create stop function with flush callback
+            stop_function = self._create_stop_function(stream, flush_callback)
             
             return stop_function # Return the specific closer for this stream
 
