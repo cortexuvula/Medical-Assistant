@@ -24,7 +24,7 @@ import numpy as np
 from pydub import AudioSegment
 from datetime import datetime as dt
 import tempfile
-from cleanup_utils import clear_all_content
+from cleanup_utils import clear_all_content, clear_content_except_context
 from database import Database
 from audio import AudioHandler
 
@@ -239,7 +239,7 @@ class MedicalDictationApp(ttk.Window):
         self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
         
         # Create notebook with text areas - inside main_content with expand=True
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text = self.ui.create_notebook()
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.context_text = self.ui.create_notebook()
         self.notebook.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         
         # Set initial active text widget and bind tab change event
@@ -777,8 +777,8 @@ class MedicalDictationApp(ttk.Window):
             # Switch focus to the SOAP tab
             self.notebook.select(1)
             
-            # Clear all text fields and audio segments before starting a new recording
-            clear_all_content(self)
+            # Clear all text fields and audio segments before starting a new recording (preserve context)
+            clear_content_except_context(self)
             
             # Start recording
             self.status_manager.info("Starting SOAP recording...")
@@ -1033,6 +1033,10 @@ class MedicalDictationApp(ttk.Window):
             self.active_text_widget = self.soap_text
         elif current == 2:
             self.active_text_widget = self.referral_text
+        elif current == 3:
+            self.active_text_widget = self.letter_text
+        elif current == 4:
+            self.active_text_widget = self.context_text
         else:
             self.active_text_widget = self.transcript_text
 

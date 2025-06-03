@@ -156,10 +156,14 @@ class SOAPProcessor:
                     self.status_manager.progress("Creating SOAP note from transcript...")
                 ])
                 
+                # Get context text from the context tab
+                context_text = self.app.context_text.get("1.0", tk.END).strip()
+                
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.io_executor.submit(
                     create_soap_note_with_openai,
-                    transcript
+                    transcript,
+                    context_text
                 )
                 
                 # Get result with timeout to prevent hanging

@@ -22,7 +22,7 @@ def clear_all_content(app_instance):
     logging.info("Clearing all application content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -57,7 +57,7 @@ def clear_text_only(app_instance):
     logging.info("Clearing all text content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -89,3 +89,41 @@ def clear_audio_only(app_instance):
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
         app_instance.update_status("All audio cleared", "info")
+
+
+def clear_content_except_context(app_instance):
+    """
+    Clear all content except the context tab text.
+    
+    This function is used when starting SOAP recording to preserve context information
+    while clearing other content.
+    
+    Args:
+        app_instance: The main application instance with references to text widgets and audio segments
+    """
+    logging.info("Clearing all application content except context")
+    
+    # Clear text widgets except context
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
+        if widget:
+            widget.delete("1.0", tk.END)
+            widget.edit_reset()  # Clear undo/redo history
+    
+    # Clear all audio segments
+    if hasattr(app_instance, "audio_segments"):
+        app_instance.audio_segments = []
+    
+    if hasattr(app_instance, "appended_chunks"):
+        app_instance.appended_chunks = []
+    
+    if hasattr(app_instance, "soap_audio_segments"):
+        app_instance.soap_audio_segments = []
+    
+    # Reset the current recording ID - this ensures we don't update the wrong database record
+    if hasattr(app_instance, "current_recording_id"):
+        app_instance.current_recording_id = None
+        logging.info("Reset current recording ID")
+    
+    # Update status to inform the user
+    if hasattr(app_instance, "update_status"):
+        app_instance.update_status("Content cleared (context preserved)", "info")
