@@ -26,6 +26,7 @@ from datetime import datetime as dt
 import tempfile
 from cleanup_utils import clear_all_content
 from database import Database
+from audio import AudioHandler
 
 # Initialize logging
 from log_manager import setup_application_logging
@@ -82,12 +83,12 @@ def main() -> None:
         if exc_type.__name__ != "TclError":
             # Show error message to user for other types of errors
             try:
-                messagebox.showerror("Error", f"An unexpected error occurred: {exc_value}")
+                messagebox.showerror("Error", f"An unexpected error occurred:\n{exc_type.__name__}: {str(exc_value)}")
             except:
                 pass
     
     # Set exception handler for uncaught exceptions - bind to the app instance
-    app.report_callback_exception = lambda exc, val, tb: handle_exception(exc.__class__, exc, tb)
+    app.report_callback_exception = lambda exc_type, exc_value, exc_tb: handle_exception(exc_type, exc_value, exc_tb)
     
     # Start the app
     app.mainloop()

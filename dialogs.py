@@ -1218,7 +1218,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     
     # Get current ElevenLabs settings with fallback to defaults
     elevenlabs_settings = SETTINGS.get("elevenlabs", {})
-    default_settings = _DEFAULT_SETTINGS["elevenlabs"]
+    default_settings = _DEFAULT_SETTINGS.get("elevenlabs", {})
     
     dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x800")
     frame = ttk.Frame(dialog, padding=20)
@@ -1230,7 +1230,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     
     # Model ID
     ttk.Label(frame, text="Model ID:").grid(row=1, column=0, sticky="w", pady=10)
-    model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings["model_id"]))
+    model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings.get("model_id", "scribe_v1")))
     model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
     model_combo['values'] = ["scribe_v1", "scribe_v1_base"]  # Updated to supported models only
     model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
@@ -1239,7 +1239,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     
     # Language Code
     ttk.Label(frame, text="Language Code:").grid(row=3, column=0, sticky="w", pady=10)
-    lang_var = tk.StringVar(value=elevenlabs_settings.get("language_code", default_settings["language_code"]))
+    lang_var = tk.StringVar(value=elevenlabs_settings.get("language_code", default_settings.get("language_code", "")))
     lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
     lang_entry.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Optional ISO language code (e.g., 'en-US'). Leave empty for auto-detection.", 
@@ -1247,7 +1247,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     
     # Tag Audio Events
     ttk.Label(frame, text="Tag Audio Events:").grid(row=5, column=0, sticky="w", pady=10)
-    tag_events_var = tk.BooleanVar(value=elevenlabs_settings.get("tag_audio_events", default_settings["tag_audio_events"]))
+    tag_events_var = tk.BooleanVar(value=elevenlabs_settings.get("tag_audio_events", default_settings.get("tag_audio_events", True)))
     tag_events_check = ttk.Checkbutton(frame, variable=tag_events_var)
     tag_events_check.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Add timestamps and labels for audio events like silence, music, etc.", 
@@ -1257,7 +1257,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     ttk.Label(frame, text="Number of Speakers:").grid(row=7, column=0, sticky="w", pady=10)
     
     # Create a custom variable handler for the special "None" case
-    speakers_value = elevenlabs_settings.get("num_speakers", default_settings["num_speakers"])
+    speakers_value = elevenlabs_settings.get("num_speakers", default_settings.get("num_speakers", None))
     speakers_str = "" if speakers_value is None else str(speakers_value)
     speakers_entry = ttk.Entry(frame, width=30)
     speakers_entry.insert(0, speakers_str)
@@ -1268,14 +1268,14 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     
     # Timestamps Granularity
     ttk.Label(frame, text="Timestamps Granularity:").grid(row=9, column=0, sticky="w", pady=10)
-    granularity_var = tk.StringVar(value=elevenlabs_settings.get("timestamps_granularity", default_settings["timestamps_granularity"]))
+    granularity_var = tk.StringVar(value=elevenlabs_settings.get("timestamps_granularity", default_settings.get("timestamps_granularity", "word")))
     granularity_combo = ttk.Combobox(frame, textvariable=granularity_var, width=30)
     granularity_combo['values'] = ["word", "segment", "sentence"]
     granularity_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
     
     # Diarize
     ttk.Label(frame, text="Diarize:").grid(row=10, column=0, sticky="w", pady=10)
-    diarize_var = tk.BooleanVar(value=elevenlabs_settings.get("diarize", default_settings["diarize"]))
+    diarize_var = tk.BooleanVar(value=elevenlabs_settings.get("diarize", default_settings.get("diarize", True)))
     diarize_check = ttk.Checkbutton(frame, variable=diarize_var)
     diarize_check.grid(row=10, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Identify different speakers in the audio.", 
@@ -1323,7 +1323,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Get current Deepgram settings with fallback to defaults
     deepgram_settings = SETTINGS.get("deepgram", {})
-    default_settings = _DEFAULT_SETTINGS["deepgram"]
+    default_settings = _DEFAULT_SETTINGS.get("deepgram", {})
     
     # Increase height from 800 to 900 to provide more space for all settings
     dialog = create_toplevel_dialog(parent, "Deepgram Settings", "700x900")
@@ -1356,7 +1356,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Model selection
     ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="w", pady=10)
-    model_var = tk.StringVar(value=deepgram_settings.get("model", default_settings["model"]))
+    model_var = tk.StringVar(value=deepgram_settings.get("model", default_settings.get("model", "nova-2-medical")))
     model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
     model_combo['values'] = [
         "nova-2-medical", 
@@ -1370,7 +1370,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Language
     ttk.Label(frame, text="Language:").grid(row=3, column=0, sticky="w", pady=10)
-    language_var = tk.StringVar(value=deepgram_settings.get("language", default_settings["language"]))
+    language_var = tk.StringVar(value=deepgram_settings.get("language", default_settings.get("language", "en-US")))
     language_entry = ttk.Combobox(frame, textvariable=language_var, width=30)
     language_entry['values'] = [
         "en-US", "en-GB", "en-AU", "en-NZ", "en-IN", 
@@ -1383,7 +1383,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Smart formatting toggle
     ttk.Label(frame, text="Smart Formatting:").grid(row=5, column=0, sticky="w", pady=10)
-    smart_format_var = tk.BooleanVar(value=deepgram_settings.get("smart_format", default_settings["smart_format"]))
+    smart_format_var = tk.BooleanVar(value=deepgram_settings.get("smart_format", default_settings.get("smart_format", True)))
     smart_format_check = ttk.Checkbutton(frame, variable=smart_format_var)
     smart_format_check.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Adds punctuation and capitalization to transcriptions.", 
@@ -1391,7 +1391,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Diarization toggle
     ttk.Label(frame, text="Speaker Diarization:").grid(row=7, column=0, sticky="w", pady=10)
-    diarize_var = tk.BooleanVar(value=deepgram_settings.get("diarize", default_settings["diarize"]))
+    diarize_var = tk.BooleanVar(value=deepgram_settings.get("diarize", default_settings.get("diarize", False)))
     diarize_check = ttk.Checkbutton(frame, variable=diarize_var)
     diarize_check.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Identify and label different speakers in the audio.", 
@@ -1399,7 +1399,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     
     # Profanity filter
     ttk.Label(frame, text="Filter Profanity:").grid(row=9, column=0, sticky="w", pady=10)
-    profanity_var = tk.BooleanVar(value=deepgram_settings.get("profanity_filter", default_settings["profanity_filter"]))
+    profanity_var = tk.BooleanVar(value=deepgram_settings.get("profanity_filter", default_settings.get("profanity_filter", False)))
     profanity_check = ttk.Checkbutton(frame, variable=profanity_var)
     profanity_check.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Replaces profanity with asterisks.", 
@@ -1407,7 +1407,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
               
     # Redact PII
     ttk.Label(frame, text="Redact PII:").grid(row=11, column=0, sticky="w", pady=10)
-    redact_var = tk.BooleanVar(value=deepgram_settings.get("redact", default_settings["redact"]))
+    redact_var = tk.BooleanVar(value=deepgram_settings.get("redact", default_settings.get("redact", False)))
     redact_check = ttk.Checkbutton(frame, variable=redact_var)
     redact_check.grid(row=11, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Redact personally identifiable information like names, addresses, etc.", 
@@ -1415,7 +1415,7 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
               
     # Number of alternatives
     ttk.Label(frame, text="Alternatives:").grid(row=13, column=0, sticky="w", pady=10)
-    alternatives_var = tk.StringVar(value=str(deepgram_settings.get("alternatives", default_settings["alternatives"])))
+    alternatives_var = tk.StringVar(value=str(deepgram_settings.get("alternatives", default_settings.get("alternatives", 1))))
     alternatives_spin = ttk.Spinbox(frame, from_=1, to=5, width=5, textvariable=alternatives_var)
     alternatives_spin.grid(row=13, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Number of alternative transcriptions to generate.", 

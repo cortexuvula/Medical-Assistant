@@ -64,11 +64,9 @@ class DatabaseManager:
             
             # Save to database
             recording_id = db.add_recording(
+                filename=audio_path,  # Changed from audio_path to filename
                 transcript=transcript,
-                audio_path=audio_path,
-                duration=duration,
-                soap_note=soap_note,
-                metadata=metadata
+                soap_note=soap_note
             )
             
             # Database class doesn't have close method
@@ -108,11 +106,9 @@ class DatabaseManager:
             
             # Save to database (using recording table for now)
             letter_id = db.add_recording(
+                filename="",  # No audio file for letters
                 transcript=source_text,
-                audio_path="",  # No audio for letters
-                duration=0,
-                soap_note=content,
-                metadata=metadata
+                letter=content  # Store letter content in letter field
             )
             
             # Database class doesn't have close method

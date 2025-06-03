@@ -31,7 +31,7 @@ class RecordingsDialogManager:
             parent_app: The main application instance
         """
         self.app = parent_app
-        self.db = parent_app.db_manager
+        self.db = parent_app.db
         self.status_manager = parent_app.status_manager
         
     def show_dialog(self) -> None:
@@ -205,7 +205,7 @@ class RecordingsDialogManager:
         def task():
             try:
                 # Get recordings from database
-                recordings = self.db.get_all_recordings_with_metadata()
+                recordings = self.db.get_all_recordings()
                 
                 # Update UI on main thread
                 self.app.after(0, lambda: self._update_tree_view(recordings))
@@ -218,7 +218,7 @@ class RecordingsDialogManager:
         # Run in background
         threading.Thread(target=task, daemon=True).start()
     
-    def _update_tree_view(self, recordings: List[tuple]):
+    def _update_tree_view(self, recordings: List[Dict[str, Any]]):
         """Update treeview with recordings data."""
         # Clear existing items
         for item in self.tree.get_children():
@@ -228,23 +228,17 @@ class RecordingsDialogManager:
         for recording in recordings:
             try:
                 # Extract data
-                rec_id = recording[0]
-                filename = recording[1] or "N/A"
-                created_at = recording[2] or "N/A"
-                transcript = recording[3] or ""
-                soap_note = recording[4] or ""
+                rec_id = recording['id']
+                filename = recording['filename'] or "N/A"
+                created_at = recording['timestamp'] or "N/A"
+                transcript = recording.get('transcript', '') or ""
+                soap_note = recording.get('soap_note', '') or ""
+                referral = recording.get('referral', '') or ""
+                letter = recording.get('letter', '') or ""
                 
                 # Check for additional content
-                metadata = recording[5] if len(recording) > 5 else {}
-                if isinstance(metadata, str):
-                    import json
-                    try:
-                        metadata = json.loads(metadata)
-                    except:
-                        metadata = {}
-                
-                has_referral = "referral" in metadata.get("type", "").lower()
-                has_letter = "letter" in metadata.get("type", "").lower()
+                has_referral = bool(referral)
+                has_letter = bool(letter)
                 
                 # Determine status
                 has_transcript = "✓" if transcript else "✗"
@@ -338,10 +332,14 @@ class RecordingsDialogManager:
             logging.error(error_msg)
             messagebox.showerror("Load Error", error_msg)
     
-    def _load_recording_data(self, recording: tuple):
+    def _load_recording_data(self, recording: Dict[str, Any]):
         """Load recording data into the application."""
         # Extract data
-        rec_id, filename, created_at, transcript, soap_note = recording[:5]
+        rec_id = recording['id']
+        filename = recording['filename']
+        created_at = recording['timestamp']
+        transcript = recording.get('transcript', '')
+        soap_note = recording.get('soap_note', '')
         
         # Clear existing content
         from cleanup_utils import clear_all_content
@@ -445,9 +443,13 @@ class RecordingsDialogManager:
         # Run in background
         threading.Thread(target=export_task, daemon=True).start()
     
-    def _export_recording_to_file(self, recording: tuple, export_dir: str):
+    def _export_recording_to_file(self, recording: Dict[str, Any], export_dir: str):
         """Export a single recording to file."""
-        rec_id, filename, created_at, transcript, soap_note = recording[:5]
+        rec_id = recording['id']
+        filename = recording['filename']
+        created_at = recording['timestamp']
+        transcript = recording.get('transcript', '')
+        soap_note = recording.get('soap_note', '')
         
         # Create filename
         timestamp = created_at.replace(":", "-").replace(" ", "_")

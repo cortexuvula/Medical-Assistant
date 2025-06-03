@@ -54,6 +54,7 @@ class AppInitializer:
         self._setup_api_keys()
         self._initialize_audio_handler()
         self._initialize_variables()
+        self._initialize_database()
         self._create_ui()
         self._initialize_managers()
         self._setup_api_dependent_features()
@@ -194,6 +195,11 @@ class AppInitializer:
         self.app.listening = False  # Initialize listening flag for recording state
         self.app.current_recording_id = None  # Track the ID of the currently loaded recording
         
+    def _initialize_database(self):
+        """Initialize database instance."""
+        self.app.db = Database()
+        self.app.db.create_tables()
+        
     def _create_ui(self):
         """Create the user interface components."""
         # Create UI using the component builder
@@ -244,7 +250,3 @@ class AppInitializer:
         # Add a list to track all scheduled status updates
         self.app.status_timers = []
         self.app.status_timer = None
-        
-        # Initialize database
-        self.app.db = Database()
-        self.app.db.create_tables()
