@@ -194,7 +194,7 @@ class MedicalDictationApp(ttk.Window):
         """Import prompts using FileManager."""
         self.file_manager.import_prompts()
 
-    def create_workflow_widgets(self) -> None:
+    def create_widgets(self) -> None:
         """Create widgets for the workflow UI mode."""
         # Define command mapping for buttons
         command_map = {
@@ -371,75 +371,6 @@ class MedicalDictationApp(ttk.Window):
         stt_map = {"groq": 0, "elevenlabs": 1, "deepgram": 2}
         if stt_provider in stt_map:
             self.stt_combobox.current(stt_map[stt_provider])
-
-    def create_widgets(self) -> None:
-        # Define command mapping for buttons
-        command_map = {
-            "new_session": self.new_session,
-            "undo_text": self.undo_text,
-            "redo_text": self.redo_text,
-            "copy_text": self.copy_text,
-            "save_text": self.save_text,
-            "load_audio_file": self.load_audio_file,
-            "refine_text": self.refine_text,
-            "improve_text": self.improve_text,
-            "create_soap_note": self.create_soap_note,
-            "create_referral": self.create_referral,
-            "create_letter": self.create_letter,
-            "toggle_soap_recording": self.toggle_soap_recording,
-            "toggle_soap_pause": self.toggle_soap_pause,
-            "cancel_soap_recording": self.cancel_soap_recording
-        }
-        
-        # Create a main content frame to hold everything except the status bar
-        main_content = ttk.Frame(self)
-        main_content.pack(side=TOP, fill=tk.BOTH, expand=True)
-        
-        # Create status bar - placed first in packing order but with side=BOTTOM
-        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
-        status_frame.pack(side=BOTTOM, fill=tk.X)
-        
-        # Create microphone frame with theme button references - inside main_content
-        mic_frame, self.mic_combobox, self.provider_combobox, self.stt_combobox, self.theme_btn, self.theme_label = self.ui.create_microphone_frame(
-            on_provider_change=self._on_provider_change,
-            on_stt_change=self._on_stt_change,
-            refresh_microphones=self.refresh_microphones,
-            toggle_theme=self.toggle_theme  # Pass the toggle_theme method to the UI
-        )
-        mic_frame.pack(side=TOP, fill=tk.X, padx=10, pady=(10, 5))
-        
-        # Add binding for window resize to save dimensions
-        self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
-        
-        # Create control panel with buttons - inside main_content
-        self.control_frame, self.buttons = self.ui.create_control_panel(command_map)
-        self.control_frame.pack(side=TOP, fill=tk.X, padx=10, pady=5)
-        
-        # Create notebook with text areas - inside main_content with expand=True
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.context_text = self.ui.create_notebook()
-        self.notebook.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-        
-        # Set initial active text widget and bind tab change event
-        self.active_text_widget = self.transcript_text
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-        
-        # Access common buttons from self.buttons
-        self.refine_button = self.buttons["refine"]
-        self.improve_button = self.buttons["improve"]
-        self.soap_button = self.buttons["soap"]
-        self.referral_button = self.buttons["referral"]
-        self.letter_button = self.buttons["letter"]
-        self.record_soap_button = self.buttons["record_soap"]
-        self.pause_soap_button = self.buttons["pause_soap"]
-        
-        # Add missing button references
-        self.load_button = self.buttons["load"]
-        self.save_button = self.buttons["save"]
-        self.cancel_soap_button = self.buttons["cancel_soap"]
-        
-        # Create status bar
-        # status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
-        # status_frame.pack(side=BOTTOM, fill=tk.X)
 
     def bind_shortcuts(self) -> None:
         # Basic shortcuts
@@ -1066,13 +997,9 @@ class MedicalDictationApp(ttk.Window):
             # Stop recording
             self.status_manager.info("Stopping SOAP recording...")
             # Temporarily disable the record button during stop process
-            ui_mode = SETTINGS.get("ui_mode", "workflow")
-            if ui_mode == "workflow" and hasattr(self.ui, 'set_recording_state'):
-                main_record_btn = self.ui.components.get('main_record_button')
-                if main_record_btn:
-                    main_record_btn.config(state=tk.DISABLED)
-            else:
-                self.record_soap_button.config(state=tk.DISABLED)
+            main_record_btn = self.ui.components.get('main_record_button')
+            if main_record_btn:
+                main_record_btn.config(state=tk.DISABLED)
             
             # Stop the background listening
             if self.soap_stop_listening_function:
@@ -1197,7 +1124,10 @@ class MedicalDictationApp(ttk.Window):
         
         # Update status immediately
         self.update_status("Cancelling SOAP recording...", "info")
-        self.record_soap_button.config(state=tk.DISABLED)
+        # Disable main record button during cancellation
+        main_record_btn = self.ui.components.get('main_record_button')
+        if main_record_btn:
+            main_record_btn.config(state=tk.DISABLED)
 
     def _cancel_soap_recording_finalize(self):
         """Finalize the cancellation of SOAP recording."""
@@ -1443,7 +1373,7 @@ class MedicalDictationApp(ttk.Window):
                 self._show_generation_suggestions()
     
     def _update_recording_ui_state(self, recording: bool, paused: bool = False, caller: str = "unknown"):
-        """Update recording UI state for both classic and workflow modes.
+        """Update recording UI state for workflow UI.
         
         Args:
             recording: Whether recording is active
@@ -1451,25 +1381,10 @@ class MedicalDictationApp(ttk.Window):
             caller: Identifier for debugging which code called this method
         """
         logging.info(f"_update_recording_ui_state called by {caller}: recording={recording}, paused={paused}")
-        ui_mode = SETTINGS.get("ui_mode", "workflow")
         
-        if ui_mode == "workflow" and hasattr(self.ui, 'set_recording_state'):
-            # Update workflow UI
+        # Update workflow UI
+        if hasattr(self.ui, 'set_recording_state'):
             self.ui.set_recording_state(recording, paused)
-        else:
-            # Update classic UI buttons
-            if recording:
-                self.record_soap_button.config(text="Stop Recording", bootstyle="danger")
-                self.pause_soap_button.config(state=tk.NORMAL)
-                if paused:
-                    self.pause_soap_button.config(text="Resume", bootstyle="success")
-                else:
-                    self.pause_soap_button.config(text="Pause", bootstyle="warning")
-                self.cancel_soap_button.config(state=tk.NORMAL)
-            else:
-                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
-                self.pause_soap_button.config(text="Pause", state=tk.DISABLED, bootstyle="warning")
-                self.cancel_soap_button.config(state=tk.DISABLED)
     
     def _show_generation_suggestions(self):
         """Show smart suggestions for document generation."""

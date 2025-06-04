@@ -78,7 +78,6 @@ class MenuManager:
         settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
         settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
         settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme)
-        settings_menu.add_command(label="Switch UI Mode", command=self._toggle_ui_mode)
         
         menubar.add_cascade(label="Settings", menu=settings_menu)
     
@@ -126,29 +125,3 @@ class MenuManager:
         self.app.audio_handler.deepgram_provider.api_key = self.app.audio_handler.deepgram_api_key
         self.app.audio_handler.groq_provider.api_key = self.app.audio_handler.groq_api_key
     
-    def _toggle_ui_mode(self):
-        """Toggle between classic and workflow UI modes."""
-        from settings import SETTINGS, save_settings
-        from tkinter import messagebox
-        
-        current_mode = SETTINGS.get("ui_mode", "workflow")
-        new_mode = "classic" if current_mode == "workflow" else "workflow"
-        
-        result = messagebox.askyesno(
-            "Switch UI Mode",
-            f"Switch from {current_mode.title()} UI to {new_mode.title()} UI?\n\n"
-            f"The application will need to restart to apply the change.",
-            icon="question"
-        )
-        
-        if result:
-            # Update settings
-            SETTINGS["ui_mode"] = new_mode
-            save_settings(SETTINGS)
-            
-            # Show restart message
-            messagebox.showinfo(
-                "UI Mode Changed",
-                f"UI mode changed to {new_mode.title()}.\n\n"
-                f"Please restart the application to see the new interface."
-            )
