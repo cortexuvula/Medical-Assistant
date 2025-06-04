@@ -442,15 +442,39 @@ class MedicalDictationApp(ttk.Window):
         # status_frame.pack(side=BOTTOM, fill=tk.X)
 
     def bind_shortcuts(self) -> None:
+        # Basic shortcuts
         self.bind("<Control-n>", lambda _: self.new_session())
         self.bind("<Control-s>", lambda _: self.save_text())
         self.bind("<Control-c>", lambda _: self.copy_text())
         self.bind("<Control-l>", lambda _: self.load_audio_file())
         self.bind("<Control-z>", lambda _: self.undo_text())
         self.bind("<Control-y>", lambda _: self.redo_text())
-        self.bind("<F5>", lambda _: self.toggle_recording())
-        self.bind("<Control-Shift-S>", lambda _: self.toggle_soap_recording())
         self.bind("<Alt-t>", lambda _: self.toggle_theme())
+        self.bind("<F1>", lambda _: self.show_shortcuts())
+        
+        # Recording shortcuts - use bind_all for global access
+        self.bind_all("<F5>", lambda _: self.toggle_soap_recording())
+        self.bind_all("<Control-Shift-S>", lambda _: self.toggle_soap_recording())
+        self.bind_all("<Key-space>", lambda _: self._handle_space_key())
+        self.bind_all("<Escape>", lambda _: self.cancel_soap_recording())
+        
+        # Set focus to main window to ensure shortcuts work
+        self.focus_set()
+
+    def _handle_space_key(self) -> None:
+        """Handle space key press - only trigger pause/resume if currently recording."""
+        # Only handle space key for recording pause/resume if we're actually recording
+        if hasattr(self, 'soap_recording') and self.soap_recording:
+            # Check if focus is not on a text widget to avoid interfering with typing
+            focused_widget = self.focus_get()
+            if focused_widget and hasattr(focused_widget, 'winfo_class'):
+                widget_class = focused_widget.winfo_class()
+                # Don't trigger pause if user is typing in a text widget
+                if widget_class in ['Text', 'Entry', 'Combobox']:
+                    return
+            
+            # Safe to trigger pause/resume
+            self.toggle_soap_pause()
 
     def show_refine_settings_dialog(self) -> None:
         from settings import SETTINGS, _DEFAULT_SETTINGS

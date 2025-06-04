@@ -1065,7 +1065,22 @@ def show_shortcuts_dialog(parent: tk.Tk) -> None:
     kb_tree.column("Description", width=500, anchor="w")
     kb_tree.pack(expand=True, fill="both", padx=10, pady=10)
     
-    for cmd, desc in {"Ctrl+N": "New session", "Ctrl+S": "Save", "Ctrl+C": "Copy text", "Ctrl+L": "Load Audio File"}.items():
+    shortcuts = {
+        "Ctrl+N": "New session",
+        "Ctrl+S": "Save text and audio", 
+        "Ctrl+C": "Copy text to clipboard",
+        "Ctrl+L": "Load audio file",
+        "Ctrl+Z": "Undo text changes",
+        "Ctrl+Y": "Redo text changes",
+        "Ctrl+Shift+S": "Start/Stop recording",
+        "F5": "Start/Stop recording",
+        "Space": "Pause/Resume recording (when recording)",
+        "Esc": "Cancel recording",
+        "F1": "Show this help dialog",
+        "Alt+T": "Toggle theme (Light/Dark)"
+    }
+    
+    for cmd, desc in shortcuts.items():
         kb_tree.insert("", tk.END, values=(cmd, desc))
     
     ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
