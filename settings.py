@@ -13,6 +13,8 @@ DEFAULT_AI_PROVIDER = "openai"
 DEFAULT_STT_PROVIDER = "groq"
 # NEW: Default theme setting
 DEFAULT_THEME = "flatly"  # Light theme default
+# NEW: Default UI mode setting
+DEFAULT_UI_MODE = "workflow"  # Can be "classic" or "workflow"
 
 _DEFAULT_SETTINGS = {
     "refine_text": {

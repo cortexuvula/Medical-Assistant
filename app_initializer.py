@@ -20,6 +20,7 @@ from dialogs import show_api_keys_dialog
 from audio import AudioHandler
 from text_processor import TextProcessor
 from ui_components import UIComponents
+from workflow_ui import WorkflowUI
 from status_manager import StatusManager
 from recording_manager import RecordingManager
 from ai_processor import AIProcessor
@@ -202,10 +203,20 @@ class AppInitializer:
         
     def _create_ui(self):
         """Create the user interface components."""
-        # Create UI using the component builder
-        self.app.ui = UIComponents(self.app)
-        self.app.create_menu()
-        self.app.create_widgets()
+        # Check UI mode from settings
+        ui_mode = SETTINGS.get("ui_mode", "workflow")
+        
+        if ui_mode == "workflow":
+            # Create workflow-oriented UI
+            self.app.ui = WorkflowUI(self.app)
+            self.app.create_menu()
+            self.app.create_workflow_widgets()
+        else:
+            # Create classic UI
+            self.app.ui = UIComponents(self.app)
+            self.app.create_menu()
+            self.app.create_widgets()
+            
         self.app.bind_shortcuts()
 
         # Initialize status manager

@@ -38,6 +38,7 @@ from utils import get_valid_microphones
 from ai import create_soap_note_with_openai
 from settings import SETTINGS
 from dialogs import create_toplevel_dialog, show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog  # Add this import
+from tooltip import ToolTip
 
 # Add near the top of the file
 import time
@@ -192,6 +193,164 @@ class MedicalDictationApp(ttk.Window):
     def import_prompts(self) -> None:
         """Import prompts using FileManager."""
         self.file_manager.import_prompts()
+
+    def create_workflow_widgets(self) -> None:
+        """Create widgets for the workflow UI mode."""
+        # Define command mapping for buttons
+        command_map = {
+            "new_session": self.new_session,
+            "undo_text": self.undo_text,
+            "redo_text": self.redo_text,
+            "copy_text": self.copy_text,
+            "save_text": self.save_text,
+            "load_audio_file": self.load_audio_file,
+            "refine_text": self.refine_text,
+            "improve_text": self.improve_text,
+            "create_soap_note": self.create_soap_note,
+            "create_referral": self.create_referral,
+            "create_letter": self.create_letter,
+            "toggle_soap_recording": self.toggle_soap_recording,
+            "toggle_soap_pause": self.toggle_soap_pause,
+            "cancel_soap_recording": self.cancel_soap_recording
+        }
+        
+        # Create main container with horizontal split
+        main_container = ttk.PanedWindow(self, orient="horizontal")
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Left side - main content area
+        left_frame = ttk.Frame(main_container)
+        main_container.add(left_frame, weight=3)
+        
+        # Create status bar at the bottom
+        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
+        status_frame.pack(side=BOTTOM, fill=tk.X)
+        
+        # Top bar with microphone and provider settings
+        top_bar = ttk.Frame(left_frame)
+        top_bar.pack(side=TOP, fill=tk.X, padx=10, pady=5)
+        
+        # Microphone selection
+        mic_frame = ttk.Frame(top_bar)
+        mic_frame.pack(side=LEFT, fill=tk.X, expand=True)
+        
+        ttk.Label(mic_frame, text="Microphone:").pack(side=LEFT, padx=(0, 5))
+        self.mic_combobox = ttk.Combobox(mic_frame, state="readonly", width=40)
+        self.mic_combobox.pack(side=LEFT, padx=(0, 10))
+        self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
+        
+        # Refresh button
+        refresh_btn = ttk.Button(mic_frame, text="⟳", width=3, command=self.refresh_microphones)
+        refresh_btn.pack(side=LEFT)
+        self.ui.components['refresh_btn'] = refresh_btn
+        ToolTip(refresh_btn, "Refresh microphone list")
+        
+        # Provider selection
+        provider_frame = ttk.Frame(top_bar)
+        provider_frame.pack(side=LEFT)
+        
+        ttk.Label(provider_frame, text="AI:").pack(side=LEFT, padx=(10, 5))
+        self.provider_combobox = ttk.Combobox(
+            provider_frame, 
+            values=["OpenAI", "Grok", "Perplexity"],
+            state="readonly",
+            width=12
+        )
+        self.provider_combobox.pack(side=LEFT)
+        self.provider_combobox.bind("<<ComboboxSelected>>", self._on_provider_change)
+        
+        ttk.Label(provider_frame, text="STT:").pack(side=LEFT, padx=(10, 5))
+        self.stt_combobox = ttk.Combobox(
+            provider_frame,
+            values=["GROQ", "ElevenLabs", "Deepgram"],
+            state="readonly",
+            width=12
+        )
+        self.stt_combobox.pack(side=LEFT)
+        self.stt_combobox.bind("<<ComboboxSelected>>", self._on_stt_change)
+        
+        # Theme toggle
+        self.theme_btn = ttk.Button(
+            provider_frame,
+            text="🌙 Theme",
+            command=self.toggle_theme,
+            width=10
+        )
+        self.theme_btn.pack(side=LEFT, padx=(10, 0))
+        self.theme_label = ttk.Label(provider_frame, text="(Light Mode)", width=12)
+        self.theme_label.pack(side=LEFT, padx=(5, 0))
+        
+        # Create workflow tabs
+        self.workflow_notebook = self.ui.create_workflow_tabs(command_map)
+        self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Create the text notebook (for transcripts, SOAP, etc.)
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, _ = self.ui.create_notebook()
+        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Right side - context panel
+        self.context_panel = self.ui.create_context_panel()
+        main_container.add(self.context_panel, weight=1)
+        
+        # Get context text widget from UI
+        self.context_text = self.ui.components['context_text']
+        
+        # Set initial active text widget
+        self.active_text_widget = self.transcript_text
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        
+        # Store button references for compatibility
+        self._store_workflow_button_references()
+        
+        # Initialize microphone list
+        self.refresh_microphones()
+        
+        # Set initial provider selections
+        self._initialize_provider_selections()
+    
+    def _store_workflow_button_references(self):
+        """Store workflow button references for compatibility with existing code."""
+        # Map workflow UI buttons to expected button names
+        ui_components = self.ui.components
+        
+        self.buttons = {
+            "refine": ui_components.get("process_refine_button"),
+            "improve": ui_components.get("process_improve_button"),
+            "soap": ui_components.get("generate_soap_button"),
+            "referral": ui_components.get("generate_referral_button"),
+            "letter": ui_components.get("generate_letter_button"),
+            "record_soap": ui_components.get("main_record_button"),
+            "pause_soap": ui_components.get("pause_button"),
+            "cancel_soap": ui_components.get("cancel_button"),
+            "load": ui_components.get("file_load_button"),
+            "save": ui_components.get("file_save_button")
+        }
+        
+        # Store specific button references
+        self.refine_button = self.buttons["refine"]
+        self.improve_button = self.buttons["improve"]
+        self.soap_button = self.buttons["soap"]
+        self.referral_button = self.buttons["referral"]
+        self.letter_button = self.buttons["letter"]
+        self.record_soap_button = self.buttons["record_soap"]
+        self.pause_soap_button = self.buttons["pause_soap"]
+        self.cancel_soap_button = self.buttons["cancel_soap"]
+        self.load_button = self.buttons["load"]
+        self.save_button = self.buttons["save"]
+    
+    def _initialize_provider_selections(self):
+        """Initialize provider dropdown selections."""
+        # Set AI provider
+        ai_provider = SETTINGS.get("ai_provider", "openai")
+        provider_map = {"openai": 0, "grok": 1, "perplexity": 2}
+        if ai_provider in provider_map:
+            self.provider_combobox.current(provider_map[ai_provider])
+        
+        # Set STT provider
+        stt_provider = SETTINGS.get("stt_provider", "groq")
+        stt_map = {"groq": 0, "elevenlabs": 1, "deepgram": 2}
+        if stt_provider in stt_map:
+            self.stt_combobox.current(stt_map[stt_provider])
 
     def create_widgets(self) -> None:
         # Define command mapping for buttons
@@ -1162,6 +1321,52 @@ class MedicalDictationApp(ttk.Window):
     def toggle_theme(self):
         """Toggle between light and dark themes using ThemeManager."""
         self.theme_manager.toggle_theme()
+    
+    def on_workflow_changed(self, workflow: str):
+        """Handle workflow tab changes.
+        
+        Args:
+            workflow: The current workflow tab ("record", "process", or "generate")
+        """
+        logging.info(f"Workflow changed to: {workflow}")
+        
+        # Update UI based on workflow
+        if workflow == "record":
+            # Focus on transcript tab
+            self.notebook.select(0)
+        elif workflow == "process":
+            # Ensure there's text to process
+            if not self.transcript_text.get("1.0", tk.END).strip():
+                self.status_manager.info("Load audio or paste text to process")
+        elif workflow == "generate":
+            # Check if we have content to generate from
+            if not self.transcript_text.get("1.0", tk.END).strip():
+                self.status_manager.info("No transcript available for document generation")
+            else:
+                # Show suggestions based on available content
+                self._show_generation_suggestions()
+    
+    def _show_generation_suggestions(self):
+        """Show smart suggestions for document generation."""
+        suggestions = []
+        
+        # Check what content is available
+        has_transcript = bool(self.transcript_text.get("1.0", tk.END).strip())
+        has_soap = bool(self.soap_text.get("1.0", tk.END).strip())
+        has_referral = bool(self.referral_text.get("1.0", tk.END).strip())
+        
+        if has_transcript and not has_soap:
+            suggestions.append("📋 Create SOAP Note from transcript")
+        
+        if has_soap and not has_referral:
+            suggestions.append("🏥 Generate Referral from SOAP note")
+        
+        if has_transcript or has_soap:
+            suggestions.append("✉️ Create Letter from available content")
+        
+        # Update suggestions in UI if available
+        if hasattr(self.ui, 'show_suggestions'):
+            self.ui.show_suggestions(suggestions)
 
     def create_referral(self) -> None:
         """Create a referral using DocumentGenerators."""
