@@ -1012,9 +1012,7 @@ class MedicalDictationApp(ttk.Window):
             
             # Start recording
             self.status_manager.info("Starting SOAP recording...")
-            self.record_soap_button.config(text="Stop Recording", bootstyle="danger")
-            self.pause_soap_button.config(state=tk.NORMAL)
-            self.cancel_soap_button.config(state=tk.NORMAL)
+            self._update_recording_ui_state(recording=True)
             
             # Get selected device
             selected_device = self.mic_combobox.get()
@@ -1035,13 +1033,18 @@ class MedicalDictationApp(ttk.Window):
                 self.soap_recording = True
             else:
                 self.status_manager.error("Failed to start recording")
-                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success")
-                self.pause_soap_button.config(state=tk.DISABLED)
-                self.cancel_soap_button.config(state=tk.DISABLED)
+                self._update_recording_ui_state(recording=False)
         else:
             # Stop recording
             self.status_manager.info("Stopping SOAP recording...")
-            self.record_soap_button.config(state=tk.DISABLED)
+            # Temporarily disable the record button during stop process
+            ui_mode = SETTINGS.get("ui_mode", "workflow")
+            if ui_mode == "workflow" and hasattr(self.ui, 'set_recording_state'):
+                main_record_btn = self.ui.components.get('main_record_button')
+                if main_record_btn:
+                    main_record_btn.config(state=tk.DISABLED)
+            else:
+                self.record_soap_button.config(state=tk.DISABLED)
             
             # Stop the background listening
             if self.soap_stop_listening_function:
@@ -1060,9 +1063,7 @@ class MedicalDictationApp(ttk.Window):
                 self._finalize_soap_recording(recording_data)
             else:
                 self.status_manager.error("No recording data available")
-                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
-                self.pause_soap_button.config(state=tk.DISABLED)
-                self.cancel_soap_button.config(state=tk.DISABLED)
+                self._update_recording_ui_state(recording=False)
                 self.soap_recording = False
 
     def _finalize_soap_recording(self, recording_data: dict = None):
@@ -1075,11 +1076,7 @@ class MedicalDictationApp(ttk.Window):
         self.process_soap_recording()
         
         # Reset all button states after processing is complete
-        self.after(0, lambda: [
-            self.record_soap_button.config(text="Record SOAP Note", state=tk.NORMAL, bootstyle="success"),
-            self.pause_soap_button.config(text="Pause", state=tk.DISABLED, bootstyle="warning"),
-            self.cancel_soap_button.config(state=tk.DISABLED)
-        ])
+        self.after(0, lambda: self._update_recording_ui_state(recording=False))
 
 
     def toggle_soap_pause(self) -> None:
@@ -1103,7 +1100,7 @@ class MedicalDictationApp(ttk.Window):
             self.soap_stop_listening_function = None
             
             # Update UI
-            self.pause_soap_button.config(text="Resume", bootstyle="success")
+            self._update_recording_ui_state(recording=True, paused=True)
             self.update_status("SOAP recording paused. Press Resume to continue.", "info")
 
     def resume_soap_recording(self) -> None:
@@ -1130,7 +1127,7 @@ class MedicalDictationApp(ttk.Window):
             )
             
             # Update UI
-            self.pause_soap_button.config(text="Pause", bootstyle="warning")
+            self._update_recording_ui_state(recording=True, paused=False)
             self.update_status("SOAP recording resumed.", "info")
             
         except Exception as e:
@@ -1183,9 +1180,7 @@ class MedicalDictationApp(ttk.Window):
         self.soap_recording = False
         
         # Reset UI buttons
-        self.pause_soap_button.config(state=tk.DISABLED, text="Pause")
-        self.cancel_soap_button.config(state=tk.DISABLED)
-        self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+        self._update_recording_ui_state(recording=False)
         
         # Update status
         self.status_manager.warning("SOAP note recording cancelled.")
@@ -1418,6 +1413,33 @@ class MedicalDictationApp(ttk.Window):
             else:
                 # Show suggestions based on available content
                 self._show_generation_suggestions()
+    
+    def _update_recording_ui_state(self, recording: bool, paused: bool = False):
+        """Update recording UI state for both classic and workflow modes.
+        
+        Args:
+            recording: Whether recording is active
+            paused: Whether recording is paused
+        """
+        ui_mode = SETTINGS.get("ui_mode", "workflow")
+        
+        if ui_mode == "workflow" and hasattr(self.ui, 'set_recording_state'):
+            # Update workflow UI
+            self.ui.set_recording_state(recording, paused)
+        else:
+            # Update classic UI buttons
+            if recording:
+                self.record_soap_button.config(text="Stop Recording", bootstyle="danger")
+                self.pause_soap_button.config(state=tk.NORMAL)
+                if paused:
+                    self.pause_soap_button.config(text="Resume", bootstyle="success")
+                else:
+                    self.pause_soap_button.config(text="Pause", bootstyle="warning")
+                self.cancel_soap_button.config(state=tk.NORMAL)
+            else:
+                self.record_soap_button.config(text="Record SOAP Note", bootstyle="success", state=tk.NORMAL)
+                self.pause_soap_button.config(text="Pause", state=tk.DISABLED, bootstyle="warning")
+                self.cancel_soap_button.config(state=tk.DISABLED)
     
     def _show_generation_suggestions(self):
         """Show smart suggestions for document generation."""

@@ -713,6 +713,47 @@ class WorkflowUI:
         if timer_label:
             timer_label.config(text=time_str)
     
+    def set_recording_state(self, recording: bool, paused: bool = False):
+        """Update UI elements based on recording state.
+        
+        Args:
+            recording: Whether recording is active
+            paused: Whether recording is paused
+        """
+        main_record_btn = self.components.get('main_record_button')
+        pause_btn = self.components.get('pause_button')
+        cancel_btn = self.components.get('cancel_button')
+        
+        if recording:
+            if main_record_btn:
+                main_record_btn.config(text="🛑 Stop Recording", bootstyle="danger")
+            if pause_btn:
+                pause_btn.config(state=tk.NORMAL)
+                if paused:
+                    pause_btn.config(text="▶️ Resume", bootstyle="success")
+                else:
+                    pause_btn.config(text="⏸️ Pause", bootstyle="warning")
+            if cancel_btn:
+                cancel_btn.config(state=tk.NORMAL)
+        else:
+            # Not recording
+            if main_record_btn:
+                main_record_btn.config(text="🎤 Start Recording", bootstyle="success")
+            if pause_btn:
+                pause_btn.config(state=tk.DISABLED, text="⏸️ Pause", bootstyle="warning")
+            if cancel_btn:
+                cancel_btn.config(state=tk.DISABLED)
+    
+    def update_recording_progress(self, progress_text: str):
+        """Update recording progress/status text.
+        
+        Args:
+            progress_text: Status text to display
+        """
+        status_label = self.components.get('recording_status')
+        if status_label:
+            status_label.config(text=progress_text)
+    
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.
         
