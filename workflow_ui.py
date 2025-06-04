@@ -42,6 +42,16 @@ class WorkflowUI:
         self.wave_max_samples = 100  # Number of wave bars to display
         self.wave_canvas = None
         
+        # Recording status animation
+        self.recording_pulse_state = 0
+        self.pulse_animation_id = None
+        self.status_indicator = None
+        
+        # Audio level tracking
+        self.current_level = 0.0
+        self.peak_level = 0.0
+        self.peak_hold_timer = 0
+        
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
         """Create the main workflow tabs (Record, Process, Generate).
         
@@ -112,9 +122,22 @@ class WorkflowUI:
         )
         self.components['waveform_canvas'].pack(fill=X)
         
-        # Main record button - large and centered
+        # Recording status indicator and main button
         record_button_frame = ttk.Frame(center_frame)
         record_button_frame.pack(pady=20)
+        
+        # Status indicator (animated when recording)
+        status_frame = ttk.Frame(record_button_frame)
+        status_frame.pack(pady=(0, 10))
+        
+        self.status_indicator = ttk.Label(
+            status_frame,
+            text="● Ready",
+            font=("Segoe UI", 12, "bold"),
+            foreground="#27ae60"
+        )
+        self.status_indicator.pack()
+        self.components['status_indicator'] = self.status_indicator
         
         self.components['main_record_button'] = ttk.Button(
             record_button_frame,
@@ -142,6 +165,7 @@ class WorkflowUI:
             style="Large.TButton"
         )
         self.components['pause_button'].pack(side=LEFT, padx=10)
+        ToolTip(self.components['pause_button'], "Pause/Resume recording (Space)")
         
         self.components['cancel_button'] = ttk.Button(
             recording_controls,
@@ -153,6 +177,7 @@ class WorkflowUI:
             style="Large.TButton"
         )
         self.components['cancel_button'].pack(side=LEFT, padx=10)
+        ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
         # Timer display - create but don't pack initially
         self.components['timer_label'] = ttk.Label(
@@ -162,16 +187,69 @@ class WorkflowUI:
         )
         # Timer will be packed after recording controls when recording starts
         
-        # Voice wave visualization - create but don't pack initially
+        # Audio visualization panel - create but don't pack initially
+        audio_viz_frame = ttk.Frame(center_frame)
+        self.components['audio_viz_frame'] = audio_viz_frame
+        
+        # Voice wave visualization
         self.wave_canvas = tk.Canvas(
-            center_frame,
-            height=100,
-            bg="#2c3e50",
+            audio_viz_frame,
+            height=80,
+            bg="#1e2124",
             highlightthickness=0,
             relief="flat"
         )
+        self.wave_canvas.pack(fill=X, padx=10)
         self.components['voice_wave'] = self.wave_canvas
-        # Wave will be packed after timer when recording starts
+        
+        # Audio level meter
+        level_frame = ttk.Frame(audio_viz_frame)
+        level_frame.pack(fill=X, padx=10, pady=(5, 0))
+        
+        ttk.Label(level_frame, text="Level:", font=("Segoe UI", 9)).pack(side=LEFT)
+        
+        self.level_canvas = tk.Canvas(
+            level_frame,
+            height=20,
+            bg="#2c3e50",
+            highlightthickness=0
+        )
+        self.level_canvas.pack(side=LEFT, fill=X, expand=True, padx=(5, 10))
+        self.components['level_meter'] = self.level_canvas
+        
+        # Peak level label
+        self.peak_label = ttk.Label(level_frame, text="Peak: 0%", font=("Segoe UI", 9))
+        self.peak_label.pack(side=RIGHT)
+        self.components['peak_label'] = self.peak_label
+        
+        # Recording session info panel
+        info_frame = ttk.Frame(audio_viz_frame)
+        info_frame.pack(fill=X, padx=10, pady=(5, 0))
+        
+        # Session info labels
+        self.session_info_frame = ttk.Frame(info_frame)
+        self.session_info_frame.pack(fill=X)
+        
+        info_left = ttk.Frame(self.session_info_frame)
+        info_left.pack(side=LEFT, fill=X, expand=True)
+        
+        self.quality_label = ttk.Label(info_left, text="Quality: 44.1kHz • 16-bit", font=("Segoe UI", 8), foreground="gray")
+        self.quality_label.pack(side=LEFT)
+        
+        info_right = ttk.Frame(self.session_info_frame)
+        info_right.pack(side=RIGHT)
+        
+        self.file_size_label = ttk.Label(info_right, text="Size: 0 KB", font=("Segoe UI", 8), foreground="gray")
+        self.file_size_label.pack(side=RIGHT, padx=(10, 0))
+        
+        self.duration_label = ttk.Label(info_right, text="Duration: 00:00", font=("Segoe UI", 8), foreground="gray")
+        self.duration_label.pack(side=RIGHT, padx=(10, 0))
+        
+        self.components['session_info'] = {
+            'quality': self.quality_label,
+            'file_size': self.file_size_label,
+            'duration': self.duration_label
+        }
         
         # Quick actions (appear after recording)
         quick_actions = ttk.Frame(center_frame)
@@ -179,7 +257,36 @@ class WorkflowUI:
         
         self.components['quick_actions'] = quick_actions
         
-        # Microphone selection at bottom
+        # Keyboard shortcuts panel
+        shortcuts_frame = ttk.LabelFrame(record_frame, text="Keyboard Shortcuts", padding=10)
+        shortcuts_frame.pack(side=BOTTOM, fill=X, padx=20, pady=(0, 10))
+        
+        shortcuts_grid = ttk.Frame(shortcuts_frame)
+        shortcuts_grid.pack(fill=X)
+        
+        shortcuts = [
+            ("Ctrl+Shift+S", "Start/Stop Recording"),
+            ("Space", "Pause/Resume"),
+            ("Esc", "Cancel Recording"),
+            ("Ctrl+C", "Copy Text"),
+            ("Ctrl+S", "Save"),
+            ("F1", "Show Help")
+        ]
+        
+        for i, (key, desc) in enumerate(shortcuts):
+            row = i // 2
+            col = i % 2
+            
+            shortcut_frame = ttk.Frame(shortcuts_grid)
+            shortcut_frame.grid(row=row, column=col, sticky="ew", padx=5, pady=2)
+            
+            ttk.Label(shortcut_frame, text=key, font=("Segoe UI", 8, "bold")).pack(side=LEFT)
+            ttk.Label(shortcut_frame, text=" - " + desc, font=("Segoe UI", 8)).pack(side=LEFT)
+        
+        shortcuts_grid.columnconfigure(0, weight=1)
+        shortcuts_grid.columnconfigure(1, weight=1)
+        
+        # Audio Settings panel
         mic_frame = ttk.LabelFrame(record_frame, text="Audio Settings", padding=10)
         mic_frame.pack(side=BOTTOM, fill=X, padx=20, pady=(0, 20))
         
@@ -740,6 +847,34 @@ class WorkflowUI:
         timer_label = self.components.get('timer_label')
         if timer_label:
             timer_label.config(text=time_str)
+        
+        # Update session duration info
+        session_info = self.components.get('session_info')
+        if session_info and 'duration' in session_info:
+            session_info['duration'].config(text=f"Duration: {time_str}")
+        
+        # Estimate file size (rough calculation: 44.1kHz * 2 bytes * time)
+        try:
+            parts = time_str.split(':')
+            if len(parts) == 2:
+                minutes = int(parts[0])
+                seconds = int(parts[1])
+                total_seconds = minutes * 60 + seconds
+                
+                # Rough estimate: 44100 Hz * 2 bytes/sample * 1 channel * seconds
+                estimated_bytes = total_seconds * 44100 * 2
+                
+                if estimated_bytes < 1024:
+                    size_str = f"{estimated_bytes} B"
+                elif estimated_bytes < 1024 * 1024:
+                    size_str = f"{estimated_bytes // 1024} KB"
+                else:
+                    size_str = f"{estimated_bytes // (1024 * 1024)} MB"
+                
+                if session_info and 'file_size' in session_info:
+                    session_info['file_size'].config(text=f"Size: ~{size_str}")
+        except:
+            pass  # Ignore errors in size calculation
     
     def set_recording_state(self, recording: bool, paused: bool = False):
         """Update UI elements based on recording state.
@@ -787,15 +922,16 @@ class WorkflowUI:
                 cancel_btn.config(state=tk.NORMAL)
                 logging.info(f"Cancel button enabled: {cancel_btn['state']}")
             
-            # Show timer and voice wave when recording
+            # Show timer and audio visualization when recording
             if timer_label:
                 timer_label.pack(pady=10)
             
-            # Show voice wave visualization
-            voice_wave = self.components.get('voice_wave')
-            if voice_wave:
-                voice_wave.pack(pady=(0, 20), fill=X, padx=40)
+            # Show audio visualization panel
+            audio_viz_frame = self.components.get('audio_viz_frame')
+            if audio_viz_frame:
+                audio_viz_frame.pack(pady=(0, 20), fill=X)
                 self._initialize_wave_display()
+                self._start_pulse_animation()
                 
             # Force a UI update to ensure changes are visible
             if self.parent:
@@ -816,17 +952,18 @@ class WorkflowUI:
             # Stop and reset timer
             self.stop_timer()
             
-            # Hide recording controls, timer, and voice wave when not recording
+            # Hide recording controls, timer, and audio visualization when not recording
             if recording_controls:
                 recording_controls.pack_forget()
             if timer_label:
                 timer_label.pack_forget()
             
-            # Hide voice wave visualization
-            voice_wave = self.components.get('voice_wave')
-            if voice_wave:
-                voice_wave.pack_forget()
+            # Hide audio visualization panel
+            audio_viz_frame = self.components.get('audio_viz_frame')
+            if audio_viz_frame:
+                audio_viz_frame.pack_forget()
                 self._clear_wave_display()
+                self._stop_pulse_animation()
     
     def update_recording_progress(self, progress_text: str):
         """Update recording progress/status text.
@@ -953,6 +1090,16 @@ class WorkflowUI:
         rms = np.sqrt(np.mean(audio_data ** 2))
         amplitude = min(rms * 2000, 1.0)  # Scale up for better visibility and cap at 1.0
         
+        # Update current and peak levels
+        self.current_level = amplitude
+        if amplitude > self.peak_level:
+            self.peak_level = amplitude
+            self.peak_hold_timer = 60  # Hold peak for 60 frames (~3 seconds)
+        else:
+            self.peak_hold_timer -= 1
+            if self.peak_hold_timer <= 0:
+                self.peak_level *= 0.95  # Gradual peak decay
+        
         # Add new amplitude to wave data
         self.wave_data.append(amplitude)
         
@@ -960,9 +1107,10 @@ class WorkflowUI:
         if len(self.wave_data) > self.wave_max_samples:
             self.wave_data.pop(0)
         
-        # Update display on main thread
+        # Update displays on main thread
         if self.parent:
             self.parent.after(0, self._draw_wave)
+            self.parent.after(0, self._update_level_meter)
     
     def _draw_wave(self):
         """Draw the voice wave visualization."""
@@ -998,15 +1146,19 @@ class WorkflowUI:
                 # Calculate bar height based on amplitude
                 bar_height = max(2, int(amplitude * max_bar_height))
                 
-                # Color based on amplitude
-                if amplitude > 0.7:
-                    color = "#e74c3c"  # Red for loud
+                # Enhanced color based on amplitude with smoother gradients
+                if amplitude > 0.8:
+                    color = "#ff4757"  # Bright red for very loud
+                elif amplitude > 0.6:
+                    color = "#ff6b35"  # Orange-red for loud
                 elif amplitude > 0.4:
-                    color = "#f39c12"  # Orange for medium
-                elif amplitude > 0.1:
-                    color = "#27ae60"  # Green for normal
+                    color = "#ffa502"  # Orange for medium-loud
+                elif amplitude > 0.2:
+                    color = "#2ed573"  # Green for good level
+                elif amplitude > 0.05:
+                    color = "#70a1ff"  # Blue for quiet
                 else:
-                    color = "#34495e"  # Dark gray for quiet
+                    color = "#57606f"  # Gray for very quiet
                 
                 # Draw centered bar
                 y1 = center_y - bar_height // 2
@@ -1020,6 +1172,96 @@ class WorkflowUI:
                 
         except Exception as e:
             logging.error(f"Error drawing voice wave: {e}")
+    
+    def _update_level_meter(self):
+        """Update the audio level meter display."""
+        if not hasattr(self, 'level_canvas') or not self.level_canvas:
+            return
+            
+        try:
+            # Clear canvas
+            self.level_canvas.delete("all")
+            
+            # Get canvas dimensions
+            canvas_width = self.level_canvas.winfo_width()
+            canvas_height = self.level_canvas.winfo_height()
+            
+            if canvas_width <= 1 or canvas_height <= 1:
+                return
+            
+            # Draw background
+            self.level_canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#2c3e50", outline="")
+            
+            # Draw current level bar
+            level_width = int(self.current_level * canvas_width)
+            if level_width > 0:
+                # Color based on level
+                if self.current_level > 0.8:
+                    level_color = "#e74c3c"  # Red
+                elif self.current_level > 0.6:
+                    level_color = "#f39c12"  # Orange
+                else:
+                    level_color = "#27ae60"  # Green
+                
+                self.level_canvas.create_rectangle(0, 0, level_width, canvas_height, fill=level_color, outline="")
+            
+            # Draw peak indicator
+            peak_x = int(self.peak_level * canvas_width)
+            if peak_x > 0:
+                self.level_canvas.create_line(peak_x, 0, peak_x, canvas_height, fill="#ffffff", width=2)
+            
+            # Update peak label
+            if hasattr(self, 'peak_label') and self.peak_label:
+                peak_percent = int(self.peak_level * 100)
+                self.peak_label.config(text=f"Peak: {peak_percent}%")
+                
+        except Exception as e:
+            logging.error(f"Error updating level meter: {e}")
+    
+    def _start_pulse_animation(self):
+        """Start the recording status pulse animation."""
+        if self.status_indicator:
+            self._animate_pulse()
+    
+    def _stop_pulse_animation(self):
+        """Stop the recording status pulse animation."""
+        if self.pulse_animation_id:
+            self.parent.after_cancel(self.pulse_animation_id)
+            self.pulse_animation_id = None
+        
+        # Reset status indicator
+        if self.status_indicator:
+            self.status_indicator.config(text="● Ready", foreground="#27ae60")
+    
+    def _animate_pulse(self):
+        """Animate the recording status indicator."""
+        if not self.status_indicator:
+            return
+            
+        try:
+            # Pulse animation cycle
+            self.recording_pulse_state = (self.recording_pulse_state + 1) % 60
+            
+            # Calculate opacity/color intensity
+            pulse_intensity = (np.sin(self.recording_pulse_state * 0.2) + 1) / 2  # 0 to 1
+            
+            # Interpolate between dark and bright red
+            intensity = int(128 + (127 * pulse_intensity))
+            color = f"#{intensity:02x}3030"
+            
+            # Update status text and color
+            if self.recording_pulse_state < 30:
+                text = "● Recording"
+            else:
+                text = "●● Recording"
+                
+            self.status_indicator.config(text=text, foreground=color)
+            
+            # Schedule next frame
+            self.pulse_animation_id = self.parent.after(50, self._animate_pulse)
+            
+        except Exception as e:
+            logging.error(f"Error in pulse animation: {e}")
     
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.
