@@ -471,15 +471,24 @@ def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool =
     return text.strip()
 
 def create_soap_note_with_openai(text: str, context: str = "") -> str:
+    from datetime import datetime
+    
     # We don't need to check the provider here since call_ai will handle it
     # Just pass the model name based on the type of note we're creating
     model = _DEFAULT_SETTINGS["soap_note"]["model"]  # Default model as fallback
     
+    # Get current time and date in the specified format
+    current_datetime = datetime.now()
+    time_date_str = current_datetime.strftime("Time %H:%M Date %d %b %Y")
+    
+    # Build the transcript with time/date prepended
+    transcript_with_datetime = f"{time_date_str}\n\n{text}"
+    
     # If context is provided, prepend it to the prompt
     if context and context.strip():
-        full_prompt = f"Previous medical information:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=text)}"
+        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
     else:
-        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=text)
+        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
     
     result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
     # Clean both markdown and citations
