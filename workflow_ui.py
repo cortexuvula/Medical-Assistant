@@ -42,6 +42,7 @@ class WorkflowUI:
         self.recording_pulse_state = 0
         self.pulse_animation_id = None
         self.status_indicator = None
+        self.animation_active = False
         
         
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
@@ -133,19 +134,25 @@ class WorkflowUI:
         
         self.components['main_record_button'] = ttk.Button(
             record_button_frame,
-            text="🎤 Start Recording",
+            text="Start Recording",
             command=command_map.get("toggle_soap_recording"),
             bootstyle="success",
-            width=20,
+            width=25,
             style="Large.TButton"
         )
         self.components['main_record_button'].pack()
         ToolTip(self.components['main_record_button'], "Click to start/stop recording (Ctrl+Shift+S)")
         
-        # Recording controls (appear during recording)
-        recording_controls = ttk.Frame(center_frame)
-        # Don't pack initially - will be shown when recording starts
+        # Fixed-height container for recording controls to prevent resize
+        controls_container = ttk.Frame(center_frame, height=60)
+        controls_container.pack(pady=10, fill=X)
+        controls_container.pack_propagate(False)  # Maintain fixed height
+        
+        # Recording controls frame inside the container
+        recording_controls = ttk.Frame(controls_container)
+        recording_controls.pack(expand=True)
         self.components['recording_controls'] = recording_controls
+        self.components['controls_container'] = controls_container
         
         self.components['pause_button'] = ttk.Button(
             recording_controls,
@@ -157,6 +164,7 @@ class WorkflowUI:
             style="Large.TButton"
         )
         self.components['pause_button'].pack(side=LEFT, padx=10)
+        self.components['pause_button'].pack_forget()  # Initially hidden
         ToolTip(self.components['pause_button'], "Pause/Resume recording (Space)")
         
         self.components['cancel_button'] = ttk.Button(
@@ -169,19 +177,33 @@ class WorkflowUI:
             style="Large.TButton"
         )
         self.components['cancel_button'].pack(side=LEFT, padx=10)
+        self.components['cancel_button'].pack_forget()  # Initially hidden
         ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
-        # Timer display - create but don't pack initially
+        # Fixed-height container for timer to prevent resize
+        timer_container = ttk.Frame(center_frame, height=40)
+        timer_container.pack(pady=5, fill=X)
+        timer_container.pack_propagate(False)  # Maintain fixed height
+        
+        # Timer display inside the container
         self.components['timer_label'] = ttk.Label(
-            center_frame,
+            timer_container,
             text="00:00",
             font=("Segoe UI", 24, "bold")
         )
-        # Timer will be packed after recording controls when recording starts
+        self.components['timer_label'].pack(expand=True)
+        self.components['timer_container'] = timer_container
         
-        # Audio visualization panel - create but don't pack initially
-        audio_viz_frame = ttk.Frame(center_frame)
+        # Fixed-height container for audio visualization to prevent resize
+        audio_viz_container = ttk.Frame(center_frame, height=120)
+        audio_viz_container.pack(pady=(0, 20), fill=X)
+        audio_viz_container.pack_propagate(False)  # Maintain fixed height
+        
+        # Audio visualization panel inside the container
+        audio_viz_frame = ttk.Frame(audio_viz_container)
+        audio_viz_frame.pack(fill=BOTH, expand=True)
         self.components['audio_viz_frame'] = audio_viz_frame
+        self.components['audio_viz_container'] = audio_viz_container
         
         
         
@@ -249,6 +271,8 @@ class WorkflowUI:
         shortcuts_grid.columnconfigure(0, weight=1)
         shortcuts_grid.columnconfigure(1, weight=1)
         
+        # Initialize UI state - hide controls initially
+        self._initialize_recording_ui_state()
         
         return record_frame
     
@@ -855,7 +879,7 @@ class WorkflowUI:
         if recording:
             # Update main record button
             if main_record_btn:
-                main_record_btn.config(text="🛑 Stop Recording", bootstyle="danger")
+                main_record_btn.config(text="Stop Recording", bootstyle="danger")
                 logging.info("Main record button updated to 'Stop Recording'")
                 # Force immediate UI update
                 main_record_btn.update_idletasks()
@@ -864,10 +888,12 @@ class WorkflowUI:
                 new_text = main_record_btn.cget('text')
                 logging.info(f"Main record button text after update: '{new_text}'")
             
-            # Show the recording controls frame
-            if recording_controls:
-                recording_controls.pack(pady=20, fill=X)
-                logging.info("Recording controls frame packed")
+            # Show the recording controls buttons
+            if pause_btn:
+                pause_btn.pack(side=LEFT, padx=10)
+            if cancel_btn:
+                cancel_btn.pack(side=LEFT, padx=10)
+            logging.info("Recording controls visible")
             
             # Enable and configure pause button
             if pause_btn:
@@ -890,15 +916,26 @@ class WorkflowUI:
                 cancel_btn.config(state=tk.NORMAL)
                 logging.info(f"Cancel button enabled: {cancel_btn['state']}")
             
-            # Show timer and audio visualization when recording
+            # Show timer label with current time
             if timer_label:
-                timer_label.pack(pady=10)
+                if self.timer_paused_time > 0:
+                    # We have paused time, so show it
+                    minutes = int(self.timer_paused_time // 60)
+                    seconds = int(self.timer_paused_time % 60)
+                    time_str = f"{minutes:02d}:{seconds:02d}"
+                    timer_label.config(text=time_str)
+                else:
+                    # Fresh start
+                    timer_label.config(text="00:00")
             
-            # Show audio visualization panel
+            # Show audio visualization content
             audio_viz_frame = self.components.get('audio_viz_frame')
             if audio_viz_frame:
-                audio_viz_frame.pack(pady=(0, 20), fill=X)
-                self._start_pulse_animation()
+                # Re-pack the info frame if needed
+                for child in audio_viz_frame.winfo_children():
+                    child.pack(fill=X, padx=10, pady=(5, 0))
+            
+            self._start_pulse_animation()
                 
             # Force a UI update to ensure changes are visible
             if self.parent:
@@ -907,7 +944,7 @@ class WorkflowUI:
         else:
             # Not recording - reset everything
             if main_record_btn:
-                main_record_btn.config(text="🎤 Start Recording", bootstyle="success", state=tk.NORMAL)
+                main_record_btn.config(text="Start Recording", bootstyle="success", state=tk.NORMAL)
                 logging.info("Main record button updated to 'Start Recording'")
                 # Force immediate UI update
                 main_record_btn.update_idletasks()
@@ -927,17 +964,23 @@ class WorkflowUI:
             # Stop and reset timer
             self.stop_timer()
             
-            # Hide recording controls, timer, and audio visualization when not recording
-            if recording_controls:
-                recording_controls.pack_forget()
-            if timer_label:
-                timer_label.pack_forget()
+            # Hide the recording control buttons
+            if pause_btn:
+                pause_btn.pack_forget()
+            if cancel_btn:
+                cancel_btn.pack_forget()
             
-            # Hide audio visualization panel
+            # Hide timer label (but keep container)
+            if timer_label:
+                timer_label.config(text="")  # Empty text
+            
+            # Hide audio viz content (but keep container)
             audio_viz_frame = self.components.get('audio_viz_frame')
             if audio_viz_frame:
-                audio_viz_frame.pack_forget()
-                self._stop_pulse_animation()
+                for child in audio_viz_frame.winfo_children():
+                    child.pack_forget()
+            
+            self._stop_pulse_animation()
             
             # Force UI update for stop recording state
             if self.parent:
@@ -972,9 +1015,19 @@ class WorkflowUI:
     def pause_timer(self):
         """Pause the recording timer."""
         if self.timer_running and self.timer_start_time:
-            self.timer_paused_time += time.time() - self.timer_start_time
+            # Calculate and save the current elapsed time
+            current_elapsed = time.time() - self.timer_start_time
+            self.timer_paused_time += current_elapsed
             self.timer_running = False
-            logging.info("Timer paused")
+            
+            # Keep displaying the paused time
+            total_elapsed = self.timer_paused_time
+            minutes = int(total_elapsed // 60)
+            seconds = int(total_elapsed % 60)
+            time_str = f"{minutes:02d}:{seconds:02d}"
+            self.update_timer(time_str)
+            
+            logging.info(f"Timer paused at {time_str}")
     
     def resume_timer(self):
         """Resume the recording timer."""
@@ -1010,12 +1063,12 @@ class WorkflowUI:
         """Timer update loop (runs in background thread)."""
         while True:
             try:
-                if not self.timer_running:
-                    # Exit loop when timer is stopped/paused
+                # Check if we should exit the loop (only when timer is fully stopped/reset)
+                if self.timer_start_time is None and self.timer_paused_time == 0:
                     break
                     
-                if self.timer_start_time is not None and self.timer_running:
-                    # Calculate elapsed time
+                if self.timer_running and self.timer_start_time is not None:
+                    # Timer is running - calculate elapsed time
                     current_elapsed = time.time() - self.timer_start_time
                     total_elapsed = self.timer_paused_time + current_elapsed
                     
@@ -1024,7 +1077,7 @@ class WorkflowUI:
                     seconds = int(total_elapsed % 60)
                     time_str = f"{minutes:02d}:{seconds:02d}"
                     
-                    # Update timer display on main thread - fix lambda closure issue
+                    # Update timer display on main thread
                     if self.parent:
                         def update_display(time_text=time_str):
                             self.update_timer(time_text)
@@ -1039,21 +1092,29 @@ class WorkflowUI:
     def _start_pulse_animation(self):
         """Start the recording status pulse animation."""
         if self.status_indicator:
+            self.animation_active = True
             self._animate_pulse()
     
     def _stop_pulse_animation(self):
         """Stop the recording status pulse animation."""
+        logging.info("Stopping pulse animation")
+        self.animation_active = False
         if self.pulse_animation_id:
             self.parent.after_cancel(self.pulse_animation_id)
             self.pulse_animation_id = None
+            logging.info("Pulse animation cancelled")
         
         # Reset status indicator
         if self.status_indicator:
             self.status_indicator.config(text="● Ready", foreground="#27ae60")
+            # Force immediate UI update
+            self.status_indicator.update_idletasks()
+            self.status_indicator.update()
+            logging.info("Status indicator reset to Ready")
     
     def _animate_pulse(self):
         """Animate the recording status indicator."""
-        if not self.status_indicator:
+        if not self.status_indicator or not self.animation_active:
             return
             
         try:
@@ -1075,8 +1136,9 @@ class WorkflowUI:
                 
             self.status_indicator.config(text=text, foreground=color)
             
-            # Schedule next frame
-            self.pulse_animation_id = self.parent.after(50, self._animate_pulse)
+            # Schedule next frame only if still active
+            if self.animation_active:
+                self.pulse_animation_id = self.parent.after(50, self._animate_pulse)
             
         except Exception as e:
             logging.error(f"Error in pulse animation: {e}")
@@ -1174,3 +1236,24 @@ class WorkflowUI:
             text_widgets["letter"],
             None  # No context text in notebook for workflow UI
         )
+    
+    def _initialize_recording_ui_state(self):
+        """Initialize the recording UI to its default state."""
+        # Hide timer label initially (but keep container visible)
+        timer_label = self.components.get('timer_label')
+        if timer_label:
+            timer_label.config(text="")  # Empty text instead of invisible
+            
+        # Hide audio viz content initially (but keep container visible)
+        audio_viz_frame = self.components.get('audio_viz_frame')
+        if audio_viz_frame:
+            for child in audio_viz_frame.winfo_children():
+                child.pack_forget()
+                
+        # Ensure pause and cancel buttons start in disabled state
+        pause_btn = self.components.get('pause_button')
+        cancel_btn = self.components.get('cancel_button')
+        if pause_btn:
+            pause_btn.config(state=tk.DISABLED)
+        if cancel_btn:
+            cancel_btn.config(state=tk.DISABLED)
