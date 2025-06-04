@@ -249,10 +249,10 @@ class WorkflowUI:
                 "column": 1
             },
             {
-                "name": "copy",
-                "text": "📋 Copy Text",
-                "tooltip": "Copy to clipboard (Ctrl+C)",
-                "command": command_map.get("copy_text"),
+                "name": "new_session",
+                "text": "🆕 New Session",
+                "tooltip": "Start a new session (Ctrl+N)",
+                "command": command_map.get("new_session"),
                 "column": 2
             }
         ]

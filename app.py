@@ -269,6 +269,17 @@ class MedicalDictationApp(ttk.Window):
         self.stt_combobox.pack(side=LEFT)
         self.stt_combobox.bind("<<ComboboxSelected>>", self._on_stt_change)
         
+        # Copy button - easily accessible
+        copy_btn = ttk.Button(
+            provider_frame,
+            text="📋 Copy",
+            command=self.copy_text,
+            width=10,
+            bootstyle="primary"
+        )
+        copy_btn.pack(side=LEFT, padx=(10, 0))
+        ToolTip(copy_btn, "Copy current text to clipboard (Ctrl+C)")
+        
         # Theme toggle
         self.theme_btn = ttk.Button(
             provider_frame,
@@ -323,7 +334,8 @@ class MedicalDictationApp(ttk.Window):
             "pause_soap": ui_components.get("pause_button"),
             "cancel_soap": ui_components.get("cancel_button"),
             "load": ui_components.get("file_load_button"),
-            "save": ui_components.get("file_save_button")
+            "save": ui_components.get("file_save_button"),
+            "new_session": ui_components.get("file_new_session_button")
         }
         
         # Store specific button references
