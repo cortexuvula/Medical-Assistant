@@ -898,6 +898,7 @@ class MedicalDictationApp(ttk.Window):
                 self.after(100, lambda: animate_refresh(frame + 1))
             else:
                 # Animation complete, perform actual refresh
+                logging.debug("Microphone refresh animation complete, starting refresh")
                 do_refresh()
                 
         def do_refresh():
@@ -936,16 +937,68 @@ class MedicalDictationApp(ttk.Window):
             finally:
                 # Reset animation state
                 self._refreshing = False
+                logging.debug("Resetting microphone refresh state and cursor")
                 
                 # Reset button state and cursor
                 if refresh_btn:
                     refresh_btn.config(text="⟳", state=tk.NORMAL)
                 
-                # Reset cursor
+                # Reset cursor - try multiple approaches
+                cursor_reset = False
+                try:
+                    self.config(cursor="")
+                    cursor_reset = True
+                    logging.debug("Cursor reset to default successfully")
+                except Exception as e:
+                    logging.debug(f"Failed to reset cursor to default: {e}")
+                    try:
+                        self.config(cursor="arrow")
+                        cursor_reset = True
+                        logging.debug("Cursor reset to arrow successfully")
+                    except Exception as e2:
+                        logging.debug(f"Failed to reset cursor to arrow: {e2}")
+                        try:
+                            self.config(cursor="left_ptr")
+                            cursor_reset = True
+                            logging.debug("Cursor reset to left_ptr successfully")
+                        except Exception as e3:
+                            logging.debug(f"Failed to reset cursor to left_ptr: {e3}")
+                
+                if not cursor_reset:
+                    logging.warning("Could not reset cursor after microphone refresh")
+                
+                # Force cursor update by updating the window
+                try:
+                    self.update_idletasks()
+                except:
+                    pass
+        
+        # Start the animation
+        animate_refresh()
+        
+        # Add a fallback cursor reset in case something goes wrong
+        self.after(3000, self._reset_cursor_fallback)
+    
+    def _reset_cursor_fallback(self):
+        """Fallback method to reset cursor if it gets stuck."""
+        try:
+            if hasattr(self, '_refreshing') and self._refreshing:
+                logging.warning("Cursor reset fallback triggered - microphone refresh may have failed")
+                self._refreshing = False
+                # Try to reset cursor
                 try:
                     self.config(cursor="")
                 except:
-                    pass
+                    try:
+                        self.config(cursor="arrow")
+                    except:
+                        pass
+                # Re-enable refresh button
+                refresh_btn = self.ui.components.get('refresh_btn')
+                if refresh_btn:
+                    refresh_btn.config(text="⟳", state=tk.NORMAL)
+        except Exception as e:
+            logging.error(f"Error in cursor reset fallback: {e}")
 
 
     def toggle_soap_recording(self) -> None:
