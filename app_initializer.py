@@ -99,15 +99,17 @@ class AppInitializer:
             window_width = saved_width
             window_height = saved_height
         else:
-            # Calculate responsive window size (80% of screen size, but not larger than 1700x950)
+            # Calculate responsive window size (80% of screen size, but not larger than 1700x1000)
+            # Increased default height to better accommodate workflow UI
             window_width = min(int(screen_width * 0.8), 1700)
-            window_height = min(int(screen_height * 0.8), 950)
+            window_height = min(int(screen_height * 0.8), 1000)
         
         # Apply the calculated window size
         self.app.geometry(f"{window_width}x{window_height}")
         
         # Set a reasonable minimum size that ensures all UI elements are visible
-        self.app.minsize(1100, 750)
+        # Increased minimum height to accommodate workflow UI recording controls
+        self.app.minsize(1200, 850)
         
         # Center the window on the screen
         self.app.update_idletasks()  # Ensure window dimensions are calculated

@@ -732,35 +732,46 @@ class WorkflowUI:
         timer_label = self.components.get('timer_label')
         
         if recording:
+            # Update main record button
             if main_record_btn:
                 main_record_btn.config(text="🛑 Stop Recording", bootstyle="danger")
             
-            # Make sure recording controls are visible
+            # Show the recording controls frame
             if recording_controls:
-                # Force the recording controls to be visible
                 recording_controls.pack(pady=20, fill=X)
                 logging.info("Recording controls frame packed")
-                
+            
+            # Enable and configure pause button
             if pause_btn:
                 pause_btn.config(state=tk.NORMAL)
-                pause_btn.pack(side=LEFT, padx=5)  # Ensure it's packed
                 if paused:
                     pause_btn.config(text="▶️ Resume", bootstyle="success")
                 else:
                     pause_btn.config(text="⏸️ Pause", bootstyle="warning")
+                logging.info(f"Pause button enabled: {pause_btn['state']}")
+                
+            # Enable cancel button
             if cancel_btn:
                 cancel_btn.config(state=tk.NORMAL)
-                cancel_btn.pack(side=LEFT, padx=5)  # Ensure it's packed
+                logging.info(f"Cancel button enabled: {cancel_btn['state']}")
             
             # Show timer when recording
             if timer_label:
                 timer_label.pack(pady=10)
+                
+            # Force a UI update to ensure changes are visible
+            if self.parent:
+                self.parent.update_idletasks()
         else:
-            # Not recording
+            # Not recording - reset everything
             if main_record_btn:
                 main_record_btn.config(text="🎤 Start Recording", bootstyle="success")
+                
+            # Disable pause button
             if pause_btn:
                 pause_btn.config(state=tk.DISABLED, text="⏸️ Pause", bootstyle="warning")
+                
+            # Disable cancel button  
             if cancel_btn:
                 cancel_btn.config(state=tk.DISABLED)
             
