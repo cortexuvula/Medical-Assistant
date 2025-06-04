@@ -6,6 +6,7 @@ Record, Process, and Generate.
 """
 
 import tkinter as tk
+import tkinter.messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from typing import Dict, Callable, Tuple, Optional
@@ -396,26 +397,11 @@ class WorkflowUI:
         self.components['context_content_frame'] = content_frame
         
         # Quick templates
-        templates_frame = ttk.LabelFrame(content_frame, text="Quick Templates", padding=5)
-        templates_frame.pack(fill=X, pady=(0, 10))
+        self.templates_frame = ttk.LabelFrame(content_frame, text="Quick Templates", padding=5)
+        self.templates_frame.pack(fill=X, pady=(0, 10))
         
-        templates = [
-            "Follow-up visit",
-            "New patient",
-            "Telehealth consultation",
-            "Annual checkup",
-            "Urgent care visit"
-        ]
-        
-        for template in templates:
-            btn = ttk.Button(
-                templates_frame,
-                text=template,
-                bootstyle="outline",
-                width=20,
-                command=lambda t=template: self._apply_context_template(t)
-            )
-            btn.pack(pady=2, fill=X)
+        # Create initial templates
+        self._create_template_buttons()
         
         # Context text area
         text_frame = ttk.LabelFrame(content_frame, text="Context Information", padding=5)
@@ -487,9 +473,182 @@ class WorkflowUI:
     
     def _save_context_template(self):
         """Save current context as a template."""
-        # This would open a dialog to save the template
-        # For now, just log
-        logging.info("Save context template - to be implemented")
+        # Get current context text
+        context_text = self.components['context_text'].get("1.0", tk.END).strip()
+        
+        if not context_text:
+            tk.messagebox.showwarning("No Content", "Please enter some context text before saving as a template.")
+            return
+        
+        # Create dialog to get template name
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Save Context Template")
+        dialog.geometry("400x200")
+        dialog.resizable(False, False)
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Dialog content
+        ttk.Label(dialog, text="Template Name:", font=("Segoe UI", 11)).pack(pady=10)
+        
+        name_var = tk.StringVar()
+        name_entry = ttk.Entry(dialog, textvariable=name_var, width=40, font=("Segoe UI", 10))
+        name_entry.pack(pady=5)
+        name_entry.focus()
+        
+        # Preview of content
+        ttk.Label(dialog, text="Content Preview:", font=("Segoe UI", 10)).pack(pady=(15, 5))
+        preview_text = context_text[:100] + "..." if len(context_text) > 100 else context_text
+        preview_label = ttk.Label(dialog, text=preview_text, font=("Segoe UI", 9), foreground="gray")
+        preview_label.pack(pady=5, padx=20)
+        
+        result = {"saved": False}
+        
+        def save_template():
+            template_name = name_var.get().strip()
+            if not template_name:
+                tk.messagebox.showwarning("Invalid Name", "Please enter a template name.")
+                return
+            
+            # Save to settings
+            try:
+                custom_templates = SETTINGS.get("custom_context_templates", {})
+                custom_templates[template_name] = context_text
+                SETTINGS["custom_context_templates"] = custom_templates
+                
+                # Save settings
+                from settings import save_settings
+                save_settings(SETTINGS)
+                
+                # Refresh template buttons
+                self._refresh_template_buttons()
+                
+                result["saved"] = True
+                dialog.destroy()
+                
+                tk.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
+                
+            except Exception as e:
+                logging.error(f"Error saving context template: {e}")
+                tk.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
+        
+        def cancel():
+            dialog.destroy()
+        
+        # Buttons
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=20)
+        
+        ttk.Button(button_frame, text="Save", command=save_template, bootstyle="success").pack(side=LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=cancel, bootstyle="secondary").pack(side=LEFT, padx=5)
+        
+        # Bind Enter key to save
+        name_entry.bind("<Return>", lambda e: save_template())
+        dialog.bind("<Escape>", lambda e: cancel())
+        
+        # Wait for dialog to close
+        dialog.wait_window()
+    
+    def _create_template_buttons(self):
+        """Create template buttons including built-in and custom templates."""
+        # Built-in templates
+        builtin_templates = [
+            "Follow-up visit",
+            "New patient", 
+            "Telehealth consultation",
+            "Annual checkup",
+            "Urgent care visit"
+        ]
+        
+        # Clear existing buttons
+        for widget in self.templates_frame.winfo_children():
+            widget.destroy()
+        
+        # Add built-in templates
+        for template in builtin_templates:
+            btn = ttk.Button(
+                self.templates_frame,
+                text=template,
+                bootstyle="outline",
+                width=20,
+                command=lambda t=template: self._apply_context_template(t)
+            )
+            btn.pack(pady=2, fill=X)
+        
+        # Add custom templates
+        custom_templates = SETTINGS.get("custom_context_templates", {})
+        if custom_templates:
+            # Add separator
+            separator = ttk.Separator(self.templates_frame, orient="horizontal")
+            separator.pack(fill=X, pady=5)
+            
+            # Add custom template buttons
+            for template_name, template_text in custom_templates.items():
+                btn_frame = ttk.Frame(self.templates_frame)
+                btn_frame.pack(fill=X, pady=1)
+                
+                # Template button
+                btn = ttk.Button(
+                    btn_frame,
+                    text=template_name,
+                    bootstyle="info-outline",
+                    command=lambda t=template_text: self._apply_custom_template(t)
+                )
+                btn.pack(side=LEFT, fill=X, expand=True)
+                
+                # Delete button
+                del_btn = ttk.Button(
+                    btn_frame,
+                    text="×",
+                    bootstyle="danger-outline",
+                    width=3,
+                    command=lambda name=template_name: self._delete_custom_template(name)
+                )
+                del_btn.pack(side=RIGHT, padx=(2, 0))
+                ToolTip(del_btn, f"Delete template '{template_name}'")
+    
+    def _refresh_template_buttons(self):
+        """Refresh the template buttons to show updated custom templates."""
+        self._create_template_buttons()
+    
+    def _apply_custom_template(self, template_text: str):
+        """Apply a custom template."""
+        self.components['context_text'].delete("1.0", tk.END)
+        self.components['context_text'].insert("1.0", template_text)
+    
+    def _delete_custom_template(self, template_name: str):
+        """Delete a custom template."""
+        result = tk.messagebox.askyesno(
+            "Delete Template",
+            f"Are you sure you want to delete the template '{template_name}'?",
+            icon="warning"
+        )
+        
+        if result:
+            try:
+                custom_templates = SETTINGS.get("custom_context_templates", {})
+                if template_name in custom_templates:
+                    del custom_templates[template_name]
+                    SETTINGS["custom_context_templates"] = custom_templates
+                    
+                    # Save settings
+                    from settings import save_settings
+                    save_settings(SETTINGS)
+                    
+                    # Refresh template buttons
+                    self._refresh_template_buttons()
+                    
+                    tk.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
+                    
+            except Exception as e:
+                logging.error(f"Error deleting custom template: {e}")
+                tk.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")
     
     def _clear_context(self):
         """Clear the context text."""

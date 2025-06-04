@@ -164,6 +164,7 @@ Follow up:
     "stt_provider": DEFAULT_STT_PROVIDER,
     "theme": DEFAULT_THEME,
     "ui_mode": DEFAULT_UI_MODE,
+    "custom_context_templates": {},  # User-defined context templates
     "window_width": 0,  # Will be set based on user preference, 0 means use default calculation
     "window_height": 0  # Will be set based on user preference, 0 means use default calculation
 }
