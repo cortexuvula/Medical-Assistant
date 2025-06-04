@@ -765,7 +765,7 @@ class WorkflowUI:
         else:
             # Not recording - reset everything
             if main_record_btn:
-                main_record_btn.config(text="🎤 Start Recording", bootstyle="success")
+                main_record_btn.config(text="🎤 Start Recording", bootstyle="success", state=tk.NORMAL)
                 
             # Disable pause button
             if pause_btn:
