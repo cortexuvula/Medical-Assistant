@@ -12,6 +12,8 @@ from ttkbootstrap.constants import *
 from typing import Dict, Callable, Tuple, Optional
 from tooltip import ToolTip
 import logging
+import time
+import threading
 from settings import SETTINGS
 
 
@@ -27,6 +29,12 @@ class WorkflowUI:
         self.parent = parent
         self.components = {}
         self.current_workflow = "record"
+        
+        # Timer functionality
+        self.timer_start_time = None
+        self.timer_paused_time = 0
+        self.timer_thread = None
+        self.timer_running = False
         
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
         """Create the main workflow tabs (Record, Process, Generate).
@@ -746,8 +754,15 @@ class WorkflowUI:
                 pause_btn.config(state=tk.NORMAL)
                 if paused:
                     pause_btn.config(text="▶️ Resume", bootstyle="success")
+                    # Pause timer
+                    self.pause_timer()
                 else:
                     pause_btn.config(text="⏸️ Pause", bootstyle="warning")
+                    # Start or resume timer
+                    if not self.timer_running and self.timer_start_time is None:
+                        self.start_timer()
+                    elif not self.timer_running:
+                        self.resume_timer()
                 logging.info(f"Pause button enabled: {pause_btn['state']}")
                 
             # Enable cancel button
@@ -775,6 +790,9 @@ class WorkflowUI:
             if cancel_btn:
                 cancel_btn.config(state=tk.DISABLED)
             
+            # Stop and reset timer
+            self.stop_timer()
+            
             # Hide recording controls and timer when not recording
             if recording_controls:
                 recording_controls.pack_forget()
@@ -790,6 +808,88 @@ class WorkflowUI:
         status_label = self.components.get('recording_status')
         if status_label:
             status_label.config(text=progress_text)
+    
+    def start_timer(self):
+        """Start the recording timer."""
+        # Stop any existing timer first
+        self._reset_timer_state()
+        
+        # Reset timer state
+        self.timer_start_time = time.time()
+        self.timer_paused_time = 0
+        self.timer_running = True
+        
+        # Start new timer thread
+        self.timer_thread = threading.Thread(target=self._update_timer_loop, daemon=True)
+        self.timer_thread.start()
+        logging.info("Timer started (fresh)")
+    
+    def pause_timer(self):
+        """Pause the recording timer."""
+        if self.timer_running and self.timer_start_time:
+            self.timer_paused_time += time.time() - self.timer_start_time
+            self.timer_running = False
+            logging.info("Timer paused")
+    
+    def resume_timer(self):
+        """Resume the recording timer."""
+        if not self.timer_running:
+            self.timer_start_time = time.time()
+            self.timer_running = True
+            
+            # Restart timer thread if it's not running
+            if self.timer_thread is None or not self.timer_thread.is_alive():
+                self.timer_thread = threading.Thread(target=self._update_timer_loop, daemon=True)
+                self.timer_thread.start()
+            
+            logging.info("Timer resumed")
+    
+    def _reset_timer_state(self):
+        """Internal method to reset timer state without UI updates."""
+        self.timer_running = False
+        self.timer_start_time = None
+        self.timer_paused_time = 0
+        # Note: thread will stop itself when timer_running becomes False
+    
+    def stop_timer(self):
+        """Stop and reset the recording timer."""
+        self._reset_timer_state()
+        
+        # Update display to 00:00
+        timer_label = self.components.get('timer_label')
+        if timer_label:
+            timer_label.config(text="00:00")
+        logging.info("Timer stopped and reset")
+    
+    def _update_timer_loop(self):
+        """Timer update loop (runs in background thread)."""
+        while True:
+            try:
+                if not self.timer_running:
+                    # Exit loop when timer is stopped/paused
+                    break
+                    
+                if self.timer_start_time is not None and self.timer_running:
+                    # Calculate elapsed time
+                    current_elapsed = time.time() - self.timer_start_time
+                    total_elapsed = self.timer_paused_time + current_elapsed
+                    
+                    # Format time as MM:SS
+                    minutes = int(total_elapsed // 60)
+                    seconds = int(total_elapsed % 60)
+                    time_str = f"{minutes:02d}:{seconds:02d}"
+                    
+                    # Update timer display on main thread - fix lambda closure issue
+                    if self.parent:
+                        def update_display(time_text=time_str):
+                            self.update_timer(time_text)
+                        self.parent.after(0, update_display)
+                
+                # Update every second
+                time.sleep(1)
+            except Exception as e:
+                logging.error(f"Timer update error: {e}")
+                break
     
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.
