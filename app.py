@@ -235,9 +235,20 @@ class MedicalDictationApp(ttk.Window):
         mic_frame.pack(side=LEFT, fill=tk.X, expand=True)
         
         ttk.Label(mic_frame, text="Microphone:").pack(side=LEFT, padx=(0, 5))
-        self.mic_combobox = ttk.Combobox(mic_frame, state="readonly", width=40)
+        
+        # Get available microphones and populate dropdown
+        mic_names = get_valid_microphones() or []
+        self.mic_combobox = ttk.Combobox(mic_frame, values=mic_names, state="readonly", width=40)
         self.mic_combobox.pack(side=LEFT, padx=(0, 10))
         self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
+        
+        # Set initial selection if microphones are available
+        if len(mic_names) > 0:
+            saved_mic = SETTINGS.get("selected_microphone", "")
+            if saved_mic and saved_mic in mic_names:
+                self.mic_combobox.set(saved_mic)
+            else:
+                self.mic_combobox.current(0)
         
         # Refresh button
         refresh_btn = ttk.Button(mic_frame, text="⟳", width=3, command=self.refresh_microphones)
@@ -312,9 +323,6 @@ class MedicalDictationApp(ttk.Window):
         
         # Store button references for compatibility
         self._store_workflow_button_references()
-        
-        # Initialize microphone list
-        self.refresh_microphones()
         
         # Set initial provider selections
         self._initialize_provider_selections()
