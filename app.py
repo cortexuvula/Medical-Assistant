@@ -1137,6 +1137,21 @@ class MedicalDictationApp(ttk.Window):
     def soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using SOAPAudioProcessor."""
         self.soap_audio_processor.process_soap_callback(audio_data)
+        
+        # Update voice wave visualization if using workflow UI
+        ui_mode = SETTINGS.get("ui_mode", "workflow")
+        if ui_mode == "workflow" and hasattr(self, 'ui') and hasattr(self.ui, 'update_voice_wave'):
+            # Convert audio data to numpy array if needed
+            if hasattr(audio_data, 'get_array_of_samples'):
+                # pydub AudioSegment
+                samples = np.array(audio_data.get_array_of_samples(), dtype=np.float32)
+                if audio_data.channels == 2:
+                    samples = samples.reshape((-1, 2)).mean(axis=1)  # Convert stereo to mono
+                samples = samples / (2**15)  # Normalize to [-1, 1] range
+                self.ui.update_voice_wave(samples)
+            elif isinstance(audio_data, np.ndarray):
+                # Already numpy array
+                self.ui.update_voice_wave(audio_data)
                 
     def cancel_soap_recording(self) -> None:
         """Cancel the current SOAP note recording without processing."""

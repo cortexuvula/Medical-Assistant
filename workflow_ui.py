@@ -14,6 +14,7 @@ from tooltip import ToolTip
 import logging
 import time
 import threading
+import numpy as np
 from settings import SETTINGS
 
 
@@ -35,6 +36,11 @@ class WorkflowUI:
         self.timer_paused_time = 0
         self.timer_thread = None
         self.timer_running = False
+        
+        # Voice wave functionality
+        self.wave_data = []
+        self.wave_max_samples = 100  # Number of wave bars to display
+        self.wave_canvas = None
         
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
         """Create the main workflow tabs (Record, Process, Generate).
@@ -155,6 +161,17 @@ class WorkflowUI:
             font=("Segoe UI", 24, "bold")
         )
         # Timer will be packed after recording controls when recording starts
+        
+        # Voice wave visualization - create but don't pack initially
+        self.wave_canvas = tk.Canvas(
+            center_frame,
+            height=100,
+            bg="#2c3e50",
+            highlightthickness=0,
+            relief="flat"
+        )
+        self.components['voice_wave'] = self.wave_canvas
+        # Wave will be packed after timer when recording starts
         
         # Quick actions (appear after recording)
         quick_actions = ttk.Frame(center_frame)
@@ -770,9 +787,15 @@ class WorkflowUI:
                 cancel_btn.config(state=tk.NORMAL)
                 logging.info(f"Cancel button enabled: {cancel_btn['state']}")
             
-            # Show timer when recording
+            # Show timer and voice wave when recording
             if timer_label:
                 timer_label.pack(pady=10)
+            
+            # Show voice wave visualization
+            voice_wave = self.components.get('voice_wave')
+            if voice_wave:
+                voice_wave.pack(pady=(0, 20), fill=X, padx=40)
+                self._initialize_wave_display()
                 
             # Force a UI update to ensure changes are visible
             if self.parent:
@@ -793,11 +816,17 @@ class WorkflowUI:
             # Stop and reset timer
             self.stop_timer()
             
-            # Hide recording controls and timer when not recording
+            # Hide recording controls, timer, and voice wave when not recording
             if recording_controls:
                 recording_controls.pack_forget()
             if timer_label:
                 timer_label.pack_forget()
+            
+            # Hide voice wave visualization
+            voice_wave = self.components.get('voice_wave')
+            if voice_wave:
+                voice_wave.pack_forget()
+                self._clear_wave_display()
     
     def update_recording_progress(self, progress_text: str):
         """Update recording progress/status text.
@@ -890,6 +919,107 @@ class WorkflowUI:
             except Exception as e:
                 logging.error(f"Timer update error: {e}")
                 break
+    
+    def _initialize_wave_display(self):
+        """Initialize the voice wave display."""
+        if self.wave_canvas:
+            # Clear any existing content
+            self.wave_canvas.delete("all")
+            # Reset wave data
+            self.wave_data = []
+            # Set initial canvas size
+            self.wave_canvas.update_idletasks()
+            canvas_width = self.wave_canvas.winfo_width()
+            if canvas_width <= 1:  # Canvas not yet rendered
+                canvas_width = 800  # Default width
+            self.wave_canvas.config(width=canvas_width)
+    
+    def _clear_wave_display(self):
+        """Clear the voice wave display."""
+        if self.wave_canvas:
+            self.wave_canvas.delete("all")
+            self.wave_data = []
+    
+    def update_voice_wave(self, audio_data: np.ndarray):
+        """Update the voice wave visualization with new audio data.
+        
+        Args:
+            audio_data: Audio data as numpy array
+        """
+        if not self.wave_canvas or len(audio_data) == 0:
+            return
+            
+        # Calculate RMS (root mean square) for amplitude
+        rms = np.sqrt(np.mean(audio_data ** 2))
+        amplitude = min(rms * 2000, 1.0)  # Scale up for better visibility and cap at 1.0
+        
+        # Add new amplitude to wave data
+        self.wave_data.append(amplitude)
+        
+        # Keep only the most recent samples
+        if len(self.wave_data) > self.wave_max_samples:
+            self.wave_data.pop(0)
+        
+        # Update display on main thread
+        if self.parent:
+            self.parent.after(0, self._draw_wave)
+    
+    def _draw_wave(self):
+        """Draw the voice wave visualization."""
+        if not self.wave_canvas or not self.wave_data:
+            return
+            
+        try:
+            # Clear canvas
+            self.wave_canvas.delete("all")
+            
+            # Get canvas dimensions
+            canvas_width = self.wave_canvas.winfo_width()
+            canvas_height = self.wave_canvas.winfo_height()
+            
+            if canvas_width <= 1 or canvas_height <= 1:
+                return  # Canvas not ready yet
+            
+            # Calculate bar width and spacing
+            num_bars = len(self.wave_data)
+            if num_bars == 0:
+                return
+                
+            bar_width = max(1, (canvas_width - 20) // num_bars)  # Leave some margin
+            bar_spacing = max(1, bar_width + 1)
+            
+            # Draw bars
+            center_y = canvas_height // 2
+            max_bar_height = center_y - 5  # Leave some margin
+            
+            for i, amplitude in enumerate(self.wave_data):
+                x = 10 + i * bar_spacing  # Start with 10px margin
+                
+                # Calculate bar height based on amplitude
+                bar_height = max(2, int(amplitude * max_bar_height))
+                
+                # Color based on amplitude
+                if amplitude > 0.7:
+                    color = "#e74c3c"  # Red for loud
+                elif amplitude > 0.4:
+                    color = "#f39c12"  # Orange for medium
+                elif amplitude > 0.1:
+                    color = "#27ae60"  # Green for normal
+                else:
+                    color = "#34495e"  # Dark gray for quiet
+                
+                # Draw centered bar
+                y1 = center_y - bar_height // 2
+                y2 = center_y + bar_height // 2
+                
+                self.wave_canvas.create_rectangle(
+                    x, y1, x + bar_width, y2,
+                    fill=color,
+                    outline=color
+                )
+                
+        except Exception as e:
+            logging.error(f"Error drawing voice wave: {e}")
     
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.
