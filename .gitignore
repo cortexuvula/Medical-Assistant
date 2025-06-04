@@ -203,3 +203,6 @@ ffmpeg/
 
 # Development documentation
 code_improvements.txt
+
+# Debug files
+last_llm_prompt.txt

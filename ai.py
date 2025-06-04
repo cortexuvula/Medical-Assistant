@@ -612,6 +612,24 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
     Returns:
         AI-generated response as a string
     """
+    # Save prompt to debug file
+    try:
+        from datetime import datetime
+        debug_file_path = os.path.join(os.path.dirname(__file__), "last_llm_prompt.txt")
+        with open(debug_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== LLM PROMPT DEBUG ===\n")
+            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Model: {model}\n")
+            f.write(f"Temperature: {temperature}\n")
+            f.write(f"\n--- SYSTEM MESSAGE ---\n")
+            f.write(system_message)
+            f.write(f"\n\n--- USER PROMPT ---\n")
+            f.write(prompt)
+            f.write(f"\n\n=== END OF PROMPT ===\n")
+        logging.info(f"Saved LLM prompt to: {debug_file_path}")
+    except Exception as e:
+        logging.error(f"Failed to save prompt to debug file: {e}")
+    
     # Reload settings from file to ensure we have the latest provider selection
     from settings import load_settings
     current_settings = load_settings()

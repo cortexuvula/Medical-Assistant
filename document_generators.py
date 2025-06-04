@@ -39,10 +39,14 @@ class DocumentGenerators:
 
         def task() -> None:
             try:
+                # Get context text from the context tab
+                context_text = self.app.context_text.get("1.0", "end").strip()
+                
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.app.io_executor.submit(
                     create_soap_note_with_openai,
-                    transcript
+                    transcript,
+                    context_text
                 )
                 
                 # Get result with timeout to prevent hanging
