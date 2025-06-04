@@ -37,20 +37,12 @@ class WorkflowUI:
         self.timer_thread = None
         self.timer_running = False
         
-        # Voice wave functionality
-        self.wave_data = []
-        self.wave_max_samples = 100  # Number of wave bars to display
-        self.wave_canvas = None
         
         # Recording status animation
         self.recording_pulse_state = 0
         self.pulse_animation_id = None
         self.status_indicator = None
         
-        # Audio level tracking
-        self.current_level = 0.0
-        self.peak_level = 0.0
-        self.peak_hold_timer = 0
         
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
         """Create the main workflow tabs (Record, Process, Generate).
@@ -99,7 +91,7 @@ class WorkflowUI:
         
         # Recording status frame (for visual feedback)
         status_frame = ttk.Frame(center_frame)
-        status_frame.pack(pady=(0, 20))
+        status_frame.pack(pady=(0, 10))  # Reduced from 20 to 10
         
         # Status label
         self.components['recording_status'] = ttk.Label(
@@ -124,11 +116,11 @@ class WorkflowUI:
         
         # Recording status indicator and main button
         record_button_frame = ttk.Frame(center_frame)
-        record_button_frame.pack(pady=20)
+        record_button_frame.pack(pady=10)  # Reduced from 20 to 10
         
-        # Status indicator (animated when recording) - reduced spacing
+        # Status indicator (animated when recording) - minimal spacing
         status_frame = ttk.Frame(record_button_frame)
-        status_frame.pack(pady=(0, 5))  # Reduced from 10 to 5
+        status_frame.pack(pady=(0, 2))  # Reduced from 5 to 2
         
         self.status_indicator = ttk.Label(
             status_frame,
@@ -191,36 +183,7 @@ class WorkflowUI:
         audio_viz_frame = ttk.Frame(center_frame)
         self.components['audio_viz_frame'] = audio_viz_frame
         
-        # Voice wave visualization
-        self.wave_canvas = tk.Canvas(
-            audio_viz_frame,
-            height=80,
-            bg="#1e2124",
-            highlightthickness=0,
-            relief="flat"
-        )
-        self.wave_canvas.pack(fill=X, padx=10)
-        self.components['voice_wave'] = self.wave_canvas
         
-        # Audio level meter
-        level_frame = ttk.Frame(audio_viz_frame)
-        level_frame.pack(fill=X, padx=10, pady=(5, 0))
-        
-        ttk.Label(level_frame, text="Level:", font=("Segoe UI", 9)).pack(side=LEFT)
-        
-        self.level_canvas = tk.Canvas(
-            level_frame,
-            height=20,
-            bg="#2c3e50",
-            highlightthickness=0
-        )
-        self.level_canvas.pack(side=LEFT, fill=X, expand=True, padx=(5, 10))
-        self.components['level_meter'] = self.level_canvas
-        
-        # Peak level label
-        self.peak_label = ttk.Label(level_frame, text="Peak: 0%", font=("Segoe UI", 9))
-        self.peak_label.pack(side=RIGHT)
-        self.components['peak_label'] = self.peak_label
         
         # Recording session info panel
         info_frame = ttk.Frame(audio_viz_frame)
@@ -286,15 +249,6 @@ class WorkflowUI:
         shortcuts_grid.columnconfigure(0, weight=1)
         shortcuts_grid.columnconfigure(1, weight=1)
         
-        # Audio Settings panel
-        mic_frame = ttk.LabelFrame(record_frame, text="Audio Settings", padding=10)
-        mic_frame.pack(side=BOTTOM, fill=X, padx=20, pady=(0, 20))
-        
-        # Copy microphone selection from existing UI
-        ttk.Label(mic_frame, text="Microphone:").pack(side=LEFT, padx=(0, 5))
-        
-        # Store reference for microphone dropdown (will be connected later)
-        self.components['mic_frame'] = mic_frame
         
         return record_frame
     
@@ -891,10 +845,24 @@ class WorkflowUI:
         recording_controls = self.components.get('recording_controls')
         timer_label = self.components.get('timer_label')
         
+        logging.info(f"Button components found: main_record={main_record_btn is not None}, pause={pause_btn is not None}, cancel={cancel_btn is not None}")
+        
+        # Debug: Check current button text
+        if main_record_btn:
+            current_text = main_record_btn.cget('text')
+            logging.info(f"Current main record button text: '{current_text}'")
+        
         if recording:
             # Update main record button
             if main_record_btn:
                 main_record_btn.config(text="🛑 Stop Recording", bootstyle="danger")
+                logging.info("Main record button updated to 'Stop Recording'")
+                # Force immediate UI update
+                main_record_btn.update_idletasks()
+                main_record_btn.update()
+                # Verify the change took effect
+                new_text = main_record_btn.cget('text')
+                logging.info(f"Main record button text after update: '{new_text}'")
             
             # Show the recording controls frame
             if recording_controls:
@@ -930,16 +898,23 @@ class WorkflowUI:
             audio_viz_frame = self.components.get('audio_viz_frame')
             if audio_viz_frame:
                 audio_viz_frame.pack(pady=(0, 20), fill=X)
-                self._initialize_wave_display()
                 self._start_pulse_animation()
                 
             # Force a UI update to ensure changes are visible
             if self.parent:
                 self.parent.update_idletasks()
+                self.parent.update()  # Additional update to ensure UI refresh
         else:
             # Not recording - reset everything
             if main_record_btn:
                 main_record_btn.config(text="🎤 Start Recording", bootstyle="success", state=tk.NORMAL)
+                logging.info("Main record button updated to 'Start Recording'")
+                # Force immediate UI update
+                main_record_btn.update_idletasks()
+                main_record_btn.update()
+                # Verify the change took effect
+                new_text = main_record_btn.cget('text')
+                logging.info(f"Main record button text after reset: '{new_text}'")
                 
             # Disable pause button
             if pause_btn:
@@ -962,8 +937,12 @@ class WorkflowUI:
             audio_viz_frame = self.components.get('audio_viz_frame')
             if audio_viz_frame:
                 audio_viz_frame.pack_forget()
-                self._clear_wave_display()
                 self._stop_pulse_animation()
+            
+            # Force UI update for stop recording state
+            if self.parent:
+                self.parent.update_idletasks()
+                self.parent.update()  # Additional update to ensure UI refresh
     
     def update_recording_progress(self, progress_text: str):
         """Update recording progress/status text.
@@ -1056,199 +1035,6 @@ class WorkflowUI:
             except Exception as e:
                 logging.error(f"Timer update error: {e}")
                 break
-    
-    def _initialize_wave_display(self):
-        """Initialize the voice wave display."""
-        if self.wave_canvas:
-            # Clear any existing content
-            self.wave_canvas.delete("all")
-            # Reset wave data
-            self.wave_data = []
-            # Set initial canvas size
-            self.wave_canvas.update_idletasks()
-            canvas_width = self.wave_canvas.winfo_width()
-            if canvas_width <= 1:  # Canvas not yet rendered
-                canvas_width = 800  # Default width
-            self.wave_canvas.config(width=canvas_width)
-        
-        # Initialize level meter
-        if hasattr(self, 'level_canvas') and self.level_canvas:
-            self.level_canvas.delete("all")
-            self.level_canvas.update_idletasks()
-            # Reset level tracking
-            self.current_level = 0.0
-            self.peak_level = 0.0
-            self.peak_hold_timer = 0
-    
-    def _clear_wave_display(self):
-        """Clear the voice wave display."""
-        if self.wave_canvas:
-            self.wave_canvas.delete("all")
-            self.wave_data = []
-        
-        # Clear level meter
-        if hasattr(self, 'level_canvas') and self.level_canvas:
-            self.level_canvas.delete("all")
-            # Reset level tracking
-            self.current_level = 0.0
-            self.peak_level = 0.0
-            self.peak_hold_timer = 0
-            
-            # Update peak label
-            if hasattr(self, 'peak_label') and self.peak_label:
-                self.peak_label.config(text="Peak: 0%")
-    
-    def update_voice_wave(self, audio_data: np.ndarray):
-        """Update the voice wave visualization with new audio data.
-        
-        Args:
-            audio_data: Audio data as numpy array
-        """
-        if not self.wave_canvas or len(audio_data) == 0:
-            return
-            
-        # Calculate RMS (root mean square) for amplitude
-        rms = np.sqrt(np.mean(audio_data ** 2))
-        amplitude = min(rms * 2000, 1.0)  # Scale up for better visibility and cap at 1.0
-        
-        # Update current and peak levels
-        self.current_level = amplitude
-        if amplitude > self.peak_level:
-            self.peak_level = amplitude
-            self.peak_hold_timer = 60  # Hold peak for 60 frames (~3 seconds)
-        else:
-            self.peak_hold_timer -= 1
-            if self.peak_hold_timer <= 0:
-                self.peak_level *= 0.95  # Gradual peak decay
-        
-        # Debug logging (commented out for production)
-        # if amplitude > 0.001:  # Log any meaningful audio activity
-        #     logging.info(f"Audio level: {amplitude:.3f}, Peak: {self.peak_level:.3f}")
-        
-        # Add new amplitude to wave data
-        self.wave_data.append(amplitude)
-        
-        # Keep only the most recent samples
-        if len(self.wave_data) > self.wave_max_samples:
-            self.wave_data.pop(0)
-        
-        # Update displays on main thread
-        if self.parent:
-            self.parent.after(0, self._draw_wave)
-            self.parent.after(0, self._update_level_meter)
-    
-    def _draw_wave(self):
-        """Draw the voice wave visualization."""
-        if not self.wave_canvas or not self.wave_data:
-            return
-            
-        try:
-            # Clear canvas
-            self.wave_canvas.delete("all")
-            
-            # Get canvas dimensions
-            canvas_width = self.wave_canvas.winfo_width()
-            canvas_height = self.wave_canvas.winfo_height()
-            
-            if canvas_width <= 1 or canvas_height <= 1:
-                return  # Canvas not ready yet
-            
-            # Calculate bar width and spacing
-            num_bars = len(self.wave_data)
-            if num_bars == 0:
-                return
-                
-            bar_width = max(1, (canvas_width - 20) // num_bars)  # Leave some margin
-            bar_spacing = max(1, bar_width + 1)
-            
-            # Draw bars
-            center_y = canvas_height // 2
-            max_bar_height = center_y - 5  # Leave some margin
-            
-            for i, amplitude in enumerate(self.wave_data):
-                x = 10 + i * bar_spacing  # Start with 10px margin
-                
-                # Calculate bar height based on amplitude
-                bar_height = max(2, int(amplitude * max_bar_height))
-                
-                # Enhanced color based on amplitude with smoother gradients
-                if amplitude > 0.8:
-                    color = "#ff4757"  # Bright red for very loud
-                elif amplitude > 0.6:
-                    color = "#ff6b35"  # Orange-red for loud
-                elif amplitude > 0.4:
-                    color = "#ffa502"  # Orange for medium-loud
-                elif amplitude > 0.2:
-                    color = "#2ed573"  # Green for good level
-                elif amplitude > 0.05:
-                    color = "#70a1ff"  # Blue for quiet
-                else:
-                    color = "#57606f"  # Gray for very quiet
-                
-                # Draw centered bar
-                y1 = center_y - bar_height // 2
-                y2 = center_y + bar_height // 2
-                
-                self.wave_canvas.create_rectangle(
-                    x, y1, x + bar_width, y2,
-                    fill=color,
-                    outline=color
-                )
-                
-        except Exception as e:
-            logging.error(f"Error drawing voice wave: {e}")
-    
-    def _update_level_meter(self):
-        """Update the audio level meter display."""
-        if not hasattr(self, 'level_canvas') or not self.level_canvas:
-            return
-            
-        try:
-            # Force canvas update and get dimensions
-            self.level_canvas.update_idletasks()
-            canvas_width = self.level_canvas.winfo_width()
-            canvas_height = self.level_canvas.winfo_height()
-            
-            # Use minimum dimensions if canvas isn't ready
-            if canvas_width <= 1:
-                canvas_width = 200  # Fallback width
-            if canvas_height <= 1:
-                canvas_height = 20  # Fallback height
-            
-            # Clear canvas
-            self.level_canvas.delete("all")
-            
-            # Draw background
-            self.level_canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#2c3e50", outline="")
-            
-            # Draw current level bar
-            level_width = max(1, int(self.current_level * canvas_width))
-            if self.current_level > 0.01:  # Only draw if there's meaningful level
-                # Color based on level
-                if self.current_level > 0.8:
-                    level_color = "#e74c3c"  # Red
-                elif self.current_level > 0.6:
-                    level_color = "#f39c12"  # Orange
-                elif self.current_level > 0.3:
-                    level_color = "#f1c40f"  # Yellow
-                else:
-                    level_color = "#27ae60"  # Green
-                
-                self.level_canvas.create_rectangle(0, 0, level_width, canvas_height, fill=level_color, outline="")
-            
-            # Draw peak indicator
-            peak_x = int(self.peak_level * canvas_width)
-            if peak_x > 2:  # Only draw if peak is meaningful
-                self.level_canvas.create_line(peak_x, 0, peak_x, canvas_height, fill="#ffffff", width=2)
-            
-            # Update peak label
-            if hasattr(self, 'peak_label') and self.peak_label:
-                peak_percent = int(self.peak_level * 100)
-                current_percent = int(self.current_level * 100)
-                self.peak_label.config(text=f"Peak: {peak_percent}% | Now: {current_percent}%")
-                
-        except Exception as e:
-            logging.error(f"Error updating level meter: {e}")
     
     def _start_pulse_animation(self):
         """Start the recording status pulse animation."""

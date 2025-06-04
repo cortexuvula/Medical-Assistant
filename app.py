@@ -1012,7 +1012,6 @@ class MedicalDictationApp(ttk.Window):
             
             # Start recording
             self.status_manager.info("Starting SOAP recording...")
-            self._update_recording_ui_state(recording=True)
             
             # Get selected device
             selected_device = self.mic_combobox.get()
@@ -1023,6 +1022,9 @@ class MedicalDictationApp(ttk.Window):
             
             # Start recording with callback
             if self.recording_manager.start_recording(self.soap_callback):
+                # Only update UI state AFTER recording successfully starts
+                # Use after() to ensure UI update happens on next event loop cycle
+                self.after(0, lambda: self._update_recording_ui_state(recording=True, caller="toggle_start"))
                 self.play_recording_sound(start=True)
                 # Store the stop function for pause/cancel functionality
                 self.soap_stop_listening_function = self.audio_handler.listen_in_background(
@@ -1031,9 +1033,11 @@ class MedicalDictationApp(ttk.Window):
                     phrase_time_limit=3
                 )
                 self.soap_recording = True
+                logging.info("SOAP recording started successfully - UI updated")
             else:
                 self.status_manager.error("Failed to start recording")
-                self._update_recording_ui_state(recording=False)
+                # Ensure UI stays in idle state if recording failed to start
+                self._update_recording_ui_state(recording=False, caller="toggle_start_failed")
         else:
             # Stop recording
             self.status_manager.info("Stopping SOAP recording...")
@@ -1063,7 +1067,7 @@ class MedicalDictationApp(ttk.Window):
                 self._finalize_soap_recording(recording_data)
             else:
                 self.status_manager.error("No recording data available")
-                self._update_recording_ui_state(recording=False)
+                self._update_recording_ui_state(recording=False, caller="toggle_stop_no_data")
                 self.soap_recording = False
 
     def _finalize_soap_recording(self, recording_data: dict = None):
@@ -1076,7 +1080,7 @@ class MedicalDictationApp(ttk.Window):
         self.process_soap_recording()
         
         # Reset all button states after processing is complete
-        self.after(0, lambda: self._update_recording_ui_state(recording=False))
+        self.after(0, lambda: self._update_recording_ui_state(recording=False, caller="finalize_delayed"))
 
 
     def toggle_soap_pause(self) -> None:
@@ -1100,7 +1104,7 @@ class MedicalDictationApp(ttk.Window):
             self.soap_stop_listening_function = None
             
             # Update UI
-            self._update_recording_ui_state(recording=True, paused=True)
+            self._update_recording_ui_state(recording=True, paused=True, caller="pause")
             self.update_status("SOAP recording paused. Press Resume to continue.", "info")
 
     def resume_soap_recording(self) -> None:
@@ -1127,7 +1131,7 @@ class MedicalDictationApp(ttk.Window):
             )
             
             # Update UI
-            self._update_recording_ui_state(recording=True, paused=False)
+            self._update_recording_ui_state(recording=True, paused=False, caller="resume")
             self.update_status("SOAP recording resumed.", "info")
             
         except Exception as e:
@@ -1137,21 +1141,6 @@ class MedicalDictationApp(ttk.Window):
     def soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using SOAPAudioProcessor."""
         self.soap_audio_processor.process_soap_callback(audio_data)
-        
-        # Update voice wave visualization if using workflow UI
-        ui_mode = SETTINGS.get("ui_mode", "workflow")
-        if ui_mode == "workflow" and hasattr(self, 'ui') and hasattr(self.ui, 'update_voice_wave'):
-            # Convert audio data to numpy array if needed
-            if hasattr(audio_data, 'get_array_of_samples'):
-                # pydub AudioSegment
-                samples = np.array(audio_data.get_array_of_samples(), dtype=np.float32)
-                if audio_data.channels == 2:
-                    samples = samples.reshape((-1, 2)).mean(axis=1)  # Convert stereo to mono
-                samples = samples / (2**15)  # Normalize to [-1, 1] range
-                self.ui.update_voice_wave(samples)
-            elif isinstance(audio_data, np.ndarray):
-                # Already numpy array
-                self.ui.update_voice_wave(audio_data)
                 
     def cancel_soap_recording(self) -> None:
         """Cancel the current SOAP note recording without processing."""
@@ -1195,7 +1184,7 @@ class MedicalDictationApp(ttk.Window):
         self.soap_recording = False
         
         # Reset UI buttons
-        self._update_recording_ui_state(recording=False)
+        self._update_recording_ui_state(recording=False, caller="cancel_finalize")
         
         # Update status
         self.status_manager.warning("SOAP note recording cancelled.")
@@ -1429,13 +1418,15 @@ class MedicalDictationApp(ttk.Window):
                 # Show suggestions based on available content
                 self._show_generation_suggestions()
     
-    def _update_recording_ui_state(self, recording: bool, paused: bool = False):
+    def _update_recording_ui_state(self, recording: bool, paused: bool = False, caller: str = "unknown"):
         """Update recording UI state for both classic and workflow modes.
         
         Args:
             recording: Whether recording is active
             paused: Whether recording is paused
+            caller: Identifier for debugging which code called this method
         """
+        logging.info(f"_update_recording_ui_state called by {caller}: recording={recording}, paused={paused}")
         ui_mode = SETTINGS.get("ui_mode", "workflow")
         
         if ui_mode == "workflow" and hasattr(self.ui, 'set_recording_state'):
