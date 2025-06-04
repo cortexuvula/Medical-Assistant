@@ -115,35 +115,38 @@ class WorkflowUI:
         
         # Recording controls (appear during recording)
         recording_controls = ttk.Frame(center_frame)
-        recording_controls.pack(pady=10)
+        # Don't pack initially - will be shown when recording starts
+        self.components['recording_controls'] = recording_controls
         
         self.components['pause_button'] = ttk.Button(
             recording_controls,
             text="⏸️ Pause",
             command=command_map.get("toggle_soap_pause"),
             bootstyle="warning",
-            width=10,
-            state=DISABLED
+            width=12,
+            state=DISABLED,
+            style="Large.TButton"
         )
-        self.components['pause_button'].pack(side=LEFT, padx=5)
+        self.components['pause_button'].pack(side=LEFT, padx=10)
         
         self.components['cancel_button'] = ttk.Button(
             recording_controls,
             text="❌ Cancel",
             command=command_map.get("cancel_soap_recording"),
             bootstyle="danger",
-            width=10,
-            state=DISABLED
+            width=12,
+            state=DISABLED,
+            style="Large.TButton"
         )
-        self.components['cancel_button'].pack(side=LEFT, padx=5)
+        self.components['cancel_button'].pack(side=LEFT, padx=10)
         
-        # Timer display
+        # Timer display - create but don't pack initially
         self.components['timer_label'] = ttk.Label(
             center_frame,
             text="00:00",
             font=("Segoe UI", 24, "bold")
         )
-        self.components['timer_label'].pack(pady=10)
+        # Timer will be packed after recording controls when recording starts
         
         # Quick actions (appear after recording)
         quick_actions = ttk.Frame(center_frame)
@@ -720,21 +723,38 @@ class WorkflowUI:
             recording: Whether recording is active
             paused: Whether recording is paused
         """
+        logging.info(f"WorkflowUI.set_recording_state called: recording={recording}, paused={paused}")
+        
         main_record_btn = self.components.get('main_record_button')
         pause_btn = self.components.get('pause_button')
         cancel_btn = self.components.get('cancel_button')
+        recording_controls = self.components.get('recording_controls')
+        timer_label = self.components.get('timer_label')
         
         if recording:
             if main_record_btn:
                 main_record_btn.config(text="🛑 Stop Recording", bootstyle="danger")
+            
+            # Make sure recording controls are visible
+            if recording_controls:
+                # Force the recording controls to be visible
+                recording_controls.pack(pady=20, fill=X)
+                logging.info("Recording controls frame packed")
+                
             if pause_btn:
                 pause_btn.config(state=tk.NORMAL)
+                pause_btn.pack(side=LEFT, padx=5)  # Ensure it's packed
                 if paused:
                     pause_btn.config(text="▶️ Resume", bootstyle="success")
                 else:
                     pause_btn.config(text="⏸️ Pause", bootstyle="warning")
             if cancel_btn:
                 cancel_btn.config(state=tk.NORMAL)
+                cancel_btn.pack(side=LEFT, padx=5)  # Ensure it's packed
+            
+            # Show timer when recording
+            if timer_label:
+                timer_label.pack(pady=10)
         else:
             # Not recording
             if main_record_btn:
@@ -743,6 +763,12 @@ class WorkflowUI:
                 pause_btn.config(state=tk.DISABLED, text="⏸️ Pause", bootstyle="warning")
             if cancel_btn:
                 cancel_btn.config(state=tk.DISABLED)
+            
+            # Hide recording controls and timer when not recording
+            if recording_controls:
+                recording_controls.pack_forget()
+            if timer_label:
+                timer_label.pack_forget()
     
     def update_recording_progress(self, progress_text: str):
         """Update recording progress/status text.
