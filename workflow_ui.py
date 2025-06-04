@@ -1121,9 +1121,9 @@ class WorkflowUI:
             if self.peak_hold_timer <= 0:
                 self.peak_level *= 0.95  # Gradual peak decay
         
-        # Debug logging (remove later)
-        if amplitude > 0.1:  # Only log significant levels
-            logging.debug(f"Audio level: {amplitude:.3f}, Peak: {self.peak_level:.3f}")
+        # Debug logging (commented out for production)
+        # if amplitude > 0.001:  # Log any meaningful audio activity
+        #     logging.info(f"Audio level: {amplitude:.3f}, Peak: {self.peak_level:.3f}")
         
         # Add new amplitude to wave data
         self.wave_data.append(amplitude)
