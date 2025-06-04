@@ -126,9 +126,9 @@ class WorkflowUI:
         record_button_frame = ttk.Frame(center_frame)
         record_button_frame.pack(pady=20)
         
-        # Status indicator (animated when recording)
+        # Status indicator (animated when recording) - reduced spacing
         status_frame = ttk.Frame(record_button_frame)
-        status_frame.pack(pady=(0, 10))
+        status_frame.pack(pady=(0, 5))  # Reduced from 10 to 5
         
         self.status_indicator = ttk.Label(
             status_frame,
@@ -1070,12 +1070,33 @@ class WorkflowUI:
             if canvas_width <= 1:  # Canvas not yet rendered
                 canvas_width = 800  # Default width
             self.wave_canvas.config(width=canvas_width)
+        
+        # Initialize level meter
+        if hasattr(self, 'level_canvas') and self.level_canvas:
+            self.level_canvas.delete("all")
+            self.level_canvas.update_idletasks()
+            # Reset level tracking
+            self.current_level = 0.0
+            self.peak_level = 0.0
+            self.peak_hold_timer = 0
     
     def _clear_wave_display(self):
         """Clear the voice wave display."""
         if self.wave_canvas:
             self.wave_canvas.delete("all")
             self.wave_data = []
+        
+        # Clear level meter
+        if hasattr(self, 'level_canvas') and self.level_canvas:
+            self.level_canvas.delete("all")
+            # Reset level tracking
+            self.current_level = 0.0
+            self.peak_level = 0.0
+            self.peak_hold_timer = 0
+            
+            # Update peak label
+            if hasattr(self, 'peak_label') and self.peak_label:
+                self.peak_label.config(text="Peak: 0%")
     
     def update_voice_wave(self, audio_data: np.ndarray):
         """Update the voice wave visualization with new audio data.
@@ -1099,6 +1120,10 @@ class WorkflowUI:
             self.peak_hold_timer -= 1
             if self.peak_hold_timer <= 0:
                 self.peak_level *= 0.95  # Gradual peak decay
+        
+        # Debug logging (remove later)
+        if amplitude > 0.1:  # Only log significant levels
+            logging.debug(f"Audio level: {amplitude:.3f}, Peak: {self.peak_level:.3f}")
         
         # Add new amplitude to wave data
         self.wave_data.append(amplitude)
@@ -1179,27 +1204,33 @@ class WorkflowUI:
             return
             
         try:
-            # Clear canvas
-            self.level_canvas.delete("all")
-            
-            # Get canvas dimensions
+            # Force canvas update and get dimensions
+            self.level_canvas.update_idletasks()
             canvas_width = self.level_canvas.winfo_width()
             canvas_height = self.level_canvas.winfo_height()
             
-            if canvas_width <= 1 or canvas_height <= 1:
-                return
+            # Use minimum dimensions if canvas isn't ready
+            if canvas_width <= 1:
+                canvas_width = 200  # Fallback width
+            if canvas_height <= 1:
+                canvas_height = 20  # Fallback height
+            
+            # Clear canvas
+            self.level_canvas.delete("all")
             
             # Draw background
             self.level_canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#2c3e50", outline="")
             
             # Draw current level bar
-            level_width = int(self.current_level * canvas_width)
-            if level_width > 0:
+            level_width = max(1, int(self.current_level * canvas_width))
+            if self.current_level > 0.01:  # Only draw if there's meaningful level
                 # Color based on level
                 if self.current_level > 0.8:
                     level_color = "#e74c3c"  # Red
                 elif self.current_level > 0.6:
                     level_color = "#f39c12"  # Orange
+                elif self.current_level > 0.3:
+                    level_color = "#f1c40f"  # Yellow
                 else:
                     level_color = "#27ae60"  # Green
                 
@@ -1207,13 +1238,14 @@ class WorkflowUI:
             
             # Draw peak indicator
             peak_x = int(self.peak_level * canvas_width)
-            if peak_x > 0:
+            if peak_x > 2:  # Only draw if peak is meaningful
                 self.level_canvas.create_line(peak_x, 0, peak_x, canvas_height, fill="#ffffff", width=2)
             
             # Update peak label
             if hasattr(self, 'peak_label') and self.peak_label:
                 peak_percent = int(self.peak_level * 100)
-                self.peak_label.config(text=f"Peak: {peak_percent}%")
+                current_percent = int(self.current_level * 100)
+                self.peak_label.config(text=f"Peak: {peak_percent}% | Now: {current_percent}%")
                 
         except Exception as e:
             logging.error(f"Error updating level meter: {e}")
