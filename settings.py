@@ -163,6 +163,7 @@ Follow up:
     "ai_provider": DEFAULT_AI_PROVIDER,
     "stt_provider": DEFAULT_STT_PROVIDER,
     "theme": DEFAULT_THEME,
+    "ui_mode": DEFAULT_UI_MODE,
     "window_width": 0,  # Will be set based on user preference, 0 means use default calculation
     "window_height": 0  # Will be set based on user preference, 0 means use default calculation
 }
