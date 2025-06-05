@@ -137,6 +137,17 @@ class ChatUI:
         self.suggestions_frame = ttk.Frame(bottom_row)
         self.suggestions_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
+        # Manage suggestions button
+        self.manage_btn = ttk.Button(
+            bottom_row,
+            text="⚙️",
+            command=self._show_suggestions_manager,
+            width=3,
+            bootstyle="secondary-outline"
+        )
+        self.manage_btn.pack(side=tk.LEFT, padx=(5, 0))
+        ToolTip(self.manage_btn, "Manage custom suggestions")
+        
         # Bind events
         self._bind_events()
         
@@ -279,21 +290,70 @@ class ChatUI:
         for widget in self.suggestions_frame.winfo_children():
             widget.destroy()
             
-        # Add suggestion buttons
-        for i, suggestion in enumerate(suggestions[:3]):  # Limit to 3 suggestions
+        if not suggestions:
+            return
+            
+        # Create scrollable frame if we have many suggestions
+        if len(suggestions) > 6:
+            # Create canvas and scrollbar for horizontal scrolling
+            canvas = tk.Canvas(self.suggestions_frame, height=35, highlightthickness=0)
+            scrollbar = ttk.Scrollbar(self.suggestions_frame, orient="horizontal", command=canvas.xview)
+            scrollable_frame = ttk.Frame(canvas)
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(xscrollcommand=scrollbar.set)
+            
+            canvas.pack(side="top", fill="x", expand=True)
+            scrollbar.pack(side="bottom", fill="x")
+            
+            parent_frame = scrollable_frame
+        else:
+            parent_frame = self.suggestions_frame
+            
+        # Add suggestion buttons (limit to 6 to avoid UI clutter)
+        for i, suggestion in enumerate(suggestions[:6]):
+            # Truncate long suggestions for button display
+            display_text = suggestion[:30] + "..." if len(suggestion) > 30 else suggestion
+            
             btn = ttk.Button(
-                self.suggestions_frame,
-                text=suggestion,
+                parent_frame,
+                text=display_text,
                 command=lambda s=suggestion: self.use_suggestion(s),
                 bootstyle="info-link"
             )
             btn.pack(side=tk.LEFT, padx=(0, 5))
+            
+            # Add tooltip for full text if truncated
+            if len(suggestion) > 30:
+                ToolTip(btn, suggestion)
             
     def use_suggestion(self, suggestion: str):
         """Use a suggestion as input"""
         self.input_text.delete("1.0", tk.END)
         self.input_text.insert("1.0", suggestion)
         self.input_text.focus_set()
+        
+    def _show_suggestions_manager(self):
+        """Show the custom suggestions management dialog"""
+        try:
+            from dialogs import show_custom_suggestions_dialog
+            # Get the top-level window
+            top_level = self.parent_frame.winfo_toplevel()
+            show_custom_suggestions_dialog(top_level)
+            
+            # Refresh suggestions after dialog closes
+            if hasattr(self.app, '_update_chat_suggestions'):
+                self.app._update_chat_suggestions()
+        except Exception as e:
+            import logging
+            logging.error(f"Error showing suggestions manager: {e}")
+            import tkinter.messagebox
+            tkinter.messagebox.showerror("Error", f"Failed to open suggestions manager: {str(e)}")
         
     def send_message(self):
         """Send the current message"""

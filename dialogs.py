@@ -1504,6 +1504,226 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
         
     dialog.protocol("WM_DELETE_WINDOW", on_close)
 
+def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
+    """Show dialog to manage custom chat suggestions."""
+    from settings import SETTINGS, save_settings
+    
+    # Create dialog
+    dialog = tk.Toplevel(parent)
+    dialog.title("Manage Custom Chat Suggestions")
+    dialog.geometry("700x600")
+    dialog.resizable(True, True)
+    dialog.transient(parent)
+    dialog.grab_set()
+    
+    # Center the dialog
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+    dialog.geometry(f"+{x}+{y}")
+    
+    # Main frame with padding
+    main_frame = ttk.Frame(dialog, padding=15)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Title and description
+    title_frame = ttk.Frame(main_frame)
+    title_frame.pack(fill=tk.X, pady=(0, 15))
+    
+    ttk.Label(title_frame, text="Custom Chat Suggestions", font=("Arial", 14, "bold")).pack(anchor="w")
+    ttk.Label(title_frame, text="Create custom suggestions for different contexts. These will appear alongside built-in suggestions.", 
+              font=("Arial", 10), foreground="gray").pack(anchor="w", pady=(5, 0))
+    
+    # Create notebook for different contexts
+    notebook = ttk.Notebook(main_frame)
+    notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+    
+    # Store references to suggestion lists
+    suggestion_vars = {}
+    
+    def create_suggestion_tab(tab_name: str, context_key: str):
+        """Create a tab for managing suggestions in a specific context."""
+        tab_frame = ttk.Frame(notebook)
+        notebook.add(tab_frame, text=tab_name)
+        
+        # Context-specific suggestions (with_content vs without_content)
+        if context_key != "global":
+            # With content section
+            with_frame = ttk.LabelFrame(tab_frame, text="When content exists", padding=10)
+            with_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            with_vars = create_suggestion_manager(with_frame, context_key, "with_content")
+            suggestion_vars[f"{context_key}_with_content"] = with_vars
+            
+            # Without content section
+            without_frame = ttk.LabelFrame(tab_frame, text="When no content exists", padding=10)
+            without_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            without_vars = create_suggestion_manager(without_frame, context_key, "without_content")
+            suggestion_vars[f"{context_key}_without_content"] = without_vars
+        else:
+            # Global suggestions (always shown)
+            global_vars = create_suggestion_manager(tab_frame, context_key, None)
+            suggestion_vars["global"] = global_vars
+    
+    def create_suggestion_manager(parent_frame: ttk.Frame, context: str, content_state: str):
+        """Create suggestion management interface for a specific context."""
+        # Get current suggestions
+        if context == "global":
+            current_suggestions = SETTINGS.get("custom_chat_suggestions", {}).get("global", [])
+        else:
+            current_suggestions = SETTINGS.get("custom_chat_suggestions", {}).get(context, {}).get(content_state, [])
+        
+        # Variables to track suggestions
+        suggestion_vars = []
+        
+        # Scrollable frame for suggestions
+        canvas = tk.Canvas(parent_frame, height=150)
+        scrollbar = ttk.Scrollbar(parent_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Function to add a suggestion entry
+        def add_suggestion_entry(text=""):
+            frame = ttk.Frame(scrollable_frame)
+            frame.pack(fill=tk.X, pady=2)
+            
+            var = tk.StringVar(value=text)
+            entry = ttk.Entry(frame, textvariable=var, width=50)
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+            
+            def remove_entry():
+                suggestion_vars.remove((frame, var))
+                frame.destroy()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            
+            remove_btn = ttk.Button(frame, text="×", width=3, command=remove_entry)
+            remove_btn.pack(side=tk.RIGHT)
+            
+            suggestion_vars.append((frame, var))
+            
+            # Update scroll region
+            canvas.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            
+            return var
+        
+        # Add existing suggestions
+        for suggestion in current_suggestions:
+            add_suggestion_entry(suggestion)
+        
+        # Add button frame
+        button_frame = ttk.Frame(parent_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        def add_new_suggestion():
+            var = add_suggestion_entry()
+            # Focus the new entry
+            for frame, entry_var in suggestion_vars:
+                if entry_var == var:
+                    for widget in frame.winfo_children():
+                        if isinstance(widget, ttk.Entry):
+                            widget.focus_set()
+                            break
+                    break
+        
+        ttk.Button(button_frame, text="+ Add Suggestion", command=add_new_suggestion).pack(side=tk.LEFT)
+        
+        def clear_all():
+            if messagebox.askyesno("Clear All", "Are you sure you want to remove all suggestions?", parent=dialog):
+                for frame, _ in suggestion_vars.copy():
+                    frame.destroy()
+                suggestion_vars.clear()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        ttk.Button(button_frame, text="Clear All", command=clear_all).pack(side=tk.LEFT, padx=(10, 0))
+        
+        return suggestion_vars
+    
+    # Create tabs
+    create_suggestion_tab("Global", "global")
+    create_suggestion_tab("Transcript", "transcript")
+    create_suggestion_tab("SOAP Note", "soap")
+    create_suggestion_tab("Referral", "referral")
+    create_suggestion_tab("Letter", "letter")
+    
+    # Bottom buttons
+    button_frame = ttk.Frame(main_frame)
+    button_frame.pack(fill=tk.X, pady=(10, 0))
+    
+    def save_suggestions():
+        """Save all custom suggestions to settings."""
+        try:
+            custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
+            
+            # Update global suggestions
+            if "global" in suggestion_vars:
+                global_suggestions = []
+                for _, var in suggestion_vars["global"]:
+                    text = var.get().strip()
+                    if text:
+                        global_suggestions.append(text)
+                custom_suggestions["global"] = global_suggestions
+            
+            # Update context-specific suggestions
+            for context in ["transcript", "soap", "referral", "letter"]:
+                if context not in custom_suggestions:
+                    custom_suggestions[context] = {"with_content": [], "without_content": []}
+                
+                # With content
+                key = f"{context}_with_content"
+                if key in suggestion_vars:
+                    with_suggestions = []
+                    for _, var in suggestion_vars[key]:
+                        text = var.get().strip()
+                        if text:
+                            with_suggestions.append(text)
+                    custom_suggestions[context]["with_content"] = with_suggestions
+                
+                # Without content
+                key = f"{context}_without_content"
+                if key in suggestion_vars:
+                    without_suggestions = []
+                    for _, var in suggestion_vars[key]:
+                        text = var.get().strip()
+                        if text:
+                            without_suggestions.append(text)
+                    custom_suggestions[context]["without_content"] = without_suggestions
+            
+            # Save to settings
+            SETTINGS["custom_chat_suggestions"] = custom_suggestions
+            save_settings(SETTINGS)
+            
+            messagebox.showinfo("Success", "Custom suggestions saved successfully!", parent=dialog)
+            dialog.destroy()
+            
+        except Exception as e:
+            logging.error(f"Error saving custom suggestions: {e}")
+            messagebox.showerror("Error", f"Failed to save suggestions: {str(e)}", parent=dialog)
+    
+    def cancel():
+        dialog.destroy()
+    
+    # Buttons
+    ttk.Button(button_frame, text="Save", command=save_suggestions, bootstyle="success").pack(side=tk.RIGHT, padx=(5, 0))
+    ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.RIGHT)
+    
+    # Handle window close
+    dialog.protocol("WM_DELETE_WINDOW", cancel)
+    
+    # Wait for dialog
+    dialog.wait_window()
+
 def test_ollama_connection(_: tk.Tk, ollama_url: str = None) -> bool:
     """
     Test the connection to Ollama server and show a message with the results.

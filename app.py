@@ -1586,61 +1586,95 @@ class MedicalDictationApp(ttk.Window):
         
         # Get current content
         content = self.active_text_widget.get("1.0", tk.END).strip()
+        has_content = bool(content)
         
+        # Get custom suggestions from settings
+        from settings import SETTINGS
+        custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
+        
+        # Add global custom suggestions first
+        global_custom = custom_suggestions.get("global", [])
+        suggestions.extend(global_custom)
+        
+        # Determine context and content state
+        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter"}
+        context = context_map.get(current_tab, "transcript")
+        content_state = "with_content" if has_content else "without_content"
+        
+        # Add context-specific custom suggestions
+        context_custom = custom_suggestions.get(context, {}).get(content_state, [])
+        suggestions.extend(context_custom)
+        
+        # Add built-in suggestions as fallback/additional options
+        builtin_suggestions = self._get_builtin_suggestions(current_tab, has_content)
+        suggestions.extend(builtin_suggestions)
+        
+        # Remove duplicates while preserving order (custom suggestions first)
+        seen = set()
+        unique_suggestions = []
+        for suggestion in suggestions:
+            if suggestion not in seen:
+                seen.add(suggestion)
+                unique_suggestions.append(suggestion)
+        
+        # Limit to max 6 suggestions to avoid UI clutter
+        self.chat_ui.set_suggestions(unique_suggestions[:6])
+    
+    def _get_builtin_suggestions(self, current_tab: int, has_content: bool):
+        """Get built-in suggestions for the given context."""
         if current_tab == 0:  # Transcript
-            if content:
-                suggestions = [
+            if has_content:
+                return [
                     "Summarize key points",
                     "Extract symptoms mentioned",
                     "Identify medications"
                 ]
             else:
-                suggestions = [
+                return [
                     "Analyze uploaded audio",
                     "Extract medical terms",
                     "Create summary"
                 ]
         elif current_tab == 1:  # SOAP
-            if content:
-                suggestions = [
+            if has_content:
+                return [
                     "Improve grammar and clarity",
                     "Add more detail to assessment",
                     "Suggest differential diagnoses"
                 ]
             else:
-                suggestions = [
+                return [
                     "Create SOAP from transcript",
                     "Generate assessment",
                     "Suggest treatment plan"
                 ]
         elif current_tab == 2:  # Referral
-            if content:
-                suggestions = [
+            if has_content:
+                return [
                     "Make more formal",
                     "Add urgency indicators",
                     "Include relevant history"
                 ]
             else:
-                suggestions = [
+                return [
                     "Generate referral letter",
                     "Create specialist request",
                     "Draft consultation note"
                 ]
         elif current_tab == 3:  # Letter
-            if content:
-                suggestions = [
+            if has_content:
+                return [
                     "Improve tone and clarity",
                     "Make more empathetic",
                     "Simplify language"
                 ]
             else:
-                suggestions = [
+                return [
                     "Draft patient letter",
                     "Create discharge summary",
                     "Write follow-up instructions"
                 ]
-        
-        self.chat_ui.set_suggestions(suggestions)
+        return []
     
     def _focus_chat_input(self):
         """Focus the chat input field."""

@@ -172,14 +172,77 @@ Follow up:
         "show_suggestions": True,
         "auto_apply_changes": True,  # Whether to auto-apply AI suggestions to documents
         "temperature": 0.3  # AI temperature for chat responses
+    },
+    "custom_chat_suggestions": {
+        "global": [
+            "Explain in simple terms",
+            "What are the next steps?",
+            "Check for errors"
+        ],  # Always available suggestions
+        "transcript": {
+            "with_content": [
+                "Highlight key medical findings",
+                "Extract patient concerns"
+            ],
+            "without_content": [
+                "Upload and transcribe audio file",
+                "Paste medical conversation"
+            ]
+        },
+        "soap": {
+            "with_content": [
+                "Review for completeness",
+                "Add ICD-10 codes"
+            ],
+            "without_content": [
+                "Create SOAP from transcript",
+                "Generate structured note"
+            ]
+        },
+        "referral": {
+            "with_content": [
+                "Check urgency level",
+                "Verify specialist info"
+            ],
+            "without_content": [
+                "Draft specialist referral",
+                "Create consultation request"
+            ]
+        },
+        "letter": {
+            "with_content": [
+                "Make patient-friendly",
+                "Check medical accuracy"
+            ],
+            "without_content": [
+                "Write patient explanation",
+                "Create follow-up letter"
+            ]
+        }
     }
 }
+
+def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
+    """Recursively merge settings with defaults, ensuring all default keys exist."""
+    merged = settings.copy()
+    
+    for key, default_value in defaults.items():
+        if key not in merged:
+            # Key is missing, add it from defaults
+            merged[key] = default_value
+        elif isinstance(default_value, dict) and isinstance(merged.get(key), dict):
+            # Both are dicts, merge recursively
+            merged[key] = merge_settings_with_defaults(merged[key], default_value)
+    
+    return merged
 
 def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded_settings = json.load(f)
+                # Merge with defaults to ensure all keys exist
+                return merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
         except Exception as e:
             logging.error("Error loading settings", exc_info=True)
     return _DEFAULT_SETTINGS.copy()
@@ -194,6 +257,9 @@ def save_settings(settings: dict) -> None:
 # Load settings on module import
 SETTINGS = load_settings()
 
+# Save settings to ensure any newly added default keys are persisted
+save_settings(SETTINGS)
+
 # Initialize new configuration system
 _config = get_config()
 _migrator = get_migrator()
@@ -204,3 +270,9 @@ if SETTINGS != _DEFAULT_SETTINGS:
 
 # Override SETTINGS with migrated values for backward compatibility
 SETTINGS = _migrator.get_legacy_format()
+
+# Preserve custom_chat_suggestions from original loaded settings
+if "custom_chat_suggestions" not in SETTINGS:
+    original_settings = load_settings()
+    if "custom_chat_suggestions" in original_settings:
+        SETTINGS["custom_chat_suggestions"] = original_settings["custom_chat_suggestions"]
