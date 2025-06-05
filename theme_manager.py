@@ -72,6 +72,7 @@ class ThemeManager:
         self._update_notebook_style(is_dark)
         self._update_theme_button(is_dark, new_theme)
         self._update_refresh_buttons(is_dark)
+        self._update_chat_ui(is_dark)
         
         # Update shortcut label in status bar to show theme toggle shortcut
         self.app.status_manager.info("Theme toggle shortcut: Alt+T")
@@ -81,10 +82,20 @@ class ThemeManager:
         text_bg = "#212529" if is_dark else "#ffffff"
         text_fg = "#f8f9fa" if is_dark else "#212529"
         
-        # Update all text widgets with new colors
+        # Update all main text widgets with new colors
         text_widgets = [self.app.transcript_text, self.app.soap_text, self.app.referral_text]
+        
+        # Add letter text widget if it exists
+        if hasattr(self.app, 'letter_text') and self.app.letter_text:
+            text_widgets.append(self.app.letter_text)
+            
+        # Add context text widget if it exists
+        if hasattr(self.app, 'context_text') and self.app.context_text:
+            text_widgets.append(self.app.context_text)
+        
         for widget in text_widgets:
-            widget.config(bg=text_bg, fg=text_fg, insertbackground=text_fg)
+            if widget:  # Check widget exists
+                widget.config(bg=text_bg, fg=text_fg, insertbackground=text_fg)
     
     def _update_frames_and_controls(self, is_dark: bool):
         """Update control panel backgrounds and button frames."""
@@ -194,3 +205,12 @@ class ThemeManager:
         # Search children for ttk widgets
         for child in widget.winfo_children():
             self._update_refresh_button_bootstyle(child, style)
+            
+    def _update_chat_ui(self, is_dark: bool):
+        """Update chat UI components for theme changes."""
+        if hasattr(self.app, 'chat_ui') and self.app.chat_ui:
+            try:
+                self.app.chat_ui.update_theme()
+                logging.debug(f"Updated chat UI for {'dark' if is_dark else 'light'} theme")
+            except Exception as e:
+                logging.error(f"Error updating chat UI theme: {e}")

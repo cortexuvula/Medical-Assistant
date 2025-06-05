@@ -20,6 +20,8 @@ from dialogs import show_api_keys_dialog
 from audio import AudioHandler
 from text_processor import TextProcessor
 from workflow_ui import WorkflowUI
+from chat_ui import ChatUI
+from chat_processor import ChatProcessor
 from status_manager import StatusManager
 from recording_manager import RecordingManager
 from ai_processor import AIProcessor
@@ -237,6 +239,7 @@ class AppInitializer:
         self.app.soap_processor = SOAPProcessor(self.app)
         self.app.soap_audio_processor = SOAPAudioProcessor(self.app)
         self.app.file_processor = FileProcessor(self.app)
+        self.app.chat_processor = ChatProcessor(self.app)
         
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""

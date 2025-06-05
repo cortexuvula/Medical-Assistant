@@ -242,34 +242,6 @@ class WorkflowUI:
         
         self.components['quick_actions'] = quick_actions
         
-        # Keyboard shortcuts panel
-        shortcuts_frame = ttk.LabelFrame(record_frame, text="Keyboard Shortcuts", padding=10)
-        shortcuts_frame.pack(side=BOTTOM, fill=X, padx=20, pady=(0, 10))
-        
-        shortcuts_grid = ttk.Frame(shortcuts_frame)
-        shortcuts_grid.pack(fill=X)
-        
-        shortcuts = [
-            ("Ctrl+Shift+S", "Start/Stop Recording"),
-            ("Space", "Pause/Resume"),
-            ("Esc", "Cancel Recording"),
-            ("Ctrl+C", "Copy Text"),
-            ("Ctrl+S", "Save"),
-            ("F1", "Show Help")
-        ]
-        
-        for i, (key, desc) in enumerate(shortcuts):
-            row = i // 2
-            col = i % 2
-            
-            shortcut_frame = ttk.Frame(shortcuts_grid)
-            shortcut_frame.grid(row=row, column=col, sticky="ew", padx=5, pady=2)
-            
-            ttk.Label(shortcut_frame, text=key, font=("Segoe UI", 8, "bold")).pack(side=LEFT)
-            ttk.Label(shortcut_frame, text=" - " + desc, font=("Segoe UI", 8)).pack(side=LEFT)
-        
-        shortcuts_grid.columnconfigure(0, weight=1)
-        shortcuts_grid.columnconfigure(1, weight=1)
         
         # Initialize UI state - hide controls initially
         self._initialize_recording_ui_state()

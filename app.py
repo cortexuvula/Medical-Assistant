@@ -48,6 +48,8 @@ from app_initializer import AppInitializer
 from ffmpeg_utils import configure_pydub
 from menu_manager import MenuManager
 from soap_audio_processor import SOAPAudioProcessor
+from chat_processor import ChatProcessor
+from chat_ui import ChatUI
 
 # Modify the main function to only create the app if check_api_keys returns True
 def main() -> None:
@@ -308,7 +310,17 @@ class MedicalDictationApp(ttk.Window):
         
         # Create the text notebook (for transcripts, SOAP, etc.)
         self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, _ = self.ui.create_notebook()
-        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(5, 0))
+        
+        # Create chat interface below the notebook
+        self.chat_ui = ChatUI(left_frame, self)
+        self.chat_ui.set_send_callback(self._handle_chat_message)
+        
+        # Apply initial theme to chat UI
+        self.after(50, lambda: self.chat_ui.update_theme())
+        
+        # Set initial chat suggestions
+        self.after(100, self._update_chat_suggestions)
         
         # Right side - context panel
         self.context_panel = self.ui.create_context_panel()
@@ -382,6 +394,7 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-y>", lambda _: self.redo_text())
         self.bind("<Alt-t>", lambda _: self.toggle_theme())
         self.bind("<F1>", lambda _: self.show_shortcuts())
+        self.bind("<Control-slash>", lambda _: self._focus_chat_input())
         
         # Recording shortcuts - use bind_all for global access
         self.bind_all("<F5>", lambda _: self.toggle_soap_recording())
@@ -1227,6 +1240,11 @@ class MedicalDictationApp(ttk.Window):
             self.active_text_widget = self.context_text
         else:
             self.active_text_widget = self.transcript_text
+            
+        # Update chat UI context indicator
+        if hasattr(self, 'chat_ui') and self.chat_ui:
+            self.chat_ui.update_context_indicator()
+            self._update_chat_suggestions()
 
     def schedule_status_update(self, delay_ms: int, message: str, status_type: str = "info") -> None:
         """Schedule a status update that won't be automatically cleared after timeout"""
@@ -1536,6 +1554,99 @@ class MedicalDictationApp(ttk.Window):
         # No status message needed for this automatic action
         self.resize_timer = None  # Clear the timer reference
     
+    def _handle_chat_message(self, message: str):
+        """Handle chat message from the chat UI."""
+        logging.info(f"Chat message received: {message}")
+        
+        if not hasattr(self, 'chat_processor') or not self.chat_processor:
+            self.status_manager.error("Chat processor not available")
+            if hasattr(self, 'chat_ui') and self.chat_ui:
+                self.chat_ui.set_processing(False)
+            return
+            
+        # Update status
+        self.status_manager.info("Processing your request...")
+        
+        # Process the message
+        def on_complete():
+            """Called when chat processing is complete."""
+            if hasattr(self, 'chat_ui') and self.chat_ui:
+                self.chat_ui.set_processing(False)
+            self.status_manager.success("Chat response ready")
+            
+        self.chat_processor.process_message(message, on_complete)
+    
+    def _update_chat_suggestions(self):
+        """Update chat suggestions based on current tab and content."""
+        if not hasattr(self, 'chat_ui') or not self.chat_ui:
+            return
+            
+        current_tab = self.notebook.index(self.notebook.select())
+        suggestions = []
+        
+        # Get current content
+        content = self.active_text_widget.get("1.0", tk.END).strip()
+        
+        if current_tab == 0:  # Transcript
+            if content:
+                suggestions = [
+                    "Summarize key points",
+                    "Extract symptoms mentioned",
+                    "Identify medications"
+                ]
+            else:
+                suggestions = [
+                    "Analyze uploaded audio",
+                    "Extract medical terms",
+                    "Create summary"
+                ]
+        elif current_tab == 1:  # SOAP
+            if content:
+                suggestions = [
+                    "Improve grammar and clarity",
+                    "Add more detail to assessment",
+                    "Suggest differential diagnoses"
+                ]
+            else:
+                suggestions = [
+                    "Create SOAP from transcript",
+                    "Generate assessment",
+                    "Suggest treatment plan"
+                ]
+        elif current_tab == 2:  # Referral
+            if content:
+                suggestions = [
+                    "Make more formal",
+                    "Add urgency indicators",
+                    "Include relevant history"
+                ]
+            else:
+                suggestions = [
+                    "Generate referral letter",
+                    "Create specialist request",
+                    "Draft consultation note"
+                ]
+        elif current_tab == 3:  # Letter
+            if content:
+                suggestions = [
+                    "Improve tone and clarity",
+                    "Make more empathetic",
+                    "Simplify language"
+                ]
+            else:
+                suggestions = [
+                    "Draft patient letter",
+                    "Create discharge summary",
+                    "Write follow-up instructions"
+                ]
+        
+        self.chat_ui.set_suggestions(suggestions)
+    
+    def _focus_chat_input(self):
+        """Focus the chat input field."""
+        if hasattr(self, 'chat_ui') and self.chat_ui:
+            self.chat_ui.focus_input()
+
     def play_recording_sound(self, start=True):
         """Play a sound to indicate recording start/stop."""
         # Sound disabled - just log the event

@@ -163,7 +163,16 @@ Follow up:
     "theme": DEFAULT_THEME,
     "custom_context_templates": {},  # User-defined context templates
     "window_width": 0,  # Will be set based on user preference, 0 means use default calculation
-    "window_height": 0  # Will be set based on user preference, 0 means use default calculation
+    "window_height": 0,  # Will be set based on user preference, 0 means use default calculation
+    "chat_interface": {
+        "enabled": True,
+        "max_input_length": 2000,
+        "max_context_length": 8000,
+        "max_history_items": 10,
+        "show_suggestions": True,
+        "auto_apply_changes": True,  # Whether to auto-apply AI suggestions to documents
+        "temperature": 0.3  # AI temperature for chat responses
+    }
 }
 
 def load_settings() -> dict:

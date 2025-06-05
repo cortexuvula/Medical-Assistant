@@ -1050,48 +1050,121 @@ def show_shortcuts_dialog(parent: tk.Tk) -> None:
     """Show keyboard shortcuts dialog."""
     dialog = tk.Toplevel(parent)
     dialog.title("Keyboard Shortcuts")
-    dialog.geometry("800x400")
     dialog.transient(parent)
-    dialog.grab_set()
+    dialog.resizable(True, True)  # Allow resizing
+    dialog.minsize(700, 400)  # Set minimum size
+    
+    # Set initial size and position BEFORE creating content
+    screen_width = dialog.winfo_screenwidth()
+    screen_height = dialog.winfo_screenheight()
+    dialog_width = 900
+    dialog_height = 600  # Increased height even more
+    
+    # Calculate center position
+    x = (screen_width // 2) - (dialog_width // 2)
+    y = (screen_height // 2) - (dialog_height // 2)
+    
+    # Ensure dialog is not positioned off screen
+    x = max(50, min(x, screen_width - dialog_width - 50))
+    y = max(50, min(y, screen_height - dialog_height - 50))
+    
+    dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+    
+    # Configure dialog to be on top initially
+    dialog.attributes('-topmost', True)
+    dialog.focus_force()
+    
+    # Allow window manager to handle the dialog properly
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
     
     # Create frame for keyboard shortcuts
     kb_frame = ttk.Frame(dialog)
-    kb_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    kb_frame.pack(expand=True, fill="both", padx=10, pady=(10, 5))
     
-    kb_tree = ttk.Treeview(kb_frame, columns=("Command", "Description"), show="headings")
+    # Create treeview with scrollbar
+    tree_frame = ttk.Frame(kb_frame)
+    tree_frame.pack(expand=True, fill="both")
+    
+    kb_tree = ttk.Treeview(tree_frame, columns=("Command", "Description"), show="headings", height=20)
     kb_tree.heading("Command", text="Command")
     kb_tree.heading("Description", text="Description")
-    kb_tree.column("Command", width=150, anchor="w")
-    kb_tree.column("Description", width=500, anchor="w")
-    kb_tree.pack(expand=True, fill="both", padx=10, pady=10)
+    kb_tree.column("Command", width=200, anchor="w")
+    kb_tree.column("Description", width=650, anchor="w")
     
-    shortcuts = {
-        "Ctrl+N": "New session",
-        "Ctrl+S": "Save text and audio", 
-        "Ctrl+C": "Copy text to clipboard",
-        "Ctrl+L": "Load audio file",
-        "Ctrl+Z": "Undo text changes",
-        "Ctrl+Y": "Redo text changes",
-        "Ctrl+Shift+S": "Start/Stop recording",
-        "F5": "Start/Stop recording",
-        "Space": "Pause/Resume recording (when recording)",
-        "Esc": "Cancel recording",
-        "F1": "Show this help dialog",
-        "Alt+T": "Toggle theme (Light/Dark)"
-    }
+    # Add scrollbar
+    scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=kb_tree.yview)
+    kb_tree.configure(yscrollcommand=scrollbar.set)
     
-    for cmd, desc in shortcuts.items():
-        kb_tree.insert("", tk.END, values=(cmd, desc))
+    # Pack treeview and scrollbar
+    kb_tree.pack(side="left", expand=True, fill="both")
+    scrollbar.pack(side="right", fill="y")
     
-    ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+    # Organized shortcuts by category
+    shortcuts_categories = [
+        ("File Operations", [
+            ("Ctrl+N", "New session"),
+            ("Ctrl+S", "Save text and audio"),
+            ("Ctrl+L", "Load audio file"),
+            ("Ctrl+C", "Copy text to clipboard")
+        ]),
+        ("Text Editing", [
+            ("Ctrl+Z", "Undo text changes"),
+            ("Ctrl+Y", "Redo text changes")
+        ]),
+        ("Recording Controls", [
+            ("F5", "Start/Stop recording"),
+            ("Ctrl+Shift+S", "Start/Stop recording"),
+            ("Space", "Pause/Resume recording (when recording)"),
+            ("Esc", "Cancel recording")
+        ]),
+        ("Chat & Interface", [
+            ("Ctrl+/", "Focus chat input"),
+            ("Alt+T", "Toggle theme (Light/Dark)"),
+            ("F1", "Show this help dialog")
+        ])
+    ]
     
-    # Center the dialog on screen
+    # Add shortcuts with categories
+    for category, shortcuts in shortcuts_categories:
+        # Add category header
+        kb_tree.insert("", tk.END, values=(f"━━ {category} ━━", ""), tags=("category",))
+        
+        # Add shortcuts in category
+        for cmd, desc in shortcuts:
+            kb_tree.insert("", tk.END, values=(cmd, desc))
+        
+        # Add empty line for spacing
+        kb_tree.insert("", tk.END, values=("", ""))
+    
+    # Configure category styling (theme-aware)
+    try:
+        # Try to detect if parent is using a dark theme
+        if hasattr(parent, 'current_theme'):
+            is_dark = parent.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+            category_color = "#6ea8fe" if is_dark else "#0d6efd"
+        else:
+            category_color = "#0d6efd"
+        kb_tree.tag_configure("category", foreground=category_color, font=("Arial", 10, "bold"))
+    except:
+        # Fallback to default blue color
+        kb_tree.tag_configure("category", foreground="#0d6efd", font=("Arial", 10, "bold"))
+    
+    # Button frame at bottom
+    button_frame = ttk.Frame(dialog)
+    button_frame.pack(fill="x", padx=10, pady=10)
+    
+    ttk.Button(button_frame, text="Close", command=dialog.destroy).pack(side="right")
+    
+    # Update and focus on the dialog
     dialog.update_idletasks()
-    width = dialog.winfo_width()
-    height = dialog.winfo_height()
-    x = (dialog.winfo_screenwidth() // 2) - (width // 2)
-    y = (dialog.winfo_screenheight() // 2) - (height // 2)
-    dialog.geometry(f'{width}x{height}+{x}+{y}')
+    dialog.focus_set()
+    
+    # Set modal behavior after dialog is fully created
+    dialog.grab_set()
+    
+    # Bring dialog to front and then allow normal window behavior
+    dialog.lift()
+    dialog.after(500, lambda: dialog.attributes('-topmost', False))  # Remove topmost after the dialog is established
 
 def show_about_dialog(_: tk.Tk) -> None:
     """Show about dialog with app information."""
