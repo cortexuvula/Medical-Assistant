@@ -590,7 +590,7 @@ class WorkflowUI:
         context_text = self.components['context_text'].get("1.0", tk.END).strip()
         
         if not context_text:
-            tk.messagebox.showwarning("No Content", "Please enter some context text before saving as a template.")
+            tkinter.messagebox.showwarning("No Content", "Please enter some context text before saving as a template.")
             return
         
         # Create dialog to get template name
@@ -626,7 +626,7 @@ class WorkflowUI:
         def save_template():
             template_name = name_var.get().strip()
             if not template_name:
-                tk.messagebox.showwarning("Invalid Name", "Please enter a template name.")
+                tkinter.messagebox.showwarning("Invalid Name", "Please enter a template name.")
                 return
             
             # Save to settings
@@ -645,11 +645,11 @@ class WorkflowUI:
                 result["saved"] = True
                 dialog.destroy()
                 
-                tk.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
+                tkinter.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
                 
             except Exception as e:
                 logging.error(f"Error saving context template: {e}")
-                tk.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
+                tkinter.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
         
         def cancel():
             dialog.destroy()
@@ -737,7 +737,7 @@ class WorkflowUI:
     
     def _delete_custom_template(self, template_name: str):
         """Delete a custom template."""
-        result = tk.messagebox.askyesno(
+        result = tkinter.messagebox.askyesno(
             "Delete Template",
             f"Are you sure you want to delete the template '{template_name}'?",
             icon="warning"
@@ -757,11 +757,11 @@ class WorkflowUI:
                     # Refresh template buttons
                     self._refresh_template_buttons()
                     
-                    tk.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
+                    tkinter.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
                     
             except Exception as e:
                 logging.error(f"Error deleting custom template: {e}")
-                tk.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")
+                tkinter.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")
     
     def _clear_context(self):
         """Clear the context text."""

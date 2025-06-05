@@ -1099,9 +1099,14 @@ class MedicalDictationApp(ttk.Window):
             return
             
         # Show confirmation dialog before canceling
+        # Force focus to ensure keyboard shortcuts work
+        self.focus_force()
+        self.update()
+        
         if not messagebox.askyesno("Cancel Recording", 
                                   "Are you sure you want to cancel the current recording?\n\nAll recorded audio will be discarded.",
-                                  icon="warning"):
+                                  icon="warning",
+                                  parent=self):
             return  # User clicked "No", abort cancellation
             
         self.update_status("Cancelling recording...")
