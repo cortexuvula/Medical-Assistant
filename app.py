@@ -532,27 +532,25 @@ class MedicalDictationApp(ttk.Window):
 
     def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
-        SETTINGS["soap_note"] = {
-            "prompt": prompt,
-            "system_message": system_prompt,
-            "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
-            "ollama_model": ollama_model
-        }
+        # Preserve existing temperature settings
+        SETTINGS["soap_note"]["prompt"] = prompt
+        SETTINGS["soap_note"]["system_message"] = system_prompt
+        SETTINGS["soap_note"]["model"] = openai_model
+        SETTINGS["soap_note"]["perplexity_model"] = perplexity_model
+        SETTINGS["soap_note"]["grok_model"] = grok_model
+        SETTINGS["soap_note"]["ollama_model"] = ollama_model
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 
     def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
         from settings import save_settings, SETTINGS
-        SETTINGS["referral"] = {
-            "prompt": prompt,
-            "system_message": system_prompt,
-            "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
-            "ollama_model": ollama_model
-        }
+        # Preserve existing temperature settings
+        SETTINGS["referral"]["prompt"] = prompt
+        SETTINGS["referral"]["system_message"] = system_prompt
+        SETTINGS["referral"]["model"] = openai_model
+        SETTINGS["referral"]["perplexity_model"] = perplexity_model
+        SETTINGS["referral"]["grok_model"] = grok_model
+        SETTINGS["referral"]["ollama_model"] = ollama_model
         save_settings(SETTINGS)
         self.status_manager.success("Referral settings saved successfully")
 

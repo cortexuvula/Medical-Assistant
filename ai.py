@@ -413,7 +413,7 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
 def adjust_text_with_openai(text: str) -> str:
-    model = _DEFAULT_SETTINGS["refine_text"]["model"]  # Default model as fallback
+    model = SETTINGS["refine_text"]["model"]  # Use actual settings, not defaults
     
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
     # Get temperature from settings or use a reasonable default
@@ -421,7 +421,7 @@ def adjust_text_with_openai(text: str) -> str:
     return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, temperature)
 
 def improve_text_with_openai(text: str) -> str:
-    model = _DEFAULT_SETTINGS["improve_text"]["model"]  # Default model as fallback
+    model = SETTINGS["improve_text"]["model"]  # Use actual settings, not defaults
     
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
     # Get temperature from settings or use a reasonable default
@@ -461,7 +461,7 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     
     # We don't need to check the provider here since call_ai will handle it
     # Just pass the model name based on the type of note we're creating
-    model = _DEFAULT_SETTINGS["soap_note"]["model"]  # Default model as fallback
+    model = SETTINGS["soap_note"]["model"]  # Use actual settings, not defaults
     
     # Get current time and date in the specified format
     current_datetime = datetime.now()
@@ -481,7 +481,7 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     return clean_text(result)
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
-    model = _DEFAULT_SETTINGS["referral"]["model"]  # Default model as fallback
+    model = SETTINGS["referral"]["model"]  # Use actual settings, not defaults
     
     # Add conditions to the prompt if provided
     if conditions:
