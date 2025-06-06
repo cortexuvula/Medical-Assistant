@@ -51,6 +51,17 @@ class QueueDatabaseSchema:
     
     def _needs_upgrade(self, cursor) -> bool:
         """Check if schema upgrades are needed."""
+        # First check if recordings table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='recordings'
+        """)
+        
+        if not cursor.fetchone():
+            # If recordings table doesn't exist, we can't upgrade it
+            # This will be created by Database.create_tables()
+            return False
+        
         # Check if processing_status column exists
         cursor.execute("PRAGMA table_info(recordings)")
         columns = [col[1] for col in cursor.fetchall()]
@@ -71,6 +82,16 @@ class QueueDatabaseSchema:
     
     def _add_processing_columns(self, cursor):
         """Add processing-related columns to recordings table."""
+        # First check if recordings table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='recordings'
+        """)
+        
+        if not cursor.fetchone():
+            logging.warning("Cannot add processing columns - recordings table does not exist")
+            return
+        
         # Get existing columns
         cursor.execute("PRAGMA table_info(recordings)")
         existing_columns = [col[1] for col in cursor.fetchall()]
@@ -101,6 +122,16 @@ class QueueDatabaseSchema:
     
     def _create_processing_queue_table(self, cursor):
         """Create the processing_queue table."""
+        # Check if recordings table exists before creating a table with foreign key to it
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='recordings'
+        """)
+        
+        if not cursor.fetchone():
+            logging.warning("Cannot create processing_queue table - recordings table does not exist")
+            return
+        
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS processing_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,10 +153,21 @@ class QueueDatabaseSchema:
     
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
-        indexes = [
-            # Index for finding pending recordings quickly
-            ("idx_recordings_processing_status", "recordings(processing_status)"),
-            
+        # Check if recordings table exists before creating indexes on it
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='recordings'
+        """)
+        has_recordings_table = cursor.fetchone() is not None
+        
+        indexes = []
+        
+        # Only add recordings index if the table exists
+        if has_recordings_table:
+            indexes.append(("idx_recordings_processing_status", "recordings(processing_status)"))
+        
+        # Always add processing_queue indexes (table should exist by now)
+        indexes.extend([
             # Index for queue status queries
             ("idx_processing_queue_status", "processing_queue(status)"),
             
@@ -134,7 +176,7 @@ class QueueDatabaseSchema:
             
             # Composite index for queue ordering
             ("idx_processing_queue_priority_created", "processing_queue(priority DESC, created_at ASC)")
-        ]
+        ])
         
         for index_name, index_def in indexes:
             try:

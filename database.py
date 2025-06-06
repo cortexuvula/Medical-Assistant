@@ -225,8 +225,9 @@ class Database:
     # Queue-related methods
     def create_queue_tables(self) -> None:
         """Create queue-related tables if they do not exist."""
-        from db_queue_schema import upgrade_database
-        upgrade_database()
+        from db_queue_schema import QueueDatabaseSchema
+        upgrader = QueueDatabaseSchema(self.db_path)
+        upgrader.upgrade_schema()
     
     def add_to_processing_queue(self, recording_id: int, task_id: str, priority: int = 5) -> Optional[int]:
         """Add a recording to the processing queue.
