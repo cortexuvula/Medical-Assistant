@@ -59,15 +59,15 @@ class WorkflowUI:
         
         # Create Record tab
         record_frame = self._create_record_tab(command_map)
-        workflow_notebook.add(record_frame, text="📝 Record")
+        workflow_notebook.add(record_frame, text="Record")
         
         # Create Process tab
         process_frame = self._create_process_tab(command_map)
-        workflow_notebook.add(process_frame, text="✨ Process")
+        workflow_notebook.add(process_frame, text="Process")
         
         # Create Generate tab
         generate_frame = self._create_generate_tab(command_map)
-        workflow_notebook.add(generate_frame, text="📄 Generate")
+        workflow_notebook.add(generate_frame, text="Generate")
         
         # Bind tab change event
         workflow_notebook.bind("<<NotebookTabChanged>>", self._on_workflow_tab_changed)
@@ -125,7 +125,7 @@ class WorkflowUI:
         
         self.status_indicator = ttk.Label(
             status_frame,
-            text="● Ready",
+            text="Ready",
             font=("Segoe UI", 12, "bold"),
             foreground="#27ae60"
         )
@@ -156,7 +156,7 @@ class WorkflowUI:
         
         self.components['pause_button'] = ttk.Button(
             recording_controls,
-            text="⏸️ Pause",
+            text="Pause",
             command=command_map.get("toggle_soap_pause"),
             bootstyle="warning",
             width=12,
@@ -169,7 +169,7 @@ class WorkflowUI:
         
         self.components['cancel_button'] = ttk.Button(
             recording_controls,
-            text="❌ Cancel",
+            text="Cancel",
             command=command_map.get("cancel_soap_recording"),
             bootstyle="danger",
             width=12,
@@ -267,7 +267,7 @@ class WorkflowUI:
         tools = [
             {
                 "name": "refine",
-                "text": "🔧 Refine Text",
+                "text": "Refine Text",
                 "tooltip": "Clean up punctuation and capitalization",
                 "command": command_map.get("refine_text"),
                 "row": 0,
@@ -275,7 +275,7 @@ class WorkflowUI:
             },
             {
                 "name": "improve",
-                "text": "✨ Improve Text",
+                "text": "Improve Text",
                 "tooltip": "Enhance clarity and readability",
                 "command": command_map.get("improve_text"),
                 "row": 0,
@@ -283,7 +283,7 @@ class WorkflowUI:
             },
             {
                 "name": "undo",
-                "text": "↩️ Undo",
+                "text": "Undo",
                 "tooltip": "Undo last change (Ctrl+Z)",
                 "command": command_map.get("undo_text"),
                 "row": 1,
@@ -291,7 +291,7 @@ class WorkflowUI:
             },
             {
                 "name": "redo",
-                "text": "↪️ Redo",
+                "text": "Redo",
                 "tooltip": "Redo last change (Ctrl+Y)",
                 "command": command_map.get("redo_text"),
                 "row": 1,
@@ -322,21 +322,21 @@ class WorkflowUI:
         file_ops = [
             {
                 "name": "save",
-                "text": "💾 Save",
+                "text": "Save",
                 "tooltip": "Save transcript and audio",
                 "command": command_map.get("save_text"),
                 "column": 0
             },
             {
                 "name": "load",
-                "text": "📁 Load Audio",
+                "text": "Load Audio",
                 "tooltip": "Load and transcribe audio file",
                 "command": command_map.get("load_audio_file"),
                 "column": 1
             },
             {
                 "name": "new_session",
-                "text": "🆕 New Session",
+                "text": "New Session",
                 "tooltip": "Start a new session (Ctrl+N)",
                 "command": command_map.get("new_session"),
                 "column": 2
@@ -380,21 +380,21 @@ class WorkflowUI:
         documents = [
             {
                 "name": "soap",
-                "text": "📋 SOAP Note",
+                "text": "SOAP Note",
                 "description": "Generate a structured SOAP note from the transcript",
                 "command": command_map.get("create_soap_note"),
                 "bootstyle": "success"
             },
             {
                 "name": "referral",
-                "text": "🏥 Referral",
+                "text": "Referral",
                 "description": "Create a professional referral letter",
                 "command": command_map.get("create_referral"),
                 "bootstyle": "info"
             },
             {
                 "name": "letter",
-                "text": "✉️ Letter",
+                "text": "Letter",
                 "description": "Generate a formal medical letter",
                 "command": command_map.get("create_letter"),
                 "bootstyle": "primary"
@@ -464,7 +464,7 @@ class WorkflowUI:
         
         self.components['context_collapse_btn'] = ttk.Button(
             header_frame,
-            text="◀",
+            text="<",
             width=3,
             command=self._toggle_context_panel
         )
@@ -534,12 +534,12 @@ class WorkflowUI:
         if self._context_collapsed:
             # Expand
             self.components['context_content_frame'].pack(fill=BOTH, expand=True, padx=10, pady=5)
-            self.components['context_collapse_btn'].config(text="◀")
+            self.components['context_collapse_btn'].config(text="<")
             self._context_collapsed = False
         else:
             # Collapse
             self.components['context_content_frame'].pack_forget()
-            self.components['context_collapse_btn'].config(text="▶")
+            self.components['context_collapse_btn'].config(text=">")
             self._context_collapsed = True
     
     def _apply_context_template(self, template: str):
@@ -690,7 +690,7 @@ class WorkflowUI:
                 # Delete button
                 del_btn = ttk.Button(
                     btn_frame,
-                    text="×",
+                    text="X",
                     bootstyle="danger-outline",
                     width=3,
                     command=lambda name=template_name: self._delete_custom_template(name)
@@ -871,11 +871,11 @@ class WorkflowUI:
             if pause_btn:
                 pause_btn.config(state=tk.NORMAL)
                 if paused:
-                    pause_btn.config(text="▶️ Resume", bootstyle="success")
+                    pause_btn.config(text="Resume", bootstyle="success")
                     # Pause timer
                     self.pause_timer()
                 else:
-                    pause_btn.config(text="⏸️ Pause", bootstyle="warning")
+                    pause_btn.config(text="Pause", bootstyle="warning")
                     # Start or resume timer
                     if not self.timer_running and self.timer_start_time is None:
                         self.start_timer()
@@ -927,7 +927,7 @@ class WorkflowUI:
                 
             # Disable pause button
             if pause_btn:
-                pause_btn.config(state=tk.DISABLED, text="⏸️ Pause", bootstyle="warning")
+                pause_btn.config(state=tk.DISABLED, text="Pause", bootstyle="warning")
                 
             # Disable cancel button  
             if cancel_btn:
@@ -1078,7 +1078,7 @@ class WorkflowUI:
         
         # Reset status indicator
         if self.status_indicator:
-            self.status_indicator.config(text="● Ready", foreground="#27ae60")
+            self.status_indicator.config(text="Ready", foreground="#27ae60")
             # Force immediate UI update
             self.status_indicator.update_idletasks()
             self.status_indicator.update()
@@ -1102,9 +1102,9 @@ class WorkflowUI:
             
             # Update status text and color
             if self.recording_pulse_state < 30:
-                text = "● Recording"
+                text = "Recording"
             else:
-                text = "●● Recording"
+                text = "Recording"
                 
             self.status_indicator.config(text=text, foreground=color)
             
@@ -1127,7 +1127,7 @@ class WorkflowUI:
         status_frame.columnconfigure(1, weight=1)  # Status label should expand
         
         # Status icon
-        status_icon_label = ttk.Label(status_frame, text="•", font=("Segoe UI", 16), foreground="gray")
+        status_icon_label = ttk.Label(status_frame, text="", font=("Segoe UI", 16), foreground="gray")
         status_icon_label.pack(side=LEFT, padx=(5, 0))
         
         # Status text

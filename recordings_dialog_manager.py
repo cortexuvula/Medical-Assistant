@@ -68,7 +68,7 @@ class RecordingsDialogManager:
         # Add refresh button
         refresh_button = ttk.Button(
             controls_frame, 
-            text="🔄 Refresh", 
+            text="Refresh", 
             bootstyle="outline",
             command=self._load_recordings
         )

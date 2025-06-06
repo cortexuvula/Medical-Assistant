@@ -43,6 +43,11 @@ class ChatUI:
         self.min_input_lines = 2
         self.max_input_lines = 5
         
+        # Collapse state
+        self._collapsed = False
+        self.content_frame = None
+        self.collapse_btn = None
+        
         # Create the UI
         self.create_chat_interface()
         
@@ -56,8 +61,26 @@ class ChatUI:
         )
         self.chat_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 5))
         
+        # Header frame with title and collapse button
+        header_frame = ttk.Frame(self.chat_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Collapse/expand button
+        self.collapse_btn = ttk.Button(
+            header_frame,
+            text="^",
+            width=3,
+            command=self._toggle_collapse
+        )
+        self.collapse_btn.pack(side=tk.RIGHT)
+        ToolTip(self.collapse_btn, "Hide/Show chat interface")
+        
+        # Content frame that can be hidden
+        self.content_frame = ttk.Frame(self.chat_frame)
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+        
         # Top row - context indicator and controls
-        top_row = ttk.Frame(self.chat_frame)
+        top_row = ttk.Frame(self.content_frame)
         top_row.pack(fill=tk.X, pady=(0, 5))
         
         # Context indicator (shows which tab is active)
@@ -79,7 +102,7 @@ class ChatUI:
         self.char_counter.pack(side=tk.RIGHT, padx=(10, 0))
         
         # Middle section - input area with scrollbar
-        input_frame = ttk.Frame(self.chat_frame)
+        input_frame = ttk.Frame(self.content_frame)
         input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
         # Create text widget with scrollbar
@@ -104,7 +127,7 @@ class ChatUI:
         self._apply_text_styling()
         
         # Bottom row - buttons and suggestions
-        bottom_row = ttk.Frame(self.chat_frame)
+        bottom_row = ttk.Frame(self.content_frame)
         bottom_row.pack(fill=tk.X)
         
         # Button frame (right side)
@@ -140,7 +163,7 @@ class ChatUI:
         # Manage suggestions button
         self.manage_btn = ttk.Button(
             bottom_row,
-            text="⚙️",
+            text="Settings",
             command=self._show_suggestions_manager,
             width=3,
             bootstyle="secondary-outline"
@@ -442,3 +465,16 @@ class ChatUI:
                     # Scrollbar will automatically inherit theme colors
                     widget.update()
                     break
+    
+    def _toggle_collapse(self):
+        """Toggle the collapse state of the chat interface"""
+        if self._collapsed:
+            # Expand
+            self.content_frame.pack(fill=tk.BOTH, expand=True)
+            self.collapse_btn.config(text="^")
+            self._collapsed = False
+        else:
+            # Collapse
+            self.content_frame.pack_forget()
+            self.collapse_btn.config(text="v")
+            self._collapsed = True
