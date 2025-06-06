@@ -102,22 +102,22 @@ class WorkflowUI:
         )
         self.components['recording_status'].pack()
         
-        # Waveform visualization placeholder
-        waveform_frame = ttk.Frame(center_frame, height=100)
-        waveform_frame.pack(fill=X, pady=10)
+        # Waveform visualization placeholder (hidden for now to save space)
+        # waveform_frame = ttk.Frame(center_frame, height=100)
+        # waveform_frame.pack(fill=X, pady=10)
         
-        # Canvas for waveform (placeholder for now)
-        self.components['waveform_canvas'] = tk.Canvas(
-            waveform_frame, 
-            height=100, 
-            bg='#2b2b2b',
-            highlightthickness=0
-        )
-        self.components['waveform_canvas'].pack(fill=X)
+        # # Canvas for waveform (placeholder for now)
+        # self.components['waveform_canvas'] = tk.Canvas(
+        #     waveform_frame, 
+        #     height=100, 
+        #     bg='#2b2b2b',
+        #     highlightthickness=0
+        # )
+        # self.components['waveform_canvas'].pack(fill=X)
         
         # Recording status indicator and main button
         record_button_frame = ttk.Frame(center_frame)
-        record_button_frame.pack(pady=10)  # Reduced from 20 to 10
+        record_button_frame.pack(pady=5)  # Reduced from 10 to 5 for minimal spacing
         
         # Status indicator (animated when recording) - minimal spacing
         status_frame = ttk.Frame(record_button_frame)
