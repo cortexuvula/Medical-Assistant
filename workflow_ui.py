@@ -15,6 +15,8 @@ import logging
 import time
 import threading
 import numpy as np
+import os
+from datetime import datetime
 from settings import SETTINGS
 
 
@@ -88,45 +90,32 @@ class WorkflowUI:
         
         # Center the main recording controls
         center_frame = ttk.Frame(record_frame)
-        center_frame.pack(expand=True, fill=BOTH, padx=20, pady=20)
+        center_frame.pack(expand=True, fill=BOTH, padx=10, pady=5)
         
         # Recording status frame (for visual feedback)
         status_frame = ttk.Frame(center_frame)
-        status_frame.pack(pady=(0, 10))  # Reduced from 20 to 10
+        status_frame.pack(pady=(0, 5))
         
         # Status label
         self.components['recording_status'] = ttk.Label(
             status_frame, 
             text="Ready to Record", 
-            font=("Segoe UI", 14)
+            font=("Segoe UI", 12)
         )
         self.components['recording_status'].pack()
         
-        # Waveform visualization placeholder (hidden for now to save space)
-        # waveform_frame = ttk.Frame(center_frame, height=100)
-        # waveform_frame.pack(fill=X, pady=10)
-        
-        # # Canvas for waveform (placeholder for now)
-        # self.components['waveform_canvas'] = tk.Canvas(
-        #     waveform_frame, 
-        #     height=100, 
-        #     bg='#2b2b2b',
-        #     highlightthickness=0
-        # )
-        # self.components['waveform_canvas'].pack(fill=X)
-        
         # Recording status indicator and main button
         record_button_frame = ttk.Frame(center_frame)
-        record_button_frame.pack(pady=5)  # Reduced from 10 to 5 for minimal spacing
+        record_button_frame.pack(pady=0)
         
-        # Status indicator (animated when recording) - minimal spacing
+        # Status indicator (animated when recording)
         status_frame = ttk.Frame(record_button_frame)
-        status_frame.pack(pady=(0, 2))  # Reduced from 5 to 2
+        status_frame.pack(pady=(0, 2))
         
         self.status_indicator = ttk.Label(
             status_frame,
             text="Ready",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 10, "bold"),
             foreground="#27ae60"
         )
         self.status_indicator.pack()
@@ -137,15 +126,15 @@ class WorkflowUI:
             text="Start Recording",
             command=command_map.get("toggle_soap_recording"),
             bootstyle="success",
-            width=25,
+            width=20,
             style="Large.TButton"
         )
         self.components['main_record_button'].pack()
         ToolTip(self.components['main_record_button'], "Click to start/stop recording (Ctrl+Shift+S)")
         
         # Fixed-height container for recording controls to prevent resize
-        controls_container = ttk.Frame(center_frame, height=60)
-        controls_container.pack(pady=10, fill=X)
+        controls_container = ttk.Frame(center_frame, height=40)
+        controls_container.pack(pady=2, fill=X)
         controls_container.pack_propagate(False)  # Maintain fixed height
         
         # Recording controls frame inside the container
@@ -159,11 +148,10 @@ class WorkflowUI:
             text="Pause",
             command=command_map.get("toggle_soap_pause"),
             bootstyle="warning",
-            width=12,
-            state=DISABLED,
-            style="Large.TButton"
+            width=10,
+            state=DISABLED
         )
-        self.components['pause_button'].pack(side=LEFT, padx=10)
+        self.components['pause_button'].pack(side=LEFT, padx=5)
         self.components['pause_button'].pack_forget()  # Initially hidden
         ToolTip(self.components['pause_button'], "Pause/Resume recording (Space)")
         
@@ -172,31 +160,30 @@ class WorkflowUI:
             text="Cancel",
             command=command_map.get("cancel_soap_recording"),
             bootstyle="danger",
-            width=12,
-            state=DISABLED,
-            style="Large.TButton"
+            width=10,
+            state=DISABLED
         )
-        self.components['cancel_button'].pack(side=LEFT, padx=10)
+        self.components['cancel_button'].pack(side=LEFT, padx=5)
         self.components['cancel_button'].pack_forget()  # Initially hidden
         ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
         # Fixed-height container for timer to prevent resize
-        timer_container = ttk.Frame(center_frame, height=40)
-        timer_container.pack(pady=5, fill=X)
+        timer_container = ttk.Frame(center_frame, height=30)
+        timer_container.pack(pady=2, fill=X)
         timer_container.pack_propagate(False)  # Maintain fixed height
         
         # Timer display inside the container
         self.components['timer_label'] = ttk.Label(
             timer_container,
             text="00:00",
-            font=("Segoe UI", 24, "bold")
+            font=("Segoe UI", 20, "bold")
         )
         self.components['timer_label'].pack(expand=True)
         self.components['timer_container'] = timer_container
         
         # Fixed-height container for audio visualization to prevent resize
-        audio_viz_container = ttk.Frame(center_frame, height=120)
-        audio_viz_container.pack(pady=(0, 20), fill=X)
+        audio_viz_container = ttk.Frame(center_frame, height=60)
+        audio_viz_container.pack(pady=(0, 5), fill=X)
         audio_viz_container.pack_propagate(False)  # Maintain fixed height
         
         # Audio visualization panel inside the container
@@ -209,7 +196,7 @@ class WorkflowUI:
         
         # Recording session info panel
         info_frame = ttk.Frame(audio_viz_frame)
-        info_frame.pack(fill=X, padx=10, pady=(5, 0))
+        info_frame.pack(fill=X, padx=5, pady=(2, 0))
         
         # Session info labels
         self.session_info_frame = ttk.Frame(info_frame)
@@ -225,10 +212,10 @@ class WorkflowUI:
         info_right.pack(side=RIGHT)
         
         self.file_size_label = ttk.Label(info_right, text="Size: 0 KB", font=("Segoe UI", 8), foreground="gray")
-        self.file_size_label.pack(side=RIGHT, padx=(10, 0))
+        self.file_size_label.pack(side=RIGHT, padx=(5, 0))
         
         self.duration_label = ttk.Label(info_right, text="Duration: 00:00", font=("Segoe UI", 8), foreground="gray")
-        self.duration_label.pack(side=RIGHT, padx=(10, 0))
+        self.duration_label.pack(side=RIGHT, padx=(5, 0))
         
         self.components['session_info'] = {
             'quality': self.quality_label,
@@ -242,6 +229,10 @@ class WorkflowUI:
         
         self.components['quick_actions'] = quick_actions
         
+        # Recent Recordings Panel - Added to the bottom section
+        recordings_panel = self._create_recordings_panel(center_frame)
+        recordings_panel.pack(fill=BOTH, expand=True, pady=(5, 2))
+        self.components['recordings_panel'] = recordings_panel
         
         # Initialize UI state - hide controls initially
         self._initialize_recording_ui_state()
@@ -1246,3 +1237,371 @@ class WorkflowUI:
             pause_btn.config(state=tk.DISABLED)
         if cancel_btn:
             cancel_btn.config(state=tk.DISABLED)
+    
+    def _create_recordings_panel(self, parent_frame: ttk.Frame) -> ttk.LabelFrame:
+        """Create a panel showing recent recordings.
+        
+        Args:
+            parent_frame: Parent frame to place the panel in
+            
+        Returns:
+            ttk.LabelFrame: The recordings panel
+        """
+        # Create the labeled frame
+        recordings_frame = ttk.LabelFrame(parent_frame, text="Recent Recordings", padding=5)
+        
+        # Create controls frame at the top
+        controls_frame = ttk.Frame(recordings_frame)
+        controls_frame.pack(fill=X, pady=(0, 5))
+        
+        # Search box
+        search_frame = ttk.Frame(controls_frame)
+        search_frame.pack(side=LEFT, fill=X, expand=True)
+        
+        ttk.Label(search_frame, text="Search:", font=("Segoe UI", 9)).pack(side=LEFT, padx=(0, 5))
+        self.recordings_search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=self.recordings_search_var, width=30)
+        search_entry.pack(side=LEFT, fill=X, expand=True)
+        search_entry.bind("<KeyRelease>", lambda e: self._filter_recordings())
+        
+        # Refresh button
+        refresh_btn = ttk.Button(controls_frame, text="⟳", width=3, 
+                                command=self._refresh_recordings_list)
+        refresh_btn.pack(side=RIGHT, padx=(5, 0))
+        ToolTip(refresh_btn, "Refresh recordings list")
+        
+        # Create treeview with scrollbar
+        tree_container = ttk.Frame(recordings_frame)
+        tree_container.pack(fill=BOTH, expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_container)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        # Create compact treeview
+        columns = ("patient", "date", "time", "status")
+        self.recordings_tree = ttk.Treeview(
+            tree_container,
+            columns=columns,
+            show="tree headings",
+            height=5,  # Show 5 rows to fit better
+            selectmode="browse",
+            yscrollcommand=scrollbar.set
+        )
+        scrollbar.config(command=self.recordings_tree.yview)
+        self.recordings_tree.pack(side=LEFT, fill=BOTH, expand=True)
+        
+        # Configure columns
+        self.recordings_tree.heading("#0", text="ID", anchor=tk.W)
+        self.recordings_tree.heading("patient", text="Patient", anchor=tk.W)
+        self.recordings_tree.heading("date", text="Date", anchor=tk.W)
+        self.recordings_tree.heading("time", text="Time", anchor=tk.W)
+        self.recordings_tree.heading("status", text="Status", anchor=tk.CENTER)
+        
+        # Set column widths
+        self.recordings_tree.column("#0", width=50, minwidth=40, stretch=False)
+        self.recordings_tree.column("patient", width=150, minwidth=100)
+        self.recordings_tree.column("date", width=100, minwidth=80)
+        self.recordings_tree.column("time", width=80, minwidth=60)
+        self.recordings_tree.column("status", width=100, minwidth=80)
+        
+        # Configure tags for styling
+        self.recordings_tree.tag_configure("complete", foreground="#27ae60")
+        self.recordings_tree.tag_configure("processing", foreground="#f39c12")
+        self.recordings_tree.tag_configure("partial", foreground="#3498db")
+        self.recordings_tree.tag_configure("failed", foreground="#e74c3c")
+        
+        # Action buttons
+        actions_frame = ttk.Frame(recordings_frame)
+        actions_frame.pack(fill=X, pady=(5, 0))
+        
+        # Load button
+        load_btn = ttk.Button(
+            actions_frame,
+            text="Load",
+            command=self._load_selected_recording,
+            bootstyle="primary-outline",
+            width=8
+        )
+        load_btn.pack(side=LEFT, padx=(0, 3))
+        ToolTip(load_btn, "Load selected recording")
+        
+        # Delete button
+        delete_btn = ttk.Button(
+            actions_frame,
+            text="Delete",
+            command=self._delete_selected_recording,
+            bootstyle="danger-outline",
+            width=8
+        )
+        delete_btn.pack(side=LEFT, padx=(0, 3))
+        ToolTip(delete_btn, "Delete selected recording")
+        
+        # Export button
+        export_btn = ttk.Button(
+            actions_frame,
+            text="Export",
+            command=self._export_selected_recording,
+            bootstyle="info-outline",
+            width=8
+        )
+        export_btn.pack(side=LEFT)
+        ToolTip(export_btn, "Export selected recording")
+        
+        # Recording count label
+        self.recording_count_label = ttk.Label(
+            actions_frame,
+            text="0 recordings",
+            font=("Segoe UI", 9),
+            foreground="gray"
+        )
+        self.recording_count_label.pack(side=RIGHT)
+        
+        # Bind double-click to load
+        self.recordings_tree.bind("<Double-Button-1>", lambda e: self._load_selected_recording())
+        
+        # Load initial recordings
+        self._refresh_recordings_list()
+        
+        return recordings_frame
+    
+    def _refresh_recordings_list(self):
+        """Refresh the recordings list from database."""
+        def task():
+            try:
+                # Get recent recordings from database
+                recordings = self.parent.db.get_all_recordings()
+                # Update UI on main thread
+                self.parent.after(0, lambda: self._populate_recordings_tree(recordings))
+            except Exception as e:
+                logging.error(f"Error loading recordings: {e}")
+                self.parent.after(0, lambda: self.recording_count_label.config(text="Error loading recordings"))
+        
+        # Run in background thread
+        threading.Thread(target=task, daemon=True).start()
+    
+    def _populate_recordings_tree(self, recordings: list):
+        """Populate the recordings tree with data."""
+        # Clear existing items
+        for item in self.recordings_tree.get_children():
+            self.recordings_tree.delete(item)
+        
+        # Add recordings
+        for recording in recordings:
+            try:
+                rec_id = recording['id']
+                # Extract patient name if available
+                patient_name = recording.get('patient_name', 'Unknown Patient')
+                
+                # Parse timestamp
+                timestamp = recording.get('timestamp', '')
+                if timestamp:
+                    try:
+                        dt_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        date_str = dt_obj.strftime("%Y-%m-%d")
+                        time_str = dt_obj.strftime("%H:%M")
+                    except:
+                        date_str = timestamp.split()[0] if ' ' in timestamp else timestamp
+                        time_str = timestamp.split()[1] if ' ' in timestamp else ""
+                else:
+                    date_str = "Unknown"
+                    time_str = ""
+                
+                # Determine status
+                has_transcript = bool(recording.get('transcript'))
+                has_soap = bool(recording.get('soap_note'))
+                processing_status = recording.get('processing_status', '')
+                
+                if processing_status == 'processing':
+                    status = "🔄 Processing"
+                    tag = "processing"
+                elif processing_status == 'failed':
+                    status = "❌ Failed"
+                    tag = "failed"
+                elif has_transcript and has_soap:
+                    status = "✓ Complete"
+                    tag = "complete"
+                elif has_transcript or has_soap:
+                    status = "◐ Partial"
+                    tag = "partial"
+                else:
+                    status = "○ Empty"
+                    tag = ""
+                
+                # Insert into tree
+                self.recordings_tree.insert(
+                    "", "end",
+                    text=str(rec_id),
+                    values=(patient_name, date_str, time_str, status),
+                    tags=(tag,) if tag else ()
+                )
+            except Exception as e:
+                logging.error(f"Error adding recording to tree: {e}")
+        
+        # Update count
+        count = len(self.recordings_tree.get_children())
+        self.recording_count_label.config(text=f"{count} recording{'s' if count != 1 else ''}")
+    
+    def _filter_recordings(self):
+        """Filter recordings based on search text."""
+        search_text = self.recordings_search_var.get().lower()
+        
+        if not search_text:
+            # Show all items
+            for item in self.recordings_tree.get_children():
+                self.recordings_tree.reattach(item, '', 'end')
+        else:
+            # Hide non-matching items
+            for item in self.recordings_tree.get_children():
+                values = self.recordings_tree.item(item, 'values')
+                # Search in patient name, date, and status
+                if any(search_text in str(v).lower() for v in values):
+                    self.recordings_tree.reattach(item, '', 'end')
+                else:
+                    self.recordings_tree.detach(item)
+    
+    def _load_selected_recording(self):
+        """Load the selected recording into the main application."""
+        selection = self.recordings_tree.selection()
+        if not selection:
+            tk.messagebox.showwarning("No Selection", "Please select a recording to load.")
+            return
+        
+        # Get recording ID
+        item = selection[0]
+        rec_id = int(self.recordings_tree.item(item, 'text'))
+        
+        try:
+            # Get full recording data
+            recording = self.parent.db.get_recording(rec_id)
+            if not recording:
+                tk.messagebox.showerror("Error", "Recording not found in database.")
+                return
+            
+            # Clear existing content
+            from cleanup_utils import clear_all_content
+            clear_all_content(self.parent)
+            
+            # Load data into UI
+            if recording.get('transcript'):
+                self.parent.transcript_text.insert("1.0", recording['transcript'])
+                self.parent.notebook.select(0)  # Switch to transcript tab
+            
+            if recording.get('soap_note'):
+                self.parent.soap_text.insert("1.0", recording['soap_note'])
+                if not recording.get('transcript'):
+                    self.parent.notebook.select(1)  # Switch to SOAP tab
+            
+            if recording.get('referral'):
+                self.parent.referral_text.insert("1.0", recording['referral'])
+            
+            if recording.get('letter'):
+                self.parent.letter_text.insert("1.0", recording['letter'])
+            
+            # Update status
+            self.parent.status_manager.success(f"Loaded recording #{rec_id}")
+            
+            # Update current recording ID
+            self.parent.current_recording_id = rec_id
+            
+        except Exception as e:
+            logging.error(f"Error loading recording: {e}")
+            tk.messagebox.showerror("Load Error", f"Failed to load recording: {str(e)}")
+    
+    def _delete_selected_recording(self):
+        """Delete the selected recording."""
+        selection = self.recordings_tree.selection()
+        if not selection:
+            tk.messagebox.showwarning("No Selection", "Please select a recording to delete.")
+            return
+        
+        # Confirm deletion
+        if not tk.messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this recording?"):
+            return
+        
+        # Get recording ID
+        item = selection[0]
+        rec_id = int(self.recordings_tree.item(item, 'text'))
+        
+        try:
+            # Delete from database
+            self.parent.db.delete_recording(rec_id)
+            
+            # Remove from tree
+            self.recordings_tree.delete(item)
+            
+            # Update count
+            count = len(self.recordings_tree.get_children())
+            self.recording_count_label.config(text=f"{count} recording{'s' if count != 1 else ''}")
+            
+            # Update status
+            self.parent.status_manager.success("Recording deleted")
+            
+        except Exception as e:
+            logging.error(f"Error deleting recording: {e}")
+            tk.messagebox.showerror("Delete Error", f"Failed to delete recording: {str(e)}")
+    
+    def _export_selected_recording(self):
+        """Export the selected recording."""
+        selection = self.recordings_tree.selection()
+        if not selection:
+            tk.messagebox.showwarning("No Selection", "Please select a recording to export.")
+            return
+        
+        # Get recording ID
+        item = selection[0]
+        rec_id = int(self.recordings_tree.item(item, 'text'))
+        
+        try:
+            # Get full recording data
+            recording = self.parent.db.get_recording(rec_id)
+            if not recording:
+                tk.messagebox.showerror("Error", "Recording not found in database.")
+                return
+            
+            # Ask for export format
+            from tkinter import filedialog
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[
+                    ("Text files", "*.txt"),
+                    ("All files", "*.*")
+                ],
+                title="Export Recording"
+            )
+            
+            if not file_path:
+                return
+            
+            # Create export content
+            content = []
+            content.append(f"Medical Recording Export - ID: {rec_id}")
+            content.append(f"Date: {recording.get('timestamp', 'Unknown')}")
+            content.append(f"Patient: {recording.get('patient_name', 'Unknown')}")
+            content.append("=" * 50)
+            
+            if recording.get('transcript'):
+                content.append("\nTRANSCRIPT:")
+                content.append(recording['transcript'])
+            
+            if recording.get('soap_note'):
+                content.append("\n\nSOAP NOTE:")
+                content.append(recording['soap_note'])
+            
+            if recording.get('referral'):
+                content.append("\n\nREFERRAL:")
+                content.append(recording['referral'])
+            
+            if recording.get('letter'):
+                content.append("\n\nLETTER:")
+                content.append(recording['letter'])
+            
+            # Write to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(content))
+            
+            self.parent.status_manager.success(f"Recording exported to {os.path.basename(file_path)}")
+            
+        except Exception as e:
+            logging.error(f"Error exporting recording: {e}")
+            tk.messagebox.showerror("Export Error", f"Failed to export recording: {str(e)}")

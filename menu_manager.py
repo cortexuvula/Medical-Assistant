@@ -104,7 +104,6 @@ class MenuManager:
         # Add menu items
         filemenu.add_command(label="New", command=self.app.new_session, accelerator="Ctrl+N")
         filemenu.add_command(label="Save", command=self.app.save_text, accelerator="Ctrl+S")
-        filemenu.add_command(label="View Recordings", command=self.app.show_recordings_dialog)
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.app.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
