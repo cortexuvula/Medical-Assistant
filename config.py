@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Optional, Union, List
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from data_folder_manager import data_folder_manager
 from enum import Enum
 
 from exceptions import ConfigurationError
@@ -166,7 +167,7 @@ class Config:
         """
         self.logger = logging.getLogger(__name__)
         self.environment = self._get_environment(environment)
-        self.config_dir = Path("config")
+        self.config_dir = data_folder_manager.config_folder
         self.config_dir.mkdir(exist_ok=True)
         
         # Initialize configuration components

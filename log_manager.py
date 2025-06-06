@@ -8,6 +8,7 @@ console output, and log formatting.
 import os
 import logging
 from concurrent_log_handler import ConcurrentRotatingFileHandler
+from data_folder_manager import data_folder_manager
 
 
 class LogManager:
@@ -20,7 +21,7 @@ class LogManager:
             log_level: The logging level to use (default: logging.INFO)
         """
         self.log_level = log_level
-        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        self.log_dir = str(data_folder_manager.logs_folder)
         self.log_file = os.path.join(self.log_dir, "medical_dictation.log")
         
     def setup_logging(self):

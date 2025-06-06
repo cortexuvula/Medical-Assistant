@@ -23,6 +23,7 @@ from config import init_config, get_config
 from exceptions import ConfigurationError, DatabaseError
 import logging
 import os
+from data_folder_manager import data_folder_manager
 
 # Set up logging
 logging.basicConfig(
@@ -33,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 # Initialize configuration
 try:
+    # Migrate existing files to AppData folder
+    logger.info("Migrating existing files to AppData folder...")
+    data_folder_manager.migrate_existing_files()
+    
     # Get environment from env variable or default to production
     env = os.getenv('MEDICAL_ASSISTANT_ENV', 'production')
     logger.info(f"Initializing configuration for environment: {env}")

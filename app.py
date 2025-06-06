@@ -18,6 +18,7 @@ from ttkbootstrap.constants import *
 from tkinter import TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 from dotenv import load_dotenv
 import openai
+from data_folder_manager import data_folder_manager
 from typing import Callable, Optional
 import threading
 import numpy as np
@@ -59,7 +60,7 @@ def main() -> None:
     configure_pydub()
     
     # Load environment variables from .env file
-    load_dotenv()
+    load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
     
     # Log application startup
     logging.info("Medical Dictation application starting")
@@ -307,11 +308,11 @@ class MedicalDictationApp(ttk.Window):
         
         # Create workflow tabs
         self.workflow_notebook = self.ui.create_workflow_tabs(command_map)
-        self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 2))
         
         # Create the text notebook (for transcripts, SOAP, etc.)
         self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, _ = self.ui.create_notebook()
-        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(5, 0))
+        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(2, 0))
         
         # Create chat interface below the notebook
         self.chat_ui = ChatUI(left_frame, self)

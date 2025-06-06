@@ -13,18 +13,19 @@ from pathlib import Path
 
 from database import Database
 from pydub import AudioSegment
+from data_folder_manager import data_folder_manager
 
 
 class DatabaseManager:
     """Manages database operations for the application."""
     
-    def __init__(self, db_path: str = "database.db"):
+    def __init__(self, db_path: str = None):
         """Initialize database manager.
         
         Args:
             db_path: Path to the database file
         """
-        self.db_path = db_path
+        self.db_path = db_path if db_path else str(data_folder_manager.database_file_path)
         self._ensure_database_exists()
         
     def _ensure_database_exists(self) -> None:

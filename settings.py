@@ -3,8 +3,9 @@ import json
 import logging
 from config import get_config
 from settings_migrator import get_migrator
+from data_folder_manager import data_folder_manager
 
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = str(data_folder_manager.settings_file_path)
 DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
 
 # NEW: Default AI Provider setting (default is OpenAI)

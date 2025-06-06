@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from config import Config
 from settings_migrator import SettingsMigrator
+from data_folder_manager import data_folder_manager
 
 
 def migrate_settings():
@@ -16,9 +17,14 @@ def migrate_settings():
     print("Medical Assistant Settings Migration Tool")
     print("=" * 40)
     
-    # Check if settings.json exists
-    settings_file = Path("settings.json")
-    if not settings_file.exists():
+    # Check if settings.json exists in old location first
+    old_settings_file = Path("settings.json")
+    settings_file = data_folder_manager.settings_file_path
+    
+    # Try old location if new location doesn't have it
+    if not settings_file.exists() and old_settings_file.exists():
+        settings_file = old_settings_file
+    elif not settings_file.exists():
         print("No settings.json file found. Nothing to migrate.")
         return
     

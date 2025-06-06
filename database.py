@@ -2,11 +2,12 @@ import sqlite3
 import datetime
 import json
 from typing import Optional, Dict, List, Any, Union
+from data_folder_manager import data_folder_manager
 
 class Database:
-    def __init__(self, db_path: str = "database.db") -> None:
+    def __init__(self, db_path: str = None) -> None:
         """Initialize database connection"""
-        self.db_path = db_path
+        self.db_path = db_path if db_path else str(data_folder_manager.database_file_path)
         self.conn = None
         self.cursor = None
         

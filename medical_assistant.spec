@@ -43,6 +43,7 @@ a = Analysis(
         ('suppress_console.py', '.'),
         ('icon.ico', '.'),
         ('icon256x256.ico', '.'),  # Include as backup
+        ('config', 'config'),  # Include config folder and its contents
     ] + soundcard_datas,
     hiddenimports=[
         'tkinter',

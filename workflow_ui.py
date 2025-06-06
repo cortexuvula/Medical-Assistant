@@ -88,9 +88,13 @@ class WorkflowUI:
         """
         record_frame = ttk.Frame(self.parent)
         
-        # Center the main recording controls
-        center_frame = ttk.Frame(record_frame)
-        center_frame.pack(expand=True, fill=BOTH, padx=10, pady=5)
+        # Create a vertical paned window to split recording controls and recordings list
+        paned = ttk.PanedWindow(record_frame, orient="vertical")
+        paned.pack(expand=True, fill=BOTH, padx=10, pady=5)
+        
+        # Top pane - main recording controls
+        center_frame = ttk.Frame(paned)
+        paned.add(center_frame, weight=1)
         
         # Recording status frame (for visual feedback)
         status_frame = ttk.Frame(center_frame)
@@ -133,8 +137,8 @@ class WorkflowUI:
         ToolTip(self.components['main_record_button'], "Click to start/stop recording (Ctrl+Shift+S)")
         
         # Fixed-height container for recording controls to prevent resize
-        controls_container = ttk.Frame(center_frame, height=40)
-        controls_container.pack(pady=2, fill=X)
+        controls_container = ttk.Frame(center_frame, height=35)
+        controls_container.pack(pady=1, fill=X)
         controls_container.pack_propagate(False)  # Maintain fixed height
         
         # Recording controls frame inside the container
@@ -168,8 +172,8 @@ class WorkflowUI:
         ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
         # Fixed-height container for timer to prevent resize
-        timer_container = ttk.Frame(center_frame, height=30)
-        timer_container.pack(pady=2, fill=X)
+        timer_container = ttk.Frame(center_frame, height=25)
+        timer_container.pack(pady=1, fill=X)
         timer_container.pack_propagate(False)  # Maintain fixed height
         
         # Timer display inside the container
@@ -182,8 +186,8 @@ class WorkflowUI:
         self.components['timer_container'] = timer_container
         
         # Fixed-height container for audio visualization to prevent resize
-        audio_viz_container = ttk.Frame(center_frame, height=60)
-        audio_viz_container.pack(pady=(0, 5), fill=X)
+        audio_viz_container = ttk.Frame(center_frame, height=50)
+        audio_viz_container.pack(pady=(0, 3), fill=X)
         audio_viz_container.pack_propagate(False)  # Maintain fixed height
         
         # Audio visualization panel inside the container
@@ -229,9 +233,12 @@ class WorkflowUI:
         
         self.components['quick_actions'] = quick_actions
         
-        # Recent Recordings Panel - Added to the bottom section
-        recordings_panel = self._create_recordings_panel(center_frame)
-        recordings_panel.pack(fill=BOTH, expand=True, pady=(5, 2))
+        # Recent Recordings Panel - Added to the bottom pane
+        recordings_container = ttk.Frame(paned)
+        paned.add(recordings_container, weight=2)  # Give more weight to recordings panel
+        
+        recordings_panel = self._create_recordings_panel(recordings_container)
+        recordings_panel.pack(fill=BOTH, expand=True, pady=(5, 10))
         self.components['recordings_panel'] = recordings_panel
         
         # Initialize UI state - hide controls initially
@@ -1284,7 +1291,7 @@ class WorkflowUI:
             tree_container,
             columns=columns,
             show="tree headings",
-            height=5,  # Show 5 rows to fit better
+            height=7,  # Show 7 rows for better visibility
             selectmode="browse",
             yscrollcommand=scrollbar.set
         )

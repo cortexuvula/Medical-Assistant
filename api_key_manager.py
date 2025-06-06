@@ -8,6 +8,7 @@ Manages the creation of .env files with user-provided API keys.
 import sys
 import tkinter as tk
 from pathlib import Path
+from data_folder_manager import data_folder_manager
 
 
 class APIKeyManager:
@@ -15,7 +16,7 @@ class APIKeyManager:
     
     def __init__(self):
         """Initialize the API key manager."""
-        self.env_path = Path(".env")
+        self.env_path = data_folder_manager.env_file_path
     
     def check_env_file(self) -> bool:
         """Check if .env file exists and create it if needed.
