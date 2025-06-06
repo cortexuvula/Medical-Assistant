@@ -106,21 +106,27 @@ class RecordingManager:
         else:
             actual_duration = 0
         
+        # Log segment count for debugging
+        logging.info(f"RecordingManager: Stopping with {len(self.audio_segments)} segments")
+        
         # Combine audio segments
         combined_audio = self._combine_audio_segments()
         
-        if combined_audio:
-            recording_data = {
-                'audio': combined_audio,
-                'duration': actual_duration,
-                'start_time': self.soap_start_time,
-                'segment_count': len(self.audio_segments)
-            }
-            
-            logging.info(f"SOAP recording stopped. Duration: {actual_duration:.1f}s")
-            return recording_data
+        # Even if no segments were recorded through RecordingManager, return valid recording data
+        # The app will handle combining the segments from pending_soap_segments
+        recording_data = {
+            'audio': combined_audio,  # May be None, app will check
+            'duration': actual_duration,
+            'start_time': self.soap_start_time,
+            'segment_count': len(self.audio_segments)
+        }
         
-        return None
+        if combined_audio:
+            logging.info(f"SOAP recording stopped. Duration: {actual_duration:.1f}s, Segments: {len(self.audio_segments)}")
+        else:
+            logging.warning("RecordingManager: No segments in RecordingManager, app will use pending_soap_segments")
+        
+        return recording_data
     
     def pause_recording(self) -> bool:
         """Pause SOAP recording.
@@ -177,6 +183,9 @@ class RecordingManager:
         """
         if self.soap_recording and not self.soap_paused:
             self.audio_segments.append(audio_data)
+            logging.debug(f"RecordingManager: Added segment #{len(self.audio_segments)}, shape={audio_data.shape if hasattr(audio_data, 'shape') else 'unknown'}")
+        else:
+            logging.debug(f"RecordingManager: Segment not added - recording={self.soap_recording}, paused={self.soap_paused}")
     
     def process_recording(self, audio_data: AudioSegment, context: str = "") -> Dict[str, Any]:
         """Process completed recording through STT.
@@ -246,15 +255,30 @@ class RecordingManager:
             combined = AudioSegment.empty()
             
             for segment in self.audio_segments:
-                # Convert numpy array to AudioSegment
-                # Assuming 16-bit audio at 16kHz sample rate
-                audio_segment = AudioSegment(
-                    segment.tobytes(),
-                    frame_rate=16000,
-                    sample_width=2,
-                    channels=1
-                )
-                combined += audio_segment
+                if isinstance(segment, AudioSegment):
+                    # Already an AudioSegment, just add it
+                    combined += segment
+                elif isinstance(segment, np.ndarray):
+                    # Convert numpy array to AudioSegment
+                    # Get sample rate from audio handler (should be 48000)
+                    sample_rate = getattr(self.audio_handler, 'sample_rate', 48000)
+                    
+                    # Ensure correct format
+                    if segment.dtype == np.float32:
+                        # Convert float32 to int16
+                        audio_data = (segment * 32767).astype(np.int16)
+                    else:
+                        audio_data = segment.astype(np.int16)
+                    
+                    audio_segment = AudioSegment(
+                        audio_data.tobytes(),
+                        frame_rate=sample_rate,  # Use actual sample rate
+                        sample_width=2,
+                        channels=1
+                    )
+                    combined += audio_segment
+                else:
+                    logging.warning(f"Unknown audio segment type: {type(segment)}")
             
             return combined
             

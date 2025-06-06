@@ -138,6 +138,15 @@ class MenuManager:
         settings_menu.add_command(label="Import Prompts", command=self.app.import_prompts)
         settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
         settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
+        settings_menu.add_separator()
+        
+        # Add quick continue mode toggle
+        settings_menu.add_checkbutton(
+            label="Quick Continue Mode",
+            command=self.app.toggle_quick_continue_mode,
+            variable=self.app.quick_continue_var if hasattr(self.app, 'quick_continue_var') else None
+        )
+        
         settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
         
         menubar.add_cascade(label="Settings", menu=settings_menu)

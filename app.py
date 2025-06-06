@@ -18,11 +18,12 @@ from ttkbootstrap.constants import *
 from tkinter import TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 from dotenv import load_dotenv
 import openai
-from typing import Callable
+from typing import Callable, Optional
 import threading
 import numpy as np
 from pydub import AudioSegment
 import tempfile
+from datetime import datetime
 from cleanup_utils import clear_all_content, clear_content_except_context
 from database import Database
 from audio import AudioHandler
@@ -1036,15 +1037,42 @@ class MedicalDictationApp(ttk.Window):
 
     def _finalize_soap_recording(self, recording_data: dict = None):
         """Complete the SOAP recording process with recording data from RecordingManager."""
-        if recording_data:
-            # Store the audio data
-            self.combined_soap_chunks = [recording_data['audio']]
-            
-        # Process the recorded audio segments
-        self.process_soap_recording()
+        # Combine any remaining pending segments
+        if self.pending_soap_segments:
+            remaining_chunk = self.audio_handler.combine_audio_segments(self.pending_soap_segments)
+            if remaining_chunk:
+                self.combined_soap_chunks.append(remaining_chunk)
+            self.pending_soap_segments = []
         
-        # Reset all button states after processing is complete
-        self.after(0, lambda: self._update_recording_ui_state(recording=False, caller="finalize_delayed"))
+        # Use existing combined chunks if no recording data or if recording data has no audio
+        if not recording_data or not recording_data.get('audio'):
+            # Create recording data from existing chunks
+            if self.combined_soap_chunks:
+                final_audio = self.audio_handler.combine_audio_segments(self.combined_soap_chunks)
+                recording_data = {
+                    'audio': final_audio,
+                    'duration': len(final_audio) / 1000.0 if final_audio else 0,
+                    'start_time': self.recording_manager.soap_start_time,
+                    'segment_count': len(self.combined_soap_chunks)
+                }
+            else:
+                self.status_manager.error("No audio data available")
+                self._update_recording_ui_state(recording=False, caller="finalize_no_audio")
+                return
+        
+        # Check if quick continue mode is enabled
+        if SETTINGS.get("quick_continue_mode", True):
+            # Queue for background processing
+            self._queue_recording_for_processing(recording_data)
+            # Reset UI immediately
+            self._reset_ui_for_next_patient()
+            # Show status
+            self.status_manager.info("Recording queued • Ready for next patient")
+        else:
+            # Current behavior - process immediately
+            self.process_soap_recording()
+            # Reset all button states after processing is complete
+            self.after(0, lambda: self._update_recording_ui_state(recording=False, caller="finalize_delayed"))
 
 
     def toggle_soap_pause(self) -> None:
@@ -1063,6 +1091,9 @@ class MedicalDictationApp(ttk.Window):
             # Play pause sound (quick beep)
             self.play_recording_sound(start=False)
             
+            # Pause the recording manager
+            self.recording_manager.pause_recording()
+            
             # Stop the current recording
             self.soap_stop_listening_function()
             self.soap_stop_listening_function = None
@@ -1076,6 +1107,9 @@ class MedicalDictationApp(ttk.Window):
         try:
             # Play resume sound
             self.play_recording_sound(start=True)
+            
+            # Resume the recording manager
+            self.recording_manager.resume_recording()
             
             # Get selected microphone name
             selected_device = self.mic_combobox.get()
@@ -1201,6 +1235,22 @@ class MedicalDictationApp(ttk.Window):
                     self.audio_handler.cleanup_resources()
                 except Exception as e:
                     logging.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
+            
+            # Shutdown processing queue if it exists
+            if hasattr(self, 'processing_queue') and self.processing_queue:
+                logging.info("Shutting down processing queue...")
+                try:
+                    self.processing_queue.shutdown(wait=True)
+                except Exception as e:
+                    logging.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
+            
+            # Cleanup notification manager if it exists
+            if hasattr(self, 'notification_manager') and self.notification_manager:
+                logging.info("Cleaning up notification manager...")
+                try:
+                    self.notification_manager.cleanup()
+                except Exception as e:
+                    logging.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
             
             # Shutdown all executor pools properly - wait for tasks to complete
             logging.info("Shutting down executor pools...")
@@ -1704,6 +1754,97 @@ class MedicalDictationApp(ttk.Window):
         """Play a sound to indicate recording start/stop."""
         # Sound disabled - just log the event
         logging.debug(f"Recording {'started' if start else 'stopped'}")
+    
+    def _queue_recording_for_processing(self, recording_data: dict):
+        """Queue recording for background processing."""
+        try:
+            # Get patient name - try to extract from context or use default
+            context_text = self.context_text.get("1.0", tk.END).strip()
+            patient_name = self._extract_patient_name(context_text) or "Patient"
+            
+            # Save to database with 'pending' status
+            recording_id = self.db.add_recording(
+                filename=f"queued_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
+                processing_status='pending',
+                patient_name=patient_name
+            )
+            
+            # Get audio data from recording_data if available, otherwise use chunks
+            audio_to_process = None
+            if recording_data and recording_data.get('audio'):
+                audio_to_process = recording_data['audio']
+            elif self.combined_soap_chunks:
+                audio_to_process = self.combined_soap_chunks
+            else:
+                raise ValueError("No audio data available for processing")
+            
+            # Prepare task data
+            task_data = {
+                'recording_id': recording_id,
+                'audio_data': audio_to_process,
+                'patient_name': patient_name,
+                'context': context_text
+            }
+            
+            # Add to processing queue
+            task_id = self.processing_queue.add_recording(task_data)
+            
+            # Update status
+            self.status_manager.info(f"Recording for {patient_name} added to queue")
+            
+            logging.info(f"Queued recording {recording_id} as task {task_id}")
+            
+        except Exception as e:
+            logging.error(f"Failed to queue recording: {str(e)}", exc_info=True)
+            self.status_manager.error("Failed to queue recording for processing")
+            # Fall back to immediate processing
+            self.process_soap_recording()
+    
+    def _reset_ui_for_next_patient(self):
+        """Reset UI for next patient recording."""
+        # Clear all text fields except context
+        from cleanup_utils import clear_content_except_context
+        clear_content_except_context(self)
+        
+        # Reset recording state
+        self.soap_recording = False
+        self.combined_soap_chunks = []
+        self.pending_soap_segments = []
+        
+        # Reset UI buttons
+        self._update_recording_ui_state(recording=False, caller="reset_for_next")
+        
+        # Focus on transcript tab
+        self.notebook.select(0)
+        
+        # Update status
+        self.status_manager.success("Ready for next patient")
+    
+    def _extract_patient_name(self, context_text: str) -> Optional[str]:
+        """Try to extract patient name from context."""
+        # Simple extraction - look for "Patient:" or "Name:" in context
+        lines = context_text.split('\n')
+        for line in lines:
+            if line.startswith(('Patient:', 'Name:', 'Patient Name:')):
+                name = line.split(':', 1)[1].strip()
+                if name:
+                    return name
+        return None
+    
+    def toggle_quick_continue_mode(self):
+        """Toggle the quick continue mode setting."""
+        new_value = self.quick_continue_var.get()
+        SETTINGS["quick_continue_mode"] = new_value
+        from settings import save_settings
+        save_settings(SETTINGS)
+        
+        # Update status
+        if new_value:
+            self.status_manager.success("Quick Continue Mode enabled - recordings will process in background")
+        else:
+            self.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
+        
+        logging.info(f"Quick Continue Mode set to: {new_value}")
 
 if __name__ == "__main__":
     main()

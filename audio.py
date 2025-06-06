@@ -358,7 +358,9 @@ class AudioHandler:
                 
                 # Convert float32 to int16 for compatibility
                 if audio_data.dtype == np.float32:
-                    audio_int16 = (audio_data * 32767).astype(np.int16)
+                    # Clip to prevent overflow when converting
+                    audio_clipped = np.clip(audio_data, -1.0, 1.0)
+                    audio_int16 = (audio_clipped * 32767).astype(np.int16)
                 elif audio_data.dtype == np.int16:
                     audio_int16 = audio_data
                 else:
@@ -749,6 +751,9 @@ class AudioHandler:
                     if self.callback_function and accumulated_data:
                         # Combine all accumulated chunks
                         combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                        # Ensure data is in the right shape (flatten to 1D if needed)
+                        if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
+                            combined_data = combined_data.flatten()
                         logging.info(f"Audio callback triggered: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
                         # Call the callback with the combined data
                         self.callback_function(combined_data)
@@ -959,7 +964,9 @@ class AudioHandler:
             if self.soap_mode or max_amp > 0.0001:  # Ultra-low threshold or SOAP mode
                 # Convert float32 to int16 for compatibility
                 if audio_data.dtype == np.float32:
-                    audio_int16 = (audio_data * 32767).astype(np.int16)
+                    # Clip to prevent overflow when converting
+                    audio_clipped = np.clip(audio_data, -1.0, 1.0)
+                    audio_int16 = (audio_clipped * 32767).astype(np.int16)
                 elif audio_data.dtype == np.int16:
                     audio_int16 = audio_data
                 else:

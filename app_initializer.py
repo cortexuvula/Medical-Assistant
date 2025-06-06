@@ -10,6 +10,7 @@ import os
 import logging
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import tkinter as tk
 from tkinter import messagebox
 from tkinter.constants import DISABLED
 import ttkbootstrap as ttk
@@ -36,6 +37,8 @@ from soap_processor import SOAPProcessor
 from soap_audio_processor import SOAPAudioProcessor
 from file_processor import FileProcessor
 from database import Database
+from processing_queue import ProcessingQueue
+from notification_manager import NotificationManager
 
 
 class AppInitializer:
@@ -199,10 +202,16 @@ class AppInitializer:
         self.app.listening = False  # Initialize listening flag for recording state
         self.app.current_recording_id = None  # Track the ID of the currently loaded recording
         
+        # Quick continue mode variable for menu checkbox
+        self.app.quick_continue_var = tk.BooleanVar()
+        self.app.quick_continue_var.set(SETTINGS.get("quick_continue_mode", True))
+        
     def _initialize_database(self):
         """Initialize database instance."""
         self.app.db = Database()
         self.app.db.create_tables()
+        # Ensure queue tables exist
+        self.app.db.create_queue_tables()
         
     def _create_ui(self):
         """Create the user interface components."""
@@ -220,6 +229,11 @@ class AppInitializer:
             self.app.provider_indicator,
             self.app.progress_bar
         )
+        
+        # Set queue status label if available
+        queue_label = self.app.ui.components.get('queue_status_label')
+        if queue_label:
+            self.app.status_manager.set_queue_status_label(queue_label)
         
     def _initialize_managers(self):
         """Initialize all the manager classes."""
@@ -241,6 +255,15 @@ class AppInitializer:
         self.app.file_processor = FileProcessor(self.app)
         self.app.chat_processor = ChatProcessor(self.app)
         
+        # Initialize processing queue
+        self.app.processing_queue = ProcessingQueue(self.app)
+        self.app.processing_queue.status_callback = self._on_queue_status_update
+        self.app.processing_queue.completion_callback = self._on_queue_completion
+        self.app.processing_queue.error_callback = self._on_queue_error
+        
+        # Initialize notification manager
+        self.app.notification_manager = NotificationManager(self.app)
+        
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""
         if not openai.api_key:
@@ -255,3 +278,117 @@ class AppInitializer:
         # Add a list to track all scheduled status updates
         self.app.status_timers = []
         self.app.status_timer = None
+    
+    def _on_queue_status_update(self, task_id: str, status: str, queue_size: int):
+        """Handle queue status updates."""
+        logging.debug(f"Queue status update: task={task_id}, status={status}, size={queue_size}")
+        
+        # Update queue status display
+        stats = self.app.processing_queue.get_status()
+        self.app.status_manager.update_queue_status(
+            active=stats["active_tasks"],
+            completed=stats["completed_tasks"],
+            failed=stats["failed_tasks"]
+        )
+    
+    def _on_queue_completion(self, task_id: str, recording_data: dict, result: dict):
+        """Handle queue processing completion."""
+        logging.info(f"Processing completed for task {task_id}")
+        
+        # Update database with results
+        if result.get('success'):
+            self.app.db.update_recording(
+                recording_data['recording_id'],
+                transcript=result.get('transcript', ''),
+                soap_note=result.get('soap_note', ''),
+                audio_path=result.get('audio_path', ''),
+                processing_status='completed',
+                processing_completed_at=result.get('completed_at')
+            )
+            
+            # Update UI with the processed results
+            transcript = result.get('transcript', '')
+            soap_note = result.get('soap_note', '')
+            
+            # Schedule UI update on main thread
+            self.app.after(0, lambda: self._update_ui_with_results(
+                recording_data['recording_id'],
+                transcript,
+                soap_note,
+                recording_data.get('patient_name', 'Unknown')
+            ))
+            
+            # Show notification
+            self.app.notification_manager.show_completion(
+                patient_name=recording_data.get('patient_name', 'Unknown'),
+                recording_id=recording_data['recording_id'],
+                task_id=task_id,
+                processing_time=result.get('processing_time', 0)
+            )
+        
+        # Update queue status
+        self.app.status_manager.increment_queue_completed()
+    
+    def _on_queue_error(self, task_id: str, recording_data: dict, error_msg: str):
+        """Handle queue processing errors."""
+        logging.error(f"Processing failed for task {task_id}: {error_msg}")
+        
+        # Update database
+        self.app.db.update_recording(
+            recording_data['recording_id'],
+            processing_status='failed',
+            error_message=error_msg
+        )
+        
+        # Show notification
+        self.app.notification_manager.show_error(
+            patient_name=recording_data.get('patient_name', 'Unknown'),
+            error_message=error_msg,
+            recording_id=recording_data['recording_id'],
+            task_id=task_id
+        )
+        
+        # Update queue status
+        self.app.status_manager.increment_queue_failed()
+    
+    def _update_ui_with_results(self, recording_id: int, transcript: str, soap_note: str, patient_name: str):
+        """Update UI tabs with processed results from background queue."""
+        try:
+            # Check if UI should be updated based on settings
+            if not SETTINGS.get('auto_update_ui_on_completion', True):
+                return
+                
+            # Only update if the UI is not currently busy with another recording
+            if hasattr(self.app, 'soap_recording') and self.app.soap_recording:
+                logging.info("Skipping UI update - currently recording")
+                return
+            
+            # Check if tabs are empty or user wants to see the latest results
+            transcript_empty = not self.app.transcript_text.get("1.0", "end-1c").strip()
+            soap_empty = not self.app.soap_text.get("1.0", "end-1c").strip()
+            
+            # Update transcript tab if empty
+            if transcript_empty and transcript:
+                self.app.transcript_text.delete("1.0", "end")
+                self.app.transcript_text.insert("1.0", transcript)
+                self.app.transcript_text.edit_separator()  # Add to undo history
+                logging.info(f"Updated transcript tab with results from recording {recording_id}")
+            
+            # Update SOAP tab if empty
+            if soap_empty and soap_note:
+                self.app.soap_text.delete("1.0", "end")
+                self.app.soap_text.insert("1.0", soap_note)
+                self.app.soap_text.edit_separator()  # Add to undo history
+                logging.info(f"Updated SOAP tab with results from recording {recording_id}")
+                
+                # Switch to SOAP tab to show the results
+                self.app.notebook.select(1)
+            
+            # Update current recording ID
+            self.app.current_recording_id = recording_id
+            
+            # Update status
+            self.app.status_manager.info(f"Loaded results for {patient_name}")
+            
+        except Exception as e:
+            logging.error(f"Error updating UI with results: {str(e)}", exc_info=True)

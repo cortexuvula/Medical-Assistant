@@ -1,5 +1,6 @@
 import sqlite3
 import datetime
+import json
 from typing import Optional, Dict, List, Any, Union
 
 class Database:
@@ -36,7 +37,8 @@ class Database:
         self.conn.commit()
         self.disconnect()
     
-    def add_recording(self, filename: str, transcript: Optional[str] = None, soap_note: Optional[str] = None, referral: Optional[str] = None, letter: Optional[str] = None) -> int:
+    def add_recording(self, filename: str, transcript: Optional[str] = None, soap_note: Optional[str] = None, 
+                     referral: Optional[str] = None, letter: Optional[str] = None, **kwargs) -> int:
         """Add a new recording to the database
         
         Parameters:
@@ -45,15 +47,34 @@ class Database:
         - soap_note: Generated SOAP note
         - referral: Generated referral
         - letter: Generated letter
+        - kwargs: Additional fields (processing_status, patient_name, etc.)
         
         Returns:
         - ID of the new recording
         """
         self.connect()
-        self.cursor.execute('''
-        INSERT INTO recordings (filename, transcript, soap_note, referral, letter, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (filename, transcript, soap_note, referral, letter, datetime.datetime.now()))
+        
+        # Build fields and values dynamically
+        fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
+        values = [filename, transcript, soap_note, referral, letter, datetime.datetime.now()]
+        
+        # Add any extra fields from kwargs
+        allowed_extras = ['processing_status', 'patient_name', 'audio_path', 'duration', 'metadata']
+        for field in allowed_extras:
+            if field in kwargs:
+                fields.append(field)
+                value = kwargs[field]
+                # Handle metadata serialization
+                if field == 'metadata' and isinstance(value, dict):
+                    value = json.dumps(value)
+                values.append(value)
+        
+        # Build query
+        placeholders = ','.join(['?' for _ in fields])
+        field_names = ','.join(fields)
+        query = f"INSERT INTO recordings ({field_names}) VALUES ({placeholders})"
+        
+        self.cursor.execute(query, values)
         row_id = self.cursor.lastrowid
         self.conn.commit()
         self.disconnect()
@@ -65,12 +86,22 @@ class Database:
         
         Parameters:
         - recording_id: ID of the recording to update
-        - kwargs: Fields to update (filename, transcript, soap_note, referral, letter)
+        - kwargs: Fields to update (filename, transcript, soap_note, referral, letter, 
+                  processing_status, processing_started_at, processing_completed_at, 
+                  error_message, retry_count, patient_name, audio_path, duration, metadata)
         
         Returns:
         - True if successful, False otherwise
         """
-        allowed_fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter']
+        allowed_fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter',
+                         'processing_status', 'processing_started_at', 'processing_completed_at',
+                         'error_message', 'retry_count', 'patient_name', 'audio_path', 
+                         'duration', 'metadata']
+        
+        # Handle metadata serialization if present
+        if 'metadata' in kwargs and isinstance(kwargs['metadata'], dict):
+            kwargs['metadata'] = json.dumps(kwargs['metadata'])
+        
         # Validate field names to prevent any potential injection through kwargs keys
         update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields and k.isidentifier()}
         
@@ -188,3 +219,118 @@ class Database:
         
         columns = ['id', 'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
         return [dict(zip(columns, recording)) for recording in recordings]
+
+    
+    # Queue-related methods
+    def create_queue_tables(self) -> None:
+        """Create queue-related tables if they do not exist."""
+        from db_queue_schema import upgrade_database
+        upgrade_database()
+    
+    def add_to_processing_queue(self, recording_id: int, task_id: str, priority: int = 5) -> Optional[int]:
+        """Add a recording to the processing queue.
+        
+        Parameters:
+        - recording_id: ID of the recording to process
+        - task_id: Unique task identifier
+        - priority: Processing priority (0-10, default 5)
+        
+        Returns:
+        - Queue entry ID if successful, None otherwise
+        """
+        self.connect()
+        try:
+            self.cursor.execute("INSERT INTO processing_queue (recording_id, task_id, priority, status) VALUES (?, ?, ?, ?)", 
+                              (recording_id, task_id, priority, "queued"))
+            queue_id = self.cursor.lastrowid
+            self.conn.commit()
+            return queue_id
+        except sqlite3.IntegrityError:
+            # Task ID already exists
+            return None
+        finally:
+            self.disconnect()
+    
+    def update_queue_status(self, task_id: str, status: str, **kwargs: Any) -> bool:
+        """Update processing queue entry status.
+        
+        Parameters:
+        - task_id: Task identifier
+        - status: New status
+        - kwargs: Additional fields to update (started_at, completed_at, error_count, last_error, result)
+        """
+        self.connect()
+        
+        # Build update query
+        fields = ["status = ?"]
+        values = [status]
+        
+        allowed_fields = ["started_at", "completed_at", "error_count", "last_error", "result"]
+        for field in allowed_fields:
+            if field in kwargs:
+                fields.append(f"{field} = ?")
+                value = kwargs[field]
+                # Serialize result if it is a dict
+                if field == "result" and isinstance(value, dict):
+                    value = json.dumps(value)
+                values.append(value)
+        
+        values.append(task_id)
+        query = f"UPDATE processing_queue SET {", ".join(fields)} WHERE task_id = ?"
+        
+        self.cursor.execute(query, values)
+        rows_affected = self.cursor.rowcount
+        self.conn.commit()
+        self.disconnect()
+        
+        return rows_affected > 0
+    
+    def get_pending_recordings(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recordings that are pending processing."""
+        self.connect()
+        self.cursor.execute("""
+            SELECT r.*, pq.task_id, pq.priority 
+            FROM recordings r
+            LEFT JOIN processing_queue pq ON r.id = pq.recording_id
+            WHERE r.processing_status = "pending" OR r.processing_status IS NULL
+            ORDER BY pq.priority DESC, r.timestamp ASC
+            LIMIT ?
+        """, (limit,))
+        
+        recordings = self.cursor.fetchall()
+        self.disconnect()
+        
+        # Extended columns including queue info
+        columns = ["id", "filename", "transcript", "soap_note", "referral", "letter", 
+                  "timestamp", "task_id", "priority"]
+        return [dict(zip(columns, recording)) for recording in recordings]
+    
+    def get_processing_stats(self) -> Dict[str, int]:
+        """Get processing queue statistics."""
+        self.connect()
+        
+        stats = {}
+        
+        # Count by status
+        self.cursor.execute("""
+            SELECT processing_status, COUNT(*) 
+            FROM recordings 
+            WHERE processing_status IS NOT NULL
+            GROUP BY processing_status
+        """)
+        
+        for status, count in self.cursor.fetchall():
+            stats[f"recordings_{status}"] = count
+        
+        # Queue stats
+        self.cursor.execute("""
+            SELECT status, COUNT(*) 
+            FROM processing_queue 
+            GROUP BY status
+        """)
+        
+        for status, count in self.cursor.fetchall():
+            stats[f"queue_{status}"] = count
+        
+        self.disconnect()
+        return stats

@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import NORMAL, DISABLED
 from ttkbootstrap.constants import LEFT
 from datetime import datetime as dt
-from typing import List, Any
+from typing import List, Any, Dict, Optional
 
 from ai import create_soap_note_with_openai
 from settings import SETTINGS
@@ -199,3 +199,98 @@ class SOAPProcessor:
 
         # Use IO executor for the CPU-intensive audio processing
         self.io_executor.submit(task)
+    
+    def process_recording_async(self, recording_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a recording asynchronously for background queue processing.
+        
+        This method is designed to be called from the ProcessingQueue without
+        UI interactions. It returns results that can be saved to the database.
+        
+        Args:
+            recording_data: Dictionary containing:
+                - audio_data: Raw audio data or segments
+                - recording_id: Database ID
+                - patient_name: Patient name
+                - context: Context information
+                
+        Returns:
+            Dictionary with processing results:
+                - transcript: The transcribed text
+                - soap_note: The generated SOAP note
+                - audio_path: Path to saved audio file
+                - success: Boolean indicating success
+                - error: Error message if failed
+        """
+        try:
+            logging.info(f"Starting async processing for recording {recording_data.get('recording_id')}")
+            
+            # Process audio data
+            audio_segments = recording_data.get('audio_data', [])
+            if not audio_segments:
+                raise ValueError("No audio data provided")
+            
+            # Combine audio segments if multiple
+            if isinstance(audio_segments, list):
+                audio_segment = self.audio_handler.combine_audio_segments(audio_segments)
+            else:
+                audio_segment = audio_segments
+            
+            if not audio_segment:
+                raise ValueError("Failed to create audio segment")
+            
+            # Generate filename and save audio
+            storage_folder = SETTINGS.get("storage_folder") or SETTINGS.get("default_storage_folder")
+            if not storage_folder or not os.path.exists(storage_folder):
+                storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
+                os.makedirs(storage_folder, exist_ok=True)
+            
+            # Create filename with patient name if available
+            patient_name = recording_data.get('patient_name', 'Unknown')
+            safe_patient_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            date_formatted = dt.now().strftime("%d-%m-%y")
+            time_formatted = dt.now().strftime("%H-%M")
+            
+            audio_path = os.path.join(storage_folder, f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}.mp3")
+            
+            # Save audio
+            if not self.audio_handler.save_audio([audio_segment], audio_path):
+                raise ValueError("Failed to save audio file")
+            
+            logging.info(f"Audio saved to: {audio_path}")
+            
+            # Transcribe audio
+            transcript = self.audio_handler.transcribe_audio(audio_segment)
+            if not transcript:
+                raise ValueError("Transcription failed - no text recognized")
+            
+            logging.info(f"Transcription complete: {len(transcript)} characters")
+            
+            # Generate SOAP note
+            context_text = recording_data.get('context', '')
+            soap_note = create_soap_note_with_openai(transcript, context_text)
+            
+            if not soap_note:
+                raise ValueError("Failed to generate SOAP note")
+            
+            logging.info(f"SOAP note generated successfully for recording {recording_data.get('recording_id')}")
+            
+            # Return results
+            return {
+                'success': True,
+                'transcript': transcript,
+                'soap_note': soap_note,
+                'audio_path': audio_path,
+                'duration': len(audio_segment) / 1000.0,  # Convert to seconds
+                'patient_name': patient_name
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in async processing: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'transcript': '',
+                'soap_note': '',
+                'audio_path': '',
+                'duration': 0
+            }

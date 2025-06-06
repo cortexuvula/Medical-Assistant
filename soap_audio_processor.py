@@ -26,6 +26,8 @@ class SOAPAudioProcessor:
         # Add audio segment to recording manager
         if isinstance(audio_data, np.ndarray):
             self.app.recording_manager.add_audio_segment(audio_data)
+            # Log for debugging
+            logging.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
         
         # Original processing for UI updates
         try:
@@ -41,7 +43,9 @@ class SOAPAudioProcessor:
                         if audio_data.dtype != np.int16:
                             # Scale float32/64 [-1.0, 1.0] to int16 [-32768, 32767]
                             if audio_data.dtype in [np.float32, np.float64]:
-                                audio_data = (audio_data * 32767).astype(np.int16)
+                                # Clip to prevent overflow
+                                audio_clipped = np.clip(audio_data, -1.0, 1.0)
+                                audio_data = (audio_clipped * 32767).astype(np.int16)
                             else:
                                 # Attempt conversion for other types, log warning
                                 logging.warning(f"Unexpected audio data type {audio_data.dtype}, attempting conversion to int16")

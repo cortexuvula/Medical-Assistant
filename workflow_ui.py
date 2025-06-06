@@ -1151,11 +1151,28 @@ class WorkflowUI:
         )
         provider_indicator.pack(side=LEFT, padx=(0, 10))
         
+        # Queue status indicator
+        queue_status_label = ttk.Label(
+            status_frame,
+            text="",  # Empty initially
+            anchor="e",
+            font=("Segoe UI", 9, "bold"),
+            foreground="gray"
+        )
+        queue_status_label.pack(side=LEFT, padx=(0, 10))
+        
+        # Store reference for later use
+        self.components['queue_status_label'] = queue_status_label
+        
         # Progress bar
         progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
         progress_bar.pack(side=RIGHT, padx=10)
         progress_bar.stop()
         progress_bar.pack_forget()
+        
+        # Update status manager with queue label after it's created
+        if hasattr(self.parent, 'status_manager') and self.parent.status_manager:
+            self.parent.status_manager.set_queue_status_label(queue_status_label)
         
         return status_frame, status_icon_label, status_label, provider_indicator, progress_bar
     

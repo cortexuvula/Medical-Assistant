@@ -219,7 +219,14 @@ Follow up:
                 "Create follow-up letter"
             ]
         }
-    }
+    },
+    "quick_continue_mode": True,  # Enable background processing by default
+    "max_background_workers": 2,
+    "show_processing_notifications": True,
+    "auto_retry_failed": True,
+    "max_retry_attempts": 3,
+    "notification_style": "toast",  # toast, statusbar, popup
+    "auto_update_ui_on_completion": True  # Auto-populate tabs when processing completes
 }
 
 def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:

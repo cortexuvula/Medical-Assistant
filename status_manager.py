@@ -33,6 +33,14 @@ class StatusManager:
             "error": "#dc3545",    # Red
             "idle": "gray"         # Gray for idle state
         }
+        
+        # Queue status tracking
+        self.queue_status = {
+            "active": 0,
+            "completed": 0,
+            "failed": 0
+        }
+        self.queue_status_label = None
     
     def update_status(self, message, status_type="info"):
         """Update the status bar with a message and specific status type.
@@ -151,3 +159,103 @@ class StatusManager:
         self.update_status(message, "progress")
         if show_bar:
             self.show_progress(True)
+    
+    # Queue status methods
+    def set_queue_status_label(self, label):
+        """Set the queue status label widget.
+        
+        Args:
+            label: The ttk.Label widget to use for queue status display
+        """
+        self.queue_status_label = label
+        self.update_queue_display()
+    
+    def update_queue_status(self, active=None, completed=None, failed=None):
+        """Update queue processing statistics.
+        
+        Args:
+            active: Number of active processing tasks
+            completed: Number of completed tasks
+            failed: Number of failed tasks
+        """
+        if active is not None:
+            self.queue_status["active"] = active
+        if completed is not None:
+            self.queue_status["completed"] = completed
+        if failed is not None:
+            self.queue_status["failed"] = failed
+        
+        self.update_queue_display()
+    
+    def update_queue_display(self):
+        """Update the queue status display."""
+        if not self.queue_status_label:
+            return
+        
+        active = self.queue_status["active"]
+        completed = self.queue_status["completed"]
+        failed = self.queue_status["failed"]
+        
+        if active == 0 and completed == 0 and failed == 0:
+            # No queue activity
+            self.queue_status_label.config(text="")
+        else:
+            # Build status text
+            parts = []
+            if active > 0:
+                parts.append(f"🔄 {active} processing")
+            if completed > 0:
+                parts.append(f"✓ {completed} done")
+            if failed > 0:
+                parts.append(f"✗ {failed} failed")
+            
+            status_text = f"[Queue: {', '.join(parts)}]"
+            self.queue_status_label.config(text=status_text)
+            
+            # Color based on status
+            if failed > 0:
+                self.queue_status_label.config(foreground=self.status_colors["error"])
+            elif active > 0:
+                self.queue_status_label.config(foreground=self.status_colors["info"])
+            else:
+                self.queue_status_label.config(foreground=self.status_colors["success"])
+    
+    def increment_queue_completed(self):
+        """Increment completed queue count."""
+        self.queue_status["completed"] += 1
+        if self.queue_status["active"] > 0:
+            self.queue_status["active"] -= 1
+        self.update_queue_display()
+    
+    def increment_queue_failed(self):
+        """Increment failed queue count."""
+        self.queue_status["failed"] += 1
+        if self.queue_status["active"] > 0:
+            self.queue_status["active"] -= 1
+        self.update_queue_display()
+    
+    def reset_queue_status(self):
+        """Reset queue status counters."""
+        self.queue_status = {
+            "active": 0,
+            "completed": 0,
+            "failed": 0
+        }
+        self.update_queue_display()
+    
+    def show_queue_summary(self):
+        """Display a summary of queue activity in the main status bar."""
+        active = self.queue_status["active"]
+        completed = self.queue_status["completed"]
+        failed = self.queue_status["failed"]
+        
+        if active > 0:
+            message = f"Background processing: {active} active"
+            self.info(message)
+        elif completed > 0 or failed > 0:
+            message = f"Processing complete: {completed} successful"
+            if failed > 0:
+                message += f", {failed} failed"
+                self.warning(message)
+            else:
+                self.success(message)
