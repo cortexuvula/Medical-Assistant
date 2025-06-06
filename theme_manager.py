@@ -74,6 +74,10 @@ class ThemeManager:
         self._update_refresh_buttons(is_dark)
         self._update_chat_ui(is_dark)
         
+        # Update menu styling for new theme
+        if hasattr(self.app, 'menu_manager') and self.app.menu_manager:
+            self.app.menu_manager.update_menu_theme()
+        
         # Update shortcut label in status bar to show theme toggle shortcut
         self.app.status_manager.info("Theme toggle shortcut: Alt+T")
         

@@ -1524,6 +1524,25 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
             logging.error(f"Error opening logs directory: {str(e)}")
+    
+    def _open_logs_folder_menu(self):
+        """Wrapper method for menu to open logs folder"""
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        if not os.path.exists(log_dir):
+            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
+            return
+        logging.info("User accessed logs directory from menu")
+        self._open_logs_folder(log_dir)
+    
+    def _show_log_contents_menu(self):
+        """Wrapper method for menu to show log contents"""
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        log_file = os.path.join(log_dir, "medical_dictation.log")
+        if not os.path.exists(log_dir):
+            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
+            return
+        logging.info("User viewed log contents from menu")
+        self._show_log_contents(log_file)
 
     def on_window_configure(self, event):
         """
