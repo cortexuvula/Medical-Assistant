@@ -745,6 +745,7 @@ class AudioHandler:
                     # max_val = np.abs(audio_data_copy).max()
                     # mean_val = np.abs(audio_data_copy).mean()
                     # logging.debug(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
+                    pass
                 
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames:
