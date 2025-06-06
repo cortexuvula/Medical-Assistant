@@ -18,6 +18,16 @@ from resilience import resilient_api_call
 from security import get_security_manager
 from security_decorators import secure_api_call, rate_limited
 
+
+def log_api_call_debug(provider: str, model: str, temperature: float, system_message: str, prompt: str):
+    """Consolidated debug logging for API calls to reduce repetition."""
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.debug(f"\n===== {provider.upper()} API CALL =====")
+        logging.debug(f"Model: {model}, Temperature: {temperature}")
+        logging.debug(f"System: {system_message[:100]}..." if len(system_message) > 100 else f"System: {system_message}")
+        logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+        logging.debug("="*40)
+
 @secure_api_call("openai")
 @resilient_api_call(
     max_retries=3,
@@ -75,14 +85,8 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
         
-        # Print API call details to terminal
-        logging.debug(f"\n===== OPENAI API CALL DETAILS =====")
-        logging.debug(f"Provider: OpenAI")
-        logging.debug(f"Model: {model}")
-        logging.debug(f"Temperature: {temperature}")
-        logging.debug(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
-        logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
-        logging.debug(f"====================================\n")
+        # Use consolidated debug logging
+        log_api_call_debug("OpenAI", model, temperature, system_message, prompt)
         
         messages = [
             {"role": "system", "content": system_message},
@@ -172,14 +176,8 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
     model = SETTINGS.get(model_key, {}).get("perplexity_model", "sonar-medium-chat")
     logging.info(f"Making Perplexity API call with model: {model}")
     
-    # Print API call details to terminal
-    logging.debug(f"\n===== PERPLEXITY API CALL DETAILS =====")
-    logging.debug(f"Provider: Perplexity")
-    logging.debug(f"Model: {model}")
-    logging.debug(f"Temperature: {temperature}")
-    logging.debug(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
-    logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
-    logging.debug(f"========================================\n")
+    # Use consolidated debug logging
+    log_api_call_debug("Perplexity", model, temperature, system_message, prompt)
     
     messages = [
         {"role": "system", "content": system_message},
@@ -221,14 +219,8 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     
     logging.info(f"Making Ollama API call with model: {model}")
     
-    # Print API call details to terminal
-    logging.debug(f"\n===== OLLAMA API CALL DETAILS =====")
-    logging.debug(f"Provider: Ollama")
-    logging.debug(f"Model: {model}")
-    logging.debug(f"Temperature: {temperature}")
-    logging.debug(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
-    logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
-    logging.debug(f"====================================\n")
+    # Use consolidated debug logging
+    log_api_call_debug("Ollama", model, temperature, system_message, prompt)
     
     # Format the request payload for Ollama API
     # Use the 'generate' endpoint instead of 'chat' for more consistent responses
@@ -399,14 +391,8 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
     
     logging.info(f"Making Grok API call with model: {model}")
     
-    # Print API call details to terminal
-    logging.debug(f"\n===== GROK API CALL DETAILS =====")
-    logging.debug(f"Provider: Grok")
-    logging.debug(f"Model: {model}")
-    logging.debug(f"Temperature: {temperature}")
-    logging.debug(f"System Message: {system_message[:100]}..." if len(system_message) > 100 else f"System Message: {system_message}")
-    logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
-    logging.debug(f"==================================\n")
+    # Use consolidated debug logging
+    log_api_call_debug("Grok", model, temperature, system_message, prompt)
     
     client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
     messages = [
@@ -615,7 +601,8 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
     # Save prompt to debug file
     try:
         from datetime import datetime
-        debug_file_path = os.path.join(os.path.dirname(__file__), "last_llm_prompt.txt")
+        from data_folder_manager import data_folder_manager
+        debug_file_path = data_folder_manager.logs_folder / "last_llm_prompt.txt"
         with open(debug_file_path, 'w', encoding='utf-8') as f:
             f.write(f"=== LLM PROMPT DEBUG ===\n")
             f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -653,42 +640,19 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
     # Handle different providers and get appropriate model
     if provider == "perplexity":
         logging.info(f"Using provider: Perplexity for task: {model_key}")
-        logging.debug("===== ROUTE TO PERPLEXITY API CALL DETAILS =====")
-        logging.debug(f"Provider: Perplexity")
-        logging.debug(f"Model: sonar-reasoning-pro")
-        logging.debug(f"Temperature: {temperature}")
-        logging.debug(f"System Message: {system_message[:100]}...")
-        logging.debug(f"Prompt: {prompt[:100]}...")
-        logging.debug("==================================")
+        # Debug logging will happen in the actual API call
         return call_perplexity(system_message, prompt, temperature)
     elif provider == "grok":
         actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
-        logging.debug("===== ROUTE TO GROK API CALL DETAILS =====")
-        logging.debug(f"Provider: Grok")
-        logging.debug(f"Model: {actual_model}")
-        logging.debug(f"Temperature: {temperature}")
-        logging.debug(f"System Message: {system_message[:100]}...")
-        logging.debug(f"Prompt: {prompt[:100]}...")
-        logging.debug("==================================")
+        # Debug logging will happen in the actual API call
         return call_grok(actual_model, system_message, prompt, temperature)
     elif provider == "ollama":
         logging.info(f"Using provider: Ollama for task: {model_key}")
-        logging.debug("===== ROUTE TO OLLAMA API CALL DETAILS =====")
-        logging.debug(f"Provider: Ollama")
-        logging.debug(f"Temperature: {temperature}")
-        logging.debug(f"System Message: {system_message[:100]}...")
-        logging.debug(f"Prompt: {prompt[:100]}...")
-        logging.debug("==================================")
+        # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)
     else:  # OpenAI is the default
         actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")
-        logging.debug("===== ROUTE TO OPENAI API CALL DETAILS =====")
-        logging.debug(f"Provider: OpenAI")
-        logging.debug(f"Model: {actual_model}")
-        logging.debug(f"Temperature: {temperature}")
-        logging.debug(f"System Message: {system_message[:100]}...")
-        logging.debug(f"Prompt: {prompt[:100]}...")
-        logging.debug("==================================")
+        # Debug logging will happen in the actual API call
         return call_openai(actual_model, system_message, prompt, temperature)

@@ -89,6 +89,7 @@ class DataFolderManager:
             ("medical_assistant.db", self.database_file_path),
             ("database.db", self.database_file_path),  # Old database name
             ("database", self.database_file_path),      # Sometimes without extension
+            ("last_llm_prompt.txt", self.logs_folder / "last_llm_prompt.txt"),  # Debug file
         ]
         
         for old_name, new_path in files_to_migrate:

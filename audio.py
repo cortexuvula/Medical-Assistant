@@ -151,15 +151,16 @@ class AudioHandler:
         This method ensures all audio streams are properly closed and resources
         are released to prevent issues on application restart.
         """
-        logging.info("AudioHandler: Cleaning up audio resources...")
+        logging.debug("AudioHandler: Cleaning up audio resources...")
         
         # Clean up any active streams from the class list
+        streams_closed = 0
         while AudioHandler._active_streams:
             try:
                 stream = AudioHandler._active_streams.pop()
-                logging.info("AudioHandler: Stopping active stream")
                 stream.stop()
                 stream.close()
+                streams_closed += 1
                 # Give it a tiny bit of time to fully release resources
                 time.sleep(0.1)
             except Exception as e:
@@ -167,7 +168,6 @@ class AudioHandler:
         
         # Terminate sounddevice streams if any are active
         try:
-            logging.info("AudioHandler: Ensuring sounddevice streams are closed")
             sd.stop()
         except Exception as e:
             logging.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
@@ -175,8 +175,9 @@ class AudioHandler:
         # Reset any internal state variables that might persist
         self.soap_mode = False
         
-        # Final log indication that cleanup is complete
-        logging.info("AudioHandler: Audio resources cleanup complete")
+        # Single summary log
+        if streams_closed > 0:
+            logging.info(f"AudioHandler: Cleanup complete, {streams_closed} stream(s) closed")
 
     def transcribe_audio(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider with fallback options.
@@ -550,17 +551,15 @@ class AudioHandler:
         Returns:
             Device index or None if not found.
         """
-        logging.info(f"Resolving sounddevice index for: '{device_name}'")
+        logging.debug(f"Resolving sounddevice index for: '{device_name}'")
         devices = sd.query_devices()
         device_id = None
         current_platform = platform.system().lower()
 
-        # Log available devices for debugging
-        logging.info("Sounddevice List for Index Resolution:")
+        # Build list of input devices
         input_device_indices = []
         for i, dev in enumerate(devices):
             is_input = dev['max_input_channels'] > 0
-            logging.info(f"  [{i}] {dev['name']} (In={is_input}, Chan={dev['max_input_channels']}) HostAPI: {dev['hostapi']}")
             if is_input:
                 input_device_indices.append(i)
 
@@ -568,7 +567,7 @@ class AudioHandler:
         for i in input_device_indices:
             if devices[i]['name'] == device_name:
                 device_id = i
-                logging.info(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
+                logging.debug(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
                 break
 
         # 2. If no exact match, try case-insensitive match
@@ -576,7 +575,7 @@ class AudioHandler:
             for i in input_device_indices:
                 if devices[i]['name'].lower() == device_name.lower():
                     device_id = i
-                    logging.info(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logging.debug(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 3. Try partial match
@@ -584,7 +583,7 @@ class AudioHandler:
             for i in input_device_indices:
                 if device_name in devices[i]['name'] or devices[i]['name'] in device_name:
                     device_id = i
-                    logging.info(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logging.debug(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 3.5 Platform-specific matching
@@ -600,7 +599,7 @@ class AudioHandler:
                 
                 if device_name_clean.lower() in dev_name_clean.lower() or dev_name_clean.lower() in device_name_clean.lower():
                     device_id = i
-                    logging.info(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logging.debug(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 4. Special handling for device names with "(Device X)" suffix
@@ -742,9 +741,10 @@ class AudioHandler:
                 
                 # Log first few callbacks to verify audio is being received
                 if len(accumulated_data) <= 3:
-                    max_val = np.abs(audio_data_copy).max()
-                    mean_val = np.abs(audio_data_copy).mean()
-                    logging.info(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
+                    # Debug info commented out - too verbose for normal operation
+                    # max_val = np.abs(audio_data_copy).max()
+                    # mean_val = np.abs(audio_data_copy).mean()
+                    # logging.debug(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
                 
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames:
@@ -754,7 +754,7 @@ class AudioHandler:
                         # Ensure data is in the right shape (flatten to 1D if needed)
                         if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
                             combined_data = combined_data.flatten()
-                        logging.info(f"Audio callback triggered: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
+                        # logging.debug(f"Audio callback triggered: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
                         # Call the callback with the combined data
                         self.callback_function(combined_data)
                         

@@ -34,7 +34,6 @@ class SOAPAudioProcessor:
             # Directly handle numpy array data for potential efficiency
             if isinstance(audio_data, np.ndarray):
                 max_amp = np.abs(audio_data).max()
-                # logging.debug(f"SOAP callback processing np.ndarray, max_amp: {max_amp:.8f}")
                 
                 # Basic silence detection - adjust threshold as needed
                 if self.app.audio_handler.soap_mode or max_amp > 0.0001: # Avoid processing completely silent chunks unless in SOAP mode
@@ -57,10 +56,8 @@ class SOAPAudioProcessor:
                             frame_rate=self.app.audio_handler.sample_rate,
                             channels=self.app.audio_handler.channels
                         )
-                        # logging.debug("SOAP callback: Successfully created AudioSegment from np.ndarray.")
                         # Add to segments list for later processing
                         self.app.pending_soap_segments.append(new_segment)
-                        #logging.info(f"SOAP segment appended (from np.ndarray). Total segments: {len(self.app.pending_soap_segments)}")
                         
                         # Visual feedback that audio is being recorded
                         self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))
@@ -74,14 +71,11 @@ class SOAPAudioProcessor:
                     # Do not return here, let it potentially fall through if needed, although unlikely for low amplitude
             
             # Fall back to standard processing for non-ndarray types or if direct processing failed
-            # logging.debug("SOAP callback using standard process_audio_data.")
             new_segment, _ = self.app.audio_handler.process_audio_data(audio_data)
             
             if new_segment:
-                # logging.debug("SOAP callback: Successfully created AudioSegment via standard process.")
                 # Add to segments list for later processing
                 self.app.pending_soap_segments.append(new_segment)
-                # logging.info(f"SOAP segment appended (from standard process). Total segments: {len(self.app.pending_soap_segments)}")
                 
                 # Visual feedback that audio is being recorded
                 self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))

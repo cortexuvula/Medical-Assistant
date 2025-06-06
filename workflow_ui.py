@@ -172,8 +172,8 @@ class WorkflowUI:
         ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
         # Fixed-height container for timer to prevent resize
-        timer_container = ttk.Frame(center_frame, height=25)
-        timer_container.pack(pady=1, fill=X)
+        timer_container = ttk.Frame(center_frame, height=35)
+        timer_container.pack(pady=2, fill=X)
         timer_container.pack_propagate(False)  # Maintain fixed height
         
         # Timer display inside the container
@@ -451,7 +451,7 @@ class WorkflowUI:
         
         if 0 <= tab_index < len(tab_names):
             self.current_workflow = tab_names[tab_index]
-            logging.info(f"Switched to {self.current_workflow} workflow")
+            logging.debug(f"Switched to {self.current_workflow} workflow")
             
             # Trigger any workflow-specific updates
             if hasattr(self.parent, 'on_workflow_changed'):

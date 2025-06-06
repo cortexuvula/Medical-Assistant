@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Initialize configuration
 try:
     # Migrate existing files to AppData folder
-    logger.info("Migrating existing files to AppData folder...")
+    logger.debug("Migrating existing files to AppData folder...")
     data_folder_manager.migrate_existing_files()
     
     # Get environment from env variable or default to production
@@ -50,9 +50,7 @@ try:
     logger.info(f"API key validation: {api_key_status}")
     
     # Log configuration summary
-    logger.info(f"Storage folder: {config.storage.base_folder}")
-    logger.info(f"Default STT provider: {config.transcription.default_provider}")
-    logger.info(f"UI theme: {config.ui.theme}")
+    logger.debug(f"Configuration: storage={config.storage.base_folder}, STT={config.transcription.default_provider}, theme={config.ui.theme}")
     
     # Initialize database and run migrations
     logger.info("Initializing database...")
