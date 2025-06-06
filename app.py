@@ -285,7 +285,7 @@ class MedicalDictationApp(ttk.Window):
         # Copy button - easily accessible
         copy_btn = ttk.Button(
             provider_frame,
-            text="📋 Copy",
+            text="Copy",
             command=self.copy_text,
             width=10,
             bootstyle="primary"
@@ -296,7 +296,7 @@ class MedicalDictationApp(ttk.Window):
         # Theme toggle
         self.theme_btn = ttk.Button(
             provider_frame,
-            text="🌙 Theme",
+            text="Theme",
             command=self.toggle_theme,
             width=10
         )
