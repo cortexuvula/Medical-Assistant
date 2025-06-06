@@ -71,6 +71,10 @@ class WorkflowUI:
         generate_frame = self._create_generate_tab(command_map)
         workflow_notebook.add(generate_frame, text="Generate")
         
+        # Create Recordings tab
+        recordings_frame = self._create_recordings_tab(command_map)
+        workflow_notebook.add(recordings_frame, text="Recordings")
+        
         # Bind tab change event
         workflow_notebook.bind("<<NotebookTabChanged>>", self._on_workflow_tab_changed)
         
@@ -88,13 +92,9 @@ class WorkflowUI:
         """
         record_frame = ttk.Frame(self.parent)
         
-        # Create a vertical paned window to split recording controls and recordings list
-        paned = ttk.PanedWindow(record_frame, orient="vertical")
-        paned.pack(expand=True, fill=BOTH, padx=10, pady=5)
-        
-        # Top pane - main recording controls
-        center_frame = ttk.Frame(paned)
-        paned.add(center_frame, weight=1)
+        # Main recording controls container (no longer using paned window)
+        center_frame = ttk.Frame(record_frame)
+        center_frame.pack(expand=True, fill=BOTH, padx=10, pady=5)
         
         # Recording status frame (for visual feedback)
         status_frame = ttk.Frame(center_frame)
@@ -232,14 +232,6 @@ class WorkflowUI:
         # Initially hidden
         
         self.components['quick_actions'] = quick_actions
-        
-        # Recent Recordings Panel - Added to the bottom pane
-        recordings_container = ttk.Frame(paned)
-        paned.add(recordings_container, weight=2)  # Give more weight to recordings panel
-        
-        recordings_panel = self._create_recordings_panel(recordings_container)
-        recordings_panel.pack(fill=BOTH, expand=True, pady=(5, 10))
-        self.components['recordings_panel'] = recordings_panel
         
         # Initialize UI state - hide controls initially
         self._initialize_recording_ui_state()
@@ -433,11 +425,29 @@ class WorkflowUI:
         
         return generate_frame
     
+    def _create_recordings_tab(self, command_map: Dict[str, Callable]) -> ttk.Frame:
+        """Create the Recordings workflow tab.
+        
+        Args:
+            command_map: Dictionary mapping button names to their command functions
+            
+        Returns:
+            ttk.Frame: The recordings tab frame
+        """
+        recordings_frame = ttk.Frame(self.parent)
+        
+        # Create the recordings panel that fills the entire tab
+        recordings_panel = self._create_recordings_panel(recordings_frame)
+        recordings_panel.pack(fill=BOTH, expand=True, padx=10, pady=10)
+        self.components['recordings_panel'] = recordings_panel
+        
+        return recordings_frame
+    
     def _on_workflow_tab_changed(self, event):
         """Handle workflow tab change event."""
         notebook = event.widget
         tab_index = notebook.index("current")
-        tab_names = ["record", "process", "generate"]
+        tab_names = ["record", "process", "generate", "recordings"]
         
         if 0 <= tab_index < len(tab_names):
             self.current_workflow = tab_names[tab_index]

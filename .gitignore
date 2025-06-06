@@ -195,6 +195,10 @@ exports
 
 # Database
 database.db
+medical_assistant.db
+
+# Application data folder
+AppData/
 
 prefix_audio.mp3
 
