@@ -57,7 +57,7 @@ class MenuManager:
                 fg="#ffffff",  # White text
                 activebackground="#0d6efd",  # Blue highlight
                 activeforeground="#ffffff",  # White text on highlight
-                borderwidth=0,
+                borderwidth=1,
                 relief="flat",
                 font=("Segoe UI", 10)
             )
@@ -68,10 +68,28 @@ class MenuManager:
                 fg="#212529",  # Dark text
                 activebackground="#0d6efd",  # Blue highlight
                 activeforeground="#ffffff",  # White text on highlight
-                borderwidth=0,
+                borderwidth=1,
                 relief="flat",
                 font=("Segoe UI", 10)
             )
+    
+    def _add_menu_item(self, menu: tk.Menu, label: str, command=None, accelerator=None, padded=True) -> None:
+        """Add a menu item with optional padding.
+        
+        Args:
+            menu: The menu to add item to
+            label: The text label for the menu item
+            command: The command to execute when clicked
+            accelerator: Keyboard shortcut text to display
+            padded: Whether to add padding to the label
+        """
+        if padded:
+            # Add padding with spaces
+            padded_label = f"  {label}  "
+        else:
+            padded_label = label
+            
+        menu.add_command(label=padded_label, command=command, accelerator=accelerator)
     
     def _create_file_menu(self, menubar: tk.Menu) -> None:
         """Create the File menu.
@@ -83,12 +101,12 @@ class MenuManager:
         filemenu = tk.Menu(menubar, tearoff=0)
         self._style_menu(filemenu, is_dark)
         
-        # Add menu items with symbols
-        filemenu.add_command(label="📄  New", command=self.app.new_session, accelerator="Ctrl+N")
-        filemenu.add_command(label="💾  Save", command=self.app.save_text, accelerator="Ctrl+S")
-        filemenu.add_command(label="🎙️  View Recordings", command=self.app.show_recordings_dialog)
+        # Add menu items
+        filemenu.add_command(label="New", command=self.app.new_session, accelerator="Ctrl+N")
+        filemenu.add_command(label="Save", command=self.app.save_text, accelerator="Ctrl+S")
+        filemenu.add_command(label="View Recordings", command=self.app.show_recordings_dialog)
         filemenu.add_separator()
-        filemenu.add_command(label="❌  Exit", command=self.app.on_closing)
+        filemenu.add_command(label="Exit", command=self.app.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
     
     def _create_settings_menu(self, menubar: tk.Menu) -> None:
@@ -102,13 +120,13 @@ class MenuManager:
         self._style_menu(settings_menu, is_dark)
         
         # Add API Keys option at the top of the settings menu
-        settings_menu.add_command(label="🔑  Update API Keys", command=self.show_api_keys_dialog)
+        settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
         settings_menu.add_separator()
         
         # Add STT provider settings menu options
-        settings_menu.add_command(label="🎤  ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
-        settings_menu.add_command(label="🌊  Deepgram Settings", command=self.app.show_deepgram_settings)
-        settings_menu.add_command(label="🌡️  Temperature Settings", command=self.app.show_temperature_settings)
+        settings_menu.add_command(label="ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
+        settings_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
+        settings_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
         
         # Create prompt settings submenu
         self._create_prompt_settings_submenu(settings_menu)
@@ -116,11 +134,11 @@ class MenuManager:
         settings_menu.add_separator()
         
         # Add other settings options
-        settings_menu.add_command(label="📤  Export Prompts", command=self.app.export_prompts)
-        settings_menu.add_command(label="📥  Import Prompts", command=self.app.import_prompts)
-        settings_menu.add_command(label="📁  Set Storage Folder", command=self.app.set_default_folder)
-        settings_menu.add_command(label="🎵  Record Prefix Audio", command=self.app.record_prefix_audio)
-        settings_menu.add_command(label="🎨  Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
+        settings_menu.add_command(label="Export Prompts", command=self.app.export_prompts)
+        settings_menu.add_command(label="Import Prompts", command=self.app.import_prompts)
+        settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
+        settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
+        settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
         
         menubar.add_cascade(label="Settings", menu=settings_menu)
     
@@ -134,12 +152,13 @@ class MenuManager:
         text_settings_menu = tk.Menu(settings_menu, tearoff=0)
         self._style_menu(text_settings_menu, is_dark)
         
-        text_settings_menu.add_command(label="✏️  Refine Prompt Settings", command=self.app.show_refine_settings_dialog)
-        text_settings_menu.add_command(label="⚡  Improve Prompt Settings", command=self.app.show_improve_settings_dialog)
-        text_settings_menu.add_command(label="📋  SOAP Note Settings", command=self.app.show_soap_settings_dialog)
-        text_settings_menu.add_command(label="📨  Referral Settings", command=self.app.show_referral_settings_dialog)
+        # Add items with padding
+        self._add_menu_item(text_settings_menu, "Refine Prompt Settings", command=self.app.show_refine_settings_dialog)
+        self._add_menu_item(text_settings_menu, "Improve Prompt Settings", command=self.app.show_improve_settings_dialog)
+        self._add_menu_item(text_settings_menu, "SOAP Note Settings", command=self.app.show_soap_settings_dialog)
+        self._add_menu_item(text_settings_menu, "Referral Settings", command=self.app.show_referral_settings_dialog)
         
-        settings_menu.add_cascade(label="📝  Prompt Settings", menu=text_settings_menu)
+        settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
     
     def _create_help_menu(self, menubar: tk.Menu) -> None:
         """Create the Help menu.
@@ -151,8 +170,8 @@ class MenuManager:
         helpmenu = tk.Menu(menubar, tearoff=0)
         self._style_menu(helpmenu, is_dark)
         
-        helpmenu.add_command(label="ℹ️  About", command=self.app.show_about)
-        helpmenu.add_command(label="⌨️  Keyboard Shortcuts", command=self.app.show_shortcuts)
+        helpmenu.add_command(label="About", command=self.app.show_about)
+        helpmenu.add_command(label="Keyboard Shortcuts", command=self.app.show_shortcuts)
         
         # Create logs submenu
         self._create_logs_submenu(helpmenu)
@@ -169,10 +188,11 @@ class MenuManager:
         logs_menu = tk.Menu(helpmenu, tearoff=0)
         self._style_menu(logs_menu, is_dark)
         
-        logs_menu.add_command(label="📁  Open Logs Folder", command=self.app._open_logs_folder_menu)
-        logs_menu.add_command(label="📄  View Log Contents", command=self.app._show_log_contents_menu)
+        # Add items with padding
+        self._add_menu_item(logs_menu, "Open Logs Folder", command=self.app._open_logs_folder_menu)
+        self._add_menu_item(logs_menu, "View Log Contents", command=self.app._show_log_contents_menu)
         
-        helpmenu.add_cascade(label="📊  View Logs", menu=logs_menu)
+        helpmenu.add_cascade(label="View Logs", menu=logs_menu)
     
     def show_api_keys_dialog(self) -> None:
         """Shows a dialog to update API keys and updates the .env file."""
