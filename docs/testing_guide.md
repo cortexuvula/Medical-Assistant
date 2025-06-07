@@ -8,7 +8,7 @@ The Medical Assistant application has a comprehensive test suite with over 80% c
 
 As of the latest implementation:
 - **Overall Coverage**: 80.68% (core modules)
-- **Total Tests**: 352 tests (327 unit + 25 UI)
+- **Total Tests**: 402 tests (327 unit + 25 PyQt5 UI + 50 tkinter UI)
 - **Key Module Coverage**:
   - `database.py`: 96.17%
   - `ai_processor.py`: 80.13%
@@ -17,7 +17,7 @@ As of the latest implementation:
   - `security.py`: 71.14%
   - `validation.py`: 83.25%
   - STT Providers: 85-98% average
-  - UI Components: 25 tests demonstrating PyQt5 testing
+  - UI Components: 75 tests (25 PyQt5 demo + 50 tkinter/ttkbootstrap)
 
 ## Test Structure
 
@@ -34,8 +34,13 @@ tests/
 │   ├── test_recording_manager.py
 │   ├── test_security.py
 │   ├── test_validation.py
-│   ├── test_ui_basic.py     # Basic PyQt5 UI tests
-│   ├── test_ui_medical_assistant.py  # Medical Assistant UI tests
+│   ├── test_ui_basic.py     # Basic PyQt5 UI tests (demo)
+│   ├── test_ui_medical_assistant.py  # Medical Assistant PyQt5 tests (demo)
+│   ├── tkinter_test_utils.py # Tkinter testing utilities
+│   ├── test_tkinter_ui_basic.py # Basic tkinter/ttkbootstrap tests
+│   ├── test_tkinter_ui_medical_assistant.py # Medical Assistant tkinter tests
+│   ├── test_tkinter_workflow_tabs.py # Workflow tab tkinter tests
+│   ├── test_tkinter_chat_and_editors.py # Chat and editor tkinter tests
 │   └── test_stt_providers/  # STT provider tests
 │       ├── test_base.py
 │       ├── test_deepgram.py
@@ -125,22 +130,39 @@ pytest -m "not ui"
 
 ### Running UI Tests
 
-UI tests require PyQt5 and pytest-qt:
+The Medical Assistant uses tkinter/ttkbootstrap for its UI. We have both tkinter tests (actual) and PyQt5 tests (demonstration):
+
+#### Tkinter/TTKBootstrap Tests (Actual UI Framework)
 ```bash
-# Install UI test dependencies
+# Run tkinter UI tests
+python tests/run_tkinter_ui_tests.py
+
+# Run with coverage
+python tests/run_tkinter_ui_tests.py --coverage
+
+# Run headless (Linux)
+python tests/run_tkinter_ui_tests.py --headless
+
+# Run specific tkinter tests
+pytest tests/unit/test_tkinter_*.py -v
+```
+
+#### PyQt5 Tests (Demonstration Only)
+```bash
+# Install PyQt5 test dependencies
 pip install PyQt5 pytest-qt
 
-# Run UI tests with display
+# Run PyQt5 demo tests
 pytest tests/unit/test_ui_*.py -v
 
-# Run UI tests headless (Linux)
+# Run headless (Linux)
 xvfb-run -a pytest tests/unit/test_ui_*.py
 
-# Use the UI test runner
+# Use the PyQt5 test runner
 python tests/run_ui_tests.py
 ```
 
-Note: The Medical Assistant uses tkinter/ttkbootstrap for its UI. The PyQt5 tests demonstrate UI testing patterns that can be adapted for tkinter.
+Note: The tkinter tests are the actual UI tests for the application. The PyQt5 tests are kept as examples of UI testing patterns.
 
 ## Writing Tests
 

@@ -283,25 +283,40 @@ mock.assert_not_called()
 - **AI/Audio processing**: 80%+ ✅
 - **Security/Validation**: 70%+ ✅
 - **Overall**: 80%+ ✅
-- **Total Tests**: 352 (327 unit + 25 UI)
+- **Total Tests**: 402 (327 unit + 25 PyQt5 UI + 50 tkinter UI)
 
 ## UI Testing
 
-### Running UI Tests
+### Running Tkinter UI Tests (Actual Framework)
+```bash
+# Run tkinter UI tests
+python tests/run_tkinter_ui_tests.py
+
+# Run with verbose output
+python tests/run_tkinter_ui_tests.py --verbose
+
+# Run headless (Linux)  
+python tests/run_tkinter_ui_tests.py --headless
+
+# Run specific tkinter tests
+pytest tests/unit/test_tkinter_*.py -v
+```
+
+### Running PyQt5 UI Tests (Demo Only)
 ```bash
 # Install UI dependencies
 pip install PyQt5 pytest-qt
 
-# Run UI tests
+# Run PyQt5 demo tests
 pytest tests/unit/test_ui_*.py -v
 
 # Run headless (Linux)
 xvfb-run -a pytest tests/unit/test_ui_*.py
 
-# Use the UI test runner
+# Use the PyQt5 test runner
 python tests/run_ui_tests.py
 ```
 
-Note: The app uses tkinter, but the PyQt5 tests demonstrate UI testing patterns.
+Note: The app uses tkinter/ttkbootstrap. The tkinter tests test the actual UI, while PyQt5 tests demonstrate UI testing patterns.
 
 The testing setup is designed to be fast and easy to use during development while providing comprehensive coverage reporting when needed!

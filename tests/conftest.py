@@ -6,9 +6,17 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 import tkinter as tk
+import ttkbootstrap as ttk
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Import test utilities after path setup
+try:
+    from tests.unit.tkinter_test_utils import TkinterTestCase, create_mock_workflow_ui
+except ImportError:
+    TkinterTestCase = None
+    create_mock_workflow_ui = None
 
 # Set testing environment
 os.environ['MEDICAL_ASSISTANT_ENV'] = 'testing'
@@ -165,8 +173,11 @@ def tk_root():
     root = tk.Tk()
     root.withdraw()  # Hide the window
     yield root
-    root.quit()
-    root.destroy()
+    try:
+        root.quit()
+        root.destroy()
+    except:
+        pass
 
 
 @pytest.fixture
@@ -232,9 +243,51 @@ def pytest_collection_modifyitems(config, items):
         # Add markers based on test file location
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
-        elif "ui" in str(item.fspath):
+        elif "ui" in str(item.fspath) or "tkinter" in str(item.fspath):
             item.add_marker(pytest.mark.ui)
             
-        # Skip UI tests if no display is available
-        if "ui" in str(item.fspath) and not os.environ.get('DISPLAY'):
-            item.add_marker(pytest.mark.skip(reason="No display available for UI tests"))
+        # Skip UI tests if no display is available (Linux only)
+        if ("ui" in str(item.fspath) or "tkinter" in str(item.fspath)):
+            if sys.platform.startswith('linux') and not os.environ.get('DISPLAY'):
+                item.add_marker(pytest.mark.skip(reason="No display available for UI tests"))
+
+
+@pytest.fixture
+def tkinter_app():
+    """Create a tkinter application for testing."""
+    root = ttk.Window(themename="darkly")
+    root.withdraw()  # Hide window by default
+    
+    yield root
+    
+    try:
+        root.quit()
+        root.destroy()
+    except:
+        pass
+
+
+@pytest.fixture
+def mock_workflow_ui(tkinter_app):
+    """Create a mock WorkflowUI instance for testing."""
+    if create_mock_workflow_ui is None:
+        pytest.skip("tkinter_test_utils not available")
+    
+    return create_mock_workflow_ui()
+
+
+@pytest.fixture
+def tkinter_test_case():
+    """Provide TkinterTestCase functionality as a fixture."""
+    if TkinterTestCase is None:
+        pytest.skip("tkinter_test_utils not available")
+    
+    class TestHelper(TkinterTestCase):
+        def __init__(self):
+            pass
+    
+    helper = TestHelper()
+    yield helper
+    
+    if hasattr(helper, 'teardown_method'):
+        helper.teardown_method(None)
