@@ -10,7 +10,7 @@ pytest-timeout==2.2.0
 pytest-xdist==3.5.0  # For parallel test execution
 
 # UI testing
-pytest-qt==4.2.0
+# pytest-qt==4.2.0  # Not needed - app uses tkinter, not PyQt5
 
 # Code coverage
 coverage[toml]==7.3.2

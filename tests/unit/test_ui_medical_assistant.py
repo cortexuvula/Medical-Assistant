@@ -1,11 +1,20 @@
 """UI tests specific to Medical Assistant application."""
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from PyQt5.QtWidgets import QTextEdit, QPushButton, QComboBox, QTabWidget
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtTest import QTest
 import sys
 import os
+
+# Skip all tests in this file if PyQt5 or pytest-qt is not available
+pytest_plugins = []
+try:
+    import pytest_qt
+    pytest_plugins.append("pytest_qt.plugin")
+    from PyQt5.QtWidgets import QTextEdit, QPushButton, QComboBox, QTabWidget
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtTest import QTest
+except ImportError:
+    pytest.skip("PyQt5 or pytest-qt not available", allow_module_level=True)
+
+from unittest.mock import Mock, patch, MagicMock
 
 # Add parent directory to path to import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))

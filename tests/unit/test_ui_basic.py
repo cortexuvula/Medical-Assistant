@@ -1,9 +1,18 @@
 """Basic UI tests for Medical Assistant using pytest-qt."""
 import pytest
+
+# Skip all tests in this file if PyQt5 or pytest-qt is not available
+pytest_plugins = []
+try:
+    import pytest_qt
+    pytest_plugins.append("pytest_qt.plugin")
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QPushButton
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtTest import QTest
+except ImportError:
+    pytest.skip("PyQt5 or pytest-qt not available", allow_module_level=True)
+
 from unittest.mock import Mock, patch, MagicMock
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QPushButton
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtTest import QTest
 
 
 class TestBasicUI:
