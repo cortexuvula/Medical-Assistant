@@ -445,8 +445,13 @@ class AudioHandler:
                 
             combined = self.combine_audio_segments(segments)
             if combined:
-                # Ensure directory exists
-                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    # Ensure directory exists
+                    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                except Exception as dir_e:
+                    logging.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
+                    return False
+                    
                 combined.export(file_path, format="mp3", bitrate="192k")
                 logging.info(f"Audio saved to {file_path}")
                 return True
@@ -866,7 +871,12 @@ class AudioHandler:
             # Clean up stream if it was partially created
             if stream:
                  try:
-                     if not stream.stopped: stream.stop()
+                     # Check if the stream has a stopped attribute before accessing it
+                     if hasattr(stream, 'stopped') and not stream.stopped:
+                         stream.stop()
+                     elif not hasattr(stream, 'stopped'):
+                         # If no stopped attribute, try to stop anyway
+                         stream.stop()
                      stream.close()
                  except Exception as e_clean:
                      logging.error(f"Error during cleanup in _listen_with_sounddevice: {e_clean}")
