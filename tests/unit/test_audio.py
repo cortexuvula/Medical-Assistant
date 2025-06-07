@@ -237,9 +237,11 @@ class TestAudioHandler:
         audio_handler.silence_threshold = 0.0001
         assert audio_handler.silence_threshold == 0.0001
     
-    @patch('soundcard.all_microphones')
-    def test_get_input_devices(self, mock_all_mics, audio_handler):
+    def test_get_input_devices(self, audio_handler):
         """Test getting available input devices."""
+        # Create a mock soundcard module
+        mock_soundcard = Mock()
+        
         # Mock microphone objects
         mock_mic1 = Mock()
         mock_mic1.name = 'Built-in Microphone'
@@ -249,9 +251,12 @@ class TestAudioHandler:
         mock_mic2.name = 'USB Microphone'
         mock_mic2.channels = 1
         
-        mock_all_mics.return_value = [mock_mic1, mock_mic2]
+        mock_soundcard.all_microphones.return_value = [mock_mic1, mock_mic2]
         
-        devices = audio_handler.get_input_devices()
+        # Patch the soundcard module in audio module
+        with patch('audio.soundcard', mock_soundcard):
+            with patch('audio.SOUNDCARD_AVAILABLE', True):
+                devices = audio_handler.get_input_devices()
         
         assert len(devices) == 2
         assert devices[0]['name'] == 'Built-in Microphone'
