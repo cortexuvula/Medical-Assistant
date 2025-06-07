@@ -56,6 +56,13 @@ def main():
     # Build pytest command
     cmd = ['python', '-m', 'pytest', args.path]
     
+    # Exclude tkinter tests by default unless specifically running UI tests
+    if not args.ui and 'tkinter' not in args.path:
+        cmd.extend(['--ignore=tests/unit/test_tkinter_ui_basic.py',
+                    '--ignore=tests/unit/test_tkinter_ui_medical_assistant.py', 
+                    '--ignore=tests/unit/test_tkinter_workflow_tabs.py',
+                    '--ignore=tests/unit/test_tkinter_chat_and_editors.py'])
+    
     # Add verbosity
     if args.verbose:
         cmd.append('-' + 'v' * args.verbose)

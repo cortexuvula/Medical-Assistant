@@ -5,8 +5,10 @@ This module provides utilities and helper functions for testing tkinter/ttkboots
 """
 
 import tkinter as tk
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from tkinter import ttk
+# Don't import ttkbootstrap as it patches ttk globally
+# import ttkbootstrap as ttk_bs
+# from ttkbootstrap.constants import *
 import threading
 import time
 import queue
@@ -38,8 +40,9 @@ class TkinterTestCase:
         self.app = None
         
     def create_test_window(self, title="Test Window", theme="darkly"):
-        """Create a test window with ttkbootstrap theme."""
-        self.root = ttk.Window(title=title, themename=theme)
+        """Create a test window."""
+        self.root = tk.Tk()
+        self.root.title(title)
         self.root.withdraw()  # Hide by default
         return self.root
         
@@ -195,11 +198,11 @@ class MockTkinterApp:
 
 def create_mock_workflow_ui(root):
     """Create a mock WorkflowUI for testing."""
-    from workflow_ui import WorkflowUI
+    # Don't import the real WorkflowUI to avoid ttkbootstrap dependencies
     
-    class MockWorkflowUI(WorkflowUI):
+    class MockWorkflowUI:
         def __init__(self, parent):
-            super().__init__(parent)
+            self.parent = parent
             self.mock_callbacks = {}
             
         def _create_record_tab(self, command_map):
@@ -213,12 +216,12 @@ def create_mock_workflow_ui(root):
             
             self.stop_button = ttk.Button(frame, text="Stop", 
                                         command=command_map.get('stop_recording'),
-                                        state=DISABLED)
+                                        state=tk.DISABLED)
             self.stop_button.pack(pady=5)
             
             self.pause_button = ttk.Button(frame, text="Pause",
                                          command=command_map.get('pause_recording'),
-                                         state=DISABLED)
+                                         state=tk.DISABLED)
             self.pause_button.pack(pady=5)
             
             self.timer_label = ttk.Label(frame, text="00:00")
@@ -263,7 +266,7 @@ def create_mock_workflow_ui(root):
             
             # Create treeview
             self.recordings_tree = ttk.Treeview(frame, columns=('date', 'duration', 'status'))
-            self.recordings_tree.pack(fill=BOTH, expand=True)
+            self.recordings_tree.pack(fill=tk.BOTH, expand=True)
             
             return frame
             
