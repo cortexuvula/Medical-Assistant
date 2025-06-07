@@ -1,7 +1,8 @@
 """Utilities for testing tkinter/ttkbootstrap applications."""
 import tkinter as tk
 from tkinter import ttk
-import ttkbootstrap as ttk_bs
+# Don't import ttkbootstrap at module level as it patches ttk globally
+# import ttkbootstrap as ttk_bs
 from unittest.mock import Mock, MagicMock
 import time
 from typing import Optional, Callable, Any, List, Union

@@ -2,7 +2,8 @@
 import pytest
 import tkinter as tk
 from tkinter import ttk
-import ttkbootstrap as ttk_bs
+# Don't import ttkbootstrap as it patches ttk globally
+# import ttkbootstrap as ttk_bs
 from unittest.mock import Mock, patch, MagicMock
 from tests.unit.tkinter_test_utils import TkinterTestCase
 import os
