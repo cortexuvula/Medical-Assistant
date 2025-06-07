@@ -336,3 +336,48 @@ class Database:
         
         self.disconnect()
         return stats
+    
+    def clear_all_recordings(self) -> bool:
+        """Clear all recordings from the database and delete associated audio files.
+        
+        Returns:
+        - True if successful, False otherwise
+        """
+        self.connect()
+        try:
+            # First, get all filenames to delete the audio files
+            self.cursor.execute("SELECT filename FROM recordings WHERE filename IS NOT NULL AND filename != ''")
+            filenames = [row[0] for row in self.cursor.fetchall()]
+            
+            # Delete all recordings from database
+            self.cursor.execute("DELETE FROM recordings")
+            
+            # Reset the auto-increment counter
+            self.cursor.execute("DELETE FROM sqlite_sequence WHERE name='recordings'")
+            
+            # Also clear the processing queue if it exists
+            try:
+                self.cursor.execute("DELETE FROM processing_queue")
+                self.cursor.execute("DELETE FROM sqlite_sequence WHERE name='processing_queue'")
+            except sqlite3.OperationalError:
+                # Table might not exist
+                pass
+            
+            self.conn.commit()
+            self.disconnect()
+            
+            # Delete the audio files
+            import os
+            import logging
+            for filename in filenames:
+                if filename and os.path.exists(filename):
+                    try:
+                        os.remove(filename)
+                        logging.info(f"Deleted audio file: {filename}")
+                    except Exception as e:
+                        logging.warning(f"Failed to delete audio file {filename}: {e}")
+            
+            return True
+        except Exception as e:
+            self.disconnect()
+            raise e

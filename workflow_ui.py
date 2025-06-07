@@ -1372,8 +1372,19 @@ class WorkflowUI:
             bootstyle="info-outline",
             width=8
         )
-        export_btn.pack(side=LEFT)
+        export_btn.pack(side=LEFT, padx=(0, 3))
         ToolTip(export_btn, "Export selected recording")
+        
+        # Clear All button
+        clear_all_btn = ttk.Button(
+            actions_frame,
+            text="Clear All",
+            command=self._clear_all_recordings,
+            bootstyle="danger-outline",
+            width=8
+        )
+        clear_all_btn.pack(side=LEFT)
+        ToolTip(clear_all_btn, "Clear all recordings from database")
         
         # Recording count label
         self.recording_count_label = ttk.Label(
@@ -1649,3 +1660,67 @@ class WorkflowUI:
         except Exception as e:
             logging.error(f"Error exporting recording: {e}")
             tk.messagebox.showerror("Export Error", f"Failed to export recording: {str(e)}")
+    
+    def _clear_all_recordings(self):
+        """Clear all recordings from the database."""
+        # Confirm deletion with a strong warning
+        result = tkinter.messagebox.askyesno(
+            "Clear All Recordings",
+            "WARNING: This will permanently delete ALL recordings from the database.\n\n"
+            "This action cannot be undone!\n\n"
+            "Are you absolutely sure you want to continue?",
+            icon="warning"
+        )
+        
+        if not result:
+            return
+        
+        # Double confirmation for safety
+        result2 = tkinter.messagebox.askyesno(
+            "Final Confirmation",
+            "This is your last chance to cancel.\n\n"
+            "Delete ALL recordings permanently?",
+            icon="warning"
+        )
+        
+        if not result2:
+            return
+        
+        try:
+            # Clear all recordings from database
+            success = self.parent.db.clear_all_recordings()
+            
+            if success:
+                # Clear the tree view
+                for item in self.recordings_tree.get_children():
+                    self.recordings_tree.delete(item)
+                
+                # Update count
+                self.recording_count_label.config(text="0 recordings")
+                
+                # Clear any currently loaded content
+                from cleanup_utils import clear_all_content
+                clear_all_content(self.parent)
+                
+                # Reset current recording ID
+                self.parent.current_recording_id = None
+                
+                # Update status
+                self.parent.status_manager.success("All recordings cleared from database")
+                
+                tkinter.messagebox.showinfo(
+                    "Success",
+                    "All recordings have been cleared from the database."
+                )
+            else:
+                tkinter.messagebox.showerror(
+                    "Error",
+                    "Failed to clear recordings from database."
+                )
+                
+        except Exception as e:
+            logging.error(f"Error clearing all recordings: {e}")
+            tkinter.messagebox.showerror(
+                "Clear Error",
+                f"Failed to clear recordings: {str(e)}"
+            )
