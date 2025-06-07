@@ -158,10 +158,10 @@ class TestMedicalAssistantUI(TkinterTestCase):
         
         # Test provider changes
         self.select_combobox_value(provider_combo, "Ollama")
-        assert model_combo['values'] == model_configs["Ollama"]
+        assert list(model_combo['values']) == model_configs["Ollama"]
         
         self.select_combobox_value(provider_combo, "Perplexity")
-        assert model_combo['values'] == model_configs["Perplexity"]
+        assert list(model_combo['values']) == model_configs["Perplexity"]
     
     @pytest.mark.skipif(SKIP_TTKBOOTSTRAP, reason="ttkbootstrap widgets require display in CI")
     def test_quick_continue_mode(self):
