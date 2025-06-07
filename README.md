@@ -32,6 +32,10 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 
 ## Installation
 
+### Prerequisites
+- Python 3.10 or higher (required for Deepgram SDK compatibility)
+- FFmpeg (for audio processing)
+
 1. **Clone or Download the Repository**
    ```
    git clone <repository-url>
