@@ -8,6 +8,7 @@ from tests.unit.tkinter_test_utils import TkinterTestCase
 import os
 
 # Skip ttkbootstrap-specific tests in CI environment
+# The ttkbootstrap style initialization fails when the tk window is destroyed too quickly in test environments
 SKIP_TTKBOOTSTRAP = bool(os.environ.get('CI', '')) or bool(os.environ.get('GITHUB_ACTIONS', ''))
 
 

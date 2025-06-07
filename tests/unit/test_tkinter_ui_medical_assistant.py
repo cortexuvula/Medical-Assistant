@@ -8,6 +8,7 @@ from tests.unit.tkinter_test_utils import TkinterTestCase, create_mock_workflow_
 import os
 
 # Skip ttkbootstrap-specific tests in CI environment
+# The ttkbootstrap style initialization fails when the tk window is destroyed too quickly in test environments
 SKIP_TTKBOOTSTRAP = bool(os.environ.get('CI', '')) or bool(os.environ.get('GITHUB_ACTIONS', ''))
 
 
@@ -265,6 +266,7 @@ class TestMedicalAssistantUI(TkinterTestCase):
         self.click_button(context_button)
         assert not context_visible
     
+    @pytest.mark.skipif(SKIP_TTKBOOTSTRAP, reason="ttkbootstrap widgets require display in CI")
     def test_chat_interface_structure(self):
         """Test chat interface components."""
         # Chat frame
