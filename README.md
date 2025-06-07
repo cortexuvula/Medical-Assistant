@@ -3,18 +3,32 @@
 Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Perplexity, Grok, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
 
 ## Features
-- **Multi-Tab Interface:** Five-tab layout with Transcript, SOAP Note, Referral, Letter, and Context tabs for organized workflow
-- **Context-Aware SOAP Notes:** New Context tab allows you to add previous medical information that gets automatically included in SOAP note generation
-- **Transcription:** Convert speech to text using multiple providers (Deepgram, ElevenLabs, Groq, or Whisper)
-- **AI Assistance:** Generate refined texts, improved clarity, SOAP notes, and referral paragraphs using OpenAI, Perplexity, Grok, or local Ollama models
-- **Multiple AI Provider Support:** Choose between cloud services (OpenAI, Perplexity, Grok) or run models locally using Ollama
+
+### Core Features
+- **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 5 text editor tabs
+- **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
+- **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
+- **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
+- **Dedicated Recordings Manager:** New Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
+
+### Medical Documentation
+- **Context-Aware SOAP Notes:** Side panel for adding previous medical information that automatically integrates into SOAP note generation
+- **Smart Templates:** Pre-built and custom context templates for common scenarios (Follow-up, New Patient, Telehealth, etc.)
+- **Multi-Format Document Generation:** Create SOAP notes, referral letters, and custom medical documents
 - **Smart Context Preservation:** Context information is preserved during SOAP recordings and only cleared on new sessions or manual clearing
+
+### AI & Transcription
+- **Multiple STT Providers:** Deepgram, ElevenLabs, Groq, or local Whisper for speech-to-text conversion
+- **Multiple AI Providers:** OpenAI, Perplexity, Grok, or local Ollama models for text processing
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation
-- **SOAP Note Recording:** Record SOAP notes with options for transcription and automatic note extraction
+- **Intelligent Text Processing:** Refine, improve clarity, and generate medical documentation with AI assistance
+
+### Technical Features
 - **Database Storage:** Automatic saving and retrieval of recordings, transcripts, and generated documents
+- **Export Functionality:** Export recordings and documents in various formats
 - **File Logging System:** Track application activity with a built-in logging system that maintains the last 1000 entries
 - **Cross-Platform Support:** Available for Windows, macOS, and Linux with platform-specific optimizations
-- **User-friendly Interface:** Built with Tkinter and ttkbootstrap for a modern UI experience
+- **Modern UI/UX:** Built with Tkinter and ttkbootstrap featuring animations, visual indicators, and responsive design
 
 ## Installation
 
@@ -127,23 +141,47 @@ Desktop shortcuts are automatically created during the build process.
    - For cloud services, ensure you've entered valid API keys
    - For Ollama, click "Test Ollama Connection" in settings to verify your setup
 
-3. **Main Features**  
-   - **Context Tab:** Add previous medical information that will be automatically included in SOAP note generation
-   - **SOAP Note Recording:** Start recording a conversation followed by auto-transcription and context-aware SOAP Note creation
-   - **Text Processing:** Use buttons to refine text, improve clarity, generate SOAP notes or referral paragraphs
-   - **Document Generation:** Create referrals and letters from existing SOAP notes
-   - **Smart Workflows:** Context is preserved during SOAP recordings but cleared on new sessions
+3. **Main Workflow Tabs**
+   - **Record Tab:** Start/stop recordings with visual feedback, timer display, and pause/resume controls
+   - **Process Tab:** Refine and improve transcribed text with AI assistance
+   - **Generate Tab:** Create SOAP notes, referrals, and letters from your recordings
+   - **Recordings Tab:** View, search, and manage all saved recordings with document status indicators
 
-4. **Using the Context Tab**
-   - Navigate to the Context tab and paste or type previous medical information
-   - This information will be automatically included as "Previous medical information" in SOAP note prompts
-   - Use the "Clear Context" button to manually clear the context
-   - Context is preserved when starting new SOAP recordings but cleared when starting a "New Session"
+4. **Using the Chat Interface**
+   - Located at the bottom of the main content area
+   - Press `Ctrl+/` (or `Cmd+/` on Mac) to quickly focus the chat input
+   - Context-aware suggestions based on your current tab and content
+   - Interact with any text in the editor tabs
+   - Get intelligent suggestions for next steps
 
-5. **Editing Prompts and Models**  
+5. **Working with Context**
+   - Click the "Context" button to open the collapsible side panel
+   - Add previous medical information that will be automatically included in SOAP notes
+   - Use pre-built templates or create custom ones
+   - Context is preserved during SOAP recordings but cleared on new sessions
+   - Use the "Clear Context" button to manually clear information
+
+6. **Queue System and Quick Continue Mode**
+   - Enable "Quick Continue Mode" to queue recordings while starting new ones
+   - Monitor queue status in the status bar
+   - Perfect for busy clinics with back-to-back patients
+   - Background processing ensures smooth workflow
+
+7. **Managing Recordings**
+   - Access the Recordings tab to view all saved recordings
+   - Document status indicators show completion state:
+     - ✓ (green) = Document generated
+     - — (gray) = Not generated
+     - 🔄 (blue) = In progress
+     - ❌ (red) = Error
+   - Search and filter recordings by date or content
+   - Load recordings to continue working on them
+   - Export recordings and documents
+
+8. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities. Each provider can have different model selections.
 
-6. **Viewing Application Logs**
+9. **Viewing Application Logs**
    - Access application logs through the "View Logs" option in the Help menu
    - Choose between opening the logs directory or viewing logs directly in the application
    - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
@@ -154,10 +192,21 @@ Desktop shortcuts are automatically created during the build process.
 
 - **API Keys**: If you need to update API keys after startup, use the "API Keys" option in the settings menu.
 
-- **Context Tab Issues**: 
+- **Context Panel Issues**: 
+  - Context panel is accessed via the "Context" button, not a tab
   - Context text is automatically preserved during SOAP recordings
   - Use "New Session" or the "Clear Context" button to clear previous medical information
   - Context is included as "Previous medical information" in SOAP note generation
+
+- **Chat Interface Issues**:
+  - If chat suggestions don't appear, ensure you have content in the active tab
+  - Use keyboard shortcut `Ctrl+/` (`Cmd+/` on Mac) to quickly access chat
+  - Chat context is based on the currently active tab
+
+- **Queue System Issues**:
+  - Monitor the status bar for queue progress
+  - If recordings are stuck in queue, check the logs for errors
+  - Disable "Quick Continue Mode" if you prefer sequential processing
 
 - **Ollama Connection Issues**: If you experience timeouts with Ollama models, try:
   - Using a smaller model variant (e.g., `mistral:small` instead of `mistral:7b`)
@@ -182,19 +231,27 @@ Desktop shortcuts are automatically created during the build process.
 
 ## Recent Updates
 
-### Version 1.0.27 (Latest)
-- **New Context Tab**: Added dedicated tab for previous medical information that gets included in SOAP note generation
-- **Smart Context Preservation**: Context is preserved during SOAP recordings but cleared on new sessions
-- **Clear Context Button**: Easy way to manually clear context information
-- **Code Cleanup**: Removed duplicate code and optimized imports for better performance
-- **Enhanced UI**: Five-tab layout with improved workflow organization
+### Version 2.0.0 (Latest)
+- **New Recordings Tab**: Dedicated tab for managing all recordings with visual status indicators
+- **AI Chat Interface**: ChatGPT-style interface for intelligent interaction with medical notes
+- **Workflow-Based UI**: Completely redesigned interface organized by tasks (Record, Process, Generate)
+- **Queue System**: Background processing with "Quick Continue Mode" for efficient multi-patient workflows
+- **Context Panel Redesign**: Context moved from tab to collapsible side panel with template support
+- **Visual Enhancements**: Recording animations, timer display, and improved status indicators
+- **Document Status Tracking**: Visual indicators (✓, —, 🔄, ❌) show completion state of each document type
+
+### Version 1.0.27
+- **Context Feature**: Added previous medical information support for SOAP note generation
+- **Smart Context Preservation**: Context preserved during SOAP recordings
+- **Code Optimization**: Removed duplicate code and improved performance
 
 ### Key Improvements
-- **Multi-Provider STT Support**: Added Groq and enhanced ElevenLabs integration
-- **Database Enhancements**: Improved data storage and retrieval capabilities
-- **Cross-Platform Icons**: Custom application icons for all supported platforms
-- **Desktop Integration**: Automated desktop shortcut creation scripts
-- **Performance Optimizations**: Reduced application startup time and memory usage
+- **Modern UI/UX**: Task-oriented workflow with visual feedback and animations
+- **Enhanced Recording**: Pause/resume capabilities with timer display
+- **Smart Templates**: Pre-built and custom context templates for common scenarios
+- **Export Functionality**: Export recordings and documents in various formats
+- **Multi-Provider STT Support**: Deepgram, ElevenLabs, Groq, and Whisper integration
+- **Performance Optimizations**: Reduced startup time and improved memory usage
 
 ## System Requirements
 
