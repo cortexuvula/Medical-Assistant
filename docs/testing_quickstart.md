@@ -217,6 +217,7 @@ python -m pytest path/to/test.py::test_name -vv --pdb
 | `security.py` | `tests/unit/test_security.py` |
 | `validation.py` | `tests/unit/test_validation.py` |
 | STT Providers | `tests/unit/test_stt_providers/` |
+| UI Components | `tests/unit/test_ui_basic.py`, `test_ui_medical_assistant.py` |
 | Integration Tests | `tests/integration/test_recording_pipeline.py` |
 
 ## Tips for Writing Tests
@@ -282,5 +283,25 @@ mock.assert_not_called()
 - **AI/Audio processing**: 80%+ ✅
 - **Security/Validation**: 70%+ ✅
 - **Overall**: 80%+ ✅
+- **Total Tests**: 352 (327 unit + 25 UI)
+
+## UI Testing
+
+### Running UI Tests
+```bash
+# Install UI dependencies
+pip install PyQt5 pytest-qt
+
+# Run UI tests
+pytest tests/unit/test_ui_*.py -v
+
+# Run headless (Linux)
+xvfb-run -a pytest tests/unit/test_ui_*.py
+
+# Use the UI test runner
+python tests/run_ui_tests.py
+```
+
+Note: The app uses tkinter, but the PyQt5 tests demonstrate UI testing patterns.
 
 The testing setup is designed to be fast and easy to use during development while providing comprehensive coverage reporting when needed!
