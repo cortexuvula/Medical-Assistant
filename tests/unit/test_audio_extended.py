@@ -146,13 +146,18 @@ class TestAudioHandlerErrorHandling:
     
     def test_get_input_devices_exception(self, audio_handler):
         """Test get_input_devices exception handling."""
-        with patch('soundcard.all_microphones', side_effect=Exception("Device error")):
-            with patch('logging.error') as mock_error:
-                devices = audio_handler.get_input_devices()
-                
-                assert devices == []
-                mock_error.assert_called()
-                assert "Error getting input devices" in str(mock_error.call_args)
+        # Create a mock soundcard module that raises an exception
+        mock_soundcard = Mock()
+        mock_soundcard.all_microphones.side_effect = Exception("Device error")
+        
+        with patch('audio.soundcard', mock_soundcard):
+            with patch('audio.SOUNDCARD_AVAILABLE', True):
+                with patch('logging.error') as mock_error:
+                    devices = audio_handler.get_input_devices()
+                    
+                    assert devices == []
+                    mock_error.assert_called()
+                    assert "Error getting input devices" in str(mock_error.call_args)
 
 
 class TestSoapAudioProcessor:
@@ -355,13 +360,15 @@ class TestSpeechRecognitionMethods:
         """Create audio handler for testing."""
         return AudioHandler()
     
-    @patch('soundcard.get_microphone')
-    def test_background_recording_thread_soundcard(self, mock_get_mic, audio_handler):
+    def test_background_recording_thread_soundcard(self, audio_handler):
         """Test _background_recording_thread with soundcard."""
+        # Create a mock soundcard module
+        mock_soundcard = Mock()
+        
         # Create mock microphone
         mock_mic = Mock()
         mock_mic.name = "Test Microphone"
-        mock_get_mic.return_value = mock_mic
+        mock_soundcard.get_microphone.return_value = mock_mic
         
         # Create mock recorder context
         mock_recorder = Mock()
@@ -377,33 +384,39 @@ class TestSpeechRecognitionMethods:
         audio_handler.recording = True
         audio_handler.callback_function = Mock()
         
-        # Run in a thread and stop after a short time
-        thread = threading.Thread(
-            target=audio_handler._background_recording_thread,
-            args=(0, 1.0)
-        )
-        thread.start()
-        
-        # Let it run briefly
-        time.sleep(0.1)
-        audio_handler.recording = False
-        thread.join(timeout=1.0)
-        
-        # Verify callback was called
-        audio_handler.callback_function.assert_called()
+        # Patch the soundcard module
+        with patch('audio.soundcard', mock_soundcard):
+            with patch('audio.SOUNDCARD_AVAILABLE', True):
+                # Run in a thread and stop after a short time
+                thread = threading.Thread(
+                    target=audio_handler._background_recording_thread,
+                    args=(0, 1.0)
+                )
+                thread.start()
+                
+                # Let it run briefly
+                time.sleep(0.1)
+                audio_handler.recording = False
+                thread.join(timeout=1.0)
+                
+                # Verify callback was called
+                audio_handler.callback_function.assert_called()
     
-    @patch('soundcard.get_microphone')
-    def test_background_recording_thread_no_microphone(self, mock_get_mic, audio_handler):
+    def test_background_recording_thread_no_microphone(self, audio_handler):
         """Test _background_recording_thread when microphone not found."""
-        mock_get_mic.return_value = None
+        # Create a mock soundcard module
+        mock_soundcard = Mock()
+        mock_soundcard.get_microphone.return_value = None
         
-        with patch('logging.error') as mock_error:
-            audio_handler._background_recording_thread(0, 1.0)
-            
-            mock_error.assert_called()
-            assert "could not get microphone" in str(mock_error.call_args)
-        
-        assert audio_handler.recording is False
+        with patch('audio.soundcard', mock_soundcard):
+            with patch('audio.SOUNDCARD_AVAILABLE', True):
+                with patch('logging.error') as mock_error:
+                    audio_handler._background_recording_thread(0, 1.0)
+                    
+                    mock_error.assert_called()
+                    assert "could not get microphone" in str(mock_error.call_args)
+                
+                assert audio_handler.recording is False
     
     def test_background_recording_thread_sc(self, audio_handler):
         """Test _background_recording_thread_sc method."""
@@ -874,16 +887,41 @@ class TestAudioStreamManagement:
         mock_stream = Mock()
         mock_stream.stopped = False
         
-        with patch('sounddevice.InputStream', return_value=mock_stream):
-            # Make start() raise an exception
-            mock_stream.start.side_effect = Exception("Start failed")
-            
-            with pytest.raises(Exception):
-                audio_handler._listen_with_sounddevice("Test Device", Mock())
-            
-            # Stream should be cleaned up
-            mock_stream.stop.assert_called_once()
-            mock_stream.close.assert_called_once()
+        # Mock device info - query_devices returns list when called without args
+        mock_devices_list = [{
+            'name': 'Test Device',
+            'hostapi': 0,
+            'max_input_channels': 2,
+            'index': 0,
+            'default_samplerate': 48000
+        }]
+        
+        # Mock device info for specific device query
+        mock_device_info = {
+            'name': 'Test Device',
+            'hostapi': 0,
+            'max_input_channels': 2,
+            'index': 0,
+            'default_samplerate': 48000
+        }
+        
+        def mock_query_devices(index=None):
+            if index is None:
+                return mock_devices_list
+            else:
+                return mock_device_info
+        
+        with patch('sounddevice.query_devices', side_effect=mock_query_devices):
+            with patch('sounddevice.InputStream', return_value=mock_stream):
+                # Make start() raise an exception
+                mock_stream.start.side_effect = Exception("Start failed")
+                
+                with pytest.raises(Exception, match="Start failed"):
+                    audio_handler._listen_with_sounddevice("Test Device", Mock())
+                
+                # Stream should be cleaned up
+                mock_stream.stop.assert_called_once()
+                mock_stream.close.assert_called_once()
     
     def test_create_stop_function_with_flush(self, audio_handler):
         """Test stop function with flush callback."""
