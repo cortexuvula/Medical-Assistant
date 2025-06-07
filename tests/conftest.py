@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 import tkinter as tk
-import ttkbootstrap as ttk
+# Don't import ttkbootstrap here as it patches ttk globally
+# import ttkbootstrap as ttk
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -255,7 +256,8 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture
 def tkinter_app():
     """Create a tkinter application for testing."""
-    root = ttk.Window(themename="darkly")
+    # Use regular tk.Tk() instead of ttkbootstrap Window
+    root = tk.Tk()
     root.withdraw()  # Hide window by default
     
     yield root
