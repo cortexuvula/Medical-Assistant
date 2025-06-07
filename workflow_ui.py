@@ -1296,7 +1296,7 @@ class WorkflowUI:
         scrollbar.pack(side=RIGHT, fill=Y)
         
         # Create compact treeview
-        columns = ("patient", "date", "time", "status")
+        columns = ("date", "time", "transcription", "soap", "referral", "letter")
         self.recordings_tree = ttk.Treeview(
             tree_container,
             columns=columns,
@@ -1310,23 +1310,33 @@ class WorkflowUI:
         
         # Configure columns
         self.recordings_tree.heading("#0", text="ID", anchor=tk.W)
-        self.recordings_tree.heading("patient", text="Patient", anchor=tk.W)
         self.recordings_tree.heading("date", text="Date", anchor=tk.W)
         self.recordings_tree.heading("time", text="Time", anchor=tk.W)
-        self.recordings_tree.heading("status", text="Status", anchor=tk.CENTER)
+        self.recordings_tree.heading("transcription", text="Transcription", anchor=tk.CENTER)
+        self.recordings_tree.heading("soap", text="SOAP Note", anchor=tk.CENTER)
+        self.recordings_tree.heading("referral", text="Referral", anchor=tk.CENTER)
+        self.recordings_tree.heading("letter", text="Letter", anchor=tk.CENTER)
         
-        # Set column widths
-        self.recordings_tree.column("#0", width=50, minwidth=40, stretch=False)
-        self.recordings_tree.column("patient", width=150, minwidth=100)
-        self.recordings_tree.column("date", width=100, minwidth=80)
-        self.recordings_tree.column("time", width=80, minwidth=60)
-        self.recordings_tree.column("status", width=100, minwidth=80)
+        # Set column widths with anchor for centering
+        self.recordings_tree.column("#0", width=50, minwidth=40, stretch=False, anchor=tk.W)
+        self.recordings_tree.column("date", width=100, minwidth=80, anchor=tk.W)
+        self.recordings_tree.column("time", width=80, minwidth=60, anchor=tk.W)
+        self.recordings_tree.column("transcription", width=90, minwidth=70, anchor=tk.CENTER)
+        self.recordings_tree.column("soap", width=90, minwidth=70, anchor=tk.CENTER)
+        self.recordings_tree.column("referral", width=80, minwidth=60, anchor=tk.CENTER)
+        self.recordings_tree.column("letter", width=80, minwidth=60, anchor=tk.CENTER)
         
         # Configure tags for styling
         self.recordings_tree.tag_configure("complete", foreground="#27ae60")
         self.recordings_tree.tag_configure("processing", foreground="#f39c12")
         self.recordings_tree.tag_configure("partial", foreground="#3498db")
         self.recordings_tree.tag_configure("failed", foreground="#e74c3c")
+        
+        # Configure column-specific styling
+        self.recordings_tree.tag_configure("has_content", foreground="#27ae60")  # Green for checkmarks
+        self.recordings_tree.tag_configure("no_content", foreground="#888888")   # Gray for dashes
+        self.recordings_tree.tag_configure("processing_content", foreground="#f39c12")  # Orange for processing
+        self.recordings_tree.tag_configure("failed_content", foreground="#e74c3c")  # Red for failed
         
         # Action buttons
         actions_frame = ttk.Frame(recordings_frame)
@@ -1407,8 +1417,6 @@ class WorkflowUI:
         for recording in recordings:
             try:
                 rec_id = recording['id']
-                # Extract patient name if available
-                patient_name = recording.get('patient_name', 'Unknown Patient')
                 
                 # Parse timestamp
                 timestamp = recording.get('timestamp', '')
@@ -1424,33 +1432,49 @@ class WorkflowUI:
                     date_str = "Unknown"
                     time_str = ""
                 
-                # Determine status
+                # Determine completion status for each type
                 has_transcript = bool(recording.get('transcript'))
                 has_soap = bool(recording.get('soap_note'))
+                has_referral = bool(recording.get('referral'))
+                has_letter = bool(recording.get('letter'))
                 processing_status = recording.get('processing_status', '')
                 
+                # Status indicators with standard checkmarks
                 if processing_status == 'processing':
-                    status = "🔄 Processing"
+                    transcript_status = "🔄" if not has_transcript else "✓"
+                    soap_status = "🔄" if not has_soap else "✓"
+                    referral_status = "🔄" if not has_referral else "✓"
+                    letter_status = "🔄" if not has_letter else "✓"
                     tag = "processing"
                 elif processing_status == 'failed':
-                    status = "❌ Failed"
+                    transcript_status = "❌" if not has_transcript else "✓"
+                    soap_status = "❌" if not has_soap else "✓"
+                    referral_status = "❌" if not has_referral else "✓"
+                    letter_status = "❌" if not has_letter else "✓"
                     tag = "failed"
-                elif has_transcript and has_soap:
-                    status = "✓ Complete"
-                    tag = "complete"
-                elif has_transcript or has_soap:
-                    status = "◐ Partial"
-                    tag = "partial"
                 else:
-                    status = "○ Empty"
-                    tag = ""
+                    transcript_status = "✓" if has_transcript else "—"
+                    soap_status = "✓" if has_soap else "—"
+                    referral_status = "✓" if has_referral else "—"
+                    letter_status = "✓" if has_letter else "—"
+                    
+                    # Determine overall tag based on what content exists
+                    content_count = sum([has_transcript, has_soap, has_referral, has_letter])
+                    if content_count == 4:
+                        tag = "complete"  # All green
+                    elif content_count >= 2:
+                        tag = "partial"   # Mixed green/gray
+                    elif content_count == 1:
+                        tag = "has_content"  # Some green
+                    else:
+                        tag = "no_content"   # All gray
                 
-                # Insert into tree
+                # Insert into tree with appropriate tag for coloring
                 self.recordings_tree.insert(
                     "", "end",
                     text=str(rec_id),
-                    values=(patient_name, date_str, time_str, status),
-                    tags=(tag,) if tag else ()
+                    values=(date_str, time_str, transcript_status, soap_status, referral_status, letter_status),
+                    tags=(tag,)
                 )
             except Exception as e:
                 logging.error(f"Error adding recording to tree: {e}")
@@ -1471,8 +1495,11 @@ class WorkflowUI:
             # Hide non-matching items
             for item in self.recordings_tree.get_children():
                 values = self.recordings_tree.item(item, 'values')
-                # Search in patient name, date, and status
-                if any(search_text in str(v).lower() for v in values):
+                # Search in date, time, and completion status columns
+                # Also search in the ID (text field)
+                id_text = self.recordings_tree.item(item, 'text')
+                searchable_values = list(values) + [id_text]
+                if any(search_text in str(v).lower() for v in searchable_values):
                     self.recordings_tree.reattach(item, '', 'end')
                 else:
                     self.recordings_tree.detach(item)
