@@ -7,9 +7,18 @@ from pathlib import Path
 import os
 import threading
 import time
-import sounddevice as sd
-import soundcard
 from pydub import AudioSegment
+
+# Try to import audio libraries - they may fail in CI environments
+try:
+    import sounddevice as sd
+except (ImportError, OSError):
+    sd = None
+
+try:
+    import soundcard
+except (ImportError, AssertionError, OSError):
+    soundcard = None
 
 from audio import AudioHandler, AudioData
 from settings import SETTINGS
