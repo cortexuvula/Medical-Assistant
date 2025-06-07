@@ -12,32 +12,42 @@ class TkinterTestCase:
     
     def setup_method(self):
         """Set up test environment before each test."""
-        self.root = ttk_bs.Window(themename="darkly")
+        # Use regular tk.Tk() instead of ttk_bs.Window to avoid theme conflicts
+        self.root = tk.Tk()
         self.root.withdraw()  # Hide window during tests
         self.widgets_to_destroy = []
+        # Apply a default theme
+        self.style = ttk.Style(self.root)
         
     def teardown_method(self):
         """Clean up after each test."""
-        # Destroy tracked widgets
-        for widget in self.widgets_to_destroy:
+        # First destroy all tracked widgets
+        for widget in reversed(self.widgets_to_destroy):
             try:
-                if widget.winfo_exists():
+                if hasattr(widget, 'winfo_exists') and widget.winfo_exists():
                     widget.destroy()
-            except:
+            except tk.TclError:
                 pass
+        
+        # Clear the list
+        self.widgets_to_destroy.clear()
         
         # Process remaining events
         try:
             self.root.update_idletasks()
-        except:
+        except tk.TclError:
             pass
         
-        # Destroy root
+        # Destroy root window
         try:
-            self.root.quit()
-            self.root.destroy()
-        except:
+            if hasattr(self.root, 'winfo_exists') and self.root.winfo_exists():
+                self.root.quit()
+                self.root.destroy()
+        except tk.TclError:
             pass
+        
+        # Clear any reference to root
+        self.root = None
     
     def create_widget(self, widget_class, parent=None, **kwargs):
         """Create a widget and track it for cleanup."""

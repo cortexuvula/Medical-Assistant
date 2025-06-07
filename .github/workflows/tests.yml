@@ -73,18 +73,22 @@ jobs:
         flake8 . --max-line-length=120 --extend-ignore=E203,W503 || true
         # mypy . --ignore-missing-imports || true
     
-    # Run tests
-    - name: Run tests with coverage
+    # Run tests (Linux with xvfb)
+    - name: Run tests with coverage (Linux)
+      if: runner.os == 'Linux'
       env:
         MEDICAL_ASSISTANT_ENV: testing
-        DISPLAY: ':99'  # Virtual display for UI tests on Linux
+        DISPLAY: ':99'
       run: |
-        # Exclude PyQt5 UI tests since the app uses tkinter
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          xvfb-run -a pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py
-        else
-          pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py
-        fi
+        xvfb-run -a pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py
+    
+    # Run tests (Windows/macOS)
+    - name: Run tests with coverage (Windows/macOS)
+      if: runner.os != 'Linux'
+      env:
+        MEDICAL_ASSISTANT_ENV: testing
+      run: |
+        pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py
     
     # Upload coverage
     - name: Upload coverage to Codecov
