@@ -174,7 +174,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Test files
+# Test files (but allow files in tests/ directory)
 test_*.py
 *_test.py
 *_test_*.py
@@ -182,6 +182,7 @@ test.py
 *_test_*.wav
 *_response_*.json
 *_curl_*.json
+!tests/**/*.py
 
 # Application-specific temporary files
 temp.wav
