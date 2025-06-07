@@ -1,0 +1,63 @@
+[run]
+branch = True
+source = .
+omit = 
+    */tests/*
+    */test_*
+    */venv/*
+    */virtualenv/*
+    */site-packages/*
+    */dist/*
+    */build/*
+    */.tox/*
+    */__pycache__/*
+    */migrations/*
+    setup.py
+    main.py
+    */config/*
+    medical_assistant.spec
+    create_shortcut.vbs
+    suppress_console.py
+    runtime_hook_*.py
+    hook-soundcard.py
+    download_ffmpeg.py
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+
+    # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run:
+    if 0:
+    if __name__ == .__main__.:
+    
+    # Don't complain about abstract methods
+    @(abc\.)?abstractmethod
+    
+    # Type checking blocks
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+ignore_errors = True
+precision = 2
+show_missing = True
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
+
+[paths]
+source =
+    .
+    */site-packages/

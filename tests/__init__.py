@@ -1,0 +1,1 @@
+"""Medical Assistant test suite."""

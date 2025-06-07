@@ -1,6 +1,6 @@
 SpeechRecognition
 pydub
-deepgram-sdk
+deepgram-sdk>=3.0.0  # Requires Python 3.10+
 ttkbootstrap
 python-dotenv
 openai>=1.0.0

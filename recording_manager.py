@@ -118,7 +118,8 @@ class RecordingManager:
             'audio': combined_audio,  # May be None, app will check
             'duration': actual_duration,
             'start_time': self.soap_start_time,
-            'segment_count': len(self.audio_segments)
+            'segment_count': len(self.audio_segments),
+            'pause_duration': self.total_pause_duration
         }
         
         if combined_audio:

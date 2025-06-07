@@ -2,8 +2,6 @@ import os
 import time
 import logging
 import threading
-import soundcard
-import sounddevice as sd
 import numpy as np
 import platform
 from pydub import AudioSegment
@@ -12,6 +10,21 @@ from pathlib import Path
 from settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
 from config import get_config
+
+# Try to import audio libraries - they may fail in CI environments
+try:
+    import soundcard
+    SOUNDCARD_AVAILABLE = True
+except (ImportError, AssertionError, OSError):
+    soundcard = None
+    SOUNDCARD_AVAILABLE = False
+
+try:
+    import sounddevice as sd
+    SOUNDDEVICE_AVAILABLE = True
+except (ImportError, OSError):
+    sd = None
+    SOUNDDEVICE_AVAILABLE = False
 
 # Define AudioData type for annotations
 class AudioData:
@@ -451,6 +464,9 @@ class AudioHandler:
         try:
             devices = []
             # Get all microphones from soundcard
+            if not SOUNDCARD_AVAILABLE:
+                self.logger.warning("Soundcard not available, returning empty device list")
+                return []
             mics = soundcard.all_microphones(include_loopback=False)
             
             for i, mic in enumerate(mics):
@@ -507,6 +523,9 @@ class AudioHandler:
             else:
                 # --- Soundcard Logic (currently disabled, potentially problematic) ---
                 logging.info(f"Attempting to use soundcard backend for: {mic_name}")
+                if not SOUNDCARD_AVAILABLE:
+                    logging.error("Soundcard not available, cannot use soundcard backend")
+                    return lambda: None
                 try:
                     mics = soundcard.all_microphones(include_loopback=True)
                     selected_sc_device = None
@@ -858,6 +877,9 @@ class AudioHandler:
         # This method seems deprecated in favor of _listen_with_sounddevice and soundcard issues
         # Keeping it for reference but should likely be removed or refactored if soundcard is needed.
         logging.warning("_background_recording_thread (soundcard) is likely deprecated.")
+        if not SOUNDCARD_AVAILABLE:
+            logging.error("Soundcard not available, cannot use soundcard backend")
+            return
         try:
             # Simplified - assumes device_index corresponds to soundcard's list which might not be true
             mic = soundcard.get_microphone(device_index, include_loopback=True)

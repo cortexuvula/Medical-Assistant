@@ -278,7 +278,7 @@ class Database:
                 values.append(value)
         
         values.append(task_id)
-        query = f"UPDATE processing_queue SET {", ".join(fields)} WHERE task_id = ?"
+        query = f"UPDATE processing_queue SET {', '.join(fields)} WHERE task_id = ?"
         
         self.cursor.execute(query, values)
         rows_affected = self.cursor.rowcount

@@ -32,6 +32,10 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 
 ## Installation
 
+### Prerequisites
+- Python 3.10 or higher (required for Deepgram SDK compatibility)
+- FFmpeg (for audio processing)
+
 1. **Clone or Download the Repository**
    ```
    git clone <repository-url>
@@ -262,12 +266,52 @@ Desktop shortcuts are automatically created during the build process.
 - **Internet**: Required for cloud AI services (optional for local Ollama models)
 - **Audio**: Microphone for speech-to-text functionality
 
+## Documentation
+
+### User Documentation
+- [User Guide](docs/user_guide.md) - Comprehensive user documentation
+- [Keyboard Shortcuts](SHORTCUTS.md) - Quick reference for keyboard shortcuts
+- [Security Features](docs/security_features.md) - Security implementation details
+- [Database Schema](docs/database_improvements.md) - Database structure and improvements
+
+### Development Documentation
+- [Testing Guide](docs/testing_guide.md) - Comprehensive testing documentation (80%+ coverage)
+- [Testing Quick Start](docs/testing_quickstart.md) - Quick reference for running tests
+- [UI Testing Setup](docs/ui_testing_setup.md) - Guide for UI testing with PyQt5
+- [CLAUDE.md](CLAUDE.md) - Development guide for AI-assisted development
+
+### Testing Infrastructure
+The project includes a comprehensive test suite with:
+- **352 total tests** (327 unit tests + 25 UI tests)
+- **80.68% code coverage** on core modules
+- Unit tests for all major components
+- Integration tests for the recording pipeline
+- UI tests demonstrating PyQt5 testing patterns
+- Pre-commit hooks for code quality
+- CI/CD pipeline for automated testing
+
+To run tests:
+```bash
+# Install test dependencies
+pip install -r requirements-dev.txt
+
+# Run all tests
+python -m pytest
+
+# Run with coverage
+python run_tests.py --cov
+
+# Run UI tests
+python tests/run_ui_tests.py
+```
+
 ## Contribution
 
 Contributions to the Medical Dictation Assistant are welcome.  
 - Fork the repository.
 - Create a feature branch.
 - Submit a Pull Request with your enhancements.
+- Ensure all tests pass and maintain 80%+ coverage
 
 ## License
 
