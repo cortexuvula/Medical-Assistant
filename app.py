@@ -267,7 +267,7 @@ class MedicalDictationApp(ttk.Window):
         ttk.Label(provider_frame, text="AI:").pack(side=LEFT, padx=(10, 5))
         self.provider_combobox = ttk.Combobox(
             provider_frame, 
-            values=["OpenAI", "Grok", "Perplexity"],
+            values=["OpenAI", "Grok", "Perplexity", "Anthropic"],
             state="readonly",
             width=12
         )
@@ -437,7 +437,8 @@ class MedicalDictationApp(ttk.Window):
             current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["refine_text"].get("grok_model", "grok-1")),
             save_callback=self.save_refine_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE)
+            current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
         )
 
     def show_improve_settings_dialog(self) -> None:
@@ -455,7 +456,8 @@ class MedicalDictationApp(ttk.Window):
             current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["improve_text"].get("grok_model", "grok-1")),
             save_callback=self.save_improve_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE)
+            current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
         )
 
     def show_soap_settings_dialog(self) -> None:
@@ -475,7 +477,8 @@ class MedicalDictationApp(ttk.Window):
             current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["soap_note"].get("grok_model", "grok-1")),
             save_callback=self.save_soap_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", default_system_prompt)
+            current_system_prompt=cfg.get("system_message", default_system_prompt),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229"))
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -495,7 +498,8 @@ class MedicalDictationApp(ttk.Window):
             current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["referral"].get("grok_model", "grok-1")),
             save_callback=self.save_referral_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", default_system_prompt)
+            current_system_prompt=cfg.get("system_message", default_system_prompt),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229"))
         )
 
     def show_temperature_settings(self) -> None:
@@ -504,7 +508,7 @@ class MedicalDictationApp(ttk.Window):
         show_temperature_settings_dialog(self)
         self.status_manager.success("Temperature settings saved successfully")
 
-    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
+    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["refine_text"] = {
             "prompt": prompt,
@@ -512,12 +516,13 @@ class MedicalDictationApp(ttk.Window):
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
-            "ollama_model": ollama_model
+            "ollama_model": ollama_model,
+            "anthropic_model": anthropic_model
         }
         save_settings(SETTINGS)
         self.status_manager.success("Refine text settings saved successfully")
 
-    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
+    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
         from settings import save_settings, SETTINGS
         SETTINGS["improve_text"] = {
             "prompt": prompt,
@@ -525,12 +530,13 @@ class MedicalDictationApp(ttk.Window):
             "model": openai_model,
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
-            "ollama_model": ollama_model
+            "ollama_model": ollama_model,
+            "anthropic_model": anthropic_model
         }
         save_settings(SETTINGS)
         self.status_manager.success("Improve text settings saved successfully")
 
-    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
+    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
         from settings import save_settings, SETTINGS
         # Preserve existing temperature settings
         SETTINGS["soap_note"]["prompt"] = prompt
@@ -539,10 +545,11 @@ class MedicalDictationApp(ttk.Window):
         SETTINGS["soap_note"]["perplexity_model"] = perplexity_model
         SETTINGS["soap_note"]["grok_model"] = grok_model
         SETTINGS["soap_note"]["ollama_model"] = ollama_model
+        SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 
-    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str) -> None:
+    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
         from settings import save_settings, SETTINGS
         # Preserve existing temperature settings
         SETTINGS["referral"]["prompt"] = prompt
@@ -551,6 +558,7 @@ class MedicalDictationApp(ttk.Window):
         SETTINGS["referral"]["perplexity_model"] = perplexity_model
         SETTINGS["referral"]["grok_model"] = grok_model
         SETTINGS["referral"]["ollama_model"] = ollama_model
+        SETTINGS["referral"]["anthropic_model"] = anthropic_model
         save_settings(SETTINGS)
         self.status_manager.success("Referral settings saved successfully")
 
@@ -1345,8 +1353,8 @@ class MedicalDictationApp(ttk.Window):
         from settings import SETTINGS, save_settings  # Import locally if preferred
         
         selected_index = self.provider_combobox.current()
-        providers = ["openai", "grok", "perplexity"]
-        provider_display = ["OpenAI", "Grok", "Perplexity"]
+        providers = ["openai", "grok", "perplexity", "anthropic"]
+        provider_display = ["OpenAI", "Grok", "Perplexity", "Anthropic"]
         
         if 0 <= selected_index < len(providers):
             selected_provider = providers[selected_index]

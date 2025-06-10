@@ -18,6 +18,8 @@ API_KEY_PATTERNS = {
     "groq": re.compile(r'^gsk_[a-zA-Z0-9]{52}$'),
     "perplexity": re.compile(r'^pplx-[a-f0-9]{48}$'),
     "grok": re.compile(r'^xai-[a-zA-Z0-9]+$'),
+    # Anthropic keys start with sk-ant- followed by alphanumeric characters
+    "anthropic": re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{95,}$'),
 }
 
 # Maximum lengths for input validation

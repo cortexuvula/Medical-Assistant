@@ -4,7 +4,8 @@ import logging
 import re
 import requests
 import json
-from openai import OpenAI  
+from openai import OpenAI
+from anthropic import Anthropic
 from prompts import (
     REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
@@ -371,6 +372,128 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
         logging.error(f"Fallback Ollama chat API error: {str(e)}")
         return f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed."
 
+@secure_api_call("anthropic")
+@resilient_api_call(
+    max_retries=3,
+    initial_delay=1.0,
+    backoff_factor=2.0,
+    failure_threshold=5,
+    recovery_timeout=60
+)
+def _anthropic_api_call(client: Anthropic, model: str, messages: list, temperature: float, max_tokens: int = 4096):
+    """Make the actual API call to Anthropic.
+    
+    Args:
+        client: Anthropic client instance
+        model: Model name
+        messages: List of messages
+        temperature: Temperature setting
+        max_tokens: Maximum tokens in response
+        
+    Returns:
+        API response
+        
+    Raises:
+        APIError: On API failures
+    """
+    try:
+        # Convert OpenAI-style messages to Anthropic format
+        system_message = None
+        user_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            elif msg["role"] == "user":
+                user_messages.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                user_messages.append({"role": "assistant", "content": msg["content"]})
+        
+        # Create the message with Anthropic's API
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_message if system_message else None,
+            messages=user_messages
+        )
+        return response
+    except Exception as e:
+        error_msg = str(e)
+        if "rate_limit" in error_msg.lower():
+            raise RateLimitError(f"Anthropic rate limit exceeded: {error_msg}")
+        elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+            raise AuthenticationError(f"Anthropic authentication failed: {error_msg}")
+        elif "timeout" in error_msg.lower():
+            raise ServiceUnavailableError(f"Anthropic request timeout: {error_msg}")
+        else:
+            raise APIError(f"Anthropic API error: {error_msg}")
+
+def call_anthropic(model: str, system_message: str, prompt: str, temperature: float) -> str:
+    """Call Anthropic's Claude API.
+    
+    Args:
+        model: Model to use (e.g., claude-3-opus-20240229)
+        system_message: System message to guide the AI's response
+        prompt: User prompt
+        temperature: Temperature parameter (0.0 to 1.0)
+        
+    Returns:
+        AI-generated response as a string
+    """
+    # Get security manager
+    security_manager = get_security_manager()
+    
+    # Get API key from secure storage or environment
+    api_key = security_manager.get_api_key("anthropic")
+    if not api_key:
+        logging.error("Anthropic API key not provided")
+        title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Validate API key format
+    is_valid, error = validate_api_key("anthropic", api_key)
+    if not is_valid:
+        logging.error(f"Invalid Anthropic API key: {error}")
+        title, message = get_error_message("API_KEY_INVALID", error)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    
+    # Validate model name
+    is_valid, error = validate_model_name(model, "anthropic")
+    if not is_valid:
+        title, message = get_error_message("CFG_INVALID_SETTINGS", error)
+        return f"[Error: {title}] {message}"
+    
+    # Enhanced sanitization
+    prompt = security_manager.sanitize_input(prompt, "prompt")
+    system_message = security_manager.sanitize_input(system_message, "prompt")
+    
+    try:
+        logging.info(f"Making Anthropic API call with model: {model}")
+        
+        # Use consolidated debug logging
+        log_api_call_debug("Anthropic", model, temperature, system_message, prompt)
+        
+        # Initialize Anthropic client
+        client = Anthropic(api_key=api_key)
+        
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = _anthropic_api_call(client, model, messages, temperature)
+        return response.content[0].text.strip()
+    except (APIError, ServiceUnavailableError) as e:
+        logging.error(f"Anthropic API error with model {model}: {str(e)}")
+        error_code, details = format_api_error("anthropic", e)
+        title, message = get_error_message(error_code, details, model)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    except Exception as e:
+        logging.error(f"Unexpected error calling Anthropic: {str(e)}")
+        title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+
 def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
     api_key = os.getenv("GROK_API_KEY")
     if not api_key:
@@ -651,6 +774,11 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
         logging.info(f"Using provider: Ollama for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)
+    elif provider == "anthropic":
+        actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
+        logging.info(f"Using provider: Anthropic with model: {actual_model}")
+        # Debug logging will happen in the actual API call
+        return call_anthropic(actual_model, system_message, prompt, temperature)
     else:  # OpenAI is the default
         actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")

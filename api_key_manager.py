@@ -66,7 +66,7 @@ class APIKeyManager:
         tk.Label(api_root, text="Please enter at least one of the following API keys to continue:",
                 font=("Segoe UI", 11)).pack(pady=(0, 5))
         
-        tk.Label(api_root, text="OpenAI, Grok, or Perplexity API key is required. Either Deepgram or ElevenLabs API key is mandatory for speech recognition.",
+        tk.Label(api_root, text="OpenAI, Grok, Perplexity, or Anthropic API key is required. Either Deepgram, ElevenLabs, or GROQ API key is mandatory for speech recognition.",
                 wraplength=450).pack(pady=(0, 20))
         
         # Create frame for keys
@@ -86,31 +86,36 @@ class APIKeyManager:
         perplexity_entry = tk.Entry(keys_frame, width=40)
         perplexity_entry.grid(row=2, column=1, sticky="ew", pady=5)
         
+        tk.Label(keys_frame, text="Anthropic API Key:").grid(row=3, column=0, sticky="w", pady=5)
+        anthropic_entry = tk.Entry(keys_frame, width=40)
+        anthropic_entry.grid(row=3, column=1, sticky="ew", pady=5)
+        
         # Create entry for optional API key last
-        tk.Label(keys_frame, text="Deepgram API Key:").grid(row=3, column=0, sticky="w", pady=5)
+        tk.Label(keys_frame, text="Deepgram API Key:").grid(row=4, column=0, sticky="w", pady=5)
         deepgram_entry = tk.Entry(keys_frame, width=40)
-        deepgram_entry.grid(row=3, column=1, sticky="ew", pady=5)
+        deepgram_entry.grid(row=4, column=1, sticky="ew", pady=5)
         
         # NEW: Add ElevenLabs API Key field
-        tk.Label(keys_frame, text="ElevenLabs API Key:").grid(row=4, column=0, sticky="w", pady=5)
+        tk.Label(keys_frame, text="ElevenLabs API Key:").grid(row=5, column=0, sticky="w", pady=5)
         elevenlabs_entry = tk.Entry(keys_frame, width=40)
-        elevenlabs_entry.grid(row=4, column=1, sticky="ew", pady=5)
+        elevenlabs_entry.grid(row=5, column=1, sticky="ew", pady=5)
         
         # NEW: Add GROQ API Key field
-        tk.Label(keys_frame, text="GROQ API Key:").grid(row=5, column=0, sticky="w", pady=5)
+        tk.Label(keys_frame, text="GROQ API Key:").grid(row=6, column=0, sticky="w", pady=5)
         groq_entry = tk.Entry(keys_frame, width=40)
-        groq_entry.grid(row=5, column=1, sticky="ew", pady=5)
+        groq_entry.grid(row=6, column=1, sticky="ew", pady=5)
         
         # Add info about where to find the keys
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
                     "• Grok (X.AI): https://x.ai\n"
                     "• Perplexity: https://docs.perplexity.ai/\n"
+                    "• Anthropic: https://console.anthropic.com/account/keys\n"
                     "• Deepgram: https://console.deepgram.com/signup\n"
                     "• ElevenLabs: https://elevenlabs.io/app/speech-to-text\n"
                     "• GROQ: https://groq.com/")
         tk.Label(keys_frame, text=info_text, justify="left", wraplength=450).grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=10)
+            row=7, column=0, columnspan=2, sticky="w", pady=10)
         
         error_var = tk.StringVar()
         error_label = tk.Label(api_root, textvariable=error_var, foreground="red", wraplength=450)
@@ -122,12 +127,13 @@ class APIKeyManager:
             deepgram_key = deepgram_entry.get().strip()
             grok_key = grok_entry.get().strip()
             perplexity_key = perplexity_entry.get().strip()
+            anthropic_key = anthropic_entry.get().strip()  # NEW: Get Anthropic key
             elevenlabs_key = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
             groq_key = groq_entry.get().strip()  # NEW: Get GROQ key
             
-            # Check if at least one of OpenAI, Grok, or Perplexity keys is provided
-            if not (openai_key or grok_key or perplexity_key):
-                error_var.set("Error: At least one of OpenAI, Grok, or Perplexity API keys is required.")
+            # Check if at least one of OpenAI, Grok, Perplexity, or Anthropic keys is provided
+            if not (openai_key or grok_key or perplexity_key or anthropic_key):
+                error_var.set("Error: At least one of OpenAI, Grok, Perplexity, or Anthropic API keys is required.")
                 return
                 
             # Check if at least one speech-to-text API key is provided
@@ -145,6 +151,8 @@ class APIKeyManager:
                     f.write(f"GROK_API_KEY={grok_key}\n")
                 if perplexity_key:
                     f.write(f"PERPLEXITY_API_KEY={perplexity_key}\n")
+                if anthropic_key:
+                    f.write(f"ANTHROPIC_API_KEY={anthropic_key}\n")
                 # NEW: Add ElevenLabs key if provided
                 if elevenlabs_key:
                     f.write(f"ELEVENLABS_API_KEY={elevenlabs_key}\n")

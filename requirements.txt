@@ -4,6 +4,7 @@ deepgram-sdk>=3.0.0  # Requires Python 3.10+
 ttkbootstrap
 python-dotenv
 openai>=1.0.0
+anthropic>=0.18.1  # For Anthropic Claude models
 pyaudio
 requests
 numpy

@@ -8,6 +8,28 @@ from typing import Dict, Tuple
 import requests
 import json
 from openai import OpenAI
+import time
+from functools import lru_cache
+
+# Cache for model lists with TTL
+_model_cache = {}
+_cache_ttl = 3600  # 1 hour cache TTL
+
+def clear_model_cache(provider: str = None):
+    """Clear the model cache for a specific provider or all providers.
+    
+    Args:
+        provider: Specific provider to clear cache for, or None to clear all
+    """
+    global _model_cache
+    if provider:
+        cache_key = f"{provider}_models"
+        if cache_key in _model_cache:
+            del _model_cache[cache_key]
+            logging.info(f"Cleared model cache for {provider}")
+    else:
+        _model_cache.clear()
+        logging.info("Cleared all model caches")
 
 def create_model_selector(parent, frame, model_var, provider_name, get_models_func, row, column=1):
     """Create a model selection widget with a select button.
@@ -54,9 +76,10 @@ def create_model_selector(parent, frame, model_var, provider_name, get_models_fu
                 f"Failed to fetch {provider_name} models. Check your API key and internet connection.")
             return
         
-        # Open model selection dialog
+        # Open model selection dialog with refresh capability
         model_selection = create_model_selection_dialog(parent, 
-            f"Select {provider_name} Model", models, model_var.get())
+            f"Select {provider_name} Model", models, model_var.get(), 
+            get_models_func=get_models_func, provider_name=provider_name)
         if model_selection:
             model_var.set(model_selection)
     
@@ -253,6 +276,81 @@ def get_fallback_perplexity_models() -> list:
         "r1-1776"                # 128k context
     ]
 
+def get_anthropic_models() -> list:
+    """Return a list of Anthropic models, fetched dynamically if possible"""
+    # Check cache first
+    cache_key = "anthropic_models"
+    if cache_key in _model_cache:
+        cached_time, cached_models = _model_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logging.info("Using cached Anthropic models")
+            return cached_models
+    
+    try:
+        # Try to fetch models dynamically from Anthropic API
+        from anthropic import Anthropic
+        from security import get_security_manager
+        
+        security_manager = get_security_manager()
+        api_key = security_manager.get_api_key("anthropic")
+        
+        if api_key:
+            logging.info("Attempting to fetch Anthropic models from API")
+            client = Anthropic(api_key=api_key)
+            
+            # Fetch models list from API
+            models_response = client.models.list()
+            
+            # Extract model IDs from the response
+            model_ids = []
+            if hasattr(models_response, 'data'):
+                for model in models_response.data:
+                    if hasattr(model, 'id'):
+                        model_ids.append(model.id)
+            elif isinstance(models_response, list):
+                model_ids = [model.id if hasattr(model, 'id') else str(model) for model in models_response]
+            
+            if model_ids:
+                logging.info(f"Successfully fetched {len(model_ids)} Anthropic models from API")
+                # Sort models with Claude 3 models first, then by version
+                model_ids.sort(key=lambda x: (
+                    0 if 'claude-3-opus' in x else
+                    1 if 'claude-3-sonnet' in x else
+                    2 if 'claude-3-haiku' in x else
+                    3 if 'claude-2.1' in x else
+                    4 if 'claude-2.0' in x else
+                    5 if 'claude-instant' in x else
+                    6
+                ))
+                # Cache the results
+                _model_cache[cache_key] = (time.time(), model_ids)
+                return model_ids
+            else:
+                logging.warning("No models found in API response, using fallback list")
+                return get_fallback_anthropic_models()
+        else:
+            logging.info("No Anthropic API key available, using fallback list")
+            return get_fallback_anthropic_models()
+            
+    except ImportError:
+        logging.warning("Anthropic library not installed, using fallback list")
+        return get_fallback_anthropic_models()
+    except Exception as e:
+        logging.error(f"Error fetching Anthropic models from API: {e}")
+        return get_fallback_anthropic_models()
+
+def get_fallback_anthropic_models() -> list:
+    """Return a fallback list of Anthropic models"""
+    logging.info("Using fallback list of Anthropic models")
+    return [
+        "claude-3-opus-20240229",      # Most capable model
+        "claude-3-sonnet-20240229",    # Balanced performance
+        "claude-3-haiku-20240307",     # Fastest model
+        "claude-2.1",                  # Previous generation
+        "claude-2.0",                  # Legacy model
+        "claude-instant-1.2"           # Fast, lightweight model
+    ]
+
 def prompt_for_api_key(provider: str = "Grok") -> str:
     """Prompt the user for their API key."""
     dialog = tk.Toplevel()
@@ -263,13 +361,15 @@ def prompt_for_api_key(provider: str = "Grok") -> str:
     env_var_name = {
         "Grok": "GROK_API_KEY",
         "OpenAI": "OPENAI_API_KEY",
-        "Perplexity": "PERPLEXITY_API_KEY"
+        "Perplexity": "PERPLEXITY_API_KEY",
+        "Anthropic": "ANTHROPIC_API_KEY"
     }.get(provider, "API_KEY")
     
     provider_url = {
         "Grok": "X.AI account",
         "OpenAI": "https://platform.openai.com/account/api-keys",
-        "Perplexity": "https://www.perplexity.ai/settings/api"
+        "Perplexity": "https://www.perplexity.ai/settings/api",
+        "Anthropic": "https://console.anthropic.com/account/keys"
     }.get(provider, "provider website")
     
     ttk.Label(dialog, text=f"Please enter your {provider} API Key:", wraplength=400).pack(pady=(20, 5))
@@ -357,7 +457,7 @@ def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500")
     
     return dialog
 
-def create_model_selection_dialog(parent, title, models_list, current_selection):
+def create_model_selection_dialog(parent, title, models_list, current_selection, get_models_func=None, provider_name=None):
     """
     Create a dialog with a scrollable listbox for selecting models.
     
@@ -366,6 +466,8 @@ def create_model_selection_dialog(parent, title, models_list, current_selection)
         title: Dialog title
         models_list: List of models to display
         current_selection: Currently selected model
+        get_models_func: Optional function to refresh models
+        provider_name: Optional provider name for cache clearing
     
     Returns:
         Selected model or None if cancelled
@@ -376,8 +478,43 @@ def create_model_selection_dialog(parent, title, models_list, current_selection)
     frame = ttk.Frame(dialog, padding=10)
     frame.pack(fill=tk.BOTH, expand=True)
     
-    # Create label
-    ttk.Label(frame, text="Select a model:").pack(anchor="w", pady=(0, 5))
+    # Create header frame with label and refresh button
+    header_frame = ttk.Frame(frame)
+    header_frame.pack(fill=tk.X, pady=(0, 5))
+    
+    ttk.Label(header_frame, text="Select a model:").pack(side=tk.LEFT)
+    
+    # Add refresh button if get_models_func is provided
+    if get_models_func:
+        def refresh_models():
+            # Clear cache if provider_name is provided
+            if provider_name:
+                clear_model_cache(provider_name.lower())
+            
+            # Show progress
+            refresh_btn.config(state="disabled", text="Refreshing...")
+            dialog.update()
+            
+            # Fetch new models
+            new_models = get_models_func()
+            
+            # Update listbox
+            listbox.delete(0, tk.END)
+            for model in new_models:
+                listbox.insert(tk.END, model)
+                if model == current_selection:
+                    listbox.selection_set(listbox.size() - 1)
+                    listbox.see(listbox.size() - 1)
+            
+            # Update models_list reference
+            models_list[:] = new_models
+            
+            # Re-enable button
+            refresh_btn.config(state="normal", text="↻ Refresh")
+            messagebox.showinfo("Refresh Complete", f"Fetched {len(new_models)} models")
+        
+        refresh_btn = ttk.Button(header_frame, text="↻ Refresh", command=refresh_models)
+        refresh_btn.pack(side=tk.RIGHT, padx=(10, 0))
     
     # Create a frame for the listbox and scrollbar
     list_frame = ttk.Frame(frame)
@@ -456,7 +593,7 @@ def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_pr
     return prompt_text, system_prompt_text
 
 def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity: str, 
-                      current_grok: str, current_ollama: str) -> Dict[str, tk.StringVar]:
+                      current_grok: str, current_ollama: str, current_anthropic: str) -> Dict[str, tk.StringVar]:
     """Create the models tab content.
     
     Args:
@@ -465,6 +602,7 @@ def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity
         current_perplexity: Current Perplexity model
         current_grok: Current Grok model
         current_ollama: Current Ollama model
+        current_anthropic: Current Anthropic model
         
     Returns:
         Dictionary of model StringVars
@@ -491,10 +629,16 @@ def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity
     grok_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=(5, 5))
     
     # Ollama Model
-    ttk.Label(parent, text="Ollama Model:").grid(row=3, column=0, sticky="nw", pady=(5, 10))
+    ttk.Label(parent, text="Ollama Model:").grid(row=3, column=0, sticky="nw", pady=(5, 5))
     ollama_model_var = tk.StringVar(value=current_ollama)
     model_vars['ollama'] = ollama_model_var
     create_model_selector(parent, parent, ollama_model_var, "Ollama", get_ollama_models, row=3)
+    
+    # Anthropic Model
+    ttk.Label(parent, text="Anthropic Model:").grid(row=4, column=0, sticky="nw", pady=(5, 10))
+    anthropic_model_var = tk.StringVar(value=current_anthropic)
+    model_vars['anthropic'] = anthropic_model_var
+    create_model_selector(parent, parent, anthropic_model_var, "Anthropic", get_anthropic_models, row=4)
     
     return model_vars
 
@@ -546,7 +690,8 @@ def _create_temperature_tab(parent: ttk.Frame, current_temp: float, default_temp
 
 def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict, 
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
-                         save_callback: callable, current_ollama: str = "", current_system_prompt: str = "") -> None:
+                         save_callback: callable, current_ollama: str = "", current_system_prompt: str = "", 
+                         current_anthropic: str = "") -> None:
     """Show settings dialog for configuring prompt and model.
     
     Args:
@@ -561,6 +706,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         save_callback: Callback for saving settings
         current_ollama: Current Ollama model
         current_system_prompt: Current system prompt text
+        current_anthropic: Current Anthropic model
     """
     # Create dialog
     dialog = tk.Toplevel(parent)
@@ -592,7 +738,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     
     # Populate tabs
     prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
-    model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama)
+    model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama, current_anthropic)
     
     # Get temperature from config
     current_temp = config.get("temperature", default.get("temperature", 0.7))
@@ -638,6 +784,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         model_vars['perplexity'].set(config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
         model_vars['grok'].set(config.get("grok_model", default.get("grok_model", "grok-1")))
         model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
+        model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-3-sonnet-20240229")))
         
         # Reset temperature
         temp_scale.set(default_temp)
@@ -657,7 +804,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             model_vars['perplexity'].get().strip(),
             model_vars['grok'].get().strip(),
             model_vars['ollama'].get().strip(),
-            system_prompt_text.get("1.0", tk.END).strip()
+            system_prompt_text.get("1.0", tk.END).strip(),
+            model_vars['anthropic'].get().strip()
         )
         dialog.destroy()
     
@@ -770,6 +918,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")  # Default Ollama URL
     groq_key = os.getenv("GROQ_API_KEY", "")  # NEW: Get GROQ key
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")  # NEW: Get Anthropic key
     
     # Create entry fields with password masking - add more vertical spacing
     row_offset = 1  # Start at row 1 since header is at row 0
@@ -790,6 +939,12 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     perplexity_entry = ttk.Entry(frame, width=50, show="•")
     perplexity_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     perplexity_entry.insert(0, perplexity_key)
+    row_offset += 1
+    
+    ttk.Label(frame, text="Anthropic API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
+    anthropic_entry = ttk.Entry(frame, width=50, show="•")
+    anthropic_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
+    anthropic_entry.insert(0, anthropic_key)
     row_offset += 1
     
     ttk.Label(frame, text="Ollama API URL:").grid(row=row_offset, column=0, sticky="w", pady=15)
@@ -854,10 +1009,11 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     create_toggle_button(frame, openai_entry, row=1)
     create_toggle_button(frame, grok_entry, row=2)
     create_toggle_button(frame, perplexity_entry, row=3)
+    create_toggle_button(frame, anthropic_entry, row=4)
     # Ollama URL doesn't need a show/hide button as it's not a key
     
     # Calculate eye button positions for STT API keys based on deepgram's row
-    deepgram_row = 8  # Based on the row_offset after separator and STT label
+    deepgram_row = 9  # Based on the row_offset after separator and STT label (updated for Anthropic)
     create_toggle_button(frame, deepgram_entry, row=deepgram_row)
     create_toggle_button(frame, elevenlabs_entry, row=deepgram_row+1)
     create_toggle_button(frame, groq_entry, row=deepgram_row+2)
@@ -878,6 +1034,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
         new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
         new_ollama_url = ollama_entry.get().strip()  # Get Ollama URL
         new_groq = groq_entry.get().strip()  # NEW: Get GROQ key
+        new_anthropic = anthropic_entry.get().strip()  # NEW: Get Anthropic key
         
         from validation import validate_api_key
         
@@ -914,13 +1071,18 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             if not is_valid:
                 validation_errors.append(f"GROQ: {error}")
         
+        if new_anthropic:
+            is_valid, error = validate_api_key("anthropic", new_anthropic)
+            if not is_valid:
+                validation_errors.append(f"Anthropic: {error}")
+        
         if validation_errors:
             error_var.set("Validation errors:\n" + "\n".join(validation_errors))
             return
         
-        # Check if at least one LLM provider (OpenAI, Grok, or Perplexity) is provided
-        if not (new_openai or new_grok or new_perplexity or new_ollama_url):
-            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Grok, Perplexity, or Ollama).")
+        # Check if at least one LLM provider (OpenAI, Grok, Perplexity, Anthropic, or Ollama) is provided
+        if not (new_openai or new_grok or new_perplexity or new_anthropic or new_ollama_url):
+            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Grok, Perplexity, Anthropic, or Ollama).")
             return
             
         # Check if at least one STT provider (Groq, Deepgram, or ElevenLabs) is provided
@@ -933,10 +1095,14 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
 
         # Update .env file
         try:
+            # Use data_folder_manager to get the correct .env path
+            from data_folder_manager import data_folder_manager
+            env_path = str(data_folder_manager.env_file_path)
+            
             # Read existing content
             env_content = ""
-            if os.path.exists(".env"):
-                with open(".env", "r") as f:
+            if os.path.exists(env_path):
+                with open(env_path, "r") as f:
                     env_content = f.read()
             
             # Update or add each key
@@ -968,9 +1134,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 elif "OLLAMA_API_URL=" in line:
                     updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
                     keys_updated.add("OLLAMA_API_URL")
-                elif "GROQ_API_KEY=" in line:  # NEW: Update GROQ key
-                    updated_lines.append(f"GROQ_API_KEY={new_groq}")
-                    keys_updated.add("GROQ_API_KEY")
+                elif "ANTHROPIC_API_KEY=" in line:  # NEW: Update Anthropic key
+                    updated_lines.append(f"ANTHROPIC_API_KEY={new_anthropic}")
+                    keys_updated.add("ANTHROPIC_API_KEY")
                 else:
                     updated_lines.append(line)
             
@@ -989,13 +1155,15 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
             if "GROQ_API_KEY" not in keys_updated and new_groq:
                 updated_lines.append(f"GROQ_API_KEY={new_groq}")
+            if "ANTHROPIC_API_KEY" not in keys_updated and new_anthropic:
+                updated_lines.append(f"ANTHROPIC_API_KEY={new_anthropic}")
             
             # Make sure we have the RECOGNITION_LANGUAGE line
             if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
                 updated_lines.append("RECOGNITION_LANGUAGE=en-US")
             
             # Write back to file
-            with open(".env", "w") as f:
+            with open(env_path, "w") as f:
                 f.write("\n".join(updated_lines))
             
             # Update environment variables in memory
@@ -1015,6 +1183,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 os.environ["OLLAMA_API_URL"] = new_ollama_url
             if new_groq:
                 os.environ["GROQ_API_KEY"] = new_groq
+            if new_anthropic:
+                os.environ["ANTHROPIC_API_KEY"] = new_anthropic
             
             # Store results before showing message
             result["keys"] = {
@@ -1024,7 +1194,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 "perplexity": new_perplexity,
                 "elevenlabs": new_elevenlabs,
                 "ollama_url": new_ollama_url,
-                "groq": new_groq
+                "groq": new_groq,
+                "anthropic": new_anthropic
             }
             
             # Success message and close dialog

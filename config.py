@@ -29,6 +29,7 @@ class AIProvider(Enum):
     PERPLEXITY = "perplexity"
     GROK = "grok"
     OLLAMA = "ollama"
+    ANTHROPIC = "anthropic"
 
 
 class STTProvider(Enum):
@@ -188,7 +189,8 @@ class Config:
                 provider_models={
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
-                    "ollama": "llama3"
+                    "ollama": "llama3",
+                    "anthropic": "claude-3-sonnet-20240229"
                 }
             ),
             "improve_text": AITaskConfig(
@@ -198,7 +200,8 @@ class Config:
                 provider_models={
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
-                    "ollama": "llama3"
+                    "ollama": "llama3",
+                    "anthropic": "claude-3-sonnet-20240229"
                 }
             ),
             "soap_note": AITaskConfig(
@@ -209,7 +212,8 @@ class Config:
                 provider_models={
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
-                    "ollama": "llama3"
+                    "ollama": "llama3",
+                    "anthropic": "claude-3-sonnet-20240229"
                 }
             ),
             "referral": AITaskConfig(
@@ -219,7 +223,8 @@ class Config:
                 provider_models={
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
-                    "ollama": "llama3"
+                    "ollama": "llama3",
+                    "anthropic": "claude-3-sonnet-20240229"
                 }
             )
         }
@@ -456,7 +461,8 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
             "perplexity": "PERPLEXITY_API_KEY",
             "groq": "GROQ_API_KEY",
             "deepgram": "DEEPGRAM_API_KEY",
-            "elevenlabs": "ELEVENLABS_API_KEY"
+            "elevenlabs": "ELEVENLABS_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY"
         }
         
         env_var = key_mapping.get(provider.lower())
@@ -469,7 +475,7 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
         """Validate all configured API keys."""
         results = {}
         
-        for provider in ["openai", "perplexity", "groq", "deepgram", "elevenlabs"]:
+        for provider in ["openai", "perplexity", "groq", "deepgram", "elevenlabs", "anthropic"]:
             api_key = self.get_api_key(provider)
             if api_key:
                 is_valid, _ = validate_api_key(provider, api_key)
