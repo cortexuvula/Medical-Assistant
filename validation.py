@@ -28,7 +28,8 @@ MAX_API_KEY_LENGTH = 200  # Reasonable maximum for API keys
 # Dangerous patterns to sanitize from prompts
 DANGEROUS_PATTERNS = [
     # Injection attempts
-    re.compile(r'<script.*?>.*?</script>', re.IGNORECASE | re.DOTALL),
+    # Updated pattern to match various script tag formats including malformed ones
+    re.compile(r'<script[^>]*>.*?</script[^>]*>', re.IGNORECASE | re.DOTALL),
     re.compile(r'javascript:', re.IGNORECASE),
     re.compile(r'on\w+\s*=', re.IGNORECASE),  # Event handlers
     # System commands

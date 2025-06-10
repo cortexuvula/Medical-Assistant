@@ -425,7 +425,8 @@ class ChatProcessor:
             return match.group(1).strip()
             
         # Check for content in double quotes
-        quote_pattern = r'"([^"]*(?:\n[^"]*)*)"'
+        # Use a simpler pattern to avoid ReDoS vulnerability
+        quote_pattern = r'"([^"]+)"'
         matches = re.findall(quote_pattern, ai_response, re.DOTALL)
         if matches:
             # Return the longest quoted content
