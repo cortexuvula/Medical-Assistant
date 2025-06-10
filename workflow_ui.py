@@ -1237,7 +1237,7 @@ class WorkflowUI:
                 text_widget.insert("end", "• Get explanations about medical terms\n")
                 text_widget.insert("end", "• Have conversations about healthcare topics\n")
                 text_widget.insert("end", "• Clear the chat with 'clear chat' command\n\n")
-                text_widget.insert("end", "Type your message below and click Send to start!\n")
+                text_widget.insert("end", "Type your message in the AI Assistant chat box below to start chatting with the AI!\n")
                 text_widget.insert("end", "="*50 + "\n\n")
                 
                 # Configure initial styling
