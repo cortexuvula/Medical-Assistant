@@ -16,7 +16,7 @@ pytest-xdist==3.5.0  # For parallel test execution
 coverage[toml]==7.3.2
 
 # Code quality tools
-black==23.11.0
+black==24.3.0
 flake8==6.1.0
 mypy==1.7.1
 isort==5.12.0
