@@ -453,6 +453,10 @@ class WorkflowUI:
             self.current_workflow = tab_names[tab_index]
             logging.debug(f"Switched to {self.current_workflow} workflow")
             
+            # Refresh recordings list when switching to Recordings tab
+            if self.current_workflow == "recordings":
+                self._refresh_recordings_list()
+            
             # Trigger any workflow-specific updates
             if hasattr(self.parent, 'on_workflow_changed'):
                 self.parent.on_workflow_changed(self.current_workflow)

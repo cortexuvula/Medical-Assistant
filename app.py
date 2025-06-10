@@ -1428,7 +1428,7 @@ class MedicalDictationApp(ttk.Window):
         """Handle workflow tab changes.
         
         Args:
-            workflow: The current workflow tab ("record", "process", or "generate")
+            workflow: The current workflow tab ("record", "process", "generate", or "recordings")
         """
         logging.info(f"Workflow changed to: {workflow}")
         
@@ -1447,6 +1447,9 @@ class MedicalDictationApp(ttk.Window):
             else:
                 # Show suggestions based on available content
                 self._show_generation_suggestions()
+        elif workflow == "recordings":
+            # Show status when refreshing recordings
+            self.status_manager.info("Refreshing recordings list...")
     
     def _update_recording_ui_state(self, recording: bool, paused: bool = False, caller: str = "unknown"):
         """Update recording UI state for workflow UI.

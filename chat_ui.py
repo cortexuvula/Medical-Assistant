@@ -165,7 +165,7 @@ class ChatUI:
             bottom_row,
             text="Settings",
             command=self._show_suggestions_manager,
-            width=3,
+            width=10,
             bootstyle="secondary-outline"
         )
         self.manage_btn.pack(side=tk.LEFT, padx=(5, 0))
