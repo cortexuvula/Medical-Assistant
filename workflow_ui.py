@@ -1185,10 +1185,10 @@ class WorkflowUI:
         return status_frame, status_icon_label, status_label, provider_indicator, progress_bar
     
     def create_notebook(self) -> tuple:
-        """Create the notebook with tabs for transcript, soap note, referral, and letter.
+        """Create the notebook with tabs for transcript, soap note, referral, letter, and chat.
         
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, context_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text, context_text)
         """
         notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
         
@@ -1197,7 +1197,8 @@ class WorkflowUI:
             ("Transcript", "transcript"),
             ("SOAP Note", "soap"),
             ("Referral", "referral"),
-            ("Letter", "letter")
+            ("Letter", "letter"),
+            ("Chat", "chat")
         ]
         
         text_widgets = {}
@@ -1223,6 +1224,24 @@ class WorkflowUI:
             
             # Store reference
             text_widgets[widget_key] = text_widget
+            
+            # Add welcome message to chat tab
+            if widget_key == "chat":
+                text_widget.insert("1.0", "Welcome to the Medical Assistant Chat!\n\n")
+                text_widget.insert("end", "This is your ChatGPT-style interface where you can:\n")
+                text_widget.insert("end", "• Ask medical questions\n")
+                text_widget.insert("end", "• Get explanations about medical terms\n")
+                text_widget.insert("end", "• Have conversations about healthcare topics\n")
+                text_widget.insert("end", "• Clear the chat with 'clear chat' command\n\n")
+                text_widget.insert("end", "Type your message below and click Send to start!\n")
+                text_widget.insert("end", "="*50 + "\n\n")
+                
+                # Configure initial styling
+                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
+                text_widget.tag_add("welcome", "1.0", "end")
+                
+                # Make text widget read-only but still selectable
+                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
         
         # Return in expected order
         return (
@@ -1231,6 +1250,7 @@ class WorkflowUI:
             text_widgets["soap"],
             text_widgets["referral"],
             text_widgets["letter"],
+            text_widgets["chat"],
             None  # No context text in notebook for workflow UI
         )
     
@@ -1552,6 +1572,10 @@ class WorkflowUI:
             
             if recording.get('letter'):
                 self.parent.letter_text.insert("1.0", recording['letter'])
+            
+            # Load chat content if available
+            if hasattr(self.parent, 'chat_text') and recording.get('chat'):
+                self.parent.chat_text.insert("1.0", recording['chat'])
             
             # Update status
             self.parent.status_manager.success(f"Loaded recording #{rec_id}")

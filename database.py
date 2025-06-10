@@ -94,7 +94,7 @@ class Database:
         Returns:
         - True if successful, False otherwise
         """
-        allowed_fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter',
+        allowed_fields = ['filename', 'transcript', 'soap_note', 'referral', 'letter', 'chat',
                          'processing_status', 'processing_started_at', 'processing_completed_at',
                          'error_message', 'retry_count', 'patient_name', 'audio_path', 
                          'duration', 'metadata']

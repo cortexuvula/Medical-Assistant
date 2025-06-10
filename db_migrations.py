@@ -351,6 +351,56 @@ def get_migrations() -> List[Migration]:
         """
     ))
     
+    # Migration 6: Add chat column for ChatGPT-style conversations
+    migrations.append(Migration(
+        version=6,
+        name="Add chat column",
+        up_sql="""
+        ALTER TABLE recordings ADD COLUMN chat TEXT;
+        
+        -- Update FTS table to include chat
+        DROP TRIGGER IF EXISTS recordings_ai;
+        DROP TRIGGER IF EXISTS recordings_au;
+        DROP TABLE IF EXISTS recordings_fts;
+        
+        -- Recreate FTS table with chat column
+        CREATE VIRTUAL TABLE IF NOT EXISTS recordings_fts USING fts5(
+            transcript,
+            soap_note,
+            referral,
+            letter,
+            chat,
+            content=recordings,
+            content_rowid=id
+        );
+        
+        -- Recreate triggers with chat column
+        CREATE TRIGGER IF NOT EXISTS recordings_ai AFTER INSERT ON recordings BEGIN
+            INSERT INTO recordings_fts(rowid, transcript, soap_note, referral, letter, chat)
+            VALUES (new.id, new.transcript, new.soap_note, new.referral, new.letter, new.chat);
+        END;
+        
+        CREATE TRIGGER IF NOT EXISTS recordings_ad AFTER DELETE ON recordings BEGIN
+            DELETE FROM recordings_fts WHERE rowid = old.id;
+        END;
+        
+        CREATE TRIGGER IF NOT EXISTS recordings_au AFTER UPDATE ON recordings BEGIN
+            UPDATE recordings_fts 
+            SET transcript = new.transcript,
+                soap_note = new.soap_note,
+                referral = new.referral,
+                letter = new.letter,
+                chat = new.chat
+            WHERE rowid = new.id;
+        END;
+        
+        -- Populate FTS table with existing data
+        INSERT INTO recordings_fts(rowid, transcript, soap_note, referral, letter, chat)
+        SELECT id, transcript, soap_note, referral, letter, chat FROM recordings;
+        """,
+        down_sql=None  # Complex migration, no rollback
+    ))
+    
     return migrations
 
 

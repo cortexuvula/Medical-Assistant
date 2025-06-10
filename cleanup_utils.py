@@ -22,7 +22,13 @@ def clear_all_content(app_instance):
     logging.info("Clearing all application content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
+    widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
+    
+    # Add chat_text if it exists
+    if hasattr(app_instance, 'chat_text'):
+        widgets_to_clear.append(app_instance.chat_text)
+    
+    for widget in widgets_to_clear:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -57,7 +63,13 @@ def clear_text_only(app_instance):
     logging.info("Clearing all text content")
     
     # Clear all text widgets
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
+    widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
+    
+    # Add chat_text if it exists
+    if hasattr(app_instance, 'chat_text'):
+        widgets_to_clear.append(app_instance.chat_text)
+    
+    for widget in widgets_to_clear:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -103,7 +115,7 @@ def clear_content_except_context(app_instance):
     """
     logging.info("Clearing all application content except context")
     
-    # Clear text widgets except context
+    # Clear text widgets except context and chat
     for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
         if widget:
             widget.delete("1.0", tk.END)

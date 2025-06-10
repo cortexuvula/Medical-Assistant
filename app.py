@@ -311,7 +311,7 @@ class MedicalDictationApp(ttk.Window):
         self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 2))
         
         # Create the text notebook (for transcripts, SOAP, etc.)
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, _ = self.ui.create_notebook()
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.chat_text, _ = self.ui.create_notebook()
         self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(2, 0))
         
         # Create chat interface below the notebook
@@ -723,6 +723,8 @@ class MedicalDictationApp(ttk.Window):
                     field_name = 'letter'
                 elif target_widget == self.transcript_text:
                     field_name = 'transcript'
+                elif target_widget == self.chat_text:
+                    field_name = 'chat'
                 
                 # Update database if we identified a field to update
                 if field_name:
@@ -1286,6 +1288,8 @@ class MedicalDictationApp(ttk.Window):
         elif current == 3:
             self.active_text_widget = self.letter_text
         elif current == 4:
+            self.active_text_widget = self.chat_text
+        elif current == 5:
             self.active_text_widget = self.context_text
         else:
             self.active_text_widget = self.transcript_text
@@ -1665,7 +1669,7 @@ class MedicalDictationApp(ttk.Window):
         suggestions.extend(global_custom)
         
         # Determine context and content state
-        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter"}
+        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter", 4: "chat"}
         context = context_map.get(current_tab, "transcript")
         content_state = "with_content" if has_content else "without_content"
         
@@ -1741,6 +1745,19 @@ class MedicalDictationApp(ttk.Window):
                     "Draft patient letter",
                     "Create discharge summary",
                     "Write follow-up instructions"
+                ]
+        elif current_tab == 4:  # Chat
+            if has_content:
+                return [
+                    "Clear chat history",
+                    "Summarize our conversation",
+                    "What else can you help with?"
+                ]
+            else:
+                return [
+                    "What is this medication for?",
+                    "Explain this medical term",
+                    "Help me understand my diagnosis"
                 ]
         return []
     

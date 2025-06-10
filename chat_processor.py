@@ -56,11 +56,15 @@ class ChatProcessor:
         try:
             self.is_processing = True
             
-            # Add user message to history
-            self._add_to_history("user", user_message)
-            
             # Get current context from active tab
             context_data = self._extract_context()
+            
+            # Check for special chat commands when in chat tab
+            if context_data.get("tab_name") == "chat" and self._handle_chat_command(user_message):
+                return  # Command was handled, no need to call AI
+            
+            # Add user message to history
+            self._add_to_history("user", user_message)
             
             # Construct prompt for AI
             prompt = self._construct_prompt(user_message, context_data)
@@ -102,7 +106,7 @@ class ChatProcessor:
         try:
             # Get current tab info
             current_tab = self.app.notebook.index(self.app.notebook.select())
-            tab_names = ["transcript", "soap", "referral", "letter"]
+            tab_names = ["transcript", "soap", "referral", "letter", "chat"]
             
             if 0 <= current_tab < len(tab_names):
                 context["tab_name"] = tab_names[current_tab]
@@ -134,7 +138,8 @@ class ChatProcessor:
             "transcript": "You are an AI assistant helping with medical transcription analysis. You can help summarize, extract information, remove speaker labels, clean up formatting, and answer questions about the transcript content. When asked to modify text, provide the complete cleaned version.",
             "soap": "You are an AI assistant helping with SOAP note creation and improvement. You can help improve clarity, add medical detail, ensure proper medical documentation format, and fix any formatting issues. When modifying content, provide the complete updated version.",
             "referral": "You are an AI assistant helping with medical referral letters. You can help make them more professional, add urgency indicators, ensure proper referral format, and improve overall presentation. When editing, provide the complete improved version.",
-            "letter": "You are an AI assistant helping with patient communication letters. You can help improve tone, clarity, empathy, and formatting while maintaining medical accuracy. When modifying content, provide the complete updated version."
+            "letter": "You are an AI assistant helping with patient communication letters. You can help improve tone, clarity, empathy, and formatting while maintaining medical accuracy. When modifying content, provide the complete updated version.",
+            "chat": "You are a helpful medical AI assistant. Engage in conversation, answer questions, provide medical information, and help with various healthcare-related queries. Do not modify any document content - just have a natural conversation."
         }
         
         system_msg = system_messages.get(tab_name, "You are an AI assistant helping with medical documentation.")
@@ -232,17 +237,21 @@ class ChatProcessor:
         # Show the response to the user first
         self._show_ai_response(ai_response)
         
-        # Check if user wants to apply changes to the document
-        if self._should_apply_to_document(user_message, ai_response):
-            # Check if auto-apply is enabled (default: True)
-            chat_config = SETTINGS.get("chat_interface", {})
-            auto_apply = chat_config.get("auto_apply_changes", True)
-            
-            if auto_apply:
-                self._apply_response_to_document(ai_response, context_data)
-            else:
-                # Legacy behavior with confirmation dialog
-                self._apply_response_with_confirmation(ai_response, context_data)
+        # Special handling for chat tab - append conversation instead of replacing
+        if context_data.get("tab_name") == "chat":
+            self._append_to_chat_tab(user_message, ai_response)
+        else:
+            # Check if user wants to apply changes to the document
+            if self._should_apply_to_document(user_message, ai_response):
+                # Check if auto-apply is enabled (default: True)
+                chat_config = SETTINGS.get("chat_interface", {})
+                auto_apply = chat_config.get("auto_apply_changes", True)
+                
+                if auto_apply:
+                    self._apply_response_to_document(ai_response, context_data)
+                else:
+                    # Legacy behavior with confirmation dialog
+                    self._apply_response_with_confirmation(ai_response, context_data)
             
     def _show_ai_response(self, response: str):
         """Show a brief notification about the AI response."""
@@ -459,3 +468,181 @@ class ChatProcessor:
     def get_history(self) -> list:
         """Get conversation history."""
         return self.conversation_history.copy()
+    
+    def _append_to_chat_tab(self, user_message: str, ai_response: str):
+        """Append conversation to chat tab in ChatGPT style."""
+        def append_chat():
+            try:
+                chat_widget = self.app.chat_text
+                
+                # Get current content to check if we need separator
+                current_content = chat_widget.get("1.0", "end-1c")
+                
+                # Add separator if there's existing content
+                if current_content.strip():
+                    chat_widget.insert("end", "\n" + "="*50 + "\n\n")
+                
+                # Add timestamp
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                chat_widget.insert("end", f"[{timestamp}]\n", "timestamp")
+                
+                # Add user message
+                chat_widget.insert("end", f"User: {user_message}\n\n", "user")
+                
+                # Add AI response with copy button
+                chat_widget.insert("end", "Assistant: ", "assistant_label")
+                
+                # Store the response position for copy functionality
+                response_start = chat_widget.index("end-1c")
+                chat_widget.insert("end", ai_response, ("assistant_response", f"response_{timestamp}"))
+                response_end = chat_widget.index("end-1c")
+                
+                # Add copy button after the response
+                chat_widget.insert("end", "  ")
+                
+                # Create copy button
+                import tkinter as tk
+                import ttkbootstrap as ttk
+                
+                # Create a small frame to hold the button
+                button_frame = tk.Frame(chat_widget, bg=chat_widget.cget('bg'))
+                
+                copy_btn = ttk.Button(
+                    button_frame,
+                    text="Copy",
+                    bootstyle="secondary-link",
+                    command=lambda r=ai_response: self._copy_to_clipboard(r)
+                )
+                copy_btn.pack(padx=2)
+                
+                # Add tooltip
+                from tooltip import ToolTip
+                ToolTip(copy_btn, "Copy this response to clipboard")
+                
+                # Create window for button frame in text widget
+                chat_widget.window_create("end-1c", window=button_frame)
+                chat_widget.insert("end", "\n")
+                
+                # Bind right-click to the response text
+                chat_widget.tag_bind(f"response_{timestamp}", "<Button-3>", 
+                                   lambda e, r=ai_response: self._show_copy_menu(e, r))
+                
+                # Bind double-click to select the entire response
+                chat_widget.tag_bind(f"response_{timestamp}", "<Double-Button-1>", 
+                                   lambda e: self._select_response(e, response_start, response_end))
+                
+                # Configure tags for styling
+                chat_widget.tag_config("timestamp", foreground="gray", font=("Arial", 9))
+                chat_widget.tag_config("user", foreground="#0066cc", font=("Arial", 11, "bold"))
+                chat_widget.tag_config("assistant_label", foreground="#008800", font=("Arial", 11, "bold"))
+                chat_widget.tag_config("assistant_response", foreground="#008800", font=("Arial", 11))
+                
+                # Add hover effect for responses
+                chat_widget.tag_bind(f"response_{timestamp}", "<Enter>", 
+                                   lambda e: chat_widget.config(cursor="hand2"))
+                chat_widget.tag_bind(f"response_{timestamp}", "<Leave>", 
+                                   lambda e: chat_widget.config(cursor=""))
+                
+                # Scroll to bottom
+                chat_widget.see("end")
+                
+                # Save to database if we have a current recording
+                if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
+                    try:
+                        # Get full chat content
+                        full_chat = chat_widget.get("1.0", "end-1c")
+                        # Update database
+                        if self.app.db.update_recording(self.app.current_recording_id, chat=full_chat):
+                            logging.info(f"Updated recording {self.app.current_recording_id} with chat content")
+                    except Exception as e:
+                        logging.error(f"Failed to save chat to database: {e}")
+                
+                # Update status
+                self.app.status_manager.success("Chat response added")
+                
+            except Exception as e:
+                logging.error(f"Error appending to chat tab: {e}")
+                self.app.status_manager.error("Failed to add chat response")
+        
+        # Execute on main thread
+        self.app.after(0, append_chat)
+    
+    def _handle_chat_command(self, message: str) -> bool:
+        """Handle special chat commands. Returns True if command was handled."""
+        message_lower = message.lower().strip()
+        
+        if message_lower in ["clear chat history", "clear chat", "clear", "/clear"]:
+            def clear_chat():
+                try:
+                    # Clear the chat text widget
+                    self.app.chat_text.delete("1.0", "end")
+                    # Clear conversation history
+                    self.clear_history()
+                    # Update status
+                    self.app.status_manager.success("Chat history cleared")
+                except Exception as e:
+                    logging.error(f"Error clearing chat: {e}")
+                    self.app.status_manager.error("Failed to clear chat")
+            
+            self.app.after(0, clear_chat)
+            return True
+        
+        return False
+    
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to clipboard."""
+        try:
+            # Clear clipboard and append new text
+            self.app.clipboard_clear()
+            self.app.clipboard_append(text)
+            self.app.update()  # Required to finalize clipboard operation
+            
+            # Show brief success message
+            self.app.status_manager.success("Response copied to clipboard")
+            logging.info("Assistant response copied to clipboard")
+        except Exception as e:
+            logging.error(f"Failed to copy to clipboard: {e}")
+            self.app.status_manager.error("Failed to copy response")
+    
+    def _show_copy_menu(self, event, response_text: str):
+        """Show context menu for copying response."""
+        try:
+            import tkinter as tk
+            
+            # Create context menu
+            context_menu = tk.Menu(self.app, tearoff=0)
+            context_menu.add_command(
+                label="Copy Response", 
+                command=lambda: self._copy_to_clipboard(response_text)
+            )
+            context_menu.add_separator()
+            context_menu.add_command(
+                label="Select All",
+                command=lambda: event.widget.tag_add(tk.SEL, "1.0", tk.END)
+            )
+            
+            # Show menu at cursor position
+            try:
+                context_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                context_menu.grab_release()
+                
+        except Exception as e:
+            logging.error(f"Error showing context menu: {e}")
+    
+    def _select_response(self, event, start_idx, end_idx):
+        """Select an entire response when double-clicked."""
+        try:
+            import tkinter as tk
+            
+            # Clear any existing selection
+            event.widget.tag_remove(tk.SEL, "1.0", tk.END)
+            
+            # Select the response text
+            event.widget.tag_add(tk.SEL, start_idx, end_idx)
+            
+            # Set focus to enable keyboard shortcuts
+            event.widget.focus_set()
+            
+        except Exception as e:
+            logging.error(f"Error selecting response: {e}")
