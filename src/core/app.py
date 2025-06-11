@@ -1175,8 +1175,8 @@ class MedicalDictationApp(ttk.Window):
 
     def _cancel_soap_recording_finalize(self):
         """Finalize the cancellation of SOAP recording."""
-        # Use the centralized cleanup function to clear all content
-        clear_all_content(self)
+        # Clear content except context when cancelling
+        clear_content_except_context(self)
         
         # Reset state variables
         self.soap_recording = False
@@ -1814,9 +1814,8 @@ class MedicalDictationApp(ttk.Window):
     
     def _reset_ui_for_next_patient(self):
         """Reset UI for next patient recording."""
-        # Clear all text fields except context
-        from utils.cleanup_utils import clear_content_except_context
-        clear_content_except_context(self)
+        # DON'T clear content here - preserve context and previous recording data
+        # Content will only be cleared when starting a new recording
         
         # Reset recording state
         self.soap_recording = False

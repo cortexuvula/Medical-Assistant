@@ -113,10 +113,16 @@ def clear_content_except_context(app_instance):
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """
-    logging.info("Clearing all application content including context")
+    logging.info("Clearing all application content except context")
     
-    # Clear ALL text widgets including context
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
+    # Clear all text widgets EXCEPT context
+    widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]
+    
+    # Add chat_text if it exists
+    if hasattr(app_instance, 'chat_text'):
+        widgets_to_clear.append(app_instance.chat_text)
+    
+    for widget in widgets_to_clear:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -134,4 +140,4 @@ def clear_content_except_context(app_instance):
     
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
-        app_instance.update_status("All content cleared", "info")
+        app_instance.update_status("Content cleared (context preserved)", "info")
