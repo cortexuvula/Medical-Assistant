@@ -10,8 +10,8 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from security import get_security_manager
-from config import get_config
+from src.utils.security import get_security_manager
+from src.core.config import get_config
 
 
 def add_key(args):

@@ -36,11 +36,11 @@ if soundcard_spec and soundcard_spec.origin:
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['src'],  # Add src to path
     binaries=ffmpeg_files,
     datas=[
         ('env.example', '.'),
-        ('suppress_console.py', '.'),
+        ('hooks/suppress_console.py', '.'),
         ('icon.ico', '.'),
         ('icon256x256.ico', '.'),  # Include as backup
         ('config', 'config'),  # Include config folder and its contents

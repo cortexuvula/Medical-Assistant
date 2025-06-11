@@ -7,11 +7,11 @@ from pathlib import Path
 import time
 from pydub import AudioSegment
 
-from recording_manager import RecordingManager
-from audio import AudioHandler
-from ai_processor import AIProcessor
-from database import Database
-from processing_queue import ProcessingQueue
+from audio.recording_manager import RecordingManager
+from audio.audio import AudioHandler
+from ai.ai_processor import AIProcessor
+from database.database import Database
+from processing.processing_queue import ProcessingQueue
 
 
 class TestRecordingPipeline:

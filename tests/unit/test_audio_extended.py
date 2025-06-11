@@ -9,7 +9,7 @@ import threading
 import time
 from pydub import AudioSegment
 
-# Try to import audio libraries - they may fail in CI environments
+# Try to import audio.audio libraries - they may fail in CI environments
 try:
     import sounddevice as sd
 except (ImportError, OSError):
@@ -20,8 +20,8 @@ try:
 except (ImportError, AssertionError, OSError):
     soundcard = None
 
-from audio import AudioHandler, AudioData
-from settings import SETTINGS
+from audio.audio import AudioHandler, AudioData
+from settings.settings import SETTINGS
 
 
 class TestAudioDataClass:

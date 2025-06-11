@@ -5,7 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-from database import Database
+from database.database import Database
 
 # Configure sqlite3 datetime adapter to suppress deprecation warning
 sqlite3.register_adapter(datetime, lambda dt: dt.isoformat())

@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import openai
-from ai_processor import AIProcessor
+from ai.ai_processor import AIProcessor
 
 
 class TestAIProcessor:
@@ -59,7 +59,7 @@ class TestAIProcessor:
         """Test that AI processor respects provider settings."""
         # The AIProcessor doesn't have a set_provider method
         # Provider selection is handled through SETTINGS
-        from settings import SETTINGS
+        from settings.settings import SETTINGS
         
         # Provider selection happens in the ai.py module functions
         # AIProcessor just calls those functions

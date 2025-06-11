@@ -12,9 +12,9 @@ import tempfile
 # Add the parent directory to the path so we can import from the main project
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from recording_manager import RecordingManager
-from audio import AudioHandler
-from status_manager import StatusManager
+from audio.recording_manager import RecordingManager
+from audio.audio import AudioHandler
+from ui.status_manager import StatusManager
 
 
 class TestRecordingManager:

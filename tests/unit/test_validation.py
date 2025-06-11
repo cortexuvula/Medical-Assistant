@@ -1,7 +1,7 @@
 """Test validation functions."""
 import pytest
 from pathlib import Path
-from validation import (
+from utils.validation import (
     validate_api_key,
     validate_file_path,
     validate_audio_file,

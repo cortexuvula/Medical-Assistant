@@ -16,10 +16,10 @@ If objFSO.FileExists(strExePath) Then
     WshShell.Run Chr(34) & strExePath & Chr(34), 1, False
 Else
     ' Run the Python script in development mode
-    strBatPath = strCurrentDir & "\launch_app.bat"
+    strBatPath = strCurrentDir & "\scripts\launch_app.bat"
     If objFSO.FileExists(strBatPath) Then
         WshShell.Run Chr(34) & strBatPath & Chr(34), 1, False
     Else
-        MsgBox "Could not find MedicalAssistant.exe or launch_app.bat", 16, "Medical Assistant"
+        MsgBox "Could not find MedicalAssistant.exe or scripts\launch_app.bat", 16, "Medical Assistant"
     End If
 End If

@@ -1,8 +1,8 @@
 """Test security module functionality."""
 import pytest
 from unittest.mock import patch, Mock
-from security import get_security_manager, SecureKeyStorage, RateLimiter
-from security_decorators import rate_limited, sanitize_inputs
+from utils.security import get_security_manager, SecureKeyStorage, RateLimiter
+from utils.security_decorators import rate_limited, sanitize_inputs
 from cryptography.fernet import InvalidToken
 import time
 from pathlib import Path
@@ -132,7 +132,7 @@ class TestSecurityDecorators:
         mock_manager.check_rate_limit.return_value = (False, 10.5)
         
         # Import the exception from the correct module
-        from exceptions import RateLimitError
+        from utils.exceptions import RateLimitError
         
         # This should be blocked
         with pytest.raises(RateLimitError) as exc_info:

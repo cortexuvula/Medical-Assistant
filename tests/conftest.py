@@ -102,7 +102,7 @@ def sample_soap_note():
 @pytest.fixture
 def mock_database(temp_dir):
     """Create a mock database for testing."""
-    from database import Database
+    from database.database import Database
     
     db_path = temp_dir / "test_database.db"
     db = Database(str(db_path))

@@ -16,7 +16,7 @@ except ImportError:
 
 from unittest.mock import Mock, patch, MagicMock
 
-# Add parent directory to path to import app modules
+# Add parent directory to path to import core.app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 

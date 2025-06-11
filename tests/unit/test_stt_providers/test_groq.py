@@ -8,7 +8,7 @@ import numpy as np
 from pydub import AudioSegment
 
 from stt_providers.groq import GroqProvider
-from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 
 
 class TestGroqProvider:
