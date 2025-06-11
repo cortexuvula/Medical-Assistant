@@ -33,29 +33,11 @@ def clear_all_content(app_instance):
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
     
-    # Clear all audio segments
-    if hasattr(app_instance, "audio_segments"):
-        app_instance.audio_segments = []
+    # Clear audio state via AudioStateManager
+    if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
+        app_instance.audio_state_manager.clear_all()
+        logging.info("Cleared all audio via AudioStateManager")
     
-    if hasattr(app_instance, "appended_chunks"):
-        app_instance.appended_chunks = []
-    
-    if hasattr(app_instance, "soap_audio_segments"):
-        app_instance.soap_audio_segments = []
-    
-    # Clear SOAP-specific audio chunks
-    if hasattr(app_instance, "pending_soap_segments"):
-        app_instance.pending_soap_segments = []
-        logging.info("Cleared pending SOAP segments")
-    
-    if hasattr(app_instance, "combined_soap_chunks"):
-        app_instance.combined_soap_chunks = []
-        logging.info("Cleared combined SOAP chunks")
-    
-    # Clear audio segments in recording manager
-    if hasattr(app_instance, "recording_manager") and app_instance.recording_manager:
-        app_instance.recording_manager.audio_segments = []
-        logging.info("Cleared recording manager audio segments")
     
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):
@@ -102,15 +84,19 @@ def clear_audio_only(app_instance):
     """
     logging.info("Clearing all audio content")
     
-    # Clear all audio segments
+    # Clear audio state via AudioStateManager
+    if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
+        app_instance.audio_state_manager.clear_all()
+        logging.info("Cleared all audio via AudioStateManager")
+    
+    # Clear legacy audio segments (for backward compatibility)
+    # Clear file-loaded audio segments
     if hasattr(app_instance, "audio_segments"):
         app_instance.audio_segments = []
     
-    if hasattr(app_instance, "appended_chunks"):
-        app_instance.appended_chunks = []
-    
-    if hasattr(app_instance, "soap_audio_segments"):
-        app_instance.soap_audio_segments = []
+    # Clear text chunks (for scratch-that functionality)
+    if hasattr(app_instance, "text_chunks"):
+        app_instance.text_chunks = []
     
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
@@ -135,29 +121,11 @@ def clear_content_except_context(app_instance):
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
     
-    # Clear all audio segments
-    if hasattr(app_instance, "audio_segments"):
-        app_instance.audio_segments = []
+    # Clear audio state via AudioStateManager
+    if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
+        app_instance.audio_state_manager.clear_all()
+        logging.info("Cleared all audio via AudioStateManager")
     
-    if hasattr(app_instance, "appended_chunks"):
-        app_instance.appended_chunks = []
-    
-    if hasattr(app_instance, "soap_audio_segments"):
-        app_instance.soap_audio_segments = []
-    
-    # Clear SOAP-specific audio chunks
-    if hasattr(app_instance, "pending_soap_segments"):
-        app_instance.pending_soap_segments = []
-        logging.info("Cleared pending SOAP segments")
-    
-    if hasattr(app_instance, "combined_soap_chunks"):
-        app_instance.combined_soap_chunks = []
-        logging.info("Cleared combined SOAP chunks")
-    
-    # Clear audio segments in recording manager
-    if hasattr(app_instance, "recording_manager") and app_instance.recording_manager:
-        app_instance.recording_manager.audio_segments = []
-        logging.info("Cleared recording manager audio segments")
     
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):

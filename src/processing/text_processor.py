@@ -8,7 +8,7 @@ class TextProcessor:
     
     def __init__(self):
         self.capitalize_next = False
-        self.appended_chunks = []
+        self.text_chunks = []
         
     def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
         """Append text to a text widget with smart whitespace handling.

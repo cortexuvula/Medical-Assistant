@@ -42,16 +42,12 @@ class SOAPProcessor:
                 # Turn off SOAP debug mode
                 self.audio_handler.soap_mode = False
                 
-                # Combine any remaining pending segments
-                if self.app.pending_soap_segments:
-                    remaining_chunk = self.audio_handler.combine_audio_segments(self.app.pending_soap_segments)
-                    if remaining_chunk:
-                        self.app.combined_soap_chunks.append(remaining_chunk)
-                    self.app.pending_soap_segments = [] # Clear pending list
-                        
-                # Check if we have any combined chunks to process
-                if not self.app.combined_soap_chunks:
-                    logging.warning("No SOAP audio chunks were recorded or combined.")
+                # Get combined audio from AudioStateManager
+                audio_segment = self.app.audio_state_manager.get_combined_audio()
+                
+                # Check if we have any audio to process
+                if not audio_segment:
+                    logging.warning("No SOAP audio was recorded.")
                     # Update UI to indicate no audio
                     self.app.after(0, lambda: [
                         self.status_manager.warning("No audio recorded for SOAP note."),
@@ -62,22 +58,15 @@ class SOAPProcessor:
                     ])
                     return # Exit task early
 
-                # Log info about the combined chunks before final combination
-                num_chunks = len(self.app.combined_soap_chunks)
-                approx_total_duration = sum(len(chunk) for chunk in self.app.combined_soap_chunks)
-                logging.info(f"Processing {num_chunks} combined SOAP audio chunks, approx duration: {approx_total_duration}ms")
+                # Log info about the audio
+                duration_ms = len(audio_segment)
+                logging.info(f"Processing SOAP audio, duration: {duration_ms}ms")
                 
                 # Update status on UI thread
                 self.app.after(0, lambda: [
                     self.status_manager.progress("Finalizing SOAP audio..."),
                     self.app.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
-                
-                # Combine all the combined chunks into the final AudioSegment
-                audio_segment = self.audio_handler.combine_audio_segments(self.app.combined_soap_chunks)
-                
-                # Clear the list of combined chunks now that we have the final segment
-                self.app.combined_soap_chunks = []
                 
                 if not audio_segment:
                      # This case should be rare if checks above are done, but handle defensively

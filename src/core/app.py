@@ -599,7 +599,7 @@ class MedicalDictationApp(ttk.Window):
     def clear_text(self) -> None:
         if messagebox.askyesno("Clear Text", "Clear the text?"):
             self.transcript_text.delete("1.0", tk.END)
-            self.appended_chunks.clear()
+            self.text_chunks.clear()
             self.audio_segments.clear()
 
     def append_text(self, text: str) -> None:
@@ -608,14 +608,14 @@ class MedicalDictationApp(ttk.Window):
             text = text[0].upper() + text[1:]
             self.capitalize_next = False
         self.transcript_text.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
-        self.appended_chunks.append(f"chunk_{len(self.appended_chunks)}")
+        self.text_chunks.append(f"chunk_{len(self.text_chunks)}")
         self.transcript_text.see(tk.END)
 
     def scratch_that(self) -> None:
-        if not self.appended_chunks:
+        if not self.text_chunks:
             self.update_status("Nothing to scratch.")
             return
-        tag = self.appended_chunks.pop()
+        tag = self.text_chunks.pop()
         ranges = self.transcript_text.tag_ranges(tag)
         if ranges:
             self.transcript_text.delete(ranges[0], ranges[1])
@@ -1046,28 +1046,11 @@ class MedicalDictationApp(ttk.Window):
 
     def _finalize_soap_recording(self, recording_data: dict = None):
         """Complete the SOAP recording process with recording data from RecordingManager."""
-        # Combine any remaining pending segments
-        if self.pending_soap_segments:
-            remaining_chunk = self.audio_handler.combine_audio_segments(self.pending_soap_segments)
-            if remaining_chunk:
-                self.combined_soap_chunks.append(remaining_chunk)
-            self.pending_soap_segments = []
-        
-        # Use existing combined chunks if no recording data or if recording data has no audio
+        # Recording data should come from RecordingManager which uses AudioStateManager
         if not recording_data or not recording_data.get('audio'):
-            # Create recording data from existing chunks
-            if self.combined_soap_chunks:
-                final_audio = self.audio_handler.combine_audio_segments(self.combined_soap_chunks)
-                recording_data = {
-                    'audio': final_audio,
-                    'duration': len(final_audio) / 1000.0 if final_audio else 0,
-                    'start_time': self.recording_manager.soap_start_time,
-                    'segment_count': len(self.combined_soap_chunks)
-                }
-            else:
-                self.status_manager.error("No audio data available")
-                self._update_recording_ui_state(recording=False, caller="finalize_no_audio")
-                return
+            self.status_manager.error("No audio data available")
+            self._update_recording_ui_state(recording=False, caller="finalize_no_audio")
+            return
         
         # Check if quick continue mode is enabled
         if SETTINGS.get("quick_continue_mode", True):
@@ -1837,8 +1820,6 @@ class MedicalDictationApp(ttk.Window):
         
         # Reset recording state
         self.soap_recording = False
-        self.combined_soap_chunks = []
-        self.pending_soap_segments = []
         
         # Reset UI buttons
         self._update_recording_ui_state(recording=False, caller="reset_for_next")

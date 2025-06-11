@@ -25,6 +25,7 @@ from ui.chat_ui import ChatUI
 from ai.chat_processor import ChatProcessor
 from ui.status_manager import StatusManager
 from audio.recording_manager import RecordingManager
+from audio.audio_state_manager import AudioStateManager
 from ai.ai_processor import AIProcessor
 from managers.file_manager import FileManager
 from database.db_manager import DatabaseManager
@@ -190,14 +191,12 @@ class AppInitializer:
         
     def _initialize_variables(self):
         """Initialize application state variables."""
-        self.app.appended_chunks = []
         self.app.capitalize_next = False
-        self.app.audio_segments = []
         self.app.soap_recording = False
-        # self.app.soap_audio_segments = [] # Replaced by pending_soap_segments and combined_soap_chunks
-        self.app.pending_soap_segments = [] # Segments collected since last combination
-        self.app.combined_soap_chunks = [] # List of larger, combined audio chunks
-        self.app.soap_combine_threshold = 100 # Combine every N pending segments
+        # Audio-related variables
+        self.app.audio_segments = []  # For loaded audio files
+        self.app.text_chunks = []  # For scratch-that functionality
+        self.app.soap_combine_threshold = 100 # Used by AudioStateManager
         self.app.soap_stop_listening_function = None
         self.app.listening = False  # Initialize listening flag for recording state
         self.app.current_recording_id = None  # Track the ID of the currently loaded recording
@@ -237,8 +236,17 @@ class AppInitializer:
         
     def _initialize_managers(self):
         """Initialize all the manager classes."""
-        # Initialize our new managers
-        self.app.recording_manager = RecordingManager(self.app.audio_handler, self.app.status_manager)
+        # Initialize audio state manager first
+        self.app.audio_state_manager = AudioStateManager(
+            combine_threshold=self.app.soap_combine_threshold
+        )
+        
+        # Initialize recording manager with audio state manager
+        self.app.recording_manager = RecordingManager(
+            self.app.audio_handler, 
+            self.app.status_manager,
+            self.app.audio_state_manager
+        )
         self.app.recording_manager.on_text_recognized = self.app.handle_recognized_text
         self.app.recording_manager.on_transcription_fallback = self.app.on_transcription_fallback
         
