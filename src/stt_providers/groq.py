@@ -11,11 +11,11 @@ from typing import Optional
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
-from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
-from resilience import resilient_api_call
-from config import get_config
-from security_decorators import secure_api_call
-from security import get_security_manager
+from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from utils.resilience import resilient_api_call
+from core.config import get_config
+from utils.security_decorators import secure_api_call
+from utils.security import get_security_manager
 
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""

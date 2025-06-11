@@ -83,6 +83,9 @@ IMPORT_MAPPINGS = {
     
     # Hooks imports (for runtime hooks)
     "import suppress_console": "from hooks import suppress_console",
+    
+    # STT providers import
+    "from stt_providers import": "from stt_providers import",
 }
 
 def update_file_imports(file_path):

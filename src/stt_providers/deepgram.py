@@ -12,11 +12,11 @@ from pydub import AudioSegment
 from deepgram import DeepgramClient, PrerecordedOptions
 
 from .base import BaseSTTProvider
-from settings import SETTINGS, _DEFAULT_SETTINGS
-from exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
-from resilience import resilient_api_call, retry
-from config import get_config
-from security_decorators import secure_api_call
+from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from utils.resilience import resilient_api_call, retry
+from core.config import get_config
+from utils.security_decorators import secure_api_call
 
 class DeepgramProvider(BaseSTTProvider):
     """Implementation of the Deepgram STT provider."""

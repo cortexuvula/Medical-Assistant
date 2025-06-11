@@ -12,7 +12,7 @@ from typing import Optional, Dict, List, Any
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
-from settings import SETTINGS
+from settings.settings import SETTINGS
 
 class ElevenLabsProvider(BaseSTTProvider):
     """Implementation of the ElevenLabs STT provider."""
