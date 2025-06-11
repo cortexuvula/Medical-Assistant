@@ -2,12 +2,20 @@
 REM Special batch file for CI/CD environments to avoid prompts
 setlocal
 
+REM Store the initial directory
+set INITIAL_DIR=%CD%
+
 echo Building Medical Assistant for Windows (CI Mode)...
 echo Python: %PYTHON%
 echo Current directory: %CD%
 
-REM Change to parent directory to be at project root
-cd ..
+REM Check if we're already in the project root (contains requirements.txt)
+if exist requirements.txt (
+    echo Already in project root directory
+) else (
+    echo Changing to parent directory...
+    cd ..
+)
 
 REM Clean previous builds
 if exist dist rd /s /q dist 2>nul
@@ -31,14 +39,14 @@ echo Installing dependencies...
 echo Upgrading pip...
 %PYTHON% -m pip install --upgrade pip --no-warn-script-location
 if %errorlevel% neq 0 (
-    cd scripts
+    cd /d "%INITIAL_DIR%"
     exit /b %errorlevel%
 )
 
 echo Installing requirements...
 %PYTHON% -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 if %errorlevel% neq 0 (
-    cd scripts
+    cd /d "%INITIAL_DIR%"
     exit /b %errorlevel%
 )
 
@@ -48,7 +56,7 @@ if %errorlevel% neq 0 (
     echo Installing PyInstaller...
     %PYTHON% -m pip install pyinstaller
     if %errorlevel% neq 0 (
-        cd scripts
+        cd /d "%INITIAL_DIR%"
         exit /b %errorlevel%
     )
 )
@@ -57,7 +65,7 @@ REM Build with PyInstaller
 echo Building executable...
 %PYTHON% -m PyInstaller medical_assistant.spec --clean --noconfirm --log-level=WARN
 if %errorlevel% neq 0 (
-    cd scripts
+    cd /d "%INITIAL_DIR%"
     exit /b %errorlevel%
 )
 
@@ -65,11 +73,11 @@ REM Check output
 if exist "dist\MedicalAssistant.exe" (
     echo Build successful!
     dir dist\MedicalAssistant.exe
-    cd scripts
+    cd /d "%INITIAL_DIR%"
     exit /b 0
 ) else (
     echo Build failed - executable not found
     if exist dist dir dist
-    cd scripts
+    cd /d "%INITIAL_DIR%"
     exit /b 1
 )
