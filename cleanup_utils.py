@@ -43,6 +43,20 @@ def clear_all_content(app_instance):
     if hasattr(app_instance, "soap_audio_segments"):
         app_instance.soap_audio_segments = []
     
+    # Clear SOAP-specific audio chunks
+    if hasattr(app_instance, "pending_soap_segments"):
+        app_instance.pending_soap_segments = []
+        logging.info("Cleared pending SOAP segments")
+    
+    if hasattr(app_instance, "combined_soap_chunks"):
+        app_instance.combined_soap_chunks = []
+        logging.info("Cleared combined SOAP chunks")
+    
+    # Clear audio segments in recording manager
+    if hasattr(app_instance, "recording_manager") and app_instance.recording_manager:
+        app_instance.recording_manager.audio_segments = []
+        logging.info("Cleared recording manager audio segments")
+    
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
