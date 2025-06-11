@@ -16,6 +16,10 @@ DEFAULT_STT_PROVIDER = "groq"
 DEFAULT_THEME = "flatly"  # Light theme default
 
 _DEFAULT_SETTINGS = {
+    "ai_config": {
+        "synopsis_enabled": True,
+        "synopsis_max_words": 200
+    },
     "refine_text": {
         "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
         "model": "gpt-3.5-turbo",  # OpenAI model
