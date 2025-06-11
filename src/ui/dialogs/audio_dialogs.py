@@ -85,8 +85,9 @@ class AudioDialogManager:
         audio_segments = []  # Accumulate segments
         original_soap_mode = False  # Store original SOAP mode
         
-        # Path to the prefix audio file
-        prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
+        # Path to the prefix audio file - store in AppData
+        from managers.data_folder_manager import data_folder_manager
+        prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
         
         # Function to handle audio data from recording
         def on_audio_data(audio_data):

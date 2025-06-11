@@ -204,7 +204,8 @@ class AudioHandler:
         # Check if there's a prefix audio file to prepend (use cache to avoid repeated loading)
         if not self._prefix_audio_checked:
             self._prefix_audio_checked = True
-            prefix_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prefix_audio.mp3")
+            from managers.data_folder_manager import data_folder_manager
+            prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
             if os.path.exists(prefix_audio_path):
                 try:
                     # Load the prefix audio once and cache it

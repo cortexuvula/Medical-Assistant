@@ -21,10 +21,13 @@ class DataFolderManager:
             # Running as compiled executable
             app_dir = Path(sys.executable).parent
         else:
-            # Running as script
-            app_dir = Path(__file__).parent
+            # Running as script - get project root
+            # Navigate from src/managers/data_folder_manager.py to project root
+            current_file = Path(__file__).resolve()
+            # Go up from managers -> src -> project root
+            app_dir = current_file.parent.parent.parent
         
-        # Create AppData folder next to the executable/script
+        # Create AppData folder in the project root
         self._app_data_folder = app_dir / "AppData"
         self._ensure_folders_exist()
     
