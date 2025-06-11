@@ -1,10 +1,19 @@
 #!/bin/bash
 set -e  # Exit on error
 
-echo "Building Medical Assistant for macOS..."
+# Store the initial directory
+INITIAL_DIR=$(pwd)
 
-# Change to parent directory to be at project root
-cd ..
+echo "Building Medical Assistant for macOS..."
+echo "Current directory: $(pwd)"
+
+# Check if we're already in the project root (contains requirements.txt)
+if [ -f "requirements.txt" ]; then
+    echo "Already in project root directory"
+else
+    echo "Changing to parent directory..."
+    cd ..
+fi
 
 # Clean previous builds
 rm -rf dist build
@@ -32,7 +41,7 @@ pyinstaller medical_assistant.spec --clean || {
     echo "PyInstaller build failed!"
     echo "Current directory contents:"
     ls -la
-    cd scripts
+    cd "$INITIAL_DIR"
     exit 1
 }
 
@@ -45,9 +54,9 @@ else
     echo "Error: Expected output dist/MedicalAssistant.app not found!"
     echo "Contents of dist directory:"
     ls -la dist/ || echo "dist directory does not exist"
-    cd scripts
+    cd "$INITIAL_DIR"
     exit 1
 fi
 
-# Return to scripts directory
-cd scripts
+# Return to initial directory
+cd "$INITIAL_DIR"
