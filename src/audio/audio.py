@@ -191,6 +191,15 @@ class AudioHandler:
         # Single summary log
         if streams_closed > 0:
             logging.info(f"AudioHandler: Cleanup complete, {streams_closed} stream(s) closed")
+    
+    def reset_prefix_audio_cache(self) -> None:
+        """Reset the prefix audio cache to force reloading.
+        
+        Call this after recording new prefix audio to ensure it's used.
+        """
+        self._prefix_audio_cache = None
+        self._prefix_audio_checked = False
+        logging.info("Prefix audio cache reset - will reload on next use")
 
     def transcribe_audio(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider with fallback options.
@@ -206,6 +215,7 @@ class AudioHandler:
             self._prefix_audio_checked = True
             from managers.data_folder_manager import data_folder_manager
             prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
+            logging.debug(f"Checking for prefix audio at: {prefix_audio_path}")
             if os.path.exists(prefix_audio_path):
                 try:
                     # Load the prefix audio once and cache it
@@ -215,6 +225,8 @@ class AudioHandler:
                 except Exception as e:
                     logging.error(f"Error loading prefix audio: {e}", exc_info=True)
                     self._prefix_audio_cache = None
+            else:
+                logging.debug(f"No prefix audio file found at: {prefix_audio_path}")
         
         # If we have cached prefix audio, prepend it
         if self._prefix_audio_cache:

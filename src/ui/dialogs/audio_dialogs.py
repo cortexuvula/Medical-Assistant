@@ -239,6 +239,10 @@ class AudioDialogManager:
                 preview_segment.export(prefix_audio_path, format="mp3", bitrate="192k")
                 status_var.set(f"Prefix audio saved successfully to {prefix_audio_path}")
                 self.status_manager.success("Prefix audio saved successfully")
+                
+                # Reset the prefix audio cache so it reloads the new file
+                self.audio_handler.reset_prefix_audio_cache()
+                
                 prefix_dialog.destroy()
             except Exception as e:
                 logging.error(f"Error saving prefix audio: {e}", exc_info=True)
