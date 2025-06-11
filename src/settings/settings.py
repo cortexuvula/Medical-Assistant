@@ -6,7 +6,7 @@ from settings.settings_migrator import get_migrator
 from managers.data_folder_manager import data_folder_manager
 
 SETTINGS_FILE = str(data_folder_manager.settings_file_path)
-DEFAULT_STORAGE_FOLDER = "C:/Users/corte/Documents/Medical-Dictation/Storage"
+DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
 
 # NEW: Default AI Provider setting (default is OpenAI)
 DEFAULT_AI_PROVIDER = "openai"
