@@ -113,10 +113,10 @@ def clear_content_except_context(app_instance):
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """
-    logging.info("Clearing all application content except context")
+    logging.info("Clearing all application content including context")
     
-    # Clear text widgets except context and chat
-    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]:
+    # Clear ALL text widgets including context
+    for widget in [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
@@ -131,6 +131,20 @@ def clear_content_except_context(app_instance):
     if hasattr(app_instance, "soap_audio_segments"):
         app_instance.soap_audio_segments = []
     
+    # Clear SOAP-specific audio chunks
+    if hasattr(app_instance, "pending_soap_segments"):
+        app_instance.pending_soap_segments = []
+        logging.info("Cleared pending SOAP segments")
+    
+    if hasattr(app_instance, "combined_soap_chunks"):
+        app_instance.combined_soap_chunks = []
+        logging.info("Cleared combined SOAP chunks")
+    
+    # Clear audio segments in recording manager
+    if hasattr(app_instance, "recording_manager") and app_instance.recording_manager:
+        app_instance.recording_manager.audio_segments = []
+        logging.info("Cleared recording manager audio segments")
+    
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
@@ -138,4 +152,4 @@ def clear_content_except_context(app_instance):
     
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
-        app_instance.update_status("Content cleared (context preserved)", "info")
+        app_instance.update_status("All content cleared", "info")
