@@ -601,7 +601,42 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     
     result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
     # Clean both markdown and citations
-    return clean_text(result)
+    cleaned_soap = clean_text(result)
+    
+    # Check if synopsis generation is enabled
+    synopsis_enabled = SETTINGS.get("ai_config", {}).get("synopsis_enabled", True)
+    
+    if synopsis_enabled:
+        try:
+            # Import agent components
+            from ai.agents import SynopsisAgent, AgentTask
+            
+            # Create synopsis agent
+            synopsis_agent = SynopsisAgent()
+            
+            # Create task for synopsis generation
+            task = AgentTask(
+                task_description="Generate a clinical synopsis from SOAP note",
+                context=context if context else None,
+                input_data={"soap_note": cleaned_soap}
+            )
+            
+            # Generate synopsis
+            response = synopsis_agent.execute(task)
+            
+            if response.success and response.result:
+                # Append synopsis to SOAP note
+                synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{response.result}"
+                cleaned_soap += synopsis_section
+                logging.info(f"Added synopsis to SOAP note ({response.metadata.get('word_count', 0)} words)")
+            else:
+                logging.warning(f"Synopsis generation failed: {response.error}")
+                
+        except Exception as e:
+            logging.error(f"Error generating synopsis: {e}")
+            # Continue without synopsis if there's an error
+    
+    return cleaned_soap
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
     model = SETTINGS["referral"]["model"]  # Use actual settings, not defaults

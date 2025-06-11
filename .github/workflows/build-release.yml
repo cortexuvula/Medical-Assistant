@@ -18,15 +18,15 @@ jobs:
         include:
           - os: ubuntu-22.04
             artifact_name: MedicalAssistant-Linux
-            build_script: ./build_linux.sh
+            build_script: ./scripts/build_linux.sh
             dist_path: dist/MedicalAssistant
           - os: windows-latest
             artifact_name: MedicalAssistant-Windows
-            build_script: build_windows_ci.bat
+            build_script: scripts/build_windows_ci.bat
             dist_path: dist/MedicalAssistant.exe
           - os: macos-latest
             artifact_name: MedicalAssistant-macOS
-            build_script: ./build_macos.sh
+            build_script: ./scripts/build_macos.sh
             dist_path: dist/MedicalAssistant.app
 
     runs-on: ${{ matrix.os }}
