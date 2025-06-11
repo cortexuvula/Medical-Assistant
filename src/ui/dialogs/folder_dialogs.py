@@ -46,16 +46,42 @@ class FolderDialogManager:
         main_frame = ttk.Frame(dialog, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
+        # Get current storage folder from settings
+        from settings.settings import SETTINGS
+        current_storage = SETTINGS.get("storage_folder", "") or SETTINGS.get("default_storage_folder", "")
+        
+        # Add current folder display
+        if current_storage and os.path.exists(current_storage):
+            current_frame = ttk.LabelFrame(main_frame, text="Current Storage Folder", padding="10")
+            current_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            current_label = ttk.Label(current_frame, text=current_storage, 
+                                    font=("Segoe UI", 10, "bold"), 
+                                    foreground="green")
+            current_label.pack(anchor="w")
+        else:
+            # Show warning if no valid folder is set
+            warning_frame = ttk.LabelFrame(main_frame, text="Current Storage Folder", padding="10")
+            warning_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            warning_label = ttk.Label(warning_frame, 
+                                    text="No storage folder currently set" if not current_storage 
+                                    else f"Invalid folder: {current_storage}",
+                                    font=("Segoe UI", 10), 
+                                    foreground="red")
+            warning_label.pack(anchor="w")
+        
         # Add explanation label
-        ttk.Label(main_frame, text="Select a folder for storing recordings and exports", 
+        ttk.Label(main_frame, text="Select a new folder for storing recordings and exports", 
                  wraplength=580).pack(pady=(0, 10))
         
         # Create a frame for the path entry and navigation
         path_frame = ttk.Frame(main_frame)
         path_frame.pack(fill=tk.X, pady=(0, 5))
         
-        # Current path display
-        path_var = tk.StringVar(value=os.path.expanduser("~"))
+        # Current path display - start with current storage folder if valid, otherwise home directory
+        initial_path = current_storage if current_storage and os.path.exists(current_storage) else os.path.expanduser("~")
+        path_var = tk.StringVar(value=initial_path)
         path_entry = ttk.Entry(path_frame, textvariable=path_var, width=50)
         path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         
