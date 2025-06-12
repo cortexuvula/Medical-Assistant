@@ -20,6 +20,91 @@ _DEFAULT_SETTINGS = {
         "synopsis_enabled": True,
         "synopsis_max_words": 200
     },
+    "agent_config": {
+        "synopsis": {
+            "enabled": True,
+            "provider": "openai",
+            "model": "gpt-4",
+            "temperature": 0.3,
+            "max_tokens": 300,
+            "system_prompt": """You are a medical documentation specialist. Your task is to create concise, 
+        clinically relevant synopses from SOAP notes. The synopsis should:
+        
+        1. Be under 200 words
+        2. Capture the key clinical findings and plan
+        3. Use clear, professional medical language
+        4. Focus on the most important diagnostic and treatment information
+        5. Maintain the clinical context and patient safety considerations
+        
+        Format the synopsis as a single paragraph that a healthcare provider could quickly read
+        to understand the essential clinical picture."""
+        },
+        "diagnostic": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4",
+            "temperature": 0.1,
+            "max_tokens": 500,
+            "system_prompt": """You are a medical diagnostic assistant with expertise in differential diagnosis.
+        
+Your role is to:
+1. Analyze symptoms, signs, and clinical findings
+2. Generate a comprehensive differential diagnosis list with ICD-9 codes
+3. Rank diagnoses by likelihood based on the clinical presentation
+4. Suggest appropriate investigations to narrow the differential
+5. Highlight any red flags or concerning features
+
+Guidelines:
+- Always provide multiple diagnostic possibilities
+- Include ICD-9 codes for each differential diagnosis (format: xxx.xx)
+- Consider common conditions before rare ones (think horses, not zebras)
+- Include both benign and serious conditions when appropriate
+- Never provide definitive diagnoses - only suggestions for clinical consideration
+- Always recommend appropriate follow-up and investigations
+- Flag any emergency conditions that need immediate attention
+- Use ONLY ICD-9 codes, not ICD-10 codes
+
+Format your response as:
+1. CLINICAL SUMMARY: Brief overview of key findings
+2. DIFFERENTIAL DIAGNOSES: Listed by likelihood with ICD-9 codes and brief reasoning
+   Example: 1. Migraine without aura (346.10) - Classic presentation with family history
+3. RED FLAGS: Any concerning features requiring urgent attention
+4. RECOMMENDED INVESTIGATIONS: Tests to help narrow the differential
+5. CLINICAL PEARLS: Key points to remember for this presentation"""
+        },
+        "medication": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4",
+            "temperature": 0.2,
+            "max_tokens": 400,
+            "system_prompt": "You are a medication management assistant. Help with medication selection, dosing, and interaction checking. Always emphasize the importance of clinical judgment and patient-specific factors. Include warnings about contraindications and potential side effects."
+        },
+        "referral": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4",
+            "temperature": 0.3,
+            "max_tokens": 350,
+            "system_prompt": "You are a referral letter specialist. Generate professional, concise referral letters that include: 1. Clear reason for referral 2. Relevant clinical history 3. Current medications 4. Specific questions or requests 5. Urgency level. Format letters professionally and appropriately for the specialty."
+        },
+        "data_extraction": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-3.5-turbo",
+            "temperature": 0.0,
+            "max_tokens": 300,
+            "system_prompt": "You are a clinical data extraction specialist. Extract structured data from clinical text including: Vital signs, Laboratory values, Medications with dosages, Diagnoses with ICD codes, Procedures. Return data in a structured, consistent format."
+        },
+        "workflow": {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4",
+            "temperature": 0.3,
+            "max_tokens": 500,
+            "system_prompt": "You are a clinical workflow coordinator. Help manage multi-step medical processes including: Patient intake workflows, Diagnostic workup planning, Treatment protocols, Follow-up scheduling. Provide clear, step-by-step guidance while maintaining flexibility for clinical judgment."
+        }
+    },
     "refine_text": {
         "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
         "model": "gpt-3.5-turbo",  # OpenAI model
@@ -253,6 +338,9 @@ def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
         elif isinstance(default_value, dict) and isinstance(merged.get(key), dict):
             # Both are dicts, merge recursively
             merged[key] = merge_settings_with_defaults(merged[key], default_value)
+        elif key == "system_prompt" and isinstance(merged.get(key), str) and merged.get(key) == "":
+            # Special case: replace ONLY empty system prompts with defaults
+            merged[key] = default_value
     
     return merged
 
@@ -277,22 +365,58 @@ def save_settings(settings: dict) -> None:
 # Load settings on module import
 SETTINGS = load_settings()
 
-# Save settings to ensure any newly added default keys are persisted
-save_settings(SETTINGS)
-
 # Initialize new configuration system
 _config = get_config()
 _migrator = get_migrator()
 
-# Migrate old settings to new config if needed
-if SETTINGS != _DEFAULT_SETTINGS:
+# Don't mess with settings if we have agent_config (modern format)
+# The migrator is only for converting very old settings formats
+if "agent_config" not in SETTINGS:
+    # Store original before migration
+    original_loaded_settings = SETTINGS.copy()
+    
+    # Old settings format, needs migration
     _migrator.migrate_from_dict(SETTINGS)
-
-# Override SETTINGS with migrated values for backward compatibility
-SETTINGS = _migrator.get_legacy_format()
-
-# Preserve custom_chat_suggestions from original loaded settings
-if "custom_chat_suggestions" not in SETTINGS:
-    original_settings = load_settings()
-    if "custom_chat_suggestions" in original_settings:
-        SETTINGS["custom_chat_suggestions"] = original_settings["custom_chat_suggestions"]
+    # Override SETTINGS with migrated values for backward compatibility
+    migrated_settings = _migrator.get_legacy_format()
+    SETTINGS = migrated_settings
+    
+    # Restore any sections that got lost
+    for preserve_key in ["custom_chat_suggestions", "chat_interface"]:
+        if preserve_key in original_loaded_settings:
+            SETTINGS[preserve_key] = original_loaded_settings[preserve_key]
+            
+    # Fix empty synopsis prompt only for migrated settings
+    if "agent_config" in SETTINGS and "synopsis" in SETTINGS["agent_config"]:
+        synopsis_config = SETTINGS["agent_config"]["synopsis"]
+        current_prompt = synopsis_config.get("system_prompt", "")
+        if not current_prompt or not current_prompt.strip():
+            try:
+                from ai.agents.synopsis import SynopsisAgent
+                synopsis_config["system_prompt"] = SynopsisAgent.DEFAULT_CONFIG.system_prompt
+                logging.info("Updated empty synopsis system prompt with default")
+            except ImportError:
+                synopsis_config["system_prompt"] = _DEFAULT_SETTINGS["agent_config"]["synopsis"]["system_prompt"]
+    
+    # Save the migrated settings
+    save_settings(SETTINGS)
+else:
+    # Modern format with agent_config - just ensure empty prompts are fixed
+    made_changes = False
+    
+    if "synopsis" in SETTINGS["agent_config"]:
+        synopsis_config = SETTINGS["agent_config"]["synopsis"]
+        current_prompt = synopsis_config.get("system_prompt", "")
+        if not current_prompt or not current_prompt.strip():
+            try:
+                from ai.agents.synopsis import SynopsisAgent
+                synopsis_config["system_prompt"] = SynopsisAgent.DEFAULT_CONFIG.system_prompt
+                made_changes = True
+                logging.info("Updated empty synopsis system prompt with default")
+            except ImportError:
+                synopsis_config["system_prompt"] = _DEFAULT_SETTINGS["agent_config"]["synopsis"]["system_prompt"]
+                made_changes = True
+    
+    # Only save if we fixed an empty prompt
+    if made_changes:
+        save_settings(SETTINGS)

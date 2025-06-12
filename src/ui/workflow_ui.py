@@ -388,6 +388,13 @@ class WorkflowUI:
                 "description": "Generate a formal medical letter",
                 "command": command_map.get("create_letter"),
                 "bootstyle": "primary"
+            },
+            {
+                "name": "diagnostic",
+                "text": "Diagnostic Analysis",
+                "description": "Analyze symptoms and generate differential diagnoses with ICD-9 codes",
+                "command": command_map.get("create_diagnostic_analysis"),
+                "bootstyle": "warning"
             }
         ]
         

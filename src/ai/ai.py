@@ -603,38 +603,29 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     # Clean both markdown and citations
     cleaned_soap = clean_text(result)
     
-    # Check if synopsis generation is enabled
-    synopsis_enabled = SETTINGS.get("ai_config", {}).get("synopsis_enabled", True)
-    
-    if synopsis_enabled:
-        try:
-            # Import agent components
-            from ai.agents import SynopsisAgent, AgentTask
-            
-            # Create synopsis agent
-            synopsis_agent = SynopsisAgent()
-            
-            # Create task for synopsis generation
-            task = AgentTask(
-                task_description="Generate a clinical synopsis from SOAP note",
-                context=context if context else None,
-                input_data={"soap_note": cleaned_soap}
-            )
-            
-            # Generate synopsis
-            response = synopsis_agent.execute(task)
-            
-            if response.success and response.result:
-                # Append synopsis to SOAP note
-                synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{response.result}"
-                cleaned_soap += synopsis_section
-                logging.info(f"Added synopsis to SOAP note ({response.metadata.get('word_count', 0)} words)")
+    # Check if synopsis generation is enabled through agent manager
+    try:
+        from managers.agent_manager import agent_manager
+        
+        # Use agent manager to generate synopsis
+        synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+        
+        if synopsis:
+            # Append synopsis to SOAP note
+            synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{synopsis}"
+            cleaned_soap += synopsis_section
+            logging.info("Added synopsis to SOAP note")
+        else:
+            # Check if it's due to being disabled or an error
+            from ai.agents.models import AgentType
+            if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
+                logging.info("Synopsis generation is disabled")
             else:
-                logging.warning(f"Synopsis generation failed: {response.error}")
+                logging.warning("Synopsis generation failed")
                 
-        except Exception as e:
-            logging.error(f"Error generating synopsis: {e}")
-            # Continue without synopsis if there's an error
+    except Exception as e:
+        logging.error(f"Error with synopsis generation: {e}")
+        # Continue without synopsis if there's an error
     
     return cleaned_soap
 

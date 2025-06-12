@@ -213,6 +213,7 @@ class MedicalDictationApp(ttk.Window):
             "create_soap_note": self.create_soap_note,
             "create_referral": self.create_referral,
             "create_letter": self.create_letter,
+            "create_diagnostic_analysis": self.create_diagnostic_analysis,
             "toggle_soap_recording": self.toggle_soap_recording,
             "toggle_soap_pause": self.toggle_soap_pause,
             "cancel_soap_recording": self.cancel_soap_recording
@@ -507,6 +508,36 @@ class MedicalDictationApp(ttk.Window):
         from ui.dialogs.temperature_dialog import show_temperature_settings_dialog
         show_temperature_settings_dialog(self)
         self.status_manager.success("Temperature settings saved successfully")
+
+    def show_agent_settings(self) -> None:
+        """Show dialog to configure AI agent settings."""
+        # Check if advanced settings should be shown based on a setting or default to basic
+        from settings.settings import SETTINGS
+        use_advanced = SETTINGS.get("use_advanced_agent_settings", True)
+        
+        try:
+            if use_advanced:
+                from ui.dialogs.advanced_agent_settings_dialog import show_advanced_agent_settings_dialog
+                show_advanced_agent_settings_dialog(self)
+            else:
+                from ui.dialogs.agent_settings_dialog import show_agent_settings_dialog
+                show_agent_settings_dialog(self)
+                
+            # Reload agents after settings change
+            from managers.agent_manager import agent_manager
+            agent_manager.reload_agents()
+            
+            self.status_manager.success("Agent settings saved successfully")
+        except Exception as e:
+            # Fall back to basic dialog on error
+            logger.error(f"Error showing agent settings dialog: {e}", exc_info=True)
+            try:
+                from ui.dialogs.agent_settings_dialog import show_agent_settings_dialog
+                show_agent_settings_dialog(self)
+                self.status_manager.warning("Showing basic agent settings due to error")
+            except Exception as e2:
+                logger.error(f"Error showing basic dialog: {e2}", exc_info=True)
+                self.status_manager.error("Failed to show agent settings dialog")
 
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
         from settings.settings import save_settings, SETTINGS
@@ -985,8 +1016,8 @@ class MedicalDictationApp(ttk.Window):
             # Switch focus to the SOAP tab
             self.notebook.select(1)
             
-            # Clear all text fields and audio segments before starting a new recording (preserve context)
-            clear_content_except_context(self)
+            # Clear all text fields and audio segments before starting a new recording (including context)
+            clear_all_content(self)
             
             # Start recording
             self.status_manager.info("Starting SOAP recording...")
@@ -1297,6 +1328,10 @@ class MedicalDictationApp(ttk.Window):
     def create_letter(self) -> None:
         """Create a letter using DocumentGenerators."""
         self.document_generators.create_letter()
+    
+    def create_diagnostic_analysis(self) -> None:
+        """Create a diagnostic analysis using DocumentGenerators."""
+        self.document_generators.create_diagnostic_analysis()
 
     
 

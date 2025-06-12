@@ -17,3 +17,4 @@ pyinstaller>=6.3.0
 cryptography>=45.0.0  # For secure API key storage
 Pillow>=10.0.0  # Required for ttkbootstrap image support
 pydantic>=2.5.0  # For agent system and structured data models
+pyperclip>=1.8.2  # For clipboard operations in diagnostic results

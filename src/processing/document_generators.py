@@ -2,7 +2,7 @@
 Document Generators Module
 
 Handles the generation of medical documents including SOAP notes, referrals, 
-and letters from transcripts using AI processing.
+letters, and diagnostic analyses from transcripts using AI processing.
 """
 
 import logging
@@ -12,6 +12,10 @@ from tkinter.constants import DISABLED, NORMAL, RIGHT
 
 from ai.ai import create_soap_note_with_openai, create_referral_with_openai, get_possible_conditions, create_letter_with_ai
 from ui.dialogs.dialogs import ask_conditions_dialog
+from managers.agent_manager import agent_manager
+from ai.agents import AgentTask, AgentType
+from ui.dialogs.diagnostic_dialog import DiagnosticAnalysisDialog
+from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
 
 
 class DocumentGenerators:
@@ -75,6 +79,18 @@ class DocumentGenerators:
                     else:
                         # No existing recording, create a new one
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
+                    
+                    # Check if diagnostic agent is enabled and offer to run analysis
+                    if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
+                        # Ask user if they want to run diagnostic analysis
+                        if messagebox.askyesno(
+                            "Run Diagnostic Analysis?",
+                            "SOAP note created successfully.\n\n"
+                            "Would you like to run diagnostic analysis on this SOAP note?",
+                            parent=self.app
+                        ):
+                            # Run diagnostic analysis on the SOAP note
+                            self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
                 
                 self.app.after(0, update_ui_and_save)
             except concurrent.futures.TimeoutError:
@@ -285,5 +301,181 @@ class DocumentGenerators:
                 ])
         
         # Actually submit the task to be executed
+        self.app.io_executor.submit(task)
+
+    def create_diagnostic_analysis(self) -> None:
+        """Create a diagnostic analysis from clinical findings."""
+        # Reload settings to ensure we have the latest configuration
+        from settings.settings import load_settings, SETTINGS
+        latest_settings = load_settings()
+        SETTINGS.update(latest_settings)
+        
+        # Reload agent manager to pick up latest settings
+        agent_manager.reload_agents()
+        
+        # Check if diagnostic agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
+            messagebox.showwarning(
+                "Diagnostic Agent Disabled", 
+                "The Diagnostic Agent is currently disabled.\n\n"
+                "Please enable it in Settings > Agent Settings to use diagnostic analysis."
+            )
+            return
+        
+        # Check for existing content to analyze
+        transcript = self.app.transcript_text.get("1.0", "end").strip()
+        soap_note = self.app.soap_text.get("1.0", "end").strip()
+        
+        if not transcript and not soap_note:
+            messagebox.showwarning(
+                "No Content", 
+                "Please provide either a transcript or SOAP note for diagnostic analysis."
+            )
+            return
+        
+        # Show diagnostic analysis dialog
+        dialog = DiagnosticAnalysisDialog(self.app)
+        dialog.set_available_content(
+            has_transcript=bool(transcript),
+            has_soap=bool(soap_note)
+        )
+        
+        result = dialog.show()
+        if not result:
+            return  # User cancelled
+        
+        source = result.get("source")
+        custom_findings = result.get("custom_findings", "")
+        
+        # Determine what content to analyze
+        if source == "custom" and custom_findings:
+            clinical_findings = custom_findings
+            source_name = "Custom Input"
+        elif source == "soap":
+            clinical_findings = None  # Will be extracted from SOAP
+            input_data = {"soap_note": soap_note}
+            source_name = "SOAP Note"
+        else:  # transcript
+            clinical_findings = transcript
+            source_name = "Transcript"
+        
+        # Update status and show progress
+        self.app.status_manager.progress("Analyzing clinical findings...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Disable the diagnostic button during processing
+        diagnostic_button = self.app.ui.components.get('generate_diagnostic_button')
+        if diagnostic_button:
+            diagnostic_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Create agent task
+                if clinical_findings:
+                    task_data = AgentTask(
+                        task_description=f"Analyze clinical findings from {source_name}",
+                        input_data={"clinical_findings": clinical_findings}
+                    )
+                else:
+                    task_data = AgentTask(
+                        task_description=f"Analyze SOAP note for diagnostic insights",
+                        input_data=input_data
+                    )
+                
+                # Execute diagnostic analysis
+                response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_diagnostic_display(
+                        response.result, 
+                        source_name,
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error creating diagnostic analysis: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    diagnostic_button.config(state=NORMAL) if diagnostic_button else None,
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget()
+                ])
+        
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+    
+    def _update_diagnostic_display(self, analysis: str, source: str, metadata: dict) -> None:
+        """Update the UI with diagnostic analysis results."""
+        # Stop progress bar
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        # Re-enable diagnostic button
+        diagnostic_button = self.app.ui.components.get('generate_diagnostic_button')
+        if diagnostic_button:
+            diagnostic_button.config(state=NORMAL)
+        
+        # Show results in a dialog
+        dialog = DiagnosticResultsDialog(self.app)
+        dialog.show_results(analysis, source, metadata)
+        
+        # Update status
+        diff_count = metadata.get('differential_count', 0)
+        has_red_flags = metadata.get('has_red_flags', False)
+        status_msg = f"Diagnostic analysis completed: {diff_count} differentials"
+        if has_red_flags:
+            status_msg += " (RED FLAGS identified)"
+        
+        self.app.status_manager.success(status_msg)
+    
+    def _run_diagnostic_on_soap(self, soap_note: str) -> None:
+        """Run diagnostic analysis on a SOAP note.
+        
+        Args:
+            soap_note: The SOAP note text to analyze
+        """
+        # Update status and show progress
+        self.app.status_manager.progress("Running diagnostic analysis on SOAP note...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        def task() -> None:
+            try:
+                # Create agent task for SOAP analysis
+                task_data = AgentTask(
+                    task_description="Analyze SOAP note for diagnostic insights",
+                    input_data={"soap_note": soap_note}
+                )
+                
+                # Execute diagnostic analysis
+                response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_diagnostic_display(
+                        response.result, 
+                        "SOAP Note (Auto-Analysis)",
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error running diagnostic analysis: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget()
+                ])
+        
+        # Submit task for execution
         self.app.io_executor.submit(task)
 
