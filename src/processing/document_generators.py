@@ -57,12 +57,26 @@ class DocumentGenerators:
                 filename = "Transcript"
                 
                 # Schedule UI update on the main thread and save to database
-                self.app.after(0, lambda: [
-                    self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text),
-                    self.app.notebook.select(1),  # Switch to SOAP tab
-                    # Save to database on the main thread
-                    self.app._save_soap_recording_to_database(filename, transcript, soap_note)
-                ])
+                def update_ui_and_save():
+                    self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text)
+                    self.app.notebook.select(1)  # Switch to SOAP tab
+                    
+                    # Check if we have an existing recording from file upload
+                    if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
+                        # Update existing recording with SOAP note
+                        success = self.app.db.update_recording(
+                            self.app.current_recording_id,
+                            soap_note=soap_note
+                        )
+                        if success:
+                            logging.info(f"Updated existing recording {self.app.current_recording_id} with SOAP note")
+                        else:
+                            logging.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
+                    else:
+                        # No existing recording, create a new one
+                        self.app._save_soap_recording_to_database(filename, transcript, soap_note)
+                
+                self.app.after(0, update_ui_and_save)
             except concurrent.futures.TimeoutError:
                 self.app.after(0, lambda: [
                     self.app.status_manager.error("SOAP note creation timed out. Please try again."),
@@ -247,20 +261,11 @@ class DocumentGenerators:
                     raise Exception(result)
                 
                 # Schedule UI update on the main thread
+                # Note: _update_text_area already handles database updates for letters
                 self.app.after(0, lambda: [
                     self.app._update_text_area(result, f"Letter generated from {source_name}", self.app.letter_button, self.app.letter_text),
                     self.app.notebook.select(3)  # Show letter in Letter tab (index 3)
                 ])
-                
-                # Store the generated letter and recording ID for database update
-                # We'll pass these to the main thread for database update
-                generated_letter = result
-                recording_id = self.app.current_recording_id
-                
-                # For database operations, schedule them on the main thread
-                if recording_id:
-                    # Schedule database update on main thread to avoid threading issues
-                    self.app.after(0, lambda: self._save_letter_to_database(recording_id, generated_letter))
                         
             except concurrent.futures.TimeoutError:
                 self.app.after(0, lambda: [
@@ -282,19 +287,3 @@ class DocumentGenerators:
         # Actually submit the task to be executed
         self.app.io_executor.submit(task)
 
-    def _save_letter_to_database(self, recording_id: int, letter_text: str) -> None:
-        """Safely save letter to database from the main thread.
-        
-        Args:
-            recording_id: ID of the recording to update
-            letter_text: The generated letter text to save
-        """
-        try:
-            # This runs on the main thread, so it's safe to use the database connection
-            if self.app.db.update_recording(recording_id, letter=letter_text):
-                logging.info(f"Saved letter to database for recording ID {recording_id}")
-            else:
-                logging.warning(f"Failed to save letter to database - no rows updated for ID {recording_id}")
-        except Exception as db_error:
-            error_msg = f"Error updating database: {str(db_error)}"
-            logging.error(error_msg, exc_info=True)

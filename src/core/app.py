@@ -1298,9 +1298,6 @@ class MedicalDictationApp(ttk.Window):
         """Create a letter using DocumentGenerators."""
         self.document_generators.create_letter()
 
-    def _save_letter_to_database(self, recording_id: int, letter_text: str) -> None:
-        """Save letter to database using DocumentGenerators."""
-        self.document_generators._save_letter_to_database(recording_id, letter_text)
     
 
     def _save_soap_recording_to_database(self, filename: str, transcript: str, soap_note: str, 

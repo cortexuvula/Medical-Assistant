@@ -103,7 +103,7 @@ class WorkflowUI:
         # Status label
         self.components['recording_status'] = ttk.Label(
             status_frame, 
-            text="Ready to Record", 
+            text="", 
             font=("Segoe UI", 12)
         )
         self.components['recording_status'].pack()
