@@ -401,6 +401,148 @@ def get_migrations() -> List[Migration]:
         down_sql=None  # Complex migration, no rollback
     ))
     
+    # Migration 7: Add medication management tables
+    migrations.append(Migration(
+        version=7,
+        name="Add medication management tables",
+        up_sql="""
+        -- Medications reference table
+        CREATE TABLE IF NOT EXISTS medications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            generic_name TEXT NOT NULL,
+            brand_names TEXT,  -- JSON array of brand names
+            drug_class TEXT,
+            controlled_substance_schedule TEXT,
+            form TEXT,  -- tablet, capsule, liquid, etc.
+            strengths TEXT,  -- JSON array of available strengths
+            routes TEXT,  -- JSON array of administration routes
+            common_dosages TEXT,  -- JSON object with indication-based dosing
+            contraindications TEXT,  -- JSON array
+            warnings TEXT,  -- JSON array
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Patient medications table
+        CREATE TABLE IF NOT EXISTS patient_medications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER REFERENCES patients(id),
+            recording_id INTEGER REFERENCES recordings(id),
+            medication_id INTEGER REFERENCES medications(id),
+            medication_name TEXT NOT NULL,  -- Free text name as entered
+            dose TEXT,
+            route TEXT,
+            frequency TEXT,
+            start_date DATE,
+            end_date DATE,
+            status TEXT CHECK(status IN ('active', 'discontinued', 'hold', 'completed')),
+            indication TEXT,
+            prescriber TEXT,
+            pharmacy TEXT,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Medication history table for tracking changes
+        CREATE TABLE IF NOT EXISTS medication_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_medication_id INTEGER REFERENCES patient_medications(id),
+            change_type TEXT CHECK(change_type IN ('started', 'modified', 'discontinued', 'restarted')),
+            change_reason TEXT,
+            previous_dose TEXT,
+            new_dose TEXT,
+            previous_frequency TEXT,
+            new_frequency TEXT,
+            changed_by TEXT,
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Drug interactions table
+        CREATE TABLE IF NOT EXISTS drug_interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            drug1_name TEXT NOT NULL,
+            drug2_name TEXT NOT NULL,
+            severity TEXT CHECK(severity IN ('contraindicated', 'major', 'moderate', 'minor')),
+            description TEXT,
+            clinical_significance TEXT,
+            management TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(drug1_name, drug2_name)
+        );
+        
+        -- Medication alerts table
+        CREATE TABLE IF NOT EXISTS medication_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER REFERENCES patients(id),
+            alert_type TEXT CHECK(alert_type IN ('allergy', 'interaction', 'duplicate', 'dosing', 'contraindication')),
+            severity TEXT CHECK(severity IN ('high', 'medium', 'low')),
+            medication_names TEXT,  -- JSON array of involved medications
+            description TEXT,
+            acknowledged BOOLEAN DEFAULT FALSE,
+            acknowledged_by TEXT,
+            acknowledged_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_medications_generic ON medications(generic_name);
+        CREATE INDEX IF NOT EXISTS idx_patient_meds_patient ON patient_medications(patient_id);
+        CREATE INDEX IF NOT EXISTS idx_patient_meds_status ON patient_medications(status);
+        CREATE INDEX IF NOT EXISTS idx_patient_meds_recording ON patient_medications(recording_id);
+        CREATE INDEX IF NOT EXISTS idx_med_history_patient_med ON medication_history(patient_medication_id);
+        CREATE INDEX IF NOT EXISTS idx_interactions_drugs ON drug_interactions(drug1_name, drug2_name);
+        CREATE INDEX IF NOT EXISTS idx_alerts_patient ON medication_alerts(patient_id);
+        CREATE INDEX IF NOT EXISTS idx_alerts_type ON medication_alerts(alert_type);
+        
+        -- Create FTS table for medication search
+        CREATE VIRTUAL TABLE IF NOT EXISTS medications_fts USING fts5(
+            generic_name,
+            brand_names,
+            drug_class,
+            content=medications,
+            content_rowid=id
+        );
+        
+        -- Triggers to keep FTS in sync
+        CREATE TRIGGER IF NOT EXISTS medications_ai AFTER INSERT ON medications BEGIN
+            INSERT INTO medications_fts(rowid, generic_name, brand_names, drug_class)
+            VALUES (new.id, new.generic_name, new.brand_names, new.drug_class);
+        END;
+        
+        CREATE TRIGGER IF NOT EXISTS medications_ad AFTER DELETE ON medications BEGIN
+            DELETE FROM medications_fts WHERE rowid = old.id;
+        END;
+        
+        CREATE TRIGGER IF NOT EXISTS medications_au AFTER UPDATE ON medications BEGIN
+            UPDATE medications_fts 
+            SET generic_name = new.generic_name,
+                brand_names = new.brand_names,
+                drug_class = new.drug_class
+            WHERE rowid = new.id;
+        END;
+        """,
+        down_sql="""
+        DROP TRIGGER IF EXISTS medications_au;
+        DROP TRIGGER IF EXISTS medications_ad;
+        DROP TRIGGER IF EXISTS medications_ai;
+        DROP TABLE IF EXISTS medications_fts;
+        DROP INDEX IF EXISTS idx_alerts_type;
+        DROP INDEX IF EXISTS idx_alerts_patient;
+        DROP INDEX IF EXISTS idx_interactions_drugs;
+        DROP INDEX IF EXISTS idx_med_history_patient_med;
+        DROP INDEX IF EXISTS idx_patient_meds_recording;
+        DROP INDEX IF EXISTS idx_patient_meds_status;
+        DROP INDEX IF EXISTS idx_patient_meds_patient;
+        DROP INDEX IF EXISTS idx_medications_generic;
+        DROP TABLE IF EXISTS medication_alerts;
+        DROP TABLE IF EXISTS drug_interactions;
+        DROP TABLE IF EXISTS medication_history;
+        DROP TABLE IF EXISTS patient_medications;
+        DROP TABLE IF EXISTS medications;
+        """
+    ))
+    
     return migrations
 
 

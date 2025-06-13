@@ -214,6 +214,9 @@ class MedicalDictationApp(ttk.Window):
             "create_referral": self.create_referral,
             "create_letter": self.create_letter,
             "create_diagnostic_analysis": self.create_diagnostic_analysis,
+            "analyze_medications": self.analyze_medications,
+            "extract_clinical_data": self.extract_clinical_data,
+            "manage_workflow": self.manage_workflow,
             "toggle_soap_recording": self.toggle_soap_recording,
             "toggle_soap_pause": self.toggle_soap_pause,
             "cancel_soap_recording": self.cancel_soap_recording
@@ -1332,6 +1335,18 @@ class MedicalDictationApp(ttk.Window):
     def create_diagnostic_analysis(self) -> None:
         """Create a diagnostic analysis using DocumentGenerators."""
         self.document_generators.create_diagnostic_analysis()
+    
+    def analyze_medications(self) -> None:
+        """Analyze medications using DocumentGenerators."""
+        self.document_generators.analyze_medications()
+    
+    def extract_clinical_data(self) -> None:
+        """Extract clinical data using DocumentGenerators."""
+        self.document_generators.extract_clinical_data()
+    
+    def manage_workflow(self) -> None:
+        """Manage clinical workflows using DocumentGenerators."""
+        self.document_generators.manage_workflow()
 
     
 

@@ -664,7 +664,9 @@ def get_model_key_for_task(system_message: str, prompt: str) -> str:
         return "improve_text"
     elif "referral" in system_message.lower() or "referral" in prompt.lower():
         return "referral"
-    return "refine_text"  # Default fallback
+    elif "medication" in system_message.lower() or "medication" in prompt.lower() or "drug" in system_message.lower() or "drug" in prompt.lower():
+        return "medication"
+    return "improve_text"  # Default fallback - use improve_text which has valid model
 
 # NEW FUNCTIONS: Add these to the end of the ai.py file
 

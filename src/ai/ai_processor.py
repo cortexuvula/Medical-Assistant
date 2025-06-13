@@ -21,6 +21,8 @@ from ai.prompts import (
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
     SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
 )
+from managers.agent_manager import agent_manager
+from ai.agents.models import AgentTask, AgentType
 
 
 class AIProcessor:
@@ -293,3 +295,117 @@ class AIProcessor:
         except Exception as e:
             logging.error(f"API key validation failed: {e}")
             return False
+    
+    def analyze_medications(self, text: str, task_type: str = "extract", 
+                          additional_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Analyze medications using the medication agent.
+        
+        Args:
+            text: Clinical text or SOAP note containing medication information
+            task_type: Type of medication task ('extract', 'check_interactions', 
+                      'validate_dosing', 'suggest_alternatives', 'comprehensive')
+            additional_data: Additional data for the task (medications list, patient info, etc.)
+            
+        Returns:
+            Dict containing success status and analysis result or error
+        """
+        try:
+            # Check if medication agent is enabled
+            if not agent_manager.is_agent_enabled(AgentType.MEDICATION):
+                return {
+                    "success": False, 
+                    "error": "Medication agent is not enabled. Please enable it in settings."
+                }
+            
+            # Prepare input data based on task type
+            input_data = additional_data or {}
+            
+            if task_type == "extract":
+                input_data["clinical_text"] = text
+                task_desc = "Extract medications from clinical text"
+            elif task_type == "check_interactions":
+                if "medications" not in input_data:
+                    return {"success": False, "error": "Medications list required for interaction check"}
+                task_desc = "Check for drug-drug interactions"
+            elif task_type == "validate_dosing":
+                if "medication" not in input_data:
+                    return {"success": False, "error": "Medication information required for dosing validation"}
+                task_desc = "Validate medication dosing"
+            elif task_type == "suggest_alternatives":
+                if "current_medication" not in input_data:
+                    return {"success": False, "error": "Current medication required for alternative suggestions"}
+                task_desc = "Suggest alternative medications"
+            else:  # comprehensive
+                input_data["clinical_text"] = text
+                task_desc = "Perform comprehensive medication analysis"
+            
+            # Create task
+            task = AgentTask(
+                task_description=task_desc,
+                input_data=input_data
+            )
+            
+            # Execute task
+            response = agent_manager.execute_agent_task(AgentType.MEDICATION, task)
+            
+            if response and response.success:
+                logging.info(f"Medication {task_type} completed successfully")
+                return {
+                    "success": True,
+                    "text": response.result,
+                    "metadata": response.metadata
+                }
+            else:
+                error_msg = response.error if response else "Medication agent not available"
+                logging.error(f"Medication {task_type} failed: {error_msg}")
+                return {"success": False, "error": error_msg}
+                
+        except Exception as e:
+            logging.error(f"Failed to analyze medications: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def extract_medications_from_soap(self, soap_note: str) -> Dict[str, Any]:
+        """Extract medications from a SOAP note.
+        
+        Args:
+            soap_note: SOAP note text
+            
+        Returns:
+            Dict containing success status and extracted medications or error
+        """
+        return self.analyze_medications(soap_note, task_type="extract")
+    
+    def check_medication_interactions(self, medications: list) -> Dict[str, Any]:
+        """Check for drug interactions between medications.
+        
+        Args:
+            medications: List of medication names
+            
+        Returns:
+            Dict containing success status and interaction analysis or error
+        """
+        return self.analyze_medications(
+            "", 
+            task_type="check_interactions",
+            additional_data={"medications": medications}
+        )
+    
+    def validate_medication_dosing(self, medication: Dict[str, str], 
+                                 patient_factors: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Validate medication dosing based on patient factors.
+        
+        Args:
+            medication: Dict with medication name, dose, frequency
+            patient_factors: Optional dict with age, weight, renal function, etc.
+            
+        Returns:
+            Dict containing success status and dosing validation or error
+        """
+        return self.analyze_medications(
+            "",
+            task_type="validate_dosing",
+            additional_data={
+                "medication": medication,
+                "patient_factors": patient_factors or {}
+            }
+        )

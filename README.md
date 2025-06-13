@@ -16,6 +16,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 - **Smart Templates:** Pre-built and custom context templates for common scenarios (Follow-up, New Patient, Telehealth, etc.)
 - **Multi-Format Document Generation:** Create SOAP notes, referral letters, and custom medical documents
 - **Smart Context Preservation:** Context information is preserved during SOAP recordings and only cleared on new sessions or manual clearing
+- **Medication Analysis Agent:** Comprehensive medication analysis including extraction, interaction checking, dosing validation, and prescription generation
 
 ### AI & Transcription
 - **Multiple STT Providers:** Deepgram, ElevenLabs, Groq, or local Whisper for speech-to-text conversion
@@ -148,7 +149,7 @@ Desktop shortcuts are automatically created during the build process.
 3. **Main Workflow Tabs**
    - **Record Tab:** Start/stop recordings with visual feedback, timer display, and pause/resume controls
    - **Process Tab:** Refine and improve transcribed text with AI assistance
-   - **Generate Tab:** Create SOAP notes, referrals, and letters from your recordings
+   - **Generate Tab:** Create SOAP notes, referrals, letters, and perform medication analysis
    - **Recordings Tab:** View, search, and manage all saved recordings with document status indicators
 
 4. **Using the Chat Interface**
@@ -182,13 +183,25 @@ Desktop shortcuts are automatically created during the build process.
    - Load recordings to continue working on them
    - Export recordings and documents
 
-8. **Editing Prompts and Models**  
+8. **Using Medication Analysis**
+   - Click the medication analysis button in the Generate tab
+   - Choose your content source (transcript, SOAP note, or context information)
+   - Select analysis type:
+     - Extract medications from text
+     - Check drug interactions
+     - Validate dosing
+     - Suggest alternatives
+     - Generate prescriptions
+     - Comprehensive analysis
+   - View detailed results with warnings and recommendations
+
+9. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities. Each provider can have different model selections.
 
-9. **Viewing Application Logs**
-   - Access application logs through the "View Logs" option in the Help menu
-   - Choose between opening the logs directory or viewing logs directly in the application
-   - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
+10. **Viewing Application Logs**
+    - Access application logs through the "View Logs" option in the Help menu
+    - Choose between opening the logs directory or viewing logs directly in the application
+    - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
 
 ## Troubleshooting
 
@@ -235,7 +248,19 @@ Desktop shortcuts are automatically created during the build process.
 
 ## Recent Updates
 
-### Version 2.0.0 (Latest)
+### Version 2.1.0 (Latest)
+- **Medication Analysis Agent**: New AI-powered medication agent with comprehensive analysis capabilities
+  - Extract medications from clinical text
+  - Check drug-drug interactions with severity levels
+  - Validate dosing appropriateness
+  - Suggest medication alternatives
+  - Generate prescriptions
+  - Comprehensive medication analysis with safety warnings
+- **Enhanced Generate Tab**: Added medication analysis button alongside existing document generation
+- **Context Support**: Medication analysis can now use context information as input source
+- **Agent Framework**: Extensible agent system for specialized medical AI tasks
+
+### Version 2.0.0
 - **New Recordings Tab**: Dedicated tab for managing all recordings with visual status indicators
 - **AI Chat Interface**: ChatGPT-style interface for intelligent interaction with medical notes
 - **Workflow-Based UI**: Completely redesigned interface organized by tasks (Record, Process, Generate)

@@ -395,6 +395,27 @@ class WorkflowUI:
                 "description": "Analyze symptoms and generate differential diagnoses with ICD-9 codes",
                 "command": command_map.get("create_diagnostic_analysis"),
                 "bootstyle": "warning"
+            },
+            {
+                "name": "medication",
+                "text": "Medication Analysis",
+                "description": "Extract medications, check interactions, and validate dosing",
+                "command": command_map.get("analyze_medications"),
+                "bootstyle": "danger"
+            },
+            {
+                "name": "data_extraction",
+                "text": "Extract Clinical Data",
+                "description": "Extract structured data: vitals, labs, medications, diagnoses",
+                "command": command_map.get("extract_clinical_data"),
+                "bootstyle": "secondary"
+            },
+            {
+                "name": "workflow",
+                "text": "Clinical Workflow",
+                "description": "Manage multi-step clinical processes and protocols",
+                "command": command_map.get("manage_workflow"),
+                "bootstyle": "dark"
             }
         ]
         

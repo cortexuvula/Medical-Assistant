@@ -9,6 +9,7 @@ import logging
 import concurrent.futures
 from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
+from typing import Dict, Any
 
 from ai.ai import create_soap_note_with_openai, create_referral_with_openai, get_possible_conditions, create_letter_with_ai
 from ui.dialogs.dialogs import ask_conditions_dialog
@@ -115,6 +116,21 @@ class DocumentGenerators:
 
     def create_referral(self) -> None:
         """Create a referral from transcript with improved concurrency."""
+        # Reload settings to ensure we have the latest configuration
+        from settings.settings import load_settings, SETTINGS
+        latest_settings = load_settings()
+        SETTINGS.update(latest_settings)
+        
+        # Reload agent manager to pick up latest settings
+        agent_manager.reload_agents()
+        
+        # Check if referral agent is enabled
+        if agent_manager.is_agent_enabled(AgentType.REFERRAL):
+            # Use agent-based referral generation
+            self._create_referral_with_agent()
+            return
+        
+        # Otherwise, use the traditional method
         # Check if the transcript is empty before proceeding
         text = self.app.transcript_text.get("1.0", "end").strip()
         if not text:
@@ -479,3 +495,620 @@ class DocumentGenerators:
         # Submit task for execution
         self.app.io_executor.submit(task)
 
+    
+    def analyze_medications(self) -> None:
+        """Analyze medications from clinical content."""
+        # Reload settings to ensure we have the latest configuration
+        from settings.settings import load_settings, SETTINGS
+        latest_settings = load_settings()
+        SETTINGS.update(latest_settings)
+        
+        # Reload agent manager to pick up latest settings
+        agent_manager.reload_agents()
+        
+        # Check if medication agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.MEDICATION):
+            messagebox.showwarning(
+                "Medication Agent Disabled", 
+                "The Medication Agent is currently disabled.\n\n"
+                "Please enable it in Settings > Agent Settings to use medication analysis."
+            )
+            return
+        
+        # Check for existing content to analyze
+        transcript = self.app.transcript_text.get("1.0", "end").strip()
+        soap_note = self.app.soap_text.get("1.0", "end").strip()
+        context_text = self.app.context_text.get("1.0", "end").strip()
+        
+        if not transcript and not soap_note and not context_text:
+            messagebox.showwarning(
+                "No Content", 
+                "Please provide either a transcript, SOAP note, or context information for medication analysis."
+            )
+            return
+        
+        # Import dialogs here to avoid circular imports
+        from ui.dialogs.medication_analysis_dialog import MedicationAnalysisDialog
+        from ui.dialogs.medication_results_dialog import MedicationResultsDialog
+        
+        # Show medication analysis dialog
+        dialog = MedicationAnalysisDialog(self.app)
+        dialog.set_available_content(
+            has_transcript=bool(transcript),
+            has_soap=bool(soap_note),
+            has_context=bool(context_text)
+        )
+        
+        result = dialog.show()
+        if not result:
+            return  # User cancelled
+        
+        analysis_type = result.get("analysis_type")
+        source = result.get("source")
+        custom_medications = result.get("custom_medications", "")
+        
+        # Determine content based on source
+        if source == "custom" and custom_medications:
+            content = custom_medications
+            source_name = "Custom Input"
+        elif source == "soap":
+            content = soap_note
+            source_name = "SOAP Note"
+        elif source == "context":
+            content = context_text
+            source_name = "Context Information"
+        else:  # transcript
+            content = transcript
+            source_name = "Transcript"
+        
+        # Update status and show progress
+        self.app.status_manager.progress(f"Analyzing medications from {source_name}...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Disable the medication button during processing
+        medication_button = self.app.ui.components.get('generate_medication_button')
+        if medication_button:
+            medication_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Build task description based on analysis type
+                task_descriptions = {
+                    "extract": "Extract medications from text",
+                    "interactions": "Check medication interactions",
+                    "dosing": "Validate medication dosing",
+                    "alternatives": "Suggest medication alternatives",
+                    "prescription": "Generate prescription",
+                    "comprehensive": "Comprehensive medication analysis"
+                }
+                
+                task_description = task_descriptions.get(analysis_type, "Analyze medications")
+                
+                # Create agent task with properly mapped input data
+                input_data = {
+                    "clinical_text": content,  # Medication agent expects clinical_text
+                    "source": source_name,
+                    "analysis_type": analysis_type
+                }
+                
+                # For comprehensive analysis, try to parse medications if they look like a list
+                if analysis_type == "comprehensive" and "\n" in content:
+                    lines = content.strip().split("\n")
+                    medication_lines = [line.strip() for line in lines if line.strip()]
+                    # If it looks like a medication list, add as current_medications
+                    if medication_lines and any(mg in content.lower() for mg in ["mg", "ml", "tablet", "daily"]):
+                        input_data["current_medications"] = medication_lines
+                
+                task_data = AgentTask(
+                    task_description=task_description,
+                    input_data=input_data
+                )
+                
+                # Execute medication analysis
+                response = agent_manager.execute_agent_task(AgentType.MEDICATION, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_medication_display(
+                        response.result,
+                        analysis_type,
+                        source_name,
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error analyzing medications: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget(),
+                    medication_button.config(state=NORMAL) if medication_button else None
+                ])
+        
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+    
+    def _update_medication_display(self, analysis: dict, analysis_type: str, source: str, metadata: dict) -> None:
+        """Update UI with medication analysis results."""
+        # Hide progress
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        # Re-enable medication button
+        medication_button = self.app.ui.components.get('generate_medication_button')
+        if medication_button:
+            medication_button.config(state=NORMAL)
+        
+        # Import here to avoid circular imports
+        from ui.dialogs.medication_results_dialog import MedicationResultsDialog
+        
+        # Show results in a dialog
+        dialog = MedicationResultsDialog(self.app)
+        dialog.show_results(analysis, analysis_type, source, metadata)
+        
+        # Update status
+        med_count = metadata.get('medication_count', 0)
+        interaction_count = metadata.get('interaction_count', 0)
+        
+        status_msg = f"Medication analysis completed: {med_count} medications"
+        if interaction_count > 0:
+            status_msg += f", {interaction_count} interactions found"
+        
+        self.app.status_manager.success(status_msg)
+    
+    def _create_referral_with_agent(self) -> None:
+        """Create a referral using the referral agent."""
+        # Check for existing content to analyze
+        transcript = self.app.transcript_text.get("1.0", "end").strip()
+        soap_note = self.app.soap_text.get("1.0", "end").strip()
+        
+        if not transcript and not soap_note:
+            messagebox.showwarning(
+                "No Content", 
+                "Please provide either a transcript or SOAP note for referral generation."
+            )
+            return
+        
+        # Get suggested conditions for the referral
+        self.app.status_manager.progress("Analyzing content for referral conditions...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Prefer SOAP note if available
+        source_text = soap_note if soap_note else transcript
+        source_name = "SOAP Note" if soap_note else "Transcript"
+        
+        def get_conditions_task() -> str:
+            try:
+                # Use existing function to get possible conditions
+                future = self.app.io_executor.submit(get_possible_conditions, source_text)
+                return future.result(timeout=60) or ""
+            except Exception as e:
+                logging.error(f"Error analyzing conditions: {str(e)}")
+                return ""
+        
+        future = self.app.io_executor.submit(get_conditions_task)
+        
+        def on_conditions_done(future_result):
+            try:
+                suggestions = future_result.result()
+                self.app.after(0, lambda: self._create_referral_with_agent_continued(
+                    source_text, source_name, suggestions, soap_note is not None
+                ))
+            except Exception as e:
+                error_msg = f"Failed to analyze conditions: {str(e)}"
+                logging.error(error_msg)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget()
+                ])
+        
+        future.add_done_callback(on_conditions_done)
+    
+    def _create_referral_with_agent_continued(self, source_text: str, source_name: str, 
+                                              suggestions: str, is_soap: bool) -> None:
+        """Continue referral creation with agent after condition analysis."""
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
+        
+        # Use ask_conditions_dialog to select conditions
+        focus = ask_conditions_dialog(self.app, "Select Conditions", 
+                                       "Select conditions to focus on:", conditions_list)
+        
+        if not focus:
+            self.app.update_status("Referral cancelled or no conditions selected.", 
+                                   status_type="warning")
+            return
+        
+        # Update status
+        self.app.status_manager.progress(f"Generating referral for: {focus}...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Disable referral button
+        self.app.referral_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Create agent task
+                input_data = {
+                    "conditions": focus
+                }
+                
+                if is_soap:
+                    input_data["soap_note"] = source_text
+                else:
+                    input_data["transcript"] = source_text
+                
+                task_data = AgentTask(
+                    task_description=f"Generate referral letter from {source_name} for conditions: {focus}",
+                    input_data=input_data
+                )
+                
+                # Execute referral generation
+                response = agent_manager.execute_agent_task(AgentType.REFERRAL, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_referral_display(
+                        response.result,
+                        focus,
+                        source_name,
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error creating referral: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.referral_button.config(state=NORMAL),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget()
+                ])
+        
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+    
+    def _update_referral_display(self, referral_text: str, conditions: str, 
+                                 source: str, metadata: dict) -> None:
+        """Update UI with referral agent results."""
+        # Stop progress bar
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        # Re-enable referral button
+        self.app.referral_button.config(state=NORMAL)
+        
+        # Update text area
+        self.app._update_text_area(
+            referral_text, 
+            f"Referral created for: {conditions}", 
+            self.app.referral_button, 
+            self.app.referral_text
+        )
+        
+        # Switch to referral tab
+        self.app.notebook.select(2)
+        
+        # Update status with metadata
+        urgency = metadata.get('urgency_level', 'standard')
+        specialty = metadata.get('specialty', 'N/A')
+        status_msg = f"Referral generated from {source}"
+        if urgency != 'standard':
+            status_msg += f" (Urgency: {urgency.upper()})"
+        if specialty != 'N/A':
+            status_msg += f" - {specialty}"
+        
+        self.app.status_manager.success(status_msg)
+    
+    def extract_clinical_data(self) -> None:
+        """Extract structured clinical data using the data extraction agent."""
+        # Reload settings to ensure we have the latest configuration
+        from settings.settings import load_settings, SETTINGS
+        latest_settings = load_settings()
+        SETTINGS.update(latest_settings)
+        
+        # Reload agent manager to pick up latest settings
+        agent_manager.reload_agents()
+        
+        # Check if data extraction agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.DATA_EXTRACTION):
+            messagebox.showwarning(
+                "Data Extraction Agent Disabled", 
+                "The Data Extraction Agent is currently disabled.\n\n"
+                "Please enable it in Settings > Agent Settings to use data extraction."
+            )
+            return
+        
+        # Check for existing content to analyze
+        transcript = self.app.transcript_text.get("1.0", "end").strip()
+        soap_note = self.app.soap_text.get("1.0", "end").strip()
+        context_text = self.app.context_text.get("1.0", "end").strip()
+        
+        if not transcript and not soap_note and not context_text:
+            messagebox.showwarning(
+                "No Content", 
+                "Please provide either a transcript, SOAP note, or context information for data extraction."
+            )
+            return
+        
+        # Import dialogs here to avoid circular imports
+        from ui.dialogs.data_extraction_dialog import DataExtractionDialog
+        from ui.dialogs.data_extraction_results_dialog import DataExtractionResultsDialog
+        
+        # Show data extraction dialog
+        dialog = DataExtractionDialog(self.app)
+        dialog.set_available_content(
+            has_transcript=bool(transcript),
+            has_soap=bool(soap_note),
+            has_context=bool(context_text)
+        )
+        
+        result = dialog.show()
+        if not result:
+            return  # User cancelled
+        
+        extraction_type = result.get("extraction_type", "comprehensive")
+        source = result.get("source")
+        output_format = result.get("output_format", "structured_text")
+        
+        # Determine content based on source
+        if source == "soap":
+            content = soap_note
+            source_name = "SOAP Note"
+        elif source == "context":
+            content = context_text
+            source_name = "Context Information"
+        else:  # transcript
+            content = transcript
+            source_name = "Transcript"
+        
+        # Update status and show progress
+        self.app.status_manager.progress(f"Extracting clinical data from {source_name}...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Disable the data extraction button during processing
+        data_extraction_button = self.app.ui.components.get('generate_data_extraction_button')
+        if data_extraction_button:
+            data_extraction_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Build task description based on extraction type
+                task_descriptions = {
+                    "comprehensive": "Extract all clinical data",
+                    "vitals": "Extract vital signs",
+                    "labs": "Extract laboratory values",
+                    "medications": "Extract medications",
+                    "diagnoses": "Extract diagnoses with ICD codes",
+                    "procedures": "Extract procedures and interventions"
+                }
+                
+                task_description = task_descriptions.get(extraction_type, "Extract clinical data")
+                
+                # Create agent task
+                input_data = {
+                    "clinical_text": content,
+                    "source": source_name,
+                    "extraction_type": extraction_type,
+                    "output_format": output_format
+                }
+                
+                task_data = AgentTask(
+                    task_description=task_description,
+                    input_data=input_data
+                )
+                
+                # Execute data extraction
+                response = agent_manager.execute_agent_task(AgentType.DATA_EXTRACTION, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_data_extraction_display(
+                        response.result,
+                        extraction_type,
+                        source_name,
+                        output_format,
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error extracting clinical data: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget(),
+                    data_extraction_button.config(state=NORMAL) if data_extraction_button else None
+                ])
+        
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+    
+    def _update_data_extraction_display(self, extracted_data: str, extraction_type: str, 
+                                        source: str, output_format: str, metadata: dict) -> None:
+        """Update UI with data extraction results."""
+        # Hide progress
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        # Re-enable data extraction button
+        data_extraction_button = self.app.ui.components.get('generate_data_extraction_button')
+        if data_extraction_button:
+            data_extraction_button.config(state=NORMAL)
+        
+        # Import here to avoid circular imports
+        from ui.dialogs.data_extraction_results_dialog import DataExtractionResultsDialog
+        
+        # Show results in a dialog
+        dialog = DataExtractionResultsDialog(self.app)
+        dialog.show_results(extracted_data, extraction_type, source, output_format, metadata)
+        
+        # Update status
+        counts = metadata.get('counts', {})
+        total_count = counts.get('total', 0)
+        
+        status_msg = f"Data extraction completed: {total_count} items extracted"
+        if extraction_type != 'comprehensive':
+            specific_count = counts.get(extraction_type, 0)
+            status_msg = f"Extracted {specific_count} {extraction_type.replace('_', ' ')}"
+        
+        self.app.status_manager.success(status_msg)
+    
+    def manage_workflow(self) -> None:
+        """Manage clinical workflows using the workflow agent."""
+        # Reload settings to ensure we have the latest configuration
+        from settings.settings import load_settings, SETTINGS
+        latest_settings = load_settings()
+        SETTINGS.update(latest_settings)
+        
+        # Reload agent manager to pick up latest settings
+        agent_manager.reload_agents()
+        
+        # Check if workflow agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.WORKFLOW):
+            messagebox.showwarning(
+                "Workflow Agent Disabled", 
+                "The Workflow Agent is currently disabled.\n\n"
+                "Please enable it in Settings > Agent Settings to use clinical workflows."
+            )
+            return
+        
+        # Import dialogs here to avoid circular imports
+        from ui.dialogs.workflow_dialog import WorkflowDialog
+        from ui.dialogs.workflow_results_dialog import WorkflowResultsDialog
+        
+        # Show workflow configuration dialog
+        dialog = WorkflowDialog(self.app)
+        result = dialog.show()
+        
+        if not result:
+            return  # User cancelled
+        
+        # Extract configuration
+        workflow_type = result.get("workflow_type", "general")
+        patient_info = result.get("patient_info", {})
+        clinical_context = result.get("clinical_context", "")
+        options = result.get("options", {})
+        
+        # Update status and show progress
+        workflow_name = workflow_type.replace('_', ' ').title()
+        self.app.status_manager.progress(f"Generating {workflow_name} workflow...")
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+        
+        # Disable the workflow button during processing
+        workflow_button = self.app.ui.components.get('generate_workflow_button')
+        if workflow_button:
+            workflow_button.config(state=DISABLED)
+        
+        def task() -> None:
+            try:
+                # Prepare context including any existing content
+                context_parts = []
+                
+                # Add clinical context from dialog
+                if clinical_context:
+                    context_parts.append(f"Clinical Details: {clinical_context}")
+                
+                # Add patient concern if specified
+                if patient_info.get('primary_concern'):
+                    context_parts.append(f"Primary Concern: {patient_info['primary_concern']}")
+                
+                # Check for existing SOAP note or transcript
+                soap_note = self.app.soap_text.get("1.0", "end").strip()
+                transcript = self.app.transcript_text.get("1.0", "end").strip()
+                
+                if soap_note:
+                    context_parts.append(f"SOAP Note Available: Yes")
+                if transcript:
+                    context_parts.append(f"Transcript Available: Yes")
+                
+                full_context = "\n".join(context_parts) if context_parts else None
+                
+                # Create agent task
+                task_data = AgentTask(
+                    task_description=f"Create {workflow_name} workflow",
+                    context=full_context,
+                    input_data={
+                        "workflow_type": workflow_type,
+                        "clinical_context": clinical_context,
+                        "patient_info": patient_info,
+                        "workflow_state": {},
+                        "options": options
+                    }
+                )
+                
+                # Execute workflow generation
+                response = agent_manager.execute_agent_task(AgentType.WORKFLOW, task_data)
+                
+                if response and response.success:
+                    # Schedule UI update on main thread
+                    self.app.after(0, lambda: self._update_workflow_display(
+                        response.result,
+                        workflow_type,
+                        patient_info,
+                        response.metadata
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Error creating workflow: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.app.after(0, lambda: [
+                    self.app.status_manager.error(error_msg),
+                    self.app.progress_bar.stop(),
+                    self.app.progress_bar.pack_forget(),
+                    workflow_button.config(state=NORMAL) if workflow_button else None
+                ])
+        
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+    
+    def _update_workflow_display(self, workflow_text: str, workflow_type: str,
+                                 patient_info: Dict[str, Any], metadata: dict) -> None:
+        """Update UI with workflow results."""
+        # Hide progress
+        self.app.progress_bar.stop()
+        self.app.progress_bar.pack_forget()
+        
+        # Re-enable workflow button
+        workflow_button = self.app.ui.components.get('generate_workflow_button')
+        if workflow_button:
+            workflow_button.config(state=NORMAL)
+        
+        # Import here to avoid circular imports
+        from ui.dialogs.workflow_results_dialog import WorkflowResultsDialog
+        
+        # Show results in dialog
+        dialog = WorkflowResultsDialog(self.app)
+        dialog.show_results(workflow_text, workflow_type, patient_info, metadata)
+        
+        # Update status
+        workflow_name = workflow_type.replace('_', ' ').title()
+        total_steps = metadata.get('total_steps', 0)
+        duration = metadata.get('estimated_duration', 'Unknown')
+        
+        status_msg = f"{workflow_name} workflow generated: {total_steps} steps"
+        if duration != 'Unknown':
+            status_msg += f" (~{duration})"
+        
+        self.app.status_manager.success(status_msg)

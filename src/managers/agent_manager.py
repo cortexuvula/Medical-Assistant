@@ -19,6 +19,10 @@ from ai.agents.models import (
 )
 from ai.agents.synopsis import SynopsisAgent
 from ai.agents.diagnostic import DiagnosticAgent
+from ai.agents.medication import MedicationAgent
+from ai.agents.referral import ReferralAgent
+from ai.agents.data_extraction import DataExtractionAgent
+from ai.agents.workflow import WorkflowAgent
 from settings.settings import SETTINGS
 
 
@@ -34,11 +38,10 @@ class AgentManager:
     AGENT_CLASSES: Dict[AgentType, Type[BaseAgent]] = {
         AgentType.SYNOPSIS: SynopsisAgent,
         AgentType.DIAGNOSTIC: DiagnosticAgent,
-        # Future agent implementations will be added here
-        # AgentType.MEDICATION: MedicationAgent,
-        # AgentType.REFERRAL: ReferralAgent,
-        # AgentType.DATA_EXTRACTION: DataExtractionAgent,
-        # AgentType.WORKFLOW: WorkflowAgent,
+        AgentType.MEDICATION: MedicationAgent,
+        AgentType.REFERRAL: ReferralAgent,
+        AgentType.DATA_EXTRACTION: DataExtractionAgent,
+        AgentType.WORKFLOW: WorkflowAgent,
     }
     
     def __new__(cls):

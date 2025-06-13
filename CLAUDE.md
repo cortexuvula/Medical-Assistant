@@ -2,6 +2,60 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Medication Agent Implementation Summary
+
+The medication agent has been fully integrated into the Medical Assistant application. Key implementation details:
+
+### Architecture
+- **Agent System**: Located in `src/ai/agents/` with base class inheritance pattern
+- **MedicationAgent**: Comprehensive medication analysis in `src/ai/agents/medication.py`
+- **UI Integration**: Button in Generate tab connects to `analyze_medications` command
+- **Dialog System**: Two dialogs for options selection and results display
+
+### Data Flow
+1. User clicks medication analysis button → `app.analyze_medications()`
+2. Shows `MedicationAnalysisDialog` for source/type selection
+3. `document_generators.analyze_medications()` prepares data
+4. `agent_manager.execute_agent_task()` runs the medication agent
+5. Results displayed in `MedicationResultsDialog`
+
+### Key Features
+- Extract medications from clinical text
+- Check drug-drug interactions with severity levels
+- Validate dosing appropriateness
+- Suggest medication alternatives
+- Generate prescriptions
+- Comprehensive analysis with safety warnings
+
+### Important Implementation Details
+- Input data mapping: UI sends "clinical_text" (not "content") to agent
+- Context support: Can analyze from transcript, SOAP note, or context tab
+- Medication list detection: Automatically parses medication lists for comprehensive analysis
+- Settings integration: Uses medication-specific model settings from settings.json
+
+## Workflow Agent Implementation Summary
+
+The workflow agent has been fully integrated into the Medical Assistant application:
+
+### Architecture
+- **WorkflowAgent**: Clinical workflow coordinator in `src/ai/agents/workflow.py`
+- **Workflow Types**: Patient intake, diagnostic workup, treatment protocols, follow-up care
+- **Interactive UI**: Progress tracking with checkboxes and workflow visualization
+
+### Key Features
+- Step-by-step clinical process guidance
+- Interactive checklist for progress tracking
+- Time estimates and decision points
+- Safety checkpoints and documentation requirements
+- Export workflows to multiple formats
+- Flexible and customizable workflows
+
+### UI Integration
+- Button in Generate tab for "Clinical Workflow"
+- `WorkflowDialog` for selecting workflow type and patient context
+- `WorkflowResultsDialog` for displaying and tracking workflow progress
+- Progress indicators and step completion tracking
+
 ## Development Commands
 
 ### Running the Application
@@ -88,12 +142,23 @@ pip install -r requirements-dev.txt  # For development/testing
 - **Recording Dialog**: `src/audio/soap_audio_processor.py` - Handles SOAP recording workflow
 - **Settings Dialogs**: `src/ui/dialogs/dialogs.py` - API keys, prompts, models configuration
 - **Theme System**: `src/ui/theme_manager.py` - Dark/light theme support
+- **Medication Dialogs**: 
+  - `src/ui/dialogs/medication_analysis_dialog.py` - Options for medication analysis
+  - `src/ui/dialogs/medication_results_dialog.py` - Display medication analysis results
+- **Workflow Dialogs**:
+  - `src/ui/dialogs/workflow_dialog.py` - Options for clinical workflow selection
+  - `src/ui/dialogs/workflow_results_dialog.py` - Interactive workflow tracking and display
 
 ### AI Integration
 - **AI Processor**: `src/ai/ai_processor.py` - Core AI integration for document generation
 - **Chat Processor**: `src/ai/chat_processor.py` - Handles chat interactions
 - **SOAP Processor**: `src/ai/soap_processor.py` - SOAP note generation logic
 - **Prompts**: `src/ai/prompts.py` - System prompts for AI models
+- **Agent System**: `src/ai/agents/` - Specialized AI agents for medical tasks
+  - `base.py` - BaseAgent class all agents inherit from
+  - `medication.py` - Medication analysis agent
+  - `models.py` - Pydantic models (AgentConfig, AgentTask, AgentResponse)
+  - Additional agents: synopsis, diagnostic, referral, data_extraction, workflow
 
 ### Important Patterns
 - Use context managers for database transactions
@@ -127,6 +192,9 @@ pip install -r requirements-dev.txt  # For development/testing
 4. **src/processing/processing_queue.py**: Background processing implementation
 5. **src/utils/security.py**: API key encryption and security features
 6. **src/database/db_migrations.py**: Database schema evolution
+7. **src/managers/agent_manager.py**: Agent system management and execution
+8. **src/ai/agents/medication.py**: Medication agent implementation example
+9. **src/ai/agents/workflow.py**: Workflow agent for clinical process coordination
 
 ## Common Development Tasks
 
@@ -143,6 +211,16 @@ pip install -r requirements-dev.txt  # For development/testing
 4. Add to security configuration
 5. For Anthropic/Claude models, dynamic model fetching is already implemented
 
+### Adding a New AI Agent
+1. Create new file in `src/ai/agents/` inheriting from `BaseAgent`
+2. Implement `execute()` method to handle `AgentTask` input
+3. Add agent type to `AgentType` enum in `src/ai/agents/models.py`
+4. Register in `src/managers/agent_manager.py`
+5. Add UI integration in `src/processing/document_generators.py`
+6. Create dialogs in `src/ui/dialogs/` if needed
+7. Add command mapping in `src/core/app.py`
+8. Update settings.json with agent configuration
+
 ### Database Schema Changes
 1. Add migration in `src/database/db_migrations.py`
 2. Increment version number
@@ -158,17 +236,31 @@ When making changes:
 5. Validate security features (API key encryption, rate limiting)
 6. Test chat functionality with various AI providers
 7. Verify UI responsiveness across all tabs
+8. Test agent functionality (medication analysis, diagnostic, etc.)
+9. Verify agent settings persistence and configuration
 
 ## Project Structure (Post-Reorganization)
 
 All source code is now organized under the `src/` directory:
 - `src/ai/` - AI providers and processors
+  - `agents/` - Specialized AI agents
+    - `base.py` - Base agent class
+    - `medication.py` - Medication analysis
+    - `diagnostic.py` - Diagnostic suggestions
+    - `synopsis.py` - SOAP note synopsis
+    - `models.py` - Shared data models
+    - `workflow.py` - Clinical workflow coordination
 - `src/audio/` - Audio recording and processing
 - `src/core/` - Core application logic
 - `src/database/` - Database management
 - `src/managers/` - Various manager classes
+  - `agent_manager.py` - Singleton for agent management
 - `src/processing/` - Document processing
+  - `document_generators.py` - Handles all document generation including agent tasks
 - `src/settings/` - Settings management
 - `src/stt_providers/` - Speech-to-text providers
 - `src/ui/` - User interface components
+  - `dialogs/` - All dialog windows
+    - `medication_analysis_dialog.py` - Medication analysis options
+    - `medication_results_dialog.py` - Medication results display
 - `src/utils/` - Utility functions and helpers

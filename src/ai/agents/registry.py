@@ -24,9 +24,9 @@ class ToolRegistry:
         
     def _initialize_default_tools(self):
         """Initialize default tools. Currently placeholder for future tools."""
-        # Example tools for future implementation
-        example_tools = [
-            Tool(
+        # Register medication-related tools
+        self._tools = {
+            "search_icd_codes": Tool(
                 name="search_icd_codes",
                 description="Search for ICD-10 diagnostic codes",
                 parameters=[
@@ -45,7 +45,7 @@ class ToolRegistry:
                     )
                 ]
             ),
-            Tool(
+            "lookup_drug_interactions": Tool(
                 name="lookup_drug_interactions",
                 description="Check for drug interactions between medications",
                 parameters=[
@@ -57,7 +57,168 @@ class ToolRegistry:
                     )
                 ]
             ),
-            Tool(
+            "search_medications": Tool(
+                name="search_medications",
+                description="Search medication database by name, class, or indication",
+                parameters=[
+                    ToolParameter(
+                        name="query",
+                        type="string",
+                        description="Search query (drug name, class, or indication)",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="search_type",
+                        type="string",
+                        description="Type of search: 'name', 'class', 'indication'",
+                        required=False,
+                        default="name"
+                    ),
+                    ToolParameter(
+                        name="limit",
+                        type="integer",
+                        description="Maximum number of results",
+                        required=False,
+                        default=10
+                    )
+                ]
+            ),
+            "calculate_dosage": Tool(
+                name="calculate_dosage",
+                description="Calculate medication dosage based on patient parameters",
+                parameters=[
+                    ToolParameter(
+                        name="medication",
+                        type="string",
+                        description="Medication name",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="indication",
+                        type="string",
+                        description="Indication for use",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="patient_weight_kg",
+                        type="number",
+                        description="Patient weight in kilograms",
+                        required=False
+                    ),
+                    ToolParameter(
+                        name="patient_age",
+                        type="integer",
+                        description="Patient age in years",
+                        required=False
+                    ),
+                    ToolParameter(
+                        name="renal_function",
+                        type="string",
+                        description="Renal function status: 'normal', 'mild', 'moderate', 'severe'",
+                        required=False,
+                        default="normal"
+                    )
+                ]
+            ),
+            "check_contraindications": Tool(
+                name="check_contraindications",
+                description="Check medication contraindications based on patient conditions",
+                parameters=[
+                    ToolParameter(
+                        name="medication",
+                        type="string",
+                        description="Medication name",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="patient_conditions",
+                        type="array",
+                        description="List of patient medical conditions",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="patient_allergies",
+                        type="array",
+                        description="List of patient allergies",
+                        required=False,
+                        default=[]
+                    )
+                ]
+            ),
+            "format_prescription": Tool(
+                name="format_prescription",
+                description="Format medication prescription for printing or electronic transmission",
+                parameters=[
+                    ToolParameter(
+                        name="medication_name",
+                        type="string",
+                        description="Medication name (generic or brand)",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="dose",
+                        type="string",
+                        description="Dose amount and units",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="route",
+                        type="string",
+                        description="Route of administration",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="frequency",
+                        type="string",
+                        description="Dosing frequency",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="duration",
+                        type="string",
+                        description="Duration of treatment",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="quantity",
+                        type="string",
+                        description="Quantity to dispense",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="refills",
+                        type="integer",
+                        description="Number of refills",
+                        required=False,
+                        default=0
+                    ),
+                    ToolParameter(
+                        name="indication",
+                        type="string",
+                        description="Indication for use",
+                        required=False
+                    )
+                ]
+            ),
+            "check_duplicate_therapy": Tool(
+                name="check_duplicate_therapy",
+                description="Check for duplicate therapy in medication list",
+                parameters=[
+                    ToolParameter(
+                        name="medications",
+                        type="array",
+                        description="List of current medications",
+                        required=True
+                    ),
+                    ToolParameter(
+                        name="new_medication",
+                        type="string",
+                        description="New medication being considered",
+                        required=True
+                    )
+                ]
+            ),
+            "format_referral": Tool(
                 name="format_referral",
                 description="Format a referral letter with proper structure",
                 parameters=[
@@ -82,7 +243,7 @@ class ToolRegistry:
                     )
                 ]
             ),
-            Tool(
+            "extract_vitals": Tool(
                 name="extract_vitals",
                 description="Extract vital signs from clinical text",
                 parameters=[
@@ -94,7 +255,7 @@ class ToolRegistry:
                     )
                 ]
             ),
-            Tool(
+            "calculate_bmi": Tool(
                 name="calculate_bmi",
                 description="Calculate BMI from height and weight",
                 parameters=[
@@ -112,10 +273,7 @@ class ToolRegistry:
                     )
                 ]
             )
-        ]
-        
-        # Note: These are placeholder tools for future implementation
-        # They are not currently functional but show the intended pattern
+        }
         
     def register_tool(self, tool: Tool):
         """
@@ -170,7 +328,7 @@ class ToolRegistry:
         """
         Get tools suitable for a specific agent type.
         
-        This is a placeholder for future tool filtering based on agent type.
+        This filters tools based on agent capabilities.
         
         Args:
             agent_type: Type of agent
@@ -178,9 +336,34 @@ class ToolRegistry:
         Returns:
             Dictionary of suitable tools
         """
-        # For now, return empty dict as no tools are implemented
-        # In the future, this would filter tools based on agent capabilities
-        return {}
+        # Define tool mappings for different agent types
+        agent_tool_mappings = {
+            "medication": [
+                "lookup_drug_interactions",
+                "search_medications",
+                "calculate_dosage",
+                "check_contraindications",
+                "format_prescription",
+                "check_duplicate_therapy"
+            ],
+            "diagnostic": [
+                "search_icd_codes",
+                "extract_vitals",
+                "calculate_bmi"
+            ],
+            "referral": [
+                "format_referral"
+            ]
+        }
+        
+        # Get tools for the specified agent type
+        tool_names = agent_tool_mappings.get(agent_type.lower(), [])
+        
+        # Return dictionary of matching tools
+        return {
+            name: tool for name, tool in self._tools.items()
+            if name in tool_names
+        }
 
 
 # Global tool registry instance
