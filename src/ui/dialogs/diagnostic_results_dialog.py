@@ -95,12 +95,20 @@ class DiagnosticResultsDialog:
         text_frame.pack(fill=BOTH, expand=True, pady=(0, 15))
         
         # Create text widget with scrollbar
+        # Get current theme colors
+        style = ttk.Style()
+        bg_color = style.lookup('TFrame', 'background')
+        fg_color = style.lookup('TLabel', 'foreground')
+        
         self.result_text = tk.Text(
             text_frame,
             wrap=WORD,
             font=("Segoe UI", 11),
             padx=10,
-            pady=10
+            pady=10,
+            bg=bg_color if bg_color else 'white',
+            fg=fg_color if fg_color else 'black',
+            insertbackground=fg_color if fg_color else 'black'
         )
         self.result_text.pack(side=LEFT, fill=BOTH, expand=True)
         

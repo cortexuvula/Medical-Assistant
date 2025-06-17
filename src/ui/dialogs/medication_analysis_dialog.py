@@ -47,20 +47,61 @@ class MedicationAnalysisDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Medication Analysis Options")
-        self.dialog.geometry("900x950")
-        self.dialog.minsize(850, 900)  # Set minimum size
+        
+        # Get screen dimensions
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        
+        # Set dialog size to fit screen better
+        dialog_width = min(900, int(screen_width * 0.8))
+        dialog_height = min(700, int(screen_height * 0.85))
+        
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog.minsize(800, 500)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
         # Center the dialog
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
+        x = (screen_width - dialog_width) // 2
+        y = (screen_height - dialog_height) // 2
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
         
-        # Main container
-        main_frame = ttk.Frame(self.dialog, padding=20)
-        main_frame.pack(fill=BOTH, expand=True)
+        # Create main container
+        main_container = ttk.Frame(self.dialog)
+        main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
+        
+        # Create button frame first (at bottom)
+        button_frame = ttk.Frame(main_container)
+        button_frame.pack(fill=X, side=BOTTOM, pady=(10, 0))
+        
+        # Create frame for scrollable content
+        scroll_container = ttk.Frame(main_container)
+        scroll_container.pack(fill=BOTH, expand=True)
+        
+        # Create scrollable frame
+        # Get theme colors for canvas
+        style = ttk.Style()
+        bg_color = style.lookup('TFrame', 'background')
+        
+        canvas = tk.Canvas(scroll_container, bg=bg_color if bg_color else 'white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        # Use scrollable_frame as the main frame
+        main_frame = scrollable_frame
         
         # Title
         title_label = ttk.Label(
@@ -68,11 +109,11 @@ class MedicationAnalysisDialog:
             text="Configure Medication Analysis",
             font=("Segoe UI", 14, "bold")
         )
-        title_label.pack(pady=(0, 20))
+        title_label.pack(pady=(0, 10))
         
         # Analysis type selection
-        type_frame = ttk.LabelFrame(main_frame, text="Analysis Type", padding=15)
-        type_frame.pack(fill=X, pady=(0, 20))
+        type_frame = ttk.LabelFrame(main_frame, text="Analysis Type", padding=10)
+        type_frame.pack(fill=X, pady=(0, 10))
         
         self.analysis_type_var = tk.StringVar(value="comprehensive")
         
@@ -88,7 +129,7 @@ class MedicationAnalysisDialog:
         
         for value, text, description in analysis_types:
             frame = ttk.Frame(type_frame)
-            frame.pack(fill=X, pady=5)
+            frame.pack(fill=X, pady=2)
             
             ttk.Radiobutton(
                 frame,
@@ -105,8 +146,8 @@ class MedicationAnalysisDialog:
             ).pack(anchor=W, padx=(20, 0))
         
         # Source selection
-        source_frame = ttk.LabelFrame(main_frame, text="Content Source", padding=15)
-        source_frame.pack(fill=X, pady=(0, 20))
+        source_frame = ttk.LabelFrame(main_frame, text="Content Source", padding=10)
+        source_frame.pack(fill=X, pady=(0, 10))
         
         # Set default source based on availability
         if self.has_transcript:
@@ -180,8 +221,8 @@ class MedicationAnalysisDialog:
         custom_radio.pack(anchor=W, pady=5)
         
         # Custom medications input
-        custom_frame = ttk.LabelFrame(main_frame, text="Custom Input (Optional)", padding=15)
-        custom_frame.pack(fill=BOTH, expand=True, pady=(0, 20))
+        custom_frame = ttk.LabelFrame(main_frame, text="Custom Input (Optional)", padding=10)
+        custom_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
         
         # Instructions
         instructions = ttk.Label(
@@ -200,7 +241,7 @@ class MedicationAnalysisDialog:
         
         self.custom_text = tk.Text(
             text_frame,
-            height=8,
+            height=3,
             wrap=WORD,
             yscrollcommand=scrollbar.set
         )
@@ -216,10 +257,7 @@ class MedicationAnalysisDialog:
         )
         example_text.pack(anchor=W, pady=(10, 0))
         
-        # Buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=X)
-        
+        # Add buttons to the button frame created earlier
         ttk.Button(
             button_frame,
             text="Cancel",

@@ -25,15 +25,25 @@ class DataExtractionDialog:
         # Create dialog
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Data Extraction Options")
-        self.dialog.geometry("700x600")
+        
+        # Get screen dimensions
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        
+        # Set dialog size to fit screen better
+        dialog_width = min(700, int(screen_width * 0.7))
+        dialog_height = min(650, int(screen_height * 0.85))
+        
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog.minsize(600, 500)
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
         # Center the dialog
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
+        x = (screen_width - dialog_width) // 2
+        y = (screen_height - dialog_height) // 2
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
         
         self._create_widgets()
         
@@ -42,8 +52,37 @@ class DataExtractionDialog:
         
     def _create_widgets(self):
         """Create dialog widgets."""
-        # Main frame with padding
-        main_frame = ttk.Frame(self.dialog, padding="20")
+        # Main container
+        main_container = ttk.Frame(self.dialog)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Create button frame first (at bottom)
+        button_frame = ttk.Frame(main_container)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
+        
+        # Create frame for scrollable content
+        scroll_container = ttk.Frame(main_container)
+        scroll_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(scroll_container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Main frame with padding inside scrollable area
+        main_frame = ttk.Frame(scrollable_frame, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Title
@@ -139,10 +178,7 @@ class DataExtractionDialog:
         )
         info_label.pack(pady=10)
         
-        # Button frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(20, 0))
-        
+        # Add buttons to the button_frame created at the top
         # Cancel button
         cancel_btn = ttk.Button(
             button_frame,
