@@ -362,8 +362,39 @@ class WorkflowUI:
         """
         generate_frame = ttk.Frame(self.parent)
         
+        # Create a canvas and scrollbar for scrolling
+        canvas = tk.Canvas(generate_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(generate_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Bind mouse wheel for scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        def _bind_mousewheel(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        def _unbind_mousewheel(event):
+            canvas.unbind_all("<MouseWheel>")
+        
+        # Bind/unbind mousewheel when entering/leaving the canvas
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
+        
         # Document generation options
-        gen_frame = ttk.LabelFrame(generate_frame, text="Generate Documents", padding=15)
+        gen_frame = ttk.LabelFrame(scrollable_frame, text="Generate Documents", padding=15)
         gen_frame.pack(fill=BOTH, expand=True, padx=20, pady=20)
         
         # Create large buttons for each document type
@@ -419,36 +450,38 @@ class WorkflowUI:
             }
         ]
         
+        # Use a more compact layout with smaller padding
         for i, doc in enumerate(documents):
             # Create a frame for each document type
             doc_frame = ttk.Frame(gen_frame)
-            doc_frame.grid(row=i, column=0, sticky="ew", padx=20, pady=10)
+            doc_frame.grid(row=i, column=0, sticky="ew", padx=10, pady=5)
             gen_frame.columnconfigure(0, weight=1)
             
-            # Large button
+            # Large button with responsive width
             btn = ttk.Button(
                 doc_frame,
                 text=doc["text"],
                 command=doc["command"],
                 bootstyle=doc["bootstyle"],
-                width=25,
+                width=20,  # Slightly smaller width
                 style="Large.TButton"
             )
-            btn.pack(side=LEFT, padx=(0, 15))
+            btn.pack(side=LEFT, padx=(0, 10))
             self.components[f"generate_{doc['name']}_button"] = btn
             
-            # Description
+            # Description with wrapping
             desc_label = ttk.Label(
                 doc_frame,
                 text=doc["description"],
-                font=("Segoe UI", 10)
+                font=("Segoe UI", 9),  # Slightly smaller font
+                wraplength=300  # Enable text wrapping
             )
             desc_label.pack(side=LEFT, fill=X, expand=True)
             
             ToolTip(btn, doc["description"])
         
         # Smart suggestions frame (initially hidden)
-        suggestions_frame = ttk.LabelFrame(generate_frame, text="Suggestions", padding=10)
+        suggestions_frame = ttk.LabelFrame(scrollable_frame, text="Suggestions", padding=10)
         self.components['suggestions_frame'] = suggestions_frame
         
         return generate_frame
