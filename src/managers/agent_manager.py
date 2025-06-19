@@ -23,6 +23,7 @@ from ai.agents.medication import MedicationAgent
 from ai.agents.referral import ReferralAgent
 from ai.agents.data_extraction import DataExtractionAgent
 from ai.agents.workflow import WorkflowAgent
+from ai.agents.chat import ChatAgent
 from settings.settings import SETTINGS
 
 
@@ -42,6 +43,7 @@ class AgentManager:
         AgentType.REFERRAL: ReferralAgent,
         AgentType.DATA_EXTRACTION: DataExtractionAgent,
         AgentType.WORKFLOW: WorkflowAgent,
+        AgentType.CHAT: ChatAgent,
     }
     
     def __new__(cls):

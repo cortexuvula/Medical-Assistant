@@ -60,6 +60,7 @@ class AgentType(str, Enum):
     REFERRAL = "referral"
     DATA_EXTRACTION = "data_extraction"
     WORKFLOW = "workflow"
+    CHAT = "chat"
 
 
 class ResponseFormat(str, Enum):

@@ -1,0 +1,53 @@
+{
+  "mcp_config": {
+    "enabled": true,
+    "servers": {
+      "brave-search": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-brave-search"
+        ],
+        "env": {
+          "BRAVE_API_KEY": "YOUR_BRAVE_API_KEY_HERE"
+        },
+        "enabled": true,
+        "description": "Brave Search for web queries"
+      },
+      "filesystem": {
+        "command": "npx",
+        "args": [
+          "-y", 
+          "@modelcontextprotocol/server-filesystem",
+          "/path/to/allowed/directory"
+        ],
+        "env": {},
+        "enabled": false,
+        "description": "File system access (be careful with permissions)"
+      },
+      "github": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+        },
+        "enabled": false,
+        "description": "GitHub repository access"
+      },
+      "medical-references": {
+        "command": "python",
+        "args": [
+          "/path/to/medical_reference_server.py"
+        ],
+        "env": {
+          "MEDICAL_DB_PATH": "/path/to/medical/database"
+        },
+        "enabled": false,
+        "description": "Custom medical reference MCP server"
+      }
+    }
+  }
+}

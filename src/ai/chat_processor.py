@@ -9,6 +9,16 @@ from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
 from settings.settings import SETTINGS
+from ai.agents.chat import ChatAgent
+from ai.agents.models import AgentTask
+from ai.tools.tool_executor import ToolExecutor
+from ai.tools.tool_registry import tool_registry
+# Import to register built-in tools
+import ai.tools.builtin_tools
+import ai.tools.medical_tools
+# MCP support
+from ai.mcp.mcp_manager import mcp_manager
+from ai.mcp.mcp_tool_wrapper import register_mcp_tools
 
 
 class ChatProcessor:
@@ -30,6 +40,22 @@ class ChatProcessor:
         self.max_context_length = chat_config.get("max_context_length", 8000)
         self.max_history_items = chat_config.get("max_history_items", 10)
         self.temperature = chat_config.get("temperature", 0.3)
+        self.use_tools = chat_config.get("enable_tools", True)
+        
+        # Initialize tool executor first
+        if self.use_tools:
+            self.tool_executor = ToolExecutor(confirm_callback=self._confirm_tool_execution)
+        else:
+            self.tool_executor = None
+            
+        # Initialize MCP manager and register tools
+        self._initialize_mcp()
+        
+        # Initialize chat agent after MCP tools are registered
+        if self.use_tools:
+            self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
+        else:
+            self.chat_agent = None
         
     def process_message(self, user_message: str, callback: Optional[Callable] = None):
         """
@@ -69,15 +95,15 @@ class ChatProcessor:
             # Construct prompt for AI
             prompt = self._construct_prompt(user_message, context_data)
             
-            # Get AI response
-            ai_response = self._get_ai_response(prompt)
+            # Get AI response (might include tool usage)
+            ai_response, tool_info = self._get_ai_response_with_tools(prompt)
             
             if ai_response:
                 # Add AI response to history
                 self._add_to_history("assistant", ai_response)
                 
                 # Process the response (apply changes if requested)
-                self._process_ai_response(user_message, ai_response, context_data)
+                self._process_ai_response(user_message, ai_response, context_data, tool_info)
                 
             else:
                 self.app.status_manager.error("Failed to get AI response")
@@ -182,9 +208,75 @@ class ChatProcessor:
         
         return "\n".join(prompt_parts)
         
-    def _get_ai_response(self, prompt: str) -> Optional[str]:
+    def _should_use_tools(self, user_message: str) -> bool:
+        """Determine if the message might benefit from tool usage."""
+        if not self.use_tools or not self.chat_agent:
+            return False
+            
+        # Keywords that suggest tool usage
+        tool_keywords = [
+            "calculate", "compute", "math", "add", "subtract", "multiply", "divide",
+            "what time", "what date", "current time", "today", "tomorrow",
+            "read file", "open file", "save file", "write file",
+            "search", "find", "look up",
+            "parse json", "format json",
+            "bmi", "body mass index", "drug interaction", "medication interaction",
+            "dosage", "dose calculation", "mg/kg"
+        ]
+        
+        message_lower = user_message.lower()
+        return any(keyword in message_lower for keyword in tool_keywords)
+    
+    def _get_ai_response_with_tools(self, prompt: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Get response from AI provider, possibly using tools."""
+        response_text, tool_info = self._get_ai_response(prompt)
+        return response_text, tool_info
+    
+    def _get_ai_response(self, prompt: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
         """Get response from AI provider."""
         try:
+            # Extract the actual user message from the prompt
+            # The prompt contains system messages and context, but we need just the user's request
+            user_message = None
+            if "User Request: " in prompt:
+                # Extract the user message from the constructed prompt
+                parts = prompt.split("User Request: ", 1)
+                if len(parts) > 1:
+                    user_message = parts[1].split("\n\n")[0].strip()
+            
+            # Check if we should use the chat agent with tools
+            if user_message and self._should_use_tools(user_message):
+                logging.info("Using chat agent with tools for this request")
+                
+                # Create an agent task with just the user message
+                task = AgentTask(
+                    task_description=user_message,
+                    context=self.get_context_from_history(max_entries=3)
+                )
+                
+                # Execute with chat agent
+                response = self.chat_agent.execute(task)
+                
+                if response.success:
+                    # Log tool usage
+                    if response.tool_calls:
+                        logging.info(f"Used {len(response.tool_calls)} tools")
+                        for tool_call in response.tool_calls:
+                            logging.info(f"Tool: {tool_call.tool_name}")
+                    
+                    # Debug log the response
+                    logging.debug(f"Chat agent response length: {len(response.result) if response.result else 0}")
+                    logging.debug(f"Response preview: {response.result[:200] if response.result else 'None'}...")
+                    
+                    tool_info = {
+                        "tool_calls": response.tool_calls,
+                        "metadata": response.metadata
+                    }
+                    return response.result, tool_info
+                else:
+                    logging.error(f"Chat agent failed: {response.error}")
+                    # Fall back to regular AI
+            
             # Import AI functions
             from ai.ai import call_openai, call_perplexity, call_grok, call_ai
             
@@ -224,14 +316,14 @@ class ChatProcessor:
                     temperature=self.temperature
                 )
                     
-            return response
+            return response, None  # No tool info for regular AI calls
                 
         except Exception as e:
             logging.error(f"Error getting AI response: {e}", exc_info=True)
             
-        return None
+        return None, None
         
-    def _process_ai_response(self, user_message: str, ai_response: str, context_data: Dict[str, Any]):
+    def _process_ai_response(self, user_message: str, ai_response: str, context_data: Dict[str, Any], tool_info: Dict[str, Any] = None):
         """Process the AI response and apply changes if needed."""
         
         # Show the response to the user first
@@ -239,7 +331,7 @@ class ChatProcessor:
         
         # Special handling for chat tab - append conversation instead of replacing
         if context_data.get("tab_name") == "chat":
-            self._append_to_chat_tab(user_message, ai_response)
+            self._append_to_chat_tab(user_message, ai_response, tool_info)
         else:
             # Check if user wants to apply changes to the document
             if self._should_apply_to_document(user_message, ai_response):
@@ -470,7 +562,56 @@ class ChatProcessor:
         """Get conversation history."""
         return self.conversation_history.copy()
     
-    def _append_to_chat_tab(self, user_message: str, ai_response: str):
+    def get_context_from_history(self, max_entries: int = 5) -> str:
+        """Get context from recent conversation history."""
+        if not self.conversation_history:
+            return ""
+            
+        recent_history = self.conversation_history[-max_entries:]
+        context_parts = []
+        
+        for entry in recent_history:
+            role = entry["role"].title()
+            message = entry["message"]
+            context_parts.append(f"{role}: {message}")
+            
+        return "\n\n".join(context_parts)
+    
+    def _confirm_tool_execution(self, message: str) -> bool:
+        """Callback to confirm tool execution with the user."""
+        try:
+            from tkinter import messagebox
+            
+            # Run on main thread
+            result = [False]
+            
+            def show_confirmation():
+                result[0] = messagebox.askyesno(
+                    "Tool Confirmation",
+                    message,
+                    parent=self.app
+                )
+                
+            self.app.after(0, show_confirmation)
+            
+            # Wait for user response (with timeout)
+            import time
+            timeout = 30  # 30 seconds timeout
+            start_time = time.time()
+            
+            while len(result) == 1 and not result[0]:
+                time.sleep(0.1)
+                if time.time() - start_time > timeout:
+                    logging.warning("Tool confirmation timed out")
+                    return False
+                    
+            return result[0]
+            
+        except Exception as e:
+            logging.error(f"Error showing tool confirmation: {e}")
+            return False  # Deny on error
+    
+    def _append_to_chat_tab(self, user_message: str, ai_response: str, tool_info: Dict[str, Any] = None):
         """Append conversation to chat tab in ChatGPT style."""
         def append_chat():
             try:
@@ -489,6 +630,17 @@ class ChatProcessor:
                 
                 # Add user message
                 chat_widget.insert("end", f"User: {user_message}\n\n", "user")
+                
+                # Add tool usage info if present
+                if tool_info and tool_info.get("tool_calls"):
+                    chat_widget.insert("end", "Tools Used:\n", "tool_header")
+                    for tool_call in tool_info["tool_calls"]:
+                        chat_widget.insert("end", f"  • {tool_call.tool_name}", "tool_name")
+                        if tool_call.arguments:
+                            args_str = ", ".join(f"{k}={v}" for k, v in tool_call.arguments.items())
+                            chat_widget.insert("end", f"({args_str})", "tool_args")
+                        chat_widget.insert("end", "\n")
+                    chat_widget.insert("end", "\n")
                 
                 # Add AI response with copy button
                 chat_widget.insert("end", "Assistant: ", "assistant_label")
@@ -537,6 +689,9 @@ class ChatProcessor:
                 chat_widget.tag_config("user", foreground="#0066cc", font=("Arial", 11, "bold"))
                 chat_widget.tag_config("assistant_label", foreground="#008800", font=("Arial", 11, "bold"))
                 chat_widget.tag_config("assistant_response", foreground="#008800", font=("Arial", 11))
+                chat_widget.tag_config("tool_header", foreground="#FF6B35", font=("Arial", 10, "bold"))
+                chat_widget.tag_config("tool_name", foreground="#FF6B35", font=("Arial", 10))
+                chat_widget.tag_config("tool_args", foreground="#999999", font=("Arial", 9))
                 
                 # Add hover effect for responses
                 chat_widget.tag_bind(f"response_{timestamp}", "<Enter>", 
@@ -647,3 +802,63 @@ class ChatProcessor:
             
         except Exception as e:
             logging.error(f"Error selecting response: {e}")
+    
+    def _initialize_mcp(self):
+        """Initialize MCP manager and register tools."""
+        try:
+            mcp_config = SETTINGS.get("mcp_config", {})
+            
+            # Load MCP servers
+            mcp_manager.load_config(mcp_config)
+            
+            # Register MCP tools with the tool registry
+            if mcp_config.get("enabled", False):
+                registered = register_mcp_tools(tool_registry, mcp_manager)
+                if registered > 0:
+                    logging.info(f"Registered {registered} MCP tools")
+                    
+        except Exception as e:
+            logging.error(f"Error initializing MCP: {e}")
+    
+    def reload_mcp_tools(self):
+        """Reload MCP tools after configuration change."""
+        try:
+            # Stop all MCP servers
+            mcp_manager.stop_all()
+            
+            # Clear existing MCP tools
+            tool_registry.clear_category("mcp")
+            
+            # Reinitialize
+            self._initialize_mcp()
+            
+            # Recreate chat agent if tools are enabled
+            if self.use_tools:
+                self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
+                
+        except Exception as e:
+            logging.error(f"Error reloading MCP tools: {e}")
+    
+    def set_tools_enabled(self, enabled: bool):
+        """Enable or disable tool usage.
+        
+        Args:
+            enabled: Whether to enable tools
+        """
+        self.use_tools = enabled
+        
+        if enabled and not self.chat_agent:
+            # Create chat agent with tools
+            self.tool_executor = ToolExecutor(confirm_callback=self._confirm_tool_execution)
+            self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
+        elif not enabled:
+            # Disable tools
+            self.chat_agent = None
+            
+        # Update settings
+        chat_config = SETTINGS.get("chat_interface", {})
+        chat_config["enable_tools"] = enabled
+        SETTINGS["chat_interface"] = chat_config
+        
+        from settings.settings import save_settings
+        save_settings(SETTINGS)

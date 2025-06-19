@@ -160,6 +160,30 @@ class ChatUI:
         self.suggestions_frame = ttk.Frame(bottom_row)
         self.suggestions_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
+        # Tool toggle checkbox
+        from settings.settings import SETTINGS
+        self.tools_enabled_var = tk.BooleanVar(value=SETTINGS.get("chat_interface", {}).get("enable_tools", True))
+        self.tools_checkbox = ttk.Checkbutton(
+            bottom_row,
+            text="Enable Tools",
+            variable=self.tools_enabled_var,
+            command=self._toggle_tools,
+            bootstyle="info-round-toggle"
+        )
+        self.tools_checkbox.pack(side=tk.LEFT, padx=(10, 5))
+        ToolTip(self.tools_checkbox, "Enable AI tools for calculations, file operations, etc.")
+        
+        # MCP Tools button
+        self.mcp_btn = ttk.Button(
+            bottom_row,
+            text="MCP Tools",
+            command=self._show_mcp_config,
+            width=10,
+            bootstyle="warning-outline"
+        )
+        self.mcp_btn.pack(side=tk.LEFT, padx=(5, 0))
+        ToolTip(self.mcp_btn, "Configure MCP (Model Context Protocol) tools")
+        
         # Manage suggestions button
         self.manage_btn = ttk.Button(
             bottom_row,
@@ -478,3 +502,52 @@ class ChatUI:
             self.content_frame.pack_forget()
             self.collapse_btn.config(text="v")
             self._collapsed = True
+    
+    def _toggle_tools(self):
+        """Toggle tool usage on/off."""
+        enabled = self.tools_enabled_var.get()
+        
+        # Update settings
+        from settings.settings import SETTINGS, save_settings
+        SETTINGS["chat_interface"]["enable_tools"] = enabled
+        save_settings(SETTINGS)
+        
+        # Update chat processor if it exists
+        if hasattr(self.app, 'chat_processor') and self.app.chat_processor:
+            self.app.chat_processor.use_tools = enabled
+            
+            # Re-initialize chat agent if needed
+            if enabled and not self.app.chat_processor.chat_agent:
+                from ai.tools.tool_executor import ToolExecutor
+                from ai.agents.chat import ChatAgent
+                self.app.chat_processor.tool_executor = ToolExecutor(
+                    confirm_callback=self.app.chat_processor._confirm_tool_execution
+                )
+                self.app.chat_processor.chat_agent = ChatAgent(
+                    tool_executor=self.app.chat_processor.tool_executor
+                )
+            elif not enabled:
+                self.app.chat_processor.chat_agent = None
+                
+        # Show status
+        status = "enabled" if enabled else "disabled"
+        self.app.status_manager.info(f"AI tools {status}")
+    
+    def _show_mcp_config(self):
+        """Show MCP configuration dialog."""
+        try:
+            from ui.dialogs.mcp_config_dialog import show_mcp_config_dialog
+            from ai.mcp.mcp_manager import mcp_manager
+            from settings.settings import SETTINGS
+            
+            # Show configuration dialog
+            if show_mcp_config_dialog(self.app, mcp_manager, SETTINGS):
+                # Configuration was saved, reload MCP tools
+                if hasattr(self.app, 'chat_processor') and self.app.chat_processor:
+                    self.app.chat_processor.reload_mcp_tools()
+                    
+                self.app.status_manager.success("MCP configuration updated")
+                
+        except Exception as e:
+            logging.error(f"Error showing MCP config dialog: {e}")
+            self.app.status_manager.error("Failed to open MCP configuration")

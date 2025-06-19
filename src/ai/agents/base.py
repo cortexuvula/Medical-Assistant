@@ -68,12 +68,32 @@ class BaseAgent(ABC):
         temperature = kwargs.get('temperature', self.config.temperature)
         
         try:
-            response = call_ai(
-                model=model,
-                system_message=system_message,
-                prompt=prompt,
-                temperature=temperature
-            )
+            # For chat agents, ensure we use the configured model
+            if hasattr(self.config, 'provider') and self.config.provider:
+                # If provider is specified, let call_ai route to the right provider
+                # but ensure our model preference is respected
+                from ..ai import call_openai, call_anthropic, call_perplexity, call_grok, call_ollama
+                
+                if self.config.provider == "openai":
+                    response = call_openai(model, system_message, prompt, temperature)
+                elif self.config.provider == "anthropic":
+                    response = call_anthropic(model, system_message, prompt, temperature)
+                elif self.config.provider == "perplexity":
+                    response = call_perplexity(system_message, prompt, temperature)
+                elif self.config.provider == "grok":
+                    response = call_grok(model, system_message, prompt, temperature)
+                elif self.config.provider == "ollama":
+                    response = call_ollama(system_message, prompt, temperature)
+                else:
+                    # Fallback to generic call_ai
+                    response = call_ai(model, system_message, prompt, temperature)
+            else:
+                response = call_ai(
+                    model=model,
+                    system_message=system_message,
+                    prompt=prompt,
+                    temperature=temperature
+                )
             return response
         except Exception as e:
             logger.error(f"Error calling AI for agent {self.config.name}: {e}")

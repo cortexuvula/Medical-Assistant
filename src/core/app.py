@@ -1278,6 +1278,14 @@ class MedicalDictationApp(ttk.Window):
                 except Exception as e:
                     logging.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
             
+            # Shutdown MCP servers
+            from ai.mcp.mcp_manager import mcp_manager
+            logging.info("Shutting down MCP servers...")
+            try:
+                mcp_manager.stop_all()
+            except Exception as e:
+                logging.error(f"Error shutting down MCP servers: {str(e)}", exc_info=True)
+            
             # Shutdown all executor pools properly - wait for tasks to complete
             logging.info("Shutting down executor pools...")
             for executor_name in ['io_executor', 'cpu_executor', 'executor']:
@@ -1797,11 +1805,23 @@ class MedicalDictationApp(ttk.Window):
                     "What else can you help with?"
                 ]
             else:
-                return [
-                    "What is this medication for?",
-                    "Explain this medical term",
-                    "Help me understand my diagnosis"
-                ]
+                # Include tool examples if tools are enabled
+                chat_config = SETTINGS.get("chat_interface", {})
+                if chat_config.get("enable_tools", True):
+                    return [
+                        "Calculate BMI for 70kg, 175cm",
+                        "Check drug interaction warfarin aspirin",
+                        "What's 15 * 8 + 32?",
+                        "What's the current time?",
+                        "Calculate dosage: 25mg/kg for 30kg",
+                        "Explain this medical term"
+                    ]
+                else:
+                    return [
+                        "What is this medication for?",
+                        "Explain this medical term",
+                        "Help me understand my diagnosis"
+                    ]
         return []
     
     def _focus_chat_input(self):
