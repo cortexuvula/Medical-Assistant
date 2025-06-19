@@ -21,6 +21,7 @@ from ai.agents.models import (
 )
 from ai.agents.synopsis import SynopsisAgent
 from ui.dialogs.agent_settings_dialog import AgentSettingsDialog
+from ai.model_provider import model_provider
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         provider_combo = ttk.Combobox(
             parent,
             textvariable=provider_var,
-            values=list(self.PROVIDER_MODELS.keys()),
+            values=model_provider.get_all_providers(),
             state="readonly",
             width=20
         )
@@ -117,10 +118,13 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         model_var = tk.StringVar(value=config.get("model", "gpt-4"))
         self.widgets[agent_key]["model"] = model_var
         
+        # Get models dynamically
+        models = model_provider.get_available_models(current_provider)
+        
         model_combo = ttk.Combobox(
             parent,
             textvariable=model_var,
-            values=self.PROVIDER_MODELS.get(current_provider, []),
+            values=models,
             state="readonly",
             width=30
         )
