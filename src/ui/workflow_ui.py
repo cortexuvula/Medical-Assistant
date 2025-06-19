@@ -555,14 +555,14 @@ class WorkflowUI:
         self.components['context_content_frame'] = content_frame
         
         # Quick templates
-        self.templates_frame = ttk.LabelFrame(content_frame, text="Quick Templates", padding=5)
+        self.templates_frame = ttk.LabelFrame(content_frame, text="Quick Templates", padding=10)
         self.templates_frame.pack(fill=X, pady=(0, 10))
         
         # Create initial templates
         self._create_template_buttons()
         
         # Context text area
-        text_frame = ttk.LabelFrame(content_frame, text="Context Information", padding=5)
+        text_frame = ttk.LabelFrame(content_frame, text="Context Information", padding=10)
         text_frame.pack(fill=BOTH, expand=True)
         
         # Create text widget with scrollbar
@@ -734,10 +734,9 @@ class WorkflowUI:
                 self.templates_frame,
                 text=template,
                 bootstyle="outline",
-                width=20,
                 command=lambda t=template: self._apply_context_template(t)
             )
-            btn.pack(pady=2, fill=X)
+            btn.pack(pady=3, padx=5, fill=X)
         
         # Add custom templates
         custom_templates = SETTINGS.get("custom_context_templates", {})
@@ -749,7 +748,7 @@ class WorkflowUI:
             # Add custom template buttons
             for template_name, template_text in custom_templates.items():
                 btn_frame = ttk.Frame(self.templates_frame)
-                btn_frame.pack(fill=X, pady=1)
+                btn_frame.pack(fill=X, pady=3, padx=5)
                 
                 # Template button
                 btn = ttk.Button(
@@ -758,7 +757,7 @@ class WorkflowUI:
                     bootstyle="info-outline",
                     command=lambda t=template_text: self._apply_custom_template(t)
                 )
-                btn.pack(side=LEFT, fill=X, expand=True)
+                btn.pack(side=LEFT, fill=X, expand=True, padx=(0, 3))
                 
                 # Delete button
                 del_btn = ttk.Button(
@@ -1423,62 +1422,69 @@ class WorkflowUI:
         self.recordings_tree.tag_configure("processing_content", foreground="#f39c12")  # Orange for processing
         self.recordings_tree.tag_configure("failed_content", foreground="#e74c3c")  # Red for failed
         
-        # Action buttons
+        # Action buttons - split into two rows for better layout
         actions_frame = ttk.Frame(recordings_frame)
         actions_frame.pack(fill=X, pady=(5, 0))
         
+        # First row of buttons
+        row1_frame = ttk.Frame(actions_frame)
+        row1_frame.pack(fill=X)
+        
         # Load button
         load_btn = ttk.Button(
-            actions_frame,
+            row1_frame,
             text="Load",
             command=self._load_selected_recording,
             bootstyle="primary-outline",
-            width=8
+            width=10
         )
-        load_btn.pack(side=LEFT, padx=(0, 3))
+        load_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(load_btn, "Load selected recording")
         
         # Delete button
         delete_btn = ttk.Button(
-            actions_frame,
+            row1_frame,
             text="Delete",
             command=self._delete_selected_recording,
             bootstyle="danger-outline",
-            width=8
+            width=10
         )
-        delete_btn.pack(side=LEFT, padx=(0, 3))
+        delete_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(delete_btn, "Delete selected recording")
         
         # Export button
         export_btn = ttk.Button(
-            actions_frame,
+            row1_frame,
             text="Export",
             command=self._export_selected_recording,
             bootstyle="info-outline",
-            width=8
+            width=10
         )
-        export_btn.pack(side=LEFT, padx=(0, 3))
+        export_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(export_btn, "Export selected recording")
         
         # Clear All button
         clear_all_btn = ttk.Button(
-            actions_frame,
+            row1_frame,
             text="Clear All",
             command=self._clear_all_recordings,
             bootstyle="danger-outline",
-            width=8
+            width=10
         )
         clear_all_btn.pack(side=LEFT)
         ToolTip(clear_all_btn, "Clear all recordings from database")
         
-        # Recording count label
+        # Recording count label - place in second row
+        row2_frame = ttk.Frame(actions_frame)
+        row2_frame.pack(fill=X, pady=(5, 0))
+        
         self.recording_count_label = ttk.Label(
-            actions_frame,
+            row2_frame,
             text="0 recordings",
             font=("Segoe UI", 9),
             foreground="gray"
         )
-        self.recording_count_label.pack(side=RIGHT)
+        self.recording_count_label.pack(side=LEFT)
         
         # Bind double-click to load
         self.recordings_tree.bind("<Double-Button-1>", lambda e: self._load_selected_recording())

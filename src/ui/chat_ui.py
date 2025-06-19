@@ -53,13 +53,13 @@ class ChatUI:
         
     def create_chat_interface(self):
         """Create the main chat interface components"""
-        # Main chat frame with border
+        # Main chat frame with border - increased padding for label
         self.chat_frame = ttk.LabelFrame(
             self.parent_frame, 
-            text="AI Assistant Chat", 
-            padding=(10, 5)
+            text="  AI Assistant Chat  ",  # Added spaces for better spacing
+            padding=(10, 10)
         )
-        self.chat_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 5))
+        self.chat_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
         
         # Header frame with title and collapse button
         header_frame = ttk.Frame(self.chat_frame)
