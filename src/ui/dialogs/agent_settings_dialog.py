@@ -14,6 +14,7 @@ import logging
 from settings.settings import load_settings, save_settings, _DEFAULT_SETTINGS
 from ai.agents.models import AgentType
 from ai.agents.synopsis import SynopsisAgent
+from ai.model_provider import model_provider
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +89,8 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         }
     }
     
-    # Available models for each provider
-    PROVIDER_MODELS = {
+    # This will be populated dynamically, but keep as fallback
+    FALLBACK_MODELS = {
         "openai": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
         "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
         "ollama": ["llama3", "mistral", "codellama"],
@@ -205,7 +206,7 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         provider_combo = ttk.Combobox(
             tab_frame,
             textvariable=provider_var,
-            values=list(self.PROVIDER_MODELS.keys()),
+            values=model_provider.get_all_providers(),
             state="readonly",
             width=20
         )
@@ -216,18 +217,37 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         # Model selection
         ttk.Label(tab_frame, text="Model:").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
         
+        # Create frame for model combo and refresh button
+        model_frame = ttk.Frame(tab_frame)
+        model_frame.grid(row=row, column=1, sticky="w", pady=5)
+        
         model_var = tk.StringVar(value=current_config.get("model", "gpt-4"))
         self.widgets[agent_key]["model"] = model_var
         
+        # Get models dynamically
+        models = model_provider.get_available_models(current_provider)
+        
         model_combo = ttk.Combobox(
-            tab_frame,
+            model_frame,
             textvariable=model_var,
-            values=self.PROVIDER_MODELS.get(current_provider, []),
+            values=models,
             state="readonly",
-            width=30
+            width=25
         )
-        model_combo.grid(row=row, column=1, sticky="w", pady=5)
+        model_combo.pack(side=tk.LEFT, padx=(0, 5))
         self.widgets[agent_key]["model_combo"] = model_combo
+        
+        # Refresh button
+        refresh_btn = ttk.Button(
+            model_frame,
+            text="↻",
+            width=3,
+            command=lambda: self._refresh_models(agent_key),
+            bootstyle="secondary"
+        )
+        refresh_btn.pack(side=tk.LEFT)
+        ttk.Label(model_frame, text="Refresh models", font=("", 8)).pack(side=tk.LEFT, padx=(3, 0))
+        
         row += 1
         
         # Temperature slider
@@ -339,7 +359,9 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
             agent_key: The agent identifier
         """
         provider = self.widgets[agent_key]["provider"].get()
-        models = self.PROVIDER_MODELS.get(provider, [])
+        
+        # Get models dynamically
+        models = model_provider.get_available_models(provider)
         
         model_combo = self.widgets[agent_key]["model_combo"]
         model_combo["values"] = models
@@ -348,6 +370,47 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         current_model = self.widgets[agent_key]["model"].get()
         if current_model not in models and models:
             self.widgets[agent_key]["model"].set(models[0])
+            
+    def _refresh_models(self, agent_key: str):
+        """Refresh model list from provider API.
+        
+        Args:
+            agent_key: The agent identifier
+        """
+        provider = self.widgets[agent_key]["provider"].get()
+        
+        # Show loading indicator
+        model_combo = self.widgets[agent_key]["model_combo"]
+        current_values = model_combo["values"]
+        model_combo["values"] = ["Loading..."]
+        model_combo.set("Loading...")
+        self.dialog.update()
+        
+        try:
+            # Force refresh from API
+            models = model_provider.get_available_models(provider, force_refresh=True)
+            
+            # Update combo box
+            model_combo["values"] = models
+            
+            # Restore previous selection if still available
+            current_model = self.widgets[agent_key]["model"].get()
+            if current_model in models:
+                model_combo.set(current_model)
+            elif models:
+                model_combo.set(models[0])
+                self.widgets[agent_key]["model"].set(models[0])
+                
+        except Exception as e:
+            logger.error(f"Error refreshing models: {e}")
+            # Restore previous values on error
+            model_combo["values"] = current_values
+            if current_values:
+                model_combo.set(current_values[0])
+            messagebox.showerror(
+                "Error",
+                f"Failed to refresh models for {provider}.\nUsing cached values."
+            )
             
     def _test_agent(self, agent_key: str):
         """Test agent configuration.
