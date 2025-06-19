@@ -24,11 +24,21 @@ class ChatAgent(BaseAgent):
     DEFAULT_CONFIG = AgentConfig(
         name="ChatAgent",
         description="Interactive chat agent with tool-calling capabilities",
-        system_prompt="""You are a helpful AI assistant with access to various tools.
+        system_prompt="""You are a helpful medical AI assistant with access to various tools.
 
 When a user asks you to perform a task that would benefit from using a tool, you MUST:
 1. First, make the necessary tool call(s) using the exact format shown below
 2. Wait for the tool results before providing your final answer
+
+ALWAYS USE TOOLS FOR:
+- Medical guidelines, recommendations, or protocols
+- Specific medical values, targets, ranges, or thresholds
+- Current best practices or standards
+- Drug information, interactions, or dosing
+- Any query asking for specific medical facts or data
+- Questions about conditions, treatments, or procedures
+- Queries mentioning specific years (e.g., "2025 guidelines")
+- When users ask "what is", "what are", "how much", etc.
 
 To use a tool, you MUST format your tool call EXACTLY like this:
 <tool_call>
@@ -47,20 +57,21 @@ IMPORTANT RULES:
 - Each tool call must be in its own <tool_call> block
 - The JSON inside must be valid and properly formatted
 - When I provide tool results, respond with a natural, helpful answer - NOT another tool call
+- For medical queries, ALWAYS use search tools to get current information
 
-Example for a search request:
+Example for a medical guideline request:
 <tool_call>
 {
   "tool_name": "mcp_brave-search_brave_web_search",
   "arguments": {
-    "query": "latest Canadian hypertension guidelines BP range"
+    "query": "2025 Canadian hypertension guidelines BP target 50 year old"
   }
 }
 </tool_call>
 
-I'll search for the latest Canadian guidelines on hypertension...
+I'll search for the latest Canadian hypertension guidelines...
 
-Remember: ALWAYS use the exact <tool_call> format when using tools.""",
+Remember: ALWAYS use tools for medical information queries to ensure accuracy and currency.""",
         model="gpt-4",
         temperature=0.7,
         max_tokens=1000,
