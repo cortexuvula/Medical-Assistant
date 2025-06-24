@@ -43,10 +43,8 @@ class ChatUI:
         self.min_input_lines = 2
         self.max_input_lines = 5
         
-        # Collapse state
-        self._collapsed = False
+        # Content frame reference
         self.content_frame = None
-        self.collapse_btn = None
         
         # Create the UI
         self.create_chat_interface()
@@ -61,21 +59,7 @@ class ChatUI:
         )
         self.chat_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
         
-        # Header frame with title and collapse button
-        header_frame = ttk.Frame(self.chat_frame)
-        header_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        # Collapse/expand button
-        self.collapse_btn = ttk.Button(
-            header_frame,
-            text="^",
-            width=3,
-            command=self._toggle_collapse
-        )
-        self.collapse_btn.pack(side=tk.RIGHT)
-        ToolTip(self.collapse_btn, "Hide/Show chat interface")
-        
-        # Content frame that can be hidden
+        # Content frame
         self.content_frame = ttk.Frame(self.chat_frame)
         self.content_frame.pack(fill=tk.BOTH, expand=True)
         
@@ -490,18 +474,6 @@ class ChatUI:
                     widget.update()
                     break
     
-    def _toggle_collapse(self):
-        """Toggle the collapse state of the chat interface"""
-        if self._collapsed:
-            # Expand
-            self.content_frame.pack(fill=tk.BOTH, expand=True)
-            self.collapse_btn.config(text="^")
-            self._collapsed = False
-        else:
-            # Collapse
-            self.content_frame.pack_forget()
-            self.collapse_btn.config(text="v")
-            self._collapsed = True
     
     def _toggle_tools(self):
         """Toggle tool usage on/off."""

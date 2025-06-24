@@ -450,12 +450,19 @@ class WorkflowUI:
             }
         ]
         
-        # Use a more compact layout with smaller padding
+        # Create a centered container frame
+        center_container = ttk.Frame(gen_frame)
+        center_container.pack(expand=True)
+        
+        # Create buttons in a 2-column layout
         for i, doc in enumerate(documents):
+            # Calculate row and column
+            row = i // 2
+            col = i % 2
+            
             # Create a frame for each document type
-            doc_frame = ttk.Frame(gen_frame)
-            doc_frame.grid(row=i, column=0, sticky="ew", padx=10, pady=5)
-            gen_frame.columnconfigure(0, weight=1)
+            doc_frame = ttk.Frame(center_container)
+            doc_frame.grid(row=row, column=col, sticky="ew", padx=15, pady=8)
             
             # Large button with responsive width
             btn = ttk.Button(
@@ -463,7 +470,7 @@ class WorkflowUI:
                 text=doc["text"],
                 command=doc["command"],
                 bootstyle=doc["bootstyle"],
-                width=20,  # Slightly smaller width
+                width=20,  # Consistent width for all buttons
                 style="Large.TButton"
             )
             btn.pack(side=LEFT, padx=(0, 10))
@@ -473,12 +480,16 @@ class WorkflowUI:
             desc_label = ttk.Label(
                 doc_frame,
                 text=doc["description"],
-                font=("Segoe UI", 9),  # Slightly smaller font
-                wraplength=300  # Enable text wrapping
+                font=("Segoe UI", 9),
+                wraplength=250  # Slightly smaller wrap length for 2-column layout
             )
             desc_label.pack(side=LEFT, fill=X, expand=True)
             
             ToolTip(btn, doc["description"])
+        
+        # Configure column weights to ensure equal spacing
+        center_container.columnconfigure(0, weight=1)
+        center_container.columnconfigure(1, weight=1)
         
         # Smart suggestions frame (initially hidden)
         suggestions_frame = ttk.LabelFrame(scrollable_frame, text="Suggestions", padding=10)
