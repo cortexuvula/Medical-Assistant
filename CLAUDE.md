@@ -56,6 +56,38 @@ The workflow agent has been fully integrated into the Medical Assistant applicat
 - `WorkflowResultsDialog` for displaying and tracking workflow progress
 - Progress indicators and step completion tracking
 
+## Periodic Analysis Implementation Summary
+
+The periodic analysis feature provides real-time differential diagnosis during recordings:
+
+### Architecture
+- **PeriodicAnalyzer**: Core class in `src/audio/periodic_analysis.py` managing timed analysis
+- **AudioSegmentExtractor**: Extracts audio segments from ongoing recordings
+- **Integration**: Checkbox in Record tab enables/disables feature
+- **Interval**: Analysis runs every 2 minutes (120 seconds)
+
+### Key Features
+- Real-time differential diagnosis generation during recordings
+- Customizable prompts via Settings → Prompt Settings → Advanced Analysis Settings
+- Provider-specific model and temperature configuration
+- Clear display in Advanced Analysis Results text area
+- Automatic cleanup on recording stop/cancel
+
+### Implementation Details
+- Timer threads are daemon threads to prevent shutdown issues
+- Periodic analyzer stops automatically when:
+  - Recording is stopped normally
+  - Recording is cancelled
+  - Application is closed
+- Audio segments are passed directly to transcription (no temp files)
+- Results clear on each new analysis to maintain readability
+
+### Settings Integration
+- Advanced analysis settings stored in `settings.json`
+- Configurable prompt and system message
+- Provider-specific models and temperatures
+- Settings accessible via menu: Settings → Prompt Settings → Advanced Analysis Settings
+
 ## Development Commands
 
 ### Running the Application
@@ -189,12 +221,13 @@ pip install -r requirements-dev.txt  # For development/testing
 1. **src/ui/workflow_ui.py**: Main UI orchestration and tab management
 2. **src/ai/ai_processor.py**: Core AI integration logic for all providers
 3. **src/audio/recording_manager.py**: Audio recording state management
-4. **src/processing/processing_queue.py**: Background processing implementation
-5. **src/utils/security.py**: API key encryption and security features
-6. **src/database/db_migrations.py**: Database schema evolution
-7. **src/managers/agent_manager.py**: Agent system management and execution
-8. **src/ai/agents/medication.py**: Medication agent implementation example
-9. **src/ai/agents/workflow.py**: Workflow agent for clinical process coordination
+4. **src/audio/periodic_analysis.py**: Periodic analysis during recordings
+5. **src/processing/processing_queue.py**: Background processing implementation
+6. **src/utils/security.py**: API key encryption and security features
+7. **src/database/db_migrations.py**: Database schema evolution
+8. **src/managers/agent_manager.py**: Agent system management and execution
+9. **src/ai/agents/medication.py**: Medication agent implementation example
+10. **src/ai/agents/workflow.py**: Workflow agent for clinical process coordination
 
 ## Common Development Tasks
 

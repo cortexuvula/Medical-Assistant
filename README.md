@@ -8,6 +8,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 - **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 5 text editor tabs
 - **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
 - **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
+- **Real-Time Analysis:** Optional periodic analysis during recording generates differential diagnoses every 2 minutes
 - **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
 - **Dedicated Recordings Manager:** New Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
 
@@ -148,6 +149,7 @@ Desktop shortcuts are automatically created during the build process.
 
 3. **Main Workflow Tabs**
    - **Record Tab:** Start/stop recordings with visual feedback, timer display, and pause/resume controls
+     - Enable "Advanced Analysis" checkbox for real-time differential diagnosis every 2 minutes during recording
    - **Process Tab:** Refine and improve transcribed text with AI assistance
    - **Generate Tab:** Create SOAP notes, referrals, letters, and perform medication analysis
    - **Recordings Tab:** View, search, and manage all saved recordings with document status indicators
@@ -196,7 +198,14 @@ Desktop shortcuts are automatically created during the build process.
    - View detailed results with warnings and recommendations
 
 9. **Editing Prompts and Models**  
-   Use the "Prompt Settings" menu to modify and update prompts and models for refine, improve, SOAP note, and referral functionalities. Each provider can have different model selections.
+   Use the "Prompt Settings" menu to modify and update prompts and models for:
+   - Refine text processing
+   - Improve text clarity
+   - SOAP note generation
+   - Referral letter creation
+   - Advanced Analysis (differential diagnosis during recording)
+   
+   Each provider can have different model selections and temperature settings.
 
 10. **Viewing Application Logs**
     - Access application logs through the "View Logs" option in the Help menu
