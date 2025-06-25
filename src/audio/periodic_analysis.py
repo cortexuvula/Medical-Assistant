@@ -65,6 +65,7 @@ class PeriodicAnalyzer:
             return
             
         self.timer = threading.Timer(self.interval_seconds, self._perform_analysis)
+        self.timer.daemon = True  # Make timer thread daemon so it doesn't prevent shutdown
         self.timer.start()
         
     def _perform_analysis(self):

@@ -1258,6 +1258,9 @@ class MedicalDictationApp(ttk.Window):
 
     def _cancel_soap_recording_finalize(self):
         """Finalize the cancellation of SOAP recording."""
+        # Stop periodic analysis if running
+        self._stop_periodic_analysis()
+        
         # Clear content except context when cancelling
         clear_content_except_context(self)
         
@@ -1302,6 +1305,14 @@ class MedicalDictationApp(ttk.Window):
                     time.sleep(0.2)
                 except Exception as e:
                     logging.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
+                    
+            # Stop periodic analysis if running
+            if hasattr(self, 'periodic_analyzer') and self.periodic_analyzer:
+                logging.info("Stopping periodic analyzer...")
+                try:
+                    self._stop_periodic_analysis()
+                except Exception as e:
+                    logging.error(f"Error stopping periodic analyzer: {str(e)}", exc_info=True)
                     
             # Stop any active listening in the audio handler
             if hasattr(self, 'audio_handler'):
@@ -1991,6 +2002,7 @@ class MedicalDictationApp(ttk.Window):
         try:
             if self.periodic_analyzer and self.periodic_analyzer.is_running:
                 self.periodic_analyzer.stop()
+                self.periodic_analyzer = None  # Clear reference to prevent reuse
                 logging.info("Stopped periodic analysis")
         except Exception as e:
             logging.error(f"Error stopping periodic analysis: {e}")
