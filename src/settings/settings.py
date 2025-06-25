@@ -239,8 +239,8 @@ Follow up:
         "anthropic_temperature": 0.7  # Anthropic-specific temperature
     },
     "advanced_analysis": {
-        "prompt": "Create a 5 differential diagnosis list, possible investigations and treatment plan for the provided transcript:",
-        "system_message": """You are a medical AI assistant helping to analyze patient consultations. Provide clear, structured differential diagnoses with relevant investigations and treatment recommendations. Format your response with clear sections for:
+        "prompt": "Transcript:",
+        "system_message": """You are a medical AI assistant helping to analyze patient consultations. Provide clear, structured differential diagnoses with relevant investigations and treatment recommendations. Format your response without markdown and clear sections for:
 1. Differential Diagnoses (list 5 with brief explanations)
 2. Recommended Investigations
 3. Treatment Plan""",
