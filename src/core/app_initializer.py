@@ -40,6 +40,7 @@ from processing.file_processor import FileProcessor
 from database.database import Database
 from processing.processing_queue import ProcessingQueue
 from managers.notification_manager import NotificationManager
+from audio.periodic_analysis import PeriodicAnalyzer
 
 
 class AppInitializer:
@@ -271,6 +272,9 @@ class AppInitializer:
         
         # Initialize notification manager
         self.app.notification_manager = NotificationManager(self.app)
+        
+        # Initialize periodic analyzer
+        self.app.periodic_analyzer = None  # Will be created when needed
         
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""

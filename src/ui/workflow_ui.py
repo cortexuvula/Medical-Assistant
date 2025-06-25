@@ -92,9 +92,21 @@ class WorkflowUI:
         """
         record_frame = ttk.Frame(self.parent)
         
-        # Main recording controls container (no longer using paned window)
-        center_frame = ttk.Frame(record_frame)
-        center_frame.pack(expand=True, fill=BOTH, padx=10, pady=5)
+        # Create a PanedWindow for two columns with proper sizing
+        columns_container = ttk.PanedWindow(record_frame, orient=tk.HORIZONTAL)
+        columns_container.pack(expand=True, fill=BOTH, padx=10, pady=5)
+        
+        # Left column for recording controls (1/3 width)
+        left_column = ttk.Frame(columns_container)
+        columns_container.add(left_column, weight=1)
+        
+        # Right column for text area (2/3 width)
+        right_column = ttk.Frame(columns_container)
+        columns_container.add(right_column, weight=2)
+        
+        # Main recording controls container in left column
+        center_frame = ttk.Frame(left_column)
+        center_frame.pack(expand=True, fill=BOTH, padx=(0, 5))
         
         # Recording status frame (for visual feedback)
         status_frame = ttk.Frame(center_frame)
@@ -233,8 +245,39 @@ class WorkflowUI:
         
         self.components['quick_actions'] = quick_actions
         
+        # Advanced Analysis checkbox
+        analysis_frame = ttk.Frame(center_frame)
+        analysis_frame.pack(pady=(10, 5))
+        
+        self.advanced_analysis_var = tk.BooleanVar(value=False)
+        self.components['advanced_analysis_checkbox'] = ttk.Checkbutton(
+            analysis_frame,
+            text="Advanced Analysis",
+            variable=self.advanced_analysis_var,
+            bootstyle="primary"
+        )
+        self.components['advanced_analysis_checkbox'].pack()
+        ToolTip(self.components['advanced_analysis_checkbox'], 
+                "Enable real-time differential diagnosis during recording (every 2 minutes)")
+        
         # Initialize UI state - hide controls initially
         self._initialize_recording_ui_state()
+        
+        # Create text area in right column
+        text_frame = ttk.LabelFrame(right_column, text="Advanced Analysis Results", padding=10)
+        text_frame.pack(fill=BOTH, expand=True)
+        
+        # Create text widget with scrollbar
+        text_scroll = ttk.Scrollbar(text_frame)
+        text_scroll.pack(side=RIGHT, fill=Y)
+        
+        self.components['record_notes_text'] = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            yscrollcommand=text_scroll.set
+        )
+        self.components['record_notes_text'].pack(fill=BOTH, expand=True)
+        text_scroll.config(command=self.components['record_notes_text'].yview)
         
         return record_frame
     
