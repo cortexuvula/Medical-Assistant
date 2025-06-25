@@ -28,6 +28,7 @@ from datetime import datetime
 from utils.cleanup_utils import clear_all_content, clear_content_except_context
 from database.database import Database
 from audio.audio import AudioHandler
+from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
 
 # Initialize logging
 from managers.log_manager import setup_application_logging
@@ -1046,6 +1047,17 @@ class MedicalDictationApp(ttk.Window):
                 )
                 self.soap_recording = True
                 logging.info("SOAP recording started successfully - UI updated")
+                
+                # Check if Advanced Analysis is enabled
+                if hasattr(self.ui, 'advanced_analysis_var') and self.ui.advanced_analysis_var.get():
+                    # Clear the analysis text area
+                    if 'record_notes_text' in self.ui.components:
+                        self.ui.components['record_notes_text'].delete("1.0", tk.END)
+                        self.ui.components['record_notes_text'].insert("1.0", 
+                            "Advanced Analysis enabled. First analysis will appear after 2 minutes...\n\n")
+                    
+                    # Start periodic analysis
+                    self._start_periodic_analysis()
             else:
                 self.status_manager.error("Failed to start recording")
                 # Ensure UI stays in idle state if recording failed to start
@@ -1062,6 +1074,9 @@ class MedicalDictationApp(ttk.Window):
             if self.soap_stop_listening_function:
                 self.soap_stop_listening_function()
                 self.soap_stop_listening_function = None
+            
+            # Stop periodic analysis if running
+            self._stop_periodic_analysis()
             
             # Reset audio handler settings
             self.audio_handler.soap_mode = False
@@ -1921,6 +1936,92 @@ class MedicalDictationApp(ttk.Window):
             self.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
         
         logging.info(f"Quick Continue Mode set to: {new_value}")
+    
+    def _start_periodic_analysis(self):
+        """Start periodic analysis during recording."""
+        try:
+            # Create periodic analyzer if not exists
+            if not self.periodic_analyzer:
+                self.periodic_analyzer = PeriodicAnalyzer(interval_seconds=120)  # 2 minutes
+            
+            # Start the periodic analysis
+            self.periodic_analyzer.start(self._perform_periodic_analysis)
+            logging.info("Started periodic analysis for advanced diagnosis")
+            
+        except Exception as e:
+            logging.error(f"Failed to start periodic analysis: {e}")
+            self.status_manager.error("Failed to start advanced analysis")
+    
+    def _stop_periodic_analysis(self):
+        """Stop periodic analysis."""
+        try:
+            if self.periodic_analyzer and self.periodic_analyzer.is_running:
+                self.periodic_analyzer.stop()
+                logging.info("Stopped periodic analysis")
+        except Exception as e:
+            logging.error(f"Error stopping periodic analysis: {e}")
+    
+    def _perform_periodic_analysis(self, analysis_count: int, elapsed_time: float):
+        """Perform periodic analysis callback."""
+        try:
+            # Get current audio segment
+            audio_segment = AudioSegmentExtractor.extract_audio_segment(
+                self.recording_manager,
+                self.audio_state_manager
+            )
+            
+            if not audio_segment:
+                logging.warning("No audio available for periodic analysis")
+                return
+            
+            # Transcribe the audio segment directly
+            # Transcribe the audio
+            self.status_manager.info(f"Transcribing for analysis #{analysis_count}...")
+            transcript = self.audio_handler.transcribe_audio(audio_segment)
+            
+            if not transcript:
+                logging.warning("No transcript generated for periodic analysis")
+                return
+            
+            # Generate differential diagnosis
+            self.status_manager.info("Generating differential diagnosis...")
+            result = self.ai_processor.generate_differential_diagnosis(transcript)
+            
+            if result.get('success'):
+                # Format and display the analysis
+                formatted_time = f"{int(elapsed_time // 60)}:{int(elapsed_time % 60):02d}"
+                analysis_text = (
+                    f"{'='*60}\n"
+                    f"Analysis #{analysis_count} at {formatted_time}\n"
+                    f"{'='*60}\n\n"
+                    f"{result['text']}\n\n"
+                )
+                
+                # Update UI on main thread
+                self.after(0, lambda: self._update_analysis_display(analysis_text))
+                self.status_manager.success(f"Analysis #{analysis_count} completed")
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                logging.error(f"Failed to generate analysis: {error_msg}")
+                self.status_manager.error("Failed to generate analysis")
+                    
+                    
+        except Exception as e:
+            logging.error(f"Error in periodic analysis: {e}")
+            self.status_manager.error("Error during advanced analysis")
+    
+    def _update_analysis_display(self, analysis_text: str):
+        """Update the analysis display in the UI."""
+        try:
+            if 'record_notes_text' in self.ui.components:
+                # Clear existing content first
+                self.ui.components['record_notes_text'].delete('1.0', tk.END)
+                # Insert new analysis text
+                self.ui.components['record_notes_text'].insert(tk.END, analysis_text)
+                # Scroll to bottom
+                self.ui.components['record_notes_text'].see(tk.END)
+        except Exception as e:
+            logging.error(f"Error updating analysis display: {e}")
 
 if __name__ == "__main__":
     main()

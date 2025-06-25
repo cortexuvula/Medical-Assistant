@@ -409,3 +409,53 @@ class AIProcessor:
                 "patient_factors": patient_factors or {}
             }
         )
+    
+    def generate_differential_diagnosis(self, transcript: str) -> Dict[str, Any]:
+        """Generate differential diagnosis from transcript.
+        
+        Args:
+            transcript: The medical transcript to analyze
+            
+        Returns:
+            Dict containing success status and analysis or error
+        """
+        try:
+            if not transcript.strip():
+                return {"success": False, "error": "No transcript to analyze"}
+            
+            # Create the prompt as specified
+            prompt = (
+                "Create a 5 differential diagnosis list, possible investigations "
+                "and treatment plan for the provided transcript:\n\n"
+                f"{transcript}"
+            )
+            
+            # System message for medical analysis
+            system_message = (
+                "You are a medical AI assistant helping to analyze patient consultations. "
+                "Provide clear, structured differential diagnoses with relevant investigations "
+                "and treatment recommendations. Format your response with clear sections for:\n"
+                "1. Differential Diagnoses (list 5 with brief explanations)\n"
+                "2. Recommended Investigations\n"
+                "3. Treatment Plan"
+            )
+            
+            # Get temperature setting
+            temperature = SETTINGS.get("analysis_temperature", 0.3)
+            
+            # Generate analysis using call_ai directly since adjust_text_with_openai 
+            # doesn't support custom system messages or temperature
+            from ai.ai import call_ai
+            
+            # Get the model from settings
+            model = SETTINGS.get("improve_text", {}).get("model", "openai/gpt-4")
+            
+            # Generate analysis
+            analysis = call_ai(model, system_message, prompt, temperature)
+            
+            logging.info("Generated differential diagnosis successfully")
+            return {"success": True, "text": analysis}
+            
+        except Exception as e:
+            logging.error(f"Failed to generate differential diagnosis: {e}")
+            return {"success": False, "error": str(e)}
