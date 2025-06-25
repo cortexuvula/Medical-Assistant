@@ -423,15 +423,19 @@ class AIProcessor:
             if not transcript.strip():
                 return {"success": False, "error": "No transcript to analyze"}
             
-            # Create the prompt as specified
-            prompt = (
-                "Create a 5 differential diagnosis list, possible investigations "
-                "and treatment plan for the provided transcript:\n\n"
-                f"{transcript}"
-            )
+            # Get advanced analysis settings
+            analysis_settings = SETTINGS.get("advanced_analysis", {})
             
-            # System message for medical analysis
-            system_message = (
+            # Get prompt and system message from settings
+            prompt_template = analysis_settings.get("prompt", 
+                "Create a 5 differential diagnosis list, possible investigations "
+                "and treatment plan for the provided transcript:")
+            
+            # Create the full prompt
+            prompt = f"{prompt_template}\n\n{transcript}"
+            
+            # Get system message from settings
+            system_message = analysis_settings.get("system_message",
                 "You are a medical AI assistant helping to analyze patient consultations. "
                 "Provide clear, structured differential diagnoses with relevant investigations "
                 "and treatment recommendations. Format your response with clear sections for:\n"
@@ -440,15 +444,35 @@ class AIProcessor:
                 "3. Treatment Plan"
             )
             
-            # Get temperature setting
-            temperature = SETTINGS.get("analysis_temperature", 0.3)
+            # Get temperature from settings
+            temperature = analysis_settings.get("temperature", 0.3)
             
             # Generate analysis using call_ai directly since adjust_text_with_openai 
             # doesn't support custom system messages or temperature
             from ai.ai import call_ai
             
-            # Get the model from settings
-            model = SETTINGS.get("improve_text", {}).get("model", "openai/gpt-4")
+            # Get the model based on current AI provider
+            ai_provider = SETTINGS.get("ai_provider", "openai")
+            
+            # Select the appropriate model based on provider
+            if ai_provider == "openai":
+                model = analysis_settings.get("model", "gpt-4")
+            elif ai_provider == "perplexity":
+                model = analysis_settings.get("perplexity_model", "sonar-reasoning-pro")
+            elif ai_provider == "grok":
+                model = analysis_settings.get("grok_model", "grok-1")
+            elif ai_provider == "ollama":
+                model = analysis_settings.get("ollama_model", "llama3")
+            elif ai_provider == "anthropic":
+                model = analysis_settings.get("anthropic_model", "claude-3-sonnet-20240229")
+            else:
+                # Fallback to OpenAI model
+                model = analysis_settings.get("model", "gpt-4")
+            
+            # Get provider-specific temperature if available
+            temp_key = f"{ai_provider}_temperature"
+            if temp_key in analysis_settings:
+                temperature = analysis_settings[temp_key]
             
             # Generate analysis
             analysis = call_ai(model, system_message, prompt, temperature)

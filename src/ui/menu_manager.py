@@ -166,6 +166,7 @@ class MenuManager:
         self._add_menu_item(text_settings_menu, "Improve Prompt Settings", command=self.app.show_improve_settings_dialog)
         self._add_menu_item(text_settings_menu, "SOAP Note Settings", command=self.app.show_soap_settings_dialog)
         self._add_menu_item(text_settings_menu, "Referral Settings", command=self.app.show_referral_settings_dialog)
+        self._add_menu_item(text_settings_menu, "Advanced Analysis Settings", command=self.app.show_advanced_analysis_settings_dialog)
         
         settings_menu.add_cascade(label="Prompt Settings", menu=text_settings_menu)
     

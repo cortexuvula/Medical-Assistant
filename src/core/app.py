@@ -507,6 +507,27 @@ class MedicalDictationApp(ttk.Window):
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229"))
         )
 
+    def show_advanced_analysis_settings_dialog(self) -> None:
+        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        cfg = SETTINGS.get("advanced_analysis", {})
+        default_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("prompt", "")
+        default_system_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("system_message", "")
+        default_model = _DEFAULT_SETTINGS["advanced_analysis"].get("model", "")
+        show_settings_dialog(
+            parent=self,
+            title="Advanced Analysis Settings",
+            config=cfg,
+            default=_DEFAULT_SETTINGS["advanced_analysis"],
+            current_prompt=cfg.get("prompt", default_prompt),
+            current_model=cfg.get("model", default_model),
+            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["advanced_analysis"].get("perplexity_model", "sonar-reasoning-pro")),
+            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["advanced_analysis"].get("grok_model", "grok-1")),
+            save_callback=self.save_advanced_analysis_settings,
+            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
+            current_system_prompt=cfg.get("system_message", default_system_prompt),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229"))
+        )
+
     def show_temperature_settings(self) -> None:
         """Show dialog to configure temperature settings for each AI provider."""
         from ui.dialogs.temperature_dialog import show_temperature_settings_dialog
@@ -596,6 +617,19 @@ class MedicalDictationApp(ttk.Window):
         SETTINGS["referral"]["anthropic_model"] = anthropic_model
         save_settings(SETTINGS)
         self.status_manager.success("Referral settings saved successfully")
+
+    def save_advanced_analysis_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
+        from settings.settings import save_settings, SETTINGS
+        # Preserve existing temperature settings
+        SETTINGS["advanced_analysis"]["prompt"] = prompt
+        SETTINGS["advanced_analysis"]["system_message"] = system_prompt
+        SETTINGS["advanced_analysis"]["model"] = openai_model
+        SETTINGS["advanced_analysis"]["perplexity_model"] = perplexity_model
+        SETTINGS["advanced_analysis"]["grok_model"] = grok_model
+        SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
+        SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
+        save_settings(SETTINGS)
+        self.status_manager.success("Advanced analysis settings saved successfully")
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):

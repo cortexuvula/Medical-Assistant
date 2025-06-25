@@ -238,6 +238,24 @@ Follow up:
         "ollama_temperature": 0.7,   # Ollama-specific temperature
         "anthropic_temperature": 0.7  # Anthropic-specific temperature
     },
+    "advanced_analysis": {
+        "prompt": "Create a 5 differential diagnosis list, possible investigations and treatment plan for the provided transcript:",
+        "system_message": """You are a medical AI assistant helping to analyze patient consultations. Provide clear, structured differential diagnoses with relevant investigations and treatment recommendations. Format your response with clear sections for:
+1. Differential Diagnoses (list 5 with brief explanations)
+2. Recommended Investigations
+3. Treatment Plan""",
+        "model": "gpt-4",  # OpenAI model
+        "grok_model": "grok-1",    # Grok model
+        "perplexity_model": "sonar-reasoning-pro",  # Perplexity model
+        "ollama_model": "llama3",   # Ollama model
+        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "temperature": 0.3,  # Default temperature for advanced analysis
+        "openai_temperature": 0.3,  # OpenAI-specific temperature
+        "grok_temperature": 0.3,    # Grok-specific temperature
+        "perplexity_temperature": 0.3, # Perplexity-specific temperature
+        "ollama_temperature": 0.3,   # Ollama-specific temperature
+        "anthropic_temperature": 0.3  # Anthropic-specific temperature
+    },
     "elevenlabs": {
         "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model
         "language_code": "",  # Empty string for auto-detection
