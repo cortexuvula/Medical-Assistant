@@ -457,8 +457,16 @@ class ChatProcessor:
         
         def apply_changes():
             try:
+                # Log the AI response for debugging
+                logging.info(f"AI Response received: {ai_response[:200]}...")
+                
                 # Extract the actual content from the AI response
                 content_to_apply = self._extract_content_from_response(ai_response)
+                
+                # Log extracted content
+                logging.info(f"Extracted content length: {len(content_to_apply) if content_to_apply else 0}")
+                if content_to_apply:
+                    logging.info(f"Extracted content preview: {content_to_apply[:100]}...")
                 
                 if content_to_apply and hasattr(self.app, 'active_text_widget') and self.app.active_text_widget:
                     # Automatically replace content without asking
@@ -471,11 +479,11 @@ class ChatProcessor:
                     
                     logging.info(f"Auto-applied AI response to {tab_name} tab")
                 else:
-                    logging.warning("No content to apply or no active text widget")
+                    logging.warning(f"No content to apply or no active text widget. Content: {bool(content_to_apply)}, Widget: {hasattr(self.app, 'active_text_widget')}")
                     self.app.status_manager.warning("No content to apply to document")
                         
             except Exception as e:
-                logging.error(f"Error applying AI response to document: {e}")
+                logging.error(f"Error applying AI response to document: {e}", exc_info=True)
                 self.app.status_manager.error("Failed to apply changes")
                 
         # Apply on main thread
@@ -532,7 +540,11 @@ class ChatProcessor:
             "cleaned up version:\n",
             "formatted version:\n",
             "here's the text with speaker labels removed:\n",
-            "cleaned text:\n"
+            "cleaned text:\n",
+            "removed is as follows:\n",
+            "as follows:\n",
+            "following:\n",
+            "below:\n"
         ]
         
         response_lower = ai_response.lower()
@@ -542,19 +554,33 @@ class ChatProcessor:
                 start_index = response_lower.find(pattern) + len(pattern)
                 content = ai_response[start_index:].strip()
                 
+                # Remove leading "---" separators if present
+                if content.startswith("---"):
+                    content = content[3:].strip()
+                    if content.startswith("\n"):
+                        content = content[1:].strip()
+                
                 # Remove any trailing explanations or notes
                 lines = content.split('\n')
                 # Look for lines that seem like AI explanations rather than content
                 content_lines = []
                 for line in lines:
                     line_lower = line.lower().strip()
+                    # Skip separator lines
+                    if line.strip() == "---":
+                        continue
                     if (line_lower.startswith(("note:", "explanation:", "i've", "this version", 
                                              "the changes", "summary:")) or
                         "changes made" in line_lower):
                         break  # Stop at explanation lines
                     content_lines.append(line)
                 
-                return '\n'.join(content_lines).strip()
+                result = '\n'.join(content_lines).strip()
+                # Remove trailing "---" if present
+                if result.endswith("---"):
+                    result = result[:-3].strip()
+                
+                return result
         
         # Look for content between quotation marks or code blocks
         import re
