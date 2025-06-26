@@ -342,7 +342,29 @@ Follow up:
     "auto_retry_failed": True,
     "max_retry_attempts": 3,
     "notification_style": "toast",  # toast, statusbar, popup
-    "auto_update_ui_on_completion": True  # Auto-populate tabs when processing completes
+    "auto_update_ui_on_completion": True,  # Auto-populate tabs when processing completes
+    "voice_mode": {
+        "ai_provider": "openai",
+        "ai_model": "gpt-4",
+        "ai_temperature": 0.7,
+        "system_prompt": """You are a medical AI assistant in voice mode. Provide helpful, conversational responses about medical topics. Keep responses concise and natural for voice interaction. When discussing medical conditions, be clear about when professional medical advice is needed.""",
+        "tts_provider": "openai",
+        "tts_voice": "nova",
+        "stt_provider": "deepgram",
+        "enable_interruptions": True,
+        "response_delay_ms": 500,
+        "max_context_length": 4000,
+        "openai_model": "gpt-4",
+        "grok_model": "grok-1",
+        "perplexity_model": "sonar-reasoning-pro",
+        "ollama_model": "llama3",
+        "anthropic_model": "claude-3-sonnet-20240229",
+        "openai_temperature": 0.7,
+        "grok_temperature": 0.7,
+        "perplexity_temperature": 0.7,
+        "ollama_temperature": 0.7,
+        "anthropic_temperature": 0.7
+    }
 }
 
 def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
