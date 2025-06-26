@@ -88,6 +88,59 @@ The periodic analysis feature provides real-time differential diagnosis during r
 - Provider-specific models and temperatures
 - Settings accessible via menu: Settings → Prompt Settings → Advanced Analysis Settings
 
+## Voice Mode Implementation Summary
+
+Advanced voice mode provides real-time voice conversations with the AI assistant:
+
+### Architecture
+- **VoiceInteractionManager**: Core orchestrator in `src/voice/voice_interaction_manager.py`
+- **StreamingSTT**: Real-time speech recognition via `src/voice/streaming_stt.py` using Deepgram WebSocket API
+- **TTSProviders**: Text-to-speech in `src/voice/tts_providers.py` supporting OpenAI and ElevenLabs
+- **AudioPlayback**: Audio output system in `src/voice/audio_playback.py` with streaming support
+- **VoiceActivityDetection**: VAD in `src/voice/voice_activity_detection.py` using WebRTC VAD
+- **WebSocket Infrastructure**: Optional WebSocket server/client for remote audio streaming
+
+### Key Features
+- Natural voice conversations with turn-taking
+- Real-time transcription with interim results
+- Streaming TTS for low-latency responses
+- Voice interruption support
+- Medical context awareness
+- Conversation history and export
+- Volume control and voice selection
+
+### UI Integration
+- New "Voice Mode" tab in main workflow
+- Large activation button with visual feedback
+- Real-time conversation display
+- Settings for voice, volume, and interruptions
+- Export and context integration options
+
+### Implementation Details
+- Conversation states: IDLE, LISTENING, PROCESSING, SPEAKING, INTERRUPTED
+- Hybrid VAD combining WebRTC VAD and energy-based detection
+- Audio playback with queue system for smooth streaming
+- Async/await patterns for WebSocket and API operations
+- Thread-safe audio processing
+
+### Voice Mode Flow
+1. User clicks "Start Voice Mode" button
+2. System initializes STT, TTS, and VAD components
+3. Audio capture begins, VAD detects speech segments
+4. Speech is transcribed in real-time via Deepgram
+5. Complete utterances trigger AI processing
+6. AI response is synthesized to speech
+7. Audio plays while allowing interruptions
+8. Conversation saved to database on session end
+
+### Configuration
+- Voice settings integrated with existing provider settings
+- Default models: GPT-4 for AI, Nova for TTS voice
+- Customizable system prompts for medical context
+- Provider-specific API keys required:
+  - Deepgram for streaming STT
+  - OpenAI/ElevenLabs for TTS
+
 ## Development Commands
 
 ### Running the Application
@@ -138,7 +191,7 @@ pip install -r requirements-dev.txt  # For development/testing
 
 ### Core Application Flow
 1. **Entry Point**: `main.py` → `src/core/app.py` → `src/ui/workflow_ui.py`
-2. **UI Structure**: 5 workflow tabs (Record, Process, Generate, Recordings, Chat) + 5 text editor tabs
+2. **UI Structure**: 6 workflow tabs (Record, Process, Generate, Recordings, Chat, Voice Mode) + 5 text editor tabs
 3. **Audio Pipeline**: `src/audio/audio.py` → `src/audio/recording_manager.py` → STT provider → `src/ai/ai_processor.py`
 4. **Data Flow**: Recording → Transcript → AI Processing → SOAP/Referral/Letter generation
 
@@ -228,6 +281,9 @@ pip install -r requirements-dev.txt  # For development/testing
 8. **src/managers/agent_manager.py**: Agent system management and execution
 9. **src/ai/agents/medication.py**: Medication agent implementation example
 10. **src/ai/agents/workflow.py**: Workflow agent for clinical process coordination
+11. **src/voice/voice_interaction_manager.py**: Core voice mode orchestration
+12. **src/voice/streaming_stt.py**: Real-time speech recognition implementation
+13. **src/ui/voice_mode_ui.py**: Voice mode user interface
 
 ## Common Development Tasks
 
@@ -296,4 +352,13 @@ All source code is now organized under the `src/` directory:
   - `dialogs/` - All dialog windows
     - `medication_analysis_dialog.py` - Medication analysis options
     - `medication_results_dialog.py` - Medication results display
+  - `voice_mode_ui.py` - Voice mode interface
 - `src/utils/` - Utility functions and helpers
+- `src/voice/` - Voice mode components
+  - `voice_interaction_manager.py` - Main voice mode orchestrator
+  - `streaming_stt.py` - Real-time speech recognition
+  - `tts_providers.py` - Text-to-speech providers
+  - `audio_playback.py` - Audio output system
+  - `voice_activity_detection.py` - VAD implementation
+  - `websocket_server.py` - WebSocket server for remote audio
+  - `websocket_client.py` - WebSocket client

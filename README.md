@@ -5,12 +5,22 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 ## Features
 
 ### Core Features
-- **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 5 text editor tabs
+- **Workflow-Based Interface:** Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Voice Mode) plus 5 text editor tabs
+- **Advanced Voice Mode:** Real-time voice conversation with AI assistant, similar to OpenAI's Advanced Voice Mode, featuring natural turn-taking and interruption handling
 - **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
 - **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
 - **Real-Time Analysis:** Optional periodic analysis during recording generates differential diagnoses every 2 minutes
 - **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
 - **Dedicated Recordings Manager:** New Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
+
+### Voice Mode (New!)
+- **Real-Time Voice Conversations:** Natural voice interaction with AI medical assistant using streaming STT and TTS
+- **Multiple TTS Providers:** Support for OpenAI and ElevenLabs text-to-speech with customizable voices
+- **Streaming Transcription:** Real-time speech recognition using Deepgram WebSocket API
+- **Voice Activity Detection:** Smart detection of speech segments with WebRTC VAD for natural conversation flow
+- **Interruption Support:** Ability to interrupt AI responses mid-speech for more natural interactions
+- **Medical Context Integration:** Voice conversations aware of current patient context and previous notes
+- **Conversation Export:** Save and export voice conversation transcripts
 
 ### Medical Documentation
 - **Context-Aware SOAP Notes:** Side panel for adding previous medical information that automatically integrates into SOAP note generation
@@ -57,6 +67,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
      - **Local Models:** `OLLAMA_API_URL` (defaults to "http://localhost:11434")
      - **Language Settings:** `RECOGNITION_LANGUAGE` (defaults to "en-US")
    - **Minimum Requirements:** You need at least one LLM provider and one STT provider to use the application.
+   - **Voice Mode Requirements:** For Voice Mode, you need `DEEPGRAM_API_KEY` for streaming STT and either `OPENAI_API_KEY` or `ELEVENLABS_API_KEY` for TTS.
 
 4. **Ollama Setup (Optional)**  
    To use local AI models:
