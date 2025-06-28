@@ -161,6 +161,8 @@ Desktop shortcuts are automatically created during the build process.
 3. **Main Workflow Tabs**
    - **Record Tab:** Start/stop recordings with visual feedback, timer display, and pause/resume controls
      - Enable "Advanced Analysis" checkbox for real-time differential diagnosis every 2 minutes during recording
+     - Clear button to manually clear analysis results
+     - Analysis results automatically clear when starting a new recording
    - **Process Tab:** Refine and improve transcribed text with AI assistance
    - **Generate Tab:** Create SOAP notes, referrals, letters, and perform medication analysis
    - **Recordings Tab:** View, search, and manage all saved recordings with document status indicators

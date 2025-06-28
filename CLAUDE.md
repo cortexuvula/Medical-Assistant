@@ -81,6 +81,8 @@ The periodic analysis feature provides real-time differential diagnosis during r
   - Application is closed
 - Audio segments are passed directly to transcription (no temp files)
 - Results clear on each new analysis to maintain readability
+- Clear button in UI allows manual clearing of analysis results
+- Analysis results automatically clear when starting a new recording
 
 ### Settings Integration
 - Advanced analysis settings stored in `settings.json`
@@ -327,6 +329,14 @@ When making changes:
 7. Verify UI responsiveness across all tabs
 8. Test agent functionality (medication analysis, diagnostic, etc.)
 9. Verify agent settings persistence and configuration
+10. Check for threading issues during app shutdown (recordings refresh)
+
+## Known Issues and Solutions
+
+### Threading and Shutdown
+- **Issue**: RuntimeError "main thread is not in main loop" during app shutdown
+- **Solution**: Added checks for parent window existence in `_refresh_recordings_list` before UI updates
+- **Location**: `src/ui/workflow_ui.py` - wrapped `self.parent.after()` calls in try-except blocks
 
 ## Project Structure (Post-Reorganization)
 
