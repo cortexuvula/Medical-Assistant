@@ -267,12 +267,31 @@ class WorkflowUI:
         text_frame = ttk.LabelFrame(right_column, text="Advanced Analysis Results", padding=10)
         text_frame.pack(fill=BOTH, expand=True)
         
+        # Create container for header with clear button
+        header_frame = ttk.Frame(text_frame)
+        header_frame.pack(fill=X, pady=(0, 5))
+        
+        # Clear button aligned to right
+        clear_button = ttk.Button(
+            header_frame,
+            text="Clear",
+            command=lambda: self._clear_advanced_analysis(),
+            bootstyle="secondary",
+            width=8
+        )
+        clear_button.pack(side=RIGHT)
+        ToolTip(clear_button, "Clear advanced analysis results")
+        self.components['clear_analysis_button'] = clear_button
+        
         # Create text widget with scrollbar
-        text_scroll = ttk.Scrollbar(text_frame)
+        text_container = ttk.Frame(text_frame)
+        text_container.pack(fill=BOTH, expand=True)
+        
+        text_scroll = ttk.Scrollbar(text_container)
         text_scroll.pack(side=RIGHT, fill=Y)
         
         self.components['record_notes_text'] = tk.Text(
-            text_frame,
+            text_container,
             wrap=tk.WORD,
             yscrollcommand=text_scroll.set
         )
@@ -1873,3 +1892,8 @@ class WorkflowUI:
                 "Clear Error",
                 f"Failed to clear recordings: {str(e)}"
             )
+    
+    def _clear_advanced_analysis(self):
+        """Clear the advanced analysis text area."""
+        if 'record_notes_text' in self.components:
+            self.components['record_notes_text'].delete("1.0", tk.END)

@@ -1082,11 +1082,14 @@ class MedicalDictationApp(ttk.Window):
                 self.soap_recording = True
                 logging.info("SOAP recording started successfully - UI updated")
                 
+                # Clear the analysis text area when starting a new recording
+                if 'record_notes_text' in self.ui.components:
+                    self.ui.components['record_notes_text'].delete("1.0", tk.END)
+                    
                 # Check if Advanced Analysis is enabled
                 if hasattr(self.ui, 'advanced_analysis_var') and self.ui.advanced_analysis_var.get():
-                    # Clear the analysis text area
+                    # Add message for advanced analysis
                     if 'record_notes_text' in self.ui.components:
-                        self.ui.components['record_notes_text'].delete("1.0", tk.END)
                         self.ui.components['record_notes_text'].insert("1.0", 
                             "Advanced Analysis enabled. First analysis will appear after 2 minutes...\n\n")
                     
