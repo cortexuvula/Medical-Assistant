@@ -137,8 +137,20 @@ class StatusManager:
         """Display an informational status message."""
         self.update_status(message, "info")
         
-    def error(self, message):
-        """Display an error status message."""
+    def error(self, message, exception=None, context=None):
+        """Display an error status message.
+        
+        Args:
+            message: Error message to display (can be exception object)
+            exception: Optional exception object for better error mapping
+            context: Optional context about what operation failed
+        """
+        # If message is an exception, use error mapper
+        if isinstance(message, Exception) or exception:
+            from utils.error_messages import get_user_friendly_error
+            error_obj = message if isinstance(message, Exception) else exception
+            message = get_user_friendly_error(error_obj, context)
+            
         self.update_status(message, "error")
         
     def warning(self, message):

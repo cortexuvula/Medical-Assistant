@@ -809,18 +809,17 @@ class MedicalDictationApp(ttk.Window):
                 
                 # Schedule UI update on the main thread
                 self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
-            except concurrent.futures.TimeoutError:
+            except concurrent.futures.TimeoutError as e:
                 self.after(0, lambda: [
-                    self.status_manager.error("AI processing timed out. Please try again."),
+                    self.status_manager.error(e, context=f"processing {processor_type}"),
                     button.config(state=NORMAL),
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
                 ])
             except Exception as e:
-                error_msg = f"Error processing text: {str(e)}"
-                logging.error(error_msg, exc_info=True)
+                logging.error(f"Error processing text: {str(e)}", exc_info=True)
                 self.after(0, lambda: [
-                    self.status_manager.error(error_msg),
+                    self.status_manager.error(e, context=f"processing {processor_type}"),
                     button.config(state=NORMAL),
                     self.progress_bar.stop(),
                     self.progress_bar.pack_forget()
@@ -2427,8 +2426,27 @@ class MedicalDictationApp(ttk.Window):
     
     def _stop_voice_audio_capture(self):
         """Stop capturing audio for voice mode."""
-        logging.info("Voice audio capture would stop here")
-        # TODO: Implement actual audio capture stop
+        try:
+            logging.info("Stopping voice audio capture")
+            
+            # Set flag to stop the recording loop
+            if hasattr(self, 'voice_recording_active'):
+                self.voice_recording_active = False
+            
+            # Wait for the recording thread to finish
+            if hasattr(self, 'voice_recording_thread') and self.voice_recording_thread:
+                # Give the thread time to finish gracefully (max 2 seconds)
+                self.voice_recording_thread.join(timeout=2.0)
+                if self.voice_recording_thread.is_alive():
+                    logging.warning("Voice recording thread did not stop gracefully")
+                else:
+                    logging.info("Voice recording thread stopped successfully")
+                self.voice_recording_thread = None
+                
+            logging.info("Voice audio capture stopped")
+            
+        except Exception as e:
+            logging.error(f"Error stopping voice audio capture: {e}")
     
     def _process_voice_audio(self, audio_data):
         """Process audio data for voice mode.

@@ -17,6 +17,7 @@ from managers.agent_manager import agent_manager
 from ai.agents import AgentTask, AgentType
 from ui.dialogs.diagnostic_dialog import DiagnosticAnalysisDialog
 from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
+from utils.progress_tracker import DocumentGenerationProgress, create_progress_callback
 
 
 class DocumentGenerators:
@@ -44,8 +45,19 @@ class DocumentGenerators:
 
         def task() -> None:
             try:
-                # Get context text from the context tab
+                # Create progress tracker
+                progress_callback = create_progress_callback(self.app.status_manager)
+                tracker = DocumentGenerationProgress.create_soap_tracker(progress_callback)
+                
+                # Step 1: Prepare transcript
+                tracker.update("Preparing transcript...")
                 context_text = self.app.context_text.get("1.0", "end").strip()
+                
+                # Step 2: Extract context
+                tracker.update("Extracting context...")
+                
+                # Step 3: Generate SOAP sections
+                tracker.update("Generating SOAP sections...")
                 
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.app.io_executor.submit(
@@ -56,6 +68,12 @@ class DocumentGenerators:
                 
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
+                
+                # Step 4: Format output
+                tracker.update("Formatting output...")
+                
+                # Step 5: Finalize
+                tracker.update("Finalizing document...")
                 
                 # Store the values we need for database operations
                 soap_note = result
@@ -92,6 +110,9 @@ class DocumentGenerators:
                         ):
                             # Run diagnostic analysis on the SOAP note
                             self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
+                
+                # Mark progress as complete
+                tracker.complete("SOAP note created successfully")
                 
                 self.app.after(0, update_ui_and_save)
             except concurrent.futures.TimeoutError:

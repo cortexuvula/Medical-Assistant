@@ -3,6 +3,7 @@ import datetime
 import json
 from typing import Optional, Dict, List, Any, Union
 from managers.data_folder_manager import data_folder_manager
+from utils.retry_decorator import db_retry
 
 class Database:
     def __init__(self, db_path: str = None) -> None:
@@ -11,9 +12,10 @@ class Database:
         self.conn = None
         self.cursor = None
         
+    @db_retry(max_retries=3, initial_delay=0.1)
     def connect(self) -> None:
         """Establish connection to the database"""
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, timeout=30.0)  # 30 second timeout
         self.cursor = self.conn.cursor()
         
     def disconnect(self) -> None:
@@ -38,6 +40,7 @@ class Database:
         self.conn.commit()
         self.disconnect()
     
+    @db_retry(max_retries=3, initial_delay=0.2)
     def add_recording(self, filename: str, transcript: Optional[str] = None, soap_note: Optional[str] = None, 
                      referral: Optional[str] = None, letter: Optional[str] = None, **kwargs) -> int:
         """Add a new recording to the database
@@ -81,6 +84,7 @@ class Database:
         self.disconnect()
         return row_id
     
+    @db_retry(max_retries=3, initial_delay=0.2)
     def update_recording(self, recording_id: int, **kwargs: Any) -> bool:
         """
         Update a recording in the database
