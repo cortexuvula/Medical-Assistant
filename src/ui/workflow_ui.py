@@ -75,6 +75,10 @@ class WorkflowUI:
         recordings_frame = self._create_recordings_tab(command_map)
         workflow_notebook.add(recordings_frame, text="Recordings")
         
+        # Create Voice Mode tab
+        voice_frame = self._create_voice_tab(command_map)
+        workflow_notebook.add(voice_frame, text="Voice Mode")
+        
         # Bind tab change event
         workflow_notebook.bind("<<NotebookTabChanged>>", self._on_workflow_tab_changed)
         
@@ -267,21 +271,21 @@ class WorkflowUI:
         text_frame = ttk.LabelFrame(right_column, text="Advanced Analysis Results", padding=10)
         text_frame.pack(fill=BOTH, expand=True)
         
-        # Create container for header with clear button
+        # Create header frame with clear button
         header_frame = ttk.Frame(text_frame)
         header_frame.pack(fill=X, pady=(0, 5))
         
-        # Clear button aligned to right
-        clear_button = ttk.Button(
+        # Clear button aligned to the right
+        clear_btn = ttk.Button(
             header_frame,
             text="Clear",
-            command=lambda: self._clear_advanced_analysis(),
+            command=command_map.get("clear_advanced_analysis"),
             bootstyle="secondary",
             width=8
         )
-        clear_button.pack(side=RIGHT)
-        ToolTip(clear_button, "Clear advanced analysis results")
-        self.components['clear_analysis_button'] = clear_button
+        clear_btn.pack(side=RIGHT)
+        ToolTip(clear_btn, "Clear analysis results")
+        self.components['clear_analysis_button'] = clear_btn
         
         # Create text widget with scrollbar
         text_container = ttk.Frame(text_frame)
@@ -577,11 +581,31 @@ class WorkflowUI:
         
         return recordings_frame
     
+    def _create_voice_tab(self, command_map: Dict[str, Callable]) -> ttk.Frame:
+        """Create the Voice Mode tab.
+        
+        Args:
+            command_map: Dictionary mapping button names to their command functions
+            
+        Returns:
+            ttk.Frame: The voice mode tab frame
+        """
+        voice_frame = ttk.Frame(self.parent)
+        
+        # Import and create the Voice Mode UI
+        from ui.voice_mode_ui import VoiceModeUI
+        
+        # Create the voice mode interface
+        self.voice_ui = VoiceModeUI(voice_frame, self.parent)
+        self.components['voice_ui'] = self.voice_ui
+        
+        return voice_frame
+    
     def _on_workflow_tab_changed(self, event):
         """Handle workflow tab change event."""
         notebook = event.widget
         tab_index = notebook.index("current")
-        tab_names = ["record", "process", "generate", "recordings"]
+        tab_names = ["record", "process", "generate", "recordings", "voice_mode"]
         
         if 0 <= tab_index < len(tab_names):
             self.current_workflow = tab_names[tab_index]
@@ -1893,7 +1917,3 @@ class WorkflowUI:
                 f"Failed to clear recordings: {str(e)}"
             )
     
-    def _clear_advanced_analysis(self):
-        """Clear the advanced analysis text area."""
-        if 'record_notes_text' in self.components:
-            self.components['record_notes_text'].delete("1.0", tk.END)
