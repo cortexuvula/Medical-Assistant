@@ -603,21 +603,25 @@ class WorkflowUI:
     
     def _on_workflow_tab_changed(self, event):
         """Handle workflow tab change event."""
-        notebook = event.widget
-        tab_index = notebook.index("current")
-        tab_names = ["record", "process", "generate", "recordings", "voice_mode"]
-        
-        if 0 <= tab_index < len(tab_names):
-            self.current_workflow = tab_names[tab_index]
-            logging.debug(f"Switched to {self.current_workflow} workflow")
+        try:
+            notebook = event.widget
+            tab_index = notebook.index("current")
+            tab_names = ["record", "process", "generate", "recordings", "voice_mode"]
             
-            # Refresh recordings list when switching to Recordings tab
-            if self.current_workflow == "recordings":
-                self._refresh_recordings_list()
-            
-            # Trigger any workflow-specific updates
-            if hasattr(self.parent, 'on_workflow_changed'):
-                self.parent.on_workflow_changed(self.current_workflow)
+            if 0 <= tab_index < len(tab_names):
+                self.current_workflow = tab_names[tab_index]
+                logging.debug(f"Switched to {self.current_workflow} workflow")
+                
+                # Refresh recordings list when switching to Recordings tab
+                if self.current_workflow == "recordings":
+                    self._refresh_recordings_list()
+                
+                # Trigger any workflow-specific updates
+                if hasattr(self.parent, 'on_workflow_changed'):
+                    self.parent.on_workflow_changed(self.current_workflow)
+        except Exception as e:
+            # Ignore errors during shutdown
+            logging.debug(f"Tab change error (likely during shutdown): {e}")
     
     def create_context_panel(self) -> ttk.Frame:
         """Create the persistent context side panel.
@@ -1597,11 +1601,22 @@ class WorkflowUI:
             try:
                 # Get recent recordings from database
                 recordings = self.parent.db.get_all_recordings()
-                # Update UI on main thread
-                self.parent.after(0, lambda: self._populate_recordings_tree(recordings))
+                # Update UI on main thread - check if parent still exists
+                if self.parent and hasattr(self.parent, 'after'):
+                    try:
+                        self.parent.after(0, lambda: self._populate_recordings_tree(recordings))
+                    except RuntimeError:
+                        # Window might be closing
+                        pass
             except Exception as e:
                 logging.error(f"Error loading recordings: {e}")
-                self.parent.after(0, lambda: self.recording_count_label.config(text="Error loading recordings"))
+                # Check if parent and label still exist before updating
+                if self.parent and hasattr(self.parent, 'after') and hasattr(self, 'recording_count_label'):
+                    try:
+                        self.parent.after(0, lambda: self.recording_count_label.config(text="Error loading recordings"))
+                    except RuntimeError:
+                        # Window might be closing
+                        pass
         
         # Run in background thread
         threading.Thread(target=task, daemon=True).start()
