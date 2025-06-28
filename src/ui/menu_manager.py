@@ -127,7 +127,6 @@ class MenuManager:
         settings_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
         settings_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
         settings_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
-        settings_menu.add_command(label="Voice Mode Settings", command=self.app.show_voice_mode_settings)
         
         # Create prompt settings submenu
         self._create_prompt_settings_submenu(settings_menu)

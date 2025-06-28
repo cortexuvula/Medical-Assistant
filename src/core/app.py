@@ -19,7 +19,8 @@ from tkinter import TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 from dotenv import load_dotenv
 import openai
 from managers.data_folder_manager import data_folder_manager
-from typing import Callable, Optional
+from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
+from typing import Callable, Optional, Dict, Any
 import threading
 import numpy as np
 from pydub import AudioSegment
@@ -347,6 +348,9 @@ class MedicalDictationApp(ttk.Window):
         
         # Set initial provider selections
         self._initialize_provider_selections()
+        
+        # Initialize auto-save manager
+        self._initialize_autosave()
     
     def _store_workflow_button_references(self):
         """Store workflow button references for compatibility with existing code."""
@@ -392,6 +396,121 @@ class MedicalDictationApp(ttk.Window):
         stt_map = {"groq": 0, "elevenlabs": 1, "deepgram": 2}
         if stt_provider in stt_map:
             self.stt_combobox.current(stt_map[stt_provider])
+
+    def _initialize_autosave(self):
+        """Initialize the auto-save manager."""
+        # Create auto-save manager
+        autosave_interval = SETTINGS.get("autosave_interval", 300)  # 5 minutes default
+        self.autosave_manager = AutoSaveManager(interval_seconds=autosave_interval)
+        
+        # Register data providers
+        self.autosave_manager.register_data_provider(
+            "transcript",
+            AutoSaveDataProvider.create_text_widget_provider(self.transcript_text, "Transcript")
+        )
+        self.autosave_manager.register_data_provider(
+            "soap_note",
+            AutoSaveDataProvider.create_text_widget_provider(self.soap_text, "SOAP Note")
+        )
+        self.autosave_manager.register_data_provider(
+            "referral",
+            AutoSaveDataProvider.create_text_widget_provider(self.referral_text, "Referral")
+        )
+        self.autosave_manager.register_data_provider(
+            "letter",
+            AutoSaveDataProvider.create_text_widget_provider(self.letter_text, "Letter")
+        )
+        self.autosave_manager.register_data_provider(
+            "context",
+            AutoSaveDataProvider.create_text_widget_provider(self.context_text, "Context")
+        )
+        self.autosave_manager.register_data_provider(
+            "chat",
+            AutoSaveDataProvider.create_text_widget_provider(self.chat_text, "Chat")
+        )
+        self.autosave_manager.register_data_provider(
+            "recording_state",
+            AutoSaveDataProvider.create_recording_state_provider(self)
+        )
+        
+        # Set up callbacks
+        self.autosave_manager.on_save_start = lambda: self.status_manager.info("Auto-saving...")
+        self.autosave_manager.on_save_complete = lambda: self.status_manager.success("Auto-save complete")
+        self.autosave_manager.on_save_error = lambda e: self.status_manager.error(f"Auto-save failed: {e}")
+        
+        # Check for existing auto-save and offer to restore
+        self._check_and_restore_autosave()
+        
+        # Start auto-save if enabled
+        if SETTINGS.get("autosave_enabled", True):
+            self.autosave_manager.start()
+            
+        # Save on significant events
+        self.bind("<<DocumentGenerated>>", lambda e: self.autosave_manager.perform_save())
+        self.bind("<<RecordingComplete>>", lambda e: self.autosave_manager.perform_save())
+
+    def _check_and_restore_autosave(self):
+        """Check for existing auto-save and offer to restore."""
+        if not self.autosave_manager.has_unsaved_data():
+            return
+            
+        # Load latest auto-save
+        saved_data = self.autosave_manager.load_latest()
+        if not saved_data or "data" not in saved_data:
+            return
+            
+        # Check if data is recent (within last 24 hours)
+        try:
+            saved_time = datetime.fromisoformat(saved_data["timestamp"])
+            age_hours = (datetime.now() - saved_time).total_seconds() / 3600
+            
+            if age_hours > 24:
+                # Too old, clear it
+                self.autosave_manager.clear_saves()
+                return
+        except:
+            return
+            
+        # Ask user if they want to restore
+        result = messagebox.askyesno(
+            "Restore Auto-Save",
+            f"An auto-save from {saved_data['timestamp']} was found.\n\n"
+            "Would you like to restore your previous work?",
+            parent=self
+        )
+        
+        if result:
+            self._restore_from_autosave(saved_data["data"])
+        else:
+            # Clear auto-saves if user doesn't want to restore
+            self.autosave_manager.clear_saves()
+    
+    def _restore_from_autosave(self, data: Dict[str, Any]):
+        """Restore application state from auto-save data."""
+        try:
+            # Restore text content
+            for field, widget in [
+                ("transcript", self.transcript_text),
+                ("soap_note", self.soap_text),
+                ("referral", self.referral_text),
+                ("letter", self.letter_text),
+                ("context", self.context_text),
+                ("chat", self.chat_text)
+            ]:
+                if field in data and data[field] and "content" in data[field]:
+                    widget.delete("1.0", "end")
+                    widget.insert("1.0", data[field]["content"])
+            
+            # Restore recording state if applicable
+            if "recording_state" in data and data["recording_state"]:
+                state = data["recording_state"]
+                self.current_recording_id = state.get("current_recording_id")
+            
+            self.status_manager.success("Auto-save restored successfully")
+            
+        except Exception as e:
+            logging.error(f"Failed to restore from auto-save: {e}")
+            self.status_manager.error("Failed to restore auto-save")
 
     def bind_shortcuts(self) -> None:
         # Basic shortcuts
@@ -633,51 +752,6 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         self.status_manager.success("Advanced analysis settings saved successfully")
 
-    def show_voice_mode_settings(self) -> None:
-        """Show dialog to configure voice mode settings."""
-        from settings.settings import SETTINGS
-        from ui.dialogs.dialogs import show_voice_mode_settings_dialog
-        
-        # Get current voice mode configuration
-        voice_config = SETTINGS.get("voice_mode", {})
-        
-        # Show the dialog
-        show_voice_mode_settings_dialog(self, voice_config, self.save_voice_mode_settings)
-
-    def save_voice_mode_settings(self, ai_provider: str, ai_model: str, ai_temperature: float,
-                                 system_prompt: str, tts_provider: str, tts_voice: str,
-                                 enable_interruptions: bool, openai_model: str, perplexity_model: str,
-                                 grok_model: str, ollama_model: str, anthropic_model: str) -> None:
-        """Save voice mode settings to configuration."""
-        from settings.settings import save_settings, SETTINGS
-        
-        # Update voice mode settings
-        SETTINGS["voice_mode"] = {
-            "ai_provider": ai_provider,
-            "ai_model": ai_model,
-            "ai_temperature": ai_temperature,
-            "system_prompt": system_prompt,
-            "tts_provider": tts_provider,
-            "tts_voice": tts_voice,
-            "stt_provider": SETTINGS.get("voice_mode", {}).get("stt_provider", "deepgram"),
-            "enable_interruptions": enable_interruptions,
-            "response_delay_ms": SETTINGS.get("voice_mode", {}).get("response_delay_ms", 500),
-            "max_context_length": SETTINGS.get("voice_mode", {}).get("max_context_length", 4000),
-            "openai_model": openai_model,
-            "grok_model": grok_model,
-            "perplexity_model": perplexity_model,
-            "ollama_model": ollama_model,
-            "anthropic_model": anthropic_model,
-            "openai_temperature": ai_temperature if ai_provider == "openai" else SETTINGS.get("voice_mode", {}).get("openai_temperature", 0.7),
-            "grok_temperature": ai_temperature if ai_provider == "grok" else SETTINGS.get("voice_mode", {}).get("grok_temperature", 0.7),
-            "perplexity_temperature": ai_temperature if ai_provider == "perplexity" else SETTINGS.get("voice_mode", {}).get("perplexity_temperature", 0.7),
-            "ollama_temperature": ai_temperature if ai_provider == "ollama" else SETTINGS.get("voice_mode", {}).get("ollama_temperature", 0.7),
-            "anthropic_temperature": ai_temperature if ai_provider == "anthropic" else SETTINGS.get("voice_mode", {}).get("anthropic_temperature", 0.7)
-        }
-        
-        # Save settings
-        save_settings(SETTINGS)
-        self.status_manager.success("Voice mode settings saved successfully")
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
@@ -868,6 +942,9 @@ class MedicalDictationApp(ttk.Window):
         self.status_manager.success(success_message)
         button.config(state=NORMAL)
         self.status_manager.show_progress(False)
+        
+        # Trigger document generated event for auto-save
+        self.event_generate("<<DocumentGenerated>>", when="tail")
 
     def get_active_text_widget(self) -> tk.Widget:
         # Get the currently selected tab index
@@ -1191,11 +1268,17 @@ class MedicalDictationApp(ttk.Window):
             self._reset_ui_for_next_patient()
             # Show status
             self.status_manager.info("Recording queued • Ready for next patient")
+            
+            # Trigger recording complete event for auto-save (also when queued)
+            self.event_generate("<<RecordingComplete>>", when="tail")
         else:
             # Current behavior - process immediately
             self.process_soap_recording()
             # Reset all button states after processing is complete
             self.after(0, lambda: self._update_recording_ui_state(recording=False, caller="finalize_delayed"))
+            
+            # Trigger recording complete event for auto-save
+            self.event_generate("<<RecordingComplete>>", when="tail")
 
 
     def toggle_soap_pause(self) -> None:
@@ -2126,396 +2209,6 @@ class MedicalDictationApp(ttk.Window):
         except Exception as e:
             logging.error(f"Error clearing advanced analysis text: {e}")
     
-    # Voice Mode Integration Methods
-    def start_voice_mode(self):
-        """Start voice mode for advanced voice interactions."""
-        try:
-            # Initialize voice interaction manager if not exists
-            if not hasattr(self, 'voice_manager'):
-                from voice.voice_interaction_manager import VoiceInteractionManager
-                self.voice_manager = VoiceInteractionManager(self.audio_handler)
-                
-                # Set callbacks
-                self.voice_manager.on_state_change = self._on_voice_state_change
-                self.voice_manager.on_transcript = self._on_voice_transcript
-                self.voice_manager.on_ai_response = self._on_voice_ai_response
-                self.voice_manager.on_error = self._on_voice_error
-                
-                # Configure voice settings from saved voice mode settings
-                voice_mode_config = SETTINGS.get("voice_mode", {})
-                
-                # Determine which model to use based on provider
-                ai_provider = voice_mode_config.get("ai_provider", "openai")
-                if ai_provider == "openai":
-                    ai_model = voice_mode_config.get("openai_model", "gpt-4")
-                elif ai_provider == "perplexity":
-                    ai_model = voice_mode_config.get("perplexity_model", "sonar-reasoning-pro")
-                elif ai_provider == "grok":
-                    ai_model = voice_mode_config.get("grok_model", "grok-1")
-                elif ai_provider == "ollama":
-                    ai_model = voice_mode_config.get("ollama_model", "llama3")
-                elif ai_provider == "anthropic":
-                    ai_model = voice_mode_config.get("anthropic_model", "claude-3-sonnet-20240229")
-                else:
-                    ai_model = voice_mode_config.get("ai_model", "gpt-4")
-                
-                voice_settings = {
-                    "ai_provider": ai_provider,
-                    "ai_model": ai_model,
-                    "ai_temperature": voice_mode_config.get("ai_temperature", 0.7),
-                    "system_prompt": voice_mode_config.get("system_prompt", 
-                        """You are a medical AI assistant in voice mode. Provide helpful, conversational responses about medical topics. Keep responses concise and natural for voice interaction. When discussing medical conditions, be clear about when professional medical advice is needed."""),
-                    "tts_provider": voice_mode_config.get("tts_provider", "openai"),
-                    "tts_voice": voice_mode_config.get("tts_voice", "nova"),
-                    "stt_provider": voice_mode_config.get("stt_provider", "deepgram"),
-                    "enable_interruptions": voice_mode_config.get("enable_interruptions", True),
-                    "response_delay_ms": voice_mode_config.get("response_delay_ms", 500),
-                    "max_context_length": voice_mode_config.get("max_context_length", 4000)
-                }
-                self.voice_manager.configure(voice_settings)
-                
-                # Initialize components
-                asyncio.run(self.voice_manager.initialize())
-            
-            # Get medical context
-            context_data = self._get_medical_context_for_voice()
-            
-            # Start voice session
-            session_data = {
-                "medical_context": context_data,
-                "timestamp": datetime.now()
-            }
-            
-            asyncio.run(self.voice_manager.start_session(session_data))
-            
-            # Start audio capture thread
-            self._start_voice_audio_capture()
-            
-            logging.info("Voice mode started successfully")
-            
-        except Exception as e:
-            logging.error(f"Failed to start voice mode: {e}")
-            self.status_manager.error("Failed to start voice mode")
-            if hasattr(self.ui.components.get('voice_ui'), 'add_system_message'):
-                self.ui.components['voice_ui'].add_system_message(f"Error: {str(e)}")
-    
-    def stop_voice_mode(self):
-        """Stop voice mode."""
-        try:
-            if hasattr(self, 'voice_manager'):
-                # Stop audio capture
-                self._stop_voice_audio_capture()
-                
-                # End voice session
-                asyncio.run(self.voice_manager.end_session())
-                
-                # Get conversation transcript
-                transcript = self.voice_manager.get_conversation_transcript()
-                
-                # Save transcript if not empty
-                if transcript:
-                    self._save_voice_transcript(transcript)
-                
-                logging.info("Voice mode stopped successfully")
-                
-        except Exception as e:
-            logging.error(f"Failed to stop voice mode: {e}")
-            self.status_manager.error("Failed to stop voice mode")
-    
-    def _voice_recording_loop(self, callback):
-        """Continuous recording loop for voice mode.
-        
-        Args:
-            callback: Function to call with audio data
-        """
-        try:
-            import pyaudio
-            
-            # Audio parameters
-            CHUNK = 1024
-            FORMAT = pyaudio.paInt16
-            CHANNELS = 1
-            RATE = 16000
-            
-            # Initialize PyAudio
-            p = pyaudio.PyAudio()
-            
-            # Get the selected microphone from audio handler
-            mic_index = None
-            if hasattr(self.audio_handler, 'selected_device'):
-                mic_index = self.audio_handler.selected_device
-            
-            # Open audio stream
-            stream = p.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                input_device_index=mic_index,
-                frames_per_buffer=CHUNK
-            )
-            
-            logging.info(f"Voice recording started on device {mic_index}")
-            
-            # Continuous recording loop
-            while self.voice_recording_active:
-                try:
-                    # Read audio data
-                    data = stream.read(CHUNK, exception_on_overflow=False)
-                    
-                    # Only send to callback if not speaking
-                    # This prevents feedback loop where TTS output is picked up by mic
-                    if hasattr(self, 'voice_manager') and self.voice_manager:
-                        from voice.voice_interaction_manager import ConversationState
-                        if self.voice_manager.state != ConversationState.SPEAKING:
-                            callback(data)
-                        else:
-                            # During speaking, send silence to keep connection alive
-                            silence = b'\x00' * len(data)
-                            callback(silence)
-                    else:
-                        callback(data)
-                    
-                except Exception as e:
-                    logging.error(f"Error in voice recording loop: {e}")
-                    
-            # Clean up
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-            
-            logging.info("Voice recording loop ended")
-            
-        except Exception as e:
-            logging.error(f"Voice recording loop failed: {e}")
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.on_error(f"Audio capture error: {e}")
-    
-    def interrupt_voice(self):
-        """Interrupt current voice interaction."""
-        try:
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.interrupt()
-                
-        except Exception as e:
-            logging.error(f"Failed to interrupt voice: {e}")
-    
-    def set_voice_volume(self, volume: float):
-        """Set voice playback volume.
-        
-        Args:
-            volume: Volume level (0.0 to 1.0)
-        """
-        try:
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.playback_manager.set_volume(volume)
-                
-        except Exception as e:
-            logging.error(f"Failed to set voice volume: {e}")
-    
-    def set_voice_interruptions(self, enabled: bool):
-        """Enable/disable voice interruptions.
-        
-        Args:
-            enabled: Whether interruptions are enabled
-        """
-        try:
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.settings["enable_interruptions"] = enabled
-                
-        except Exception as e:
-            logging.error(f"Failed to set voice interruptions: {e}")
-    
-    def export_voice_transcript(self, content: str):
-        """Export voice conversation transcript.
-        
-        Args:
-            content: Transcript content
-        """
-        try:
-            # Use file dialog to save
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".txt",
-                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-                initialfile=f"voice_transcript_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            )
-            
-            if filename:
-                with open(filename, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                self.status_manager.success(f"Transcript saved to {filename}")
-                
-        except Exception as e:
-            logging.error(f"Failed to export voice transcript: {e}")
-            self.status_manager.error("Failed to save transcript")
-    
-    def add_to_context(self, content: str, source: str = "Voice"):
-        """Add content to context tab.
-        
-        Args:
-            content: Content to add
-            source: Source of content
-        """
-        try:
-            # Add header
-            header = f"\n\n--- {source} ({datetime.now().strftime('%Y-%m-%d %H:%M')}) ---\n\n"
-            
-            # Add to context
-            self.context_text.insert(tk.END, header + content)
-            
-            # Focus context tab
-            self.notebook.select(4)  # Context tab
-            
-            self.status_manager.success(f"{source} added to context")
-            
-        except Exception as e:
-            logging.error(f"Failed to add to context: {e}")
-    
-    def _get_medical_context_for_voice(self) -> dict:
-        """Get current medical context for voice mode.
-        
-        Returns:
-            Dictionary with medical context
-        """
-        context = {}
-        
-        # Get context text
-        context_content = self.context_text.get("1.0", tk.END).strip()
-        if context_content:
-            context["context_notes"] = context_content
-        
-        # Get latest SOAP note if available
-        soap_content = self.soap_text.get("1.0", tk.END).strip()
-        if soap_content:
-            context["latest_soap"] = soap_content[:1000]  # First 1000 chars
-        
-        # Get patient info from context
-        patient_name = self._extract_patient_name(context_content)
-        if patient_name:
-            context["patient_name"] = patient_name
-        
-        return context
-    
-    def _start_voice_audio_capture(self):
-        """Start capturing audio for voice mode."""
-        try:
-            # Create a callback for continuous audio streaming
-            def voice_audio_callback(audio_data):
-                """Callback for streaming audio to voice manager."""
-                if hasattr(self, 'voice_manager') and self.voice_manager.is_active:
-                    # Convert bytes to numpy array
-                    audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                    # Send to voice manager for processing
-                    self.voice_manager.process_audio(audio_array)
-            
-            # Start recording with the audio handler
-            # Use continuous streaming mode for voice
-            self.voice_recording_active = True
-            self.voice_recording_thread = threading.Thread(
-                target=self._voice_recording_loop,
-                args=(voice_audio_callback,),
-                daemon=True
-            )
-            self.voice_recording_thread.start()
-            
-            logging.info("Voice audio capture started")
-            
-        except Exception as e:
-            logging.error(f"Failed to start voice audio capture: {e}")
-            self.status_manager.error("Failed to start audio capture")
-    
-    def _stop_voice_audio_capture(self):
-        """Stop capturing audio for voice mode."""
-        try:
-            logging.info("Stopping voice audio capture")
-            
-            # Set flag to stop the recording loop
-            if hasattr(self, 'voice_recording_active'):
-                self.voice_recording_active = False
-            
-            # Wait for the recording thread to finish
-            if hasattr(self, 'voice_recording_thread') and self.voice_recording_thread:
-                # Give the thread time to finish gracefully (max 2 seconds)
-                self.voice_recording_thread.join(timeout=2.0)
-                if self.voice_recording_thread.is_alive():
-                    logging.warning("Voice recording thread did not stop gracefully")
-                else:
-                    logging.info("Voice recording thread stopped successfully")
-                self.voice_recording_thread = None
-                
-            logging.info("Voice audio capture stopped")
-            
-        except Exception as e:
-            logging.error(f"Error stopping voice audio capture: {e}")
-    
-    def _process_voice_audio(self, audio_data):
-        """Process audio data for voice mode.
-        
-        Args:
-            audio_data: Raw audio data
-        """
-        try:
-            if hasattr(self, 'voice_manager') and self.voice_manager.is_active:
-                # Convert audio data to numpy array
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                
-                # Send to voice manager
-                self.voice_manager.process_audio(audio_array)
-                
-        except Exception as e:
-            logging.error(f"Error processing voice audio: {e}")
-    
-    def _on_voice_state_change(self, state: str):
-        """Handle voice state change.
-        
-        Args:
-            state: New voice state
-        """
-        # Update UI
-        if hasattr(self.ui.components.get('voice_ui'), 'update_state'):
-            self.ui.components['voice_ui'].update_state(state)
-    
-    def _on_voice_transcript(self, data: dict):
-        """Handle voice transcript.
-        
-        Args:
-            data: Transcript data
-        """
-        if data.get('is_final'):
-            # Add to UI
-            if hasattr(self.ui.components.get('voice_ui'), 'add_user_message'):
-                self.ui.components['voice_ui'].add_user_message(
-                    data['text'],
-                    data.get('timestamp')
-                )
-    
-    def _on_voice_ai_response(self, data: dict):
-        """Handle voice AI response.
-        
-        Args:
-            data: AI response data
-        """
-        # Add to UI
-        if hasattr(self.ui.components.get('voice_ui'), 'add_assistant_message'):
-            self.ui.components['voice_ui'].add_assistant_message(
-                data['text'],
-                data.get('timestamp')
-            )
-    
-    def _on_voice_error(self, error: str):
-        """Handle voice error.
-        
-        Args:
-            error: Error message
-        """
-        logging.error(f"Voice error: {error}")
-        self.status_manager.error(f"Voice error: {error}")
-        
-        # Add to UI
-        if hasattr(self.ui.components.get('voice_ui'), '_add_system_message'):
-            self.ui.components['voice_ui']._add_system_message(f"Error: {error}")
-    
-    def _save_voice_transcript(self, transcript: str):
         """Save voice transcript to database.
         
         Args:
