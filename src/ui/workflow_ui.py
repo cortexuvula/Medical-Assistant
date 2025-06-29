@@ -1465,7 +1465,7 @@ class WorkflowUI:
             columns=columns,
             show="tree headings",
             height=7,  # Show 7 rows for better visibility
-            selectmode="browse",
+            selectmode="extended",  # Allow multiple selection
             yscrollcommand=scrollbar.set
         )
         scrollbar.config(command=self.recordings_tree.yview)
@@ -1557,6 +1557,18 @@ class WorkflowUI:
         row2_frame = ttk.Frame(actions_frame)
         row2_frame.pack(fill=X, pady=(5, 0))
         
+        # Process Selected button (in second row)
+        process_btn = ttk.Button(
+            row2_frame,
+            text="Process Selected",
+            command=self._process_selected_recordings,
+            bootstyle="success-outline",
+            width=15
+        )
+        process_btn.pack(side=LEFT, padx=(0, 10))
+        ToolTip(process_btn, "Process selected recordings in batch")
+        self.components['batch_process_button'] = process_btn
+        
         self.recording_count_label = ttk.Label(
             row2_frame,
             text="0 recordings",
@@ -1567,6 +1579,9 @@ class WorkflowUI:
         
         # Bind double-click to load
         self.recordings_tree.bind("<Double-Button-1>", lambda e: self._load_selected_recording())
+        
+        # Bind selection change to update count
+        self.recordings_tree.bind("<<TreeviewSelect>>", self._on_selection_change)
         
         # Load initial recordings
         self._refresh_recordings_list()
@@ -1703,6 +1718,10 @@ class WorkflowUI:
             tk.messagebox.showwarning("No Selection", "Please select a recording to load.")
             return
         
+        # For multiple selection, only load the first one
+        if len(selection) > 1:
+            tk.messagebox.showinfo("Multiple Selection", "Multiple recordings selected. Loading the first one.")
+        
         # Get recording ID
         item = selection[0]
         rec_id = int(self.recordings_tree.item(item, 'text'))
@@ -1749,37 +1768,54 @@ class WorkflowUI:
             tk.messagebox.showerror("Load Error", f"Failed to load recording: {str(e)}")
     
     def _delete_selected_recording(self):
-        """Delete the selected recording."""
+        """Delete the selected recording(s)."""
         selection = self.recordings_tree.selection()
         if not selection:
             tk.messagebox.showwarning("No Selection", "Please select a recording to delete.")
             return
         
+        # Handle multiple selection
+        count = len(selection)
+        if count == 1:
+            message = "Are you sure you want to delete this recording?"
+        else:
+            message = f"Are you sure you want to delete {count} recordings?"
+        
         # Confirm deletion
-        if not tk.messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this recording?"):
+        if not tk.messagebox.askyesno("Confirm Delete", message):
             return
         
-        # Get recording ID
-        item = selection[0]
-        rec_id = int(self.recordings_tree.item(item, 'text'))
+        deleted_count = 0
+        errors = []
         
-        try:
-            # Delete from database
-            self.parent.db.delete_recording(rec_id)
+        # Delete each selected recording
+        for item in selection:
+            rec_id = int(self.recordings_tree.item(item, 'text'))
             
-            # Remove from tree
-            self.recordings_tree.delete(item)
-            
-            # Update count
-            count = len(self.recordings_tree.get_children())
-            self.recording_count_label.config(text=f"{count} recording{'s' if count != 1 else ''}")
-            
-            # Update status
-            self.parent.status_manager.success("Recording deleted")
-            
-        except Exception as e:
-            logging.error(f"Error deleting recording: {e}")
-            tk.messagebox.showerror("Delete Error", f"Failed to delete recording: {str(e)}")
+            try:
+                # Delete from database
+                self.parent.db.delete_recording(rec_id)
+                
+                # Remove from tree
+                self.recordings_tree.delete(item)
+                deleted_count += 1
+                
+            except Exception as e:
+                logging.error(f"Error deleting recording {rec_id}: {e}")
+                errors.append(f"Recording {rec_id}: {str(e)}")
+        
+        # Update count
+        total_count = len(self.recordings_tree.get_children())
+        self.recording_count_label.config(text=f"{total_count} recording{'s' if total_count != 1 else ''}")
+        
+        # Update status
+        if deleted_count == count:
+            self.parent.status_manager.success(f"{deleted_count} recording{'s' if deleted_count > 1 else ''} deleted")
+        else:
+            error_msg = f"Deleted {deleted_count} of {count} recordings. Errors:\n" + "\n".join(errors[:3])
+            if len(errors) > 3:
+                error_msg += f"\n... and {len(errors) - 3} more errors"
+            tk.messagebox.showwarning("Partial Delete", error_msg)
     
     def _export_selected_recording(self):
         """Export the selected recording."""
@@ -1908,5 +1944,130 @@ class WorkflowUI:
             tkinter.messagebox.showerror(
                 "Clear Error",
                 f"Failed to clear recordings: {str(e)}"
+            )
+    
+    def _process_selected_recordings(self):
+        """Process selected recordings in batch."""
+        selection = self.recordings_tree.selection()
+        if not selection:
+            tk.messagebox.showwarning("No Selection", "Please select recordings to process.")
+            return
+        
+        # Get recording IDs
+        recording_ids = []
+        for item in selection:
+            rec_id = int(self.recordings_tree.item(item, 'text'))
+            recording_ids.append(rec_id)
+        
+        # Import dialog here to avoid circular imports
+        from ui.dialogs.batch_processing_dialog import BatchProcessingDialog
+        
+        # Show batch processing dialog
+        dialog = BatchProcessingDialog(self.parent, recording_ids)
+        result = dialog.show()
+        
+        if result:
+            # Start batch processing
+            self._start_batch_processing(recording_ids, result)
+    
+    def _start_batch_processing(self, recording_ids: list, options: dict):
+        """Start batch processing of recordings."""
+        # Import here to avoid circular imports
+        from ui.dialogs.batch_progress_dialog import BatchProgressDialog
+        
+        # Create progress dialog
+        self.batch_progress_dialog = BatchProgressDialog(self.parent, "batch_" + str(id(recording_ids)), len(recording_ids))
+        
+        # Update status
+        self.parent.status_manager.progress(f"Starting batch processing of {len(recording_ids)} recordings...")
+        
+        # Disable process button during processing
+        process_btn = self.components.get('batch_process_button')
+        if process_btn:
+            process_btn.config(state=tk.DISABLED)
+        
+        # Track processing state
+        self.batch_failed_count = 0
+        
+        # Create task for batch processing
+        def task():
+            try:
+                # Use document generators for batch processing
+                self.parent.document_generators.process_batch_recordings(
+                    recording_ids, 
+                    options,
+                    on_complete=lambda: self.parent.after(0, self._on_batch_complete),
+                    on_progress=lambda msg, count, total: self.parent.after(0, 
+                        lambda: self._update_batch_progress(msg, count, total))
+                )
+            except Exception as e:
+                logging.error(f"Batch processing error: {e}")
+                self.parent.after(0, lambda: [
+                    self.parent.status_manager.error(f"Batch processing failed: {str(e)}"),
+                    self.batch_progress_dialog.add_detail(f"Batch processing failed: {str(e)}", "error"),
+                    self._on_batch_complete()
+                ])
+        
+        # Set cancel callback
+        def cancel_batch(batch_id):
+            if hasattr(self.parent, 'processing_queue') and self.parent.processing_queue:
+                self.parent.processing_queue.cancel_batch(batch_id)
+        
+        self.batch_progress_dialog.set_cancel_callback(cancel_batch)
+        
+        # Submit task
+        threading.Thread(target=task, daemon=True).start()
+    
+    def _update_batch_progress(self, message: str, completed: int, total: int):
+        """Update batch processing progress."""
+        # Update status bar
+        self.parent.status_manager.progress(f"{message} ({completed}/{total})")
+        
+        # Update progress dialog
+        if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
+            # Estimate failed count based on message
+            failed = self.batch_failed_count
+            if "failed" in message.lower():
+                self.batch_failed_count += 1
+                failed = self.batch_failed_count
+            
+            self.batch_progress_dialog.update_progress(completed - failed, failed, message)
+            
+            # Add detailed message
+            if completed > 0:
+                self.batch_progress_dialog.add_detail(f"Recording {completed}/{total}: {message}", 
+                                                    "error" if "failed" in message.lower() else "success")
+    
+    def _on_batch_complete(self):
+        """Handle batch processing completion."""
+        # Re-enable process button
+        process_btn = self.components.get('batch_process_button')
+        if process_btn:
+            process_btn.config(state=tk.NORMAL)
+        
+        # Refresh recordings list
+        self._refresh_recordings_list()
+        
+        # Show completion message
+        self.parent.status_manager.success("Batch processing completed!")
+        
+        # Close progress dialog if it exists
+        if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
+            # Dialog will handle its own completion state
+            pass
+    
+    def _on_selection_change(self, event):
+        """Handle selection change in recordings tree."""
+        selection = self.recordings_tree.selection()
+        total_count = len(self.recordings_tree.get_children())
+        selected_count = len(selection)
+        
+        if selected_count > 1:
+            self.recording_count_label.config(
+                text=f"{selected_count} of {total_count} recordings selected"
+            )
+        else:
+            self.recording_count_label.config(
+                text=f"{total_count} recording{'s' if total_count != 1 else ''}"
             )
     

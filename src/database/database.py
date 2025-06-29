@@ -168,6 +168,28 @@ class Database:
         
         columns = ['id', 'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
         return [dict(zip(columns, recording)) for recording in recordings]
+    
+    def get_recordings_by_ids(self, recording_ids: List[int]) -> List[Dict[str, Any]]:
+        """Get multiple recordings by their IDs.
+        
+        Parameters:
+        - recording_ids: List of recording IDs to fetch
+        
+        Returns:
+        - List of recording dictionaries
+        """
+        if not recording_ids:
+            return []
+            
+        self.connect()
+        placeholders = ','.join(['?' for _ in recording_ids])
+        query = f"SELECT * FROM recordings WHERE id IN ({placeholders})"
+        self.cursor.execute(query, recording_ids)
+        recordings = self.cursor.fetchall()
+        self.disconnect()
+        
+        columns = ['id', 'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp']
+        return [dict(zip(columns, recording)) for recording in recordings]
         
     def search_recordings(self, search_term: str) -> List[Dict[str, Any]]:
         """Search for recordings containing the search term in any text field
@@ -290,6 +312,120 @@ class Database:
         self.disconnect()
         
         return rows_affected > 0
+    
+    def add_batch_to_processing_queue(self, recording_ids: List[int], batch_id: str, 
+                                     priority: int = 5, options: Dict[str, Any] = None) -> int:
+        """Add multiple recordings to the processing queue as a batch.
+        
+        Parameters:
+        - recording_ids: List of recording IDs to process
+        - batch_id: Unique batch identifier
+        - priority: Processing priority (0-10, default 5)
+        - options: Optional batch processing options
+        
+        Returns:
+        - Number of recordings added to queue
+        """
+        self.connect()
+        added_count = 0
+        
+        try:
+            # Create batch entry
+            options_json = json.dumps(options) if options else None
+            self.cursor.execute("""
+                INSERT INTO batch_processing (batch_id, total_count, options, status)
+                VALUES (?, ?, ?, ?)
+            """, (batch_id, len(recording_ids), options_json, 'processing'))
+            
+            # Add each recording to the queue
+            for recording_id in recording_ids:
+                task_id = f"{batch_id}_{recording_id}"
+                try:
+                    self.cursor.execute("""
+                        INSERT INTO processing_queue (recording_id, task_id, batch_id, priority, status)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (recording_id, task_id, batch_id, priority, "queued"))
+                    added_count += 1
+                except sqlite3.IntegrityError:
+                    # Skip if already in queue
+                    pass
+            
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise e
+        finally:
+            self.disconnect()
+        
+        return added_count
+    
+    def update_batch_status(self, batch_id: str, **kwargs: Any) -> bool:
+        """Update batch processing status.
+        
+        Parameters:
+        - batch_id: Batch identifier
+        - kwargs: Fields to update (completed_count, failed_count, completed_at, status)
+        
+        Returns:
+        - True if successful, False otherwise
+        """
+        self.connect()
+        
+        allowed_fields = ['completed_count', 'failed_count', 'started_at', 'completed_at', 'status']
+        update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        
+        if not update_fields:
+            self.disconnect()
+            return False
+        
+        fields = []
+        values = []
+        for field in update_fields:
+            fields.append(f"{field} = ?")
+            values.append(update_fields[field])
+        
+        values.append(batch_id)
+        query = f"UPDATE batch_processing SET {', '.join(fields)} WHERE batch_id = ?"
+        
+        self.cursor.execute(query, values)
+        rows_affected = self.cursor.rowcount
+        self.conn.commit()
+        self.disconnect()
+        
+        return rows_affected > 0
+    
+    def get_batch_status(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Get batch processing status.
+        
+        Parameters:
+        - batch_id: Batch identifier
+        
+        Returns:
+        - Batch status dictionary or None if not found
+        """
+        self.connect()
+        self.cursor.execute("""
+            SELECT batch_id, total_count, completed_count, failed_count,
+                   created_at, started_at, completed_at, options, status
+            FROM batch_processing
+            WHERE batch_id = ?
+        """, (batch_id,))
+        
+        row = self.cursor.fetchone()
+        self.disconnect()
+        
+        if row:
+            columns = ['batch_id', 'total_count', 'completed_count', 'failed_count',
+                      'created_at', 'started_at', 'completed_at', 'options', 'status']
+            batch_data = dict(zip(columns, row))
+            
+            # Parse options JSON
+            if batch_data['options']:
+                batch_data['options'] = json.loads(batch_data['options'])
+            
+            return batch_data
+        
+        return None
     
     def get_pending_recordings(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recordings that are pending processing."""

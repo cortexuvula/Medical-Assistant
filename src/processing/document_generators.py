@@ -9,7 +9,7 @@ import logging
 import concurrent.futures
 from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
-from typing import Dict, Any
+from typing import Dict, Any, List, Callable, Optional
 
 from ai.ai import create_soap_note_with_openai, create_referral_with_openai, get_possible_conditions, create_letter_with_ai
 from ui.dialogs.dialogs import ask_conditions_dialog
@@ -1133,3 +1133,125 @@ class DocumentGenerators:
             status_msg += f" (~{duration})"
         
         self.app.status_manager.success(status_msg)
+    
+    def process_batch_recordings(self, recording_ids: List[int], options: Dict[str, Any], 
+                                on_complete: Callable = None, on_progress: Callable = None) -> None:
+        """Process multiple recordings in batch.
+        
+        Args:
+            recording_ids: List of recording IDs to process
+            options: Processing options dictionary containing:
+                - process_soap: Whether to generate SOAP notes
+                - process_referral: Whether to generate referrals
+                - process_letter: Whether to generate letters
+                - priority: Processing priority
+                - skip_existing: Skip if content already exists
+                - continue_on_error: Continue processing on errors
+            on_complete: Callback when batch processing is complete
+            on_progress: Callback for progress updates (message, completed, total)
+        """
+        # Get recordings from database
+        recordings = self.app.db.get_recordings_by_ids(recording_ids)
+        if not recordings:
+            self.app.status_manager.error("No recordings found for batch processing")
+            if on_complete:
+                on_complete()
+            return
+        
+        # Map priority strings to numeric values
+        priority_map = {"low": 3, "normal": 5, "high": 7}
+        numeric_priority = priority_map.get(options.get("priority", "normal"), 5)
+        
+        # Initialize processing queue if not available
+        if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
+            from processing.processing_queue import ProcessingQueue
+            self.app.processing_queue = ProcessingQueue(self.app)
+        
+        # Set up batch callback
+        batch_id = None
+        completed_count = 0
+        total_count = len(recordings)
+        
+        def batch_callback(event: str, bid: str, current: int, total: int, **kwargs):
+            nonlocal batch_id, completed_count
+            batch_id = bid
+            
+            if event == "progress":
+                completed_count = current
+                if on_progress:
+                    msg = f"Processing recordings"
+                    on_progress(msg, current, total)
+            elif event == "completed":
+                # Batch complete
+                if on_complete:
+                    on_complete()
+                    
+                # Show summary
+                failed = kwargs.get("failed", 0)
+                if failed > 0:
+                    self.app.status_manager.warning(
+                        f"Batch processing completed: {current - failed} successful, {failed} failed"
+                    )
+                else:
+                    self.app.status_manager.success(
+                        f"Batch processing completed: {current} recordings processed successfully"
+                    )
+        
+        self.app.processing_queue.set_batch_callback(batch_callback)
+        
+        # Build batch recordings data
+        batch_recordings = []
+        
+        for recording in recordings:
+            rec_id = recording['id']
+            
+            # Check if we should skip based on existing content
+            if options.get("skip_existing", True):
+                skip = False
+                if options.get("process_soap") and recording.get("soap_note"):
+                    skip = True
+                elif options.get("process_referral") and recording.get("referral"):
+                    skip = True
+                elif options.get("process_letter") and recording.get("letter"):
+                    skip = True
+                
+                if skip:
+                    logging.info(f"Skipping recording {rec_id} - already has requested content")
+                    total_count -= 1
+                    continue
+            
+            # Build recording data for processing
+            recording_data = {
+                "recording_id": rec_id,
+                "filename": recording.get("filename", ""),
+                "transcript": recording.get("transcript", ""),
+                "patient_name": recording.get("patient_name", "Unknown"),
+                "process_options": {
+                    "generate_soap": options.get("process_soap", False),
+                    "generate_referral": options.get("process_referral", False),
+                    "generate_letter": options.get("process_letter", False)
+                },
+                "continue_on_error": options.get("continue_on_error", True)
+            }
+            
+            batch_recordings.append(recording_data)
+        
+        if not batch_recordings:
+            self.app.status_manager.info("All selected recordings already have the requested content")
+            if on_complete:
+                on_complete()
+            return
+        
+        # Update progress callback with actual count
+        if on_progress:
+            on_progress("Starting batch processing", 0, len(batch_recordings))
+        
+        # Submit batch to processing queue
+        batch_options = {
+            "priority": numeric_priority,
+            "continue_on_error": options.get("continue_on_error", True)
+        }
+        
+        batch_id = self.app.processing_queue.add_batch_recordings(batch_recordings, batch_options)
+        
+        logging.info(f"Started batch processing with ID {batch_id} for {len(batch_recordings)} recordings")

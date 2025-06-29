@@ -11,7 +11,7 @@ import time
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, Future
 from threading import Thread, Lock, Event
-from typing import Dict, Optional, Callable, Any
+from typing import Dict, Optional, Callable, Any, List
 from datetime import datetime
 import traceback
 
@@ -38,6 +38,7 @@ class ProcessingQueue:
         self.active_tasks: Dict[str, Dict] = {}
         self.completed_tasks: Dict[str, Dict] = {}
         self.failed_tasks: Dict[str, Dict] = {}
+        self.batch_tasks: Dict[str, Dict] = {}  # Track batch processing
         
         # Thread safety
         self.lock = Lock()
@@ -47,6 +48,7 @@ class ProcessingQueue:
         self.status_callback: Optional[Callable] = None
         self.completion_callback: Optional[Callable] = None
         self.error_callback: Optional[Callable] = None
+        self.batch_callback: Optional[Callable] = None  # For batch progress updates
         
         # Statistics
         self.stats = {
@@ -73,6 +75,7 @@ class ProcessingQueue:
                 - patient_name: Patient name for notifications
                 - context: Any context information
                 - priority: Processing priority (0-10, default 5)
+                - batch_id: Optional batch identifier
         
         Returns:
             task_id: Unique identifier for tracking this task
@@ -93,6 +96,19 @@ class ProcessingQueue:
         with self.lock:
             self.active_tasks[task_id] = recording_data
             self.stats["total_queued"] += 1
+            
+            # Track batch if provided
+            batch_id = recording_data.get("batch_id")
+            if batch_id:
+                if batch_id not in self.batch_tasks:
+                    self.batch_tasks[batch_id] = {
+                        "total": 0,
+                        "completed": 0,
+                        "failed": 0,
+                        "task_ids": []
+                    }
+                self.batch_tasks[batch_id]["total"] += 1
+                self.batch_tasks[batch_id]["task_ids"].append(task_id)
         
         # Notify status update
         self._notify_status_update(task_id, "queued", len(self.active_tasks))
@@ -100,6 +116,55 @@ class ProcessingQueue:
         logging.info(f"Recording {recording_data.get('recording_id')} added to queue as task {task_id}")
         
         return task_id
+    
+    def add_batch_recordings(self, recordings: List[Dict[str, Any]], batch_options: Dict[str, Any] = None) -> str:
+        """Add multiple recordings to the processing queue as a batch.
+        
+        Args:
+            recordings: List of recording data dictionaries
+            batch_options: Optional batch-wide options (priority, etc.)
+            
+        Returns:
+            batch_id: Unique identifier for the batch
+        """
+        batch_id = str(uuid.uuid4())
+        batch_priority = batch_options.get("priority", 5) if batch_options else 5
+        
+        logging.info(f"Adding batch {batch_id} with {len(recordings)} recordings")
+        
+        # Initialize batch tracking
+        with self.lock:
+            self.batch_tasks[batch_id] = {
+                "total": len(recordings),
+                "completed": 0,
+                "failed": 0,
+                "task_ids": [],
+                "started_at": datetime.now(),
+                "options": batch_options or {}
+            }
+        
+        # Add each recording with batch info
+        task_ids = []
+        for recording_data in recordings:
+            # Add batch info to recording data
+            recording_data["batch_id"] = batch_id
+            recording_data["priority"] = recording_data.get("priority", batch_priority)
+            
+            # Add batch options
+            if batch_options:
+                recording_data["batch_options"] = batch_options
+            
+            task_id = self.add_recording(recording_data)
+            task_ids.append(task_id)
+        
+        # Notify batch start
+        if self.batch_callback:
+            try:
+                self.batch_callback("started", batch_id, 0, len(recordings))
+            except Exception as e:
+                logging.error(f"Error in batch callback: {str(e)}")
+        
+        return batch_id
     
     def _process_queue(self):
         """Main queue processing loop - runs in separate thread."""
@@ -150,15 +215,44 @@ class ProcessingQueue:
                 )
             
             # Get the processing function from the app
-            if self.app and hasattr(self.app, 'soap_processor'):
-                # Process the recording
-                result = self.app.soap_processor.process_recording_async(recording_data)
+            if self.app:
+                # Process based on options
+                process_options = recording_data.get("process_options", {})
+                results = {}
+                
+                # Generate SOAP note if requested
+                if process_options.get("generate_soap", True):
+                    transcript = recording_data.get("transcript", "")
+                    if transcript:
+                        soap_result = self._generate_soap_note(transcript)
+                        if soap_result:
+                            results["soap_note"] = soap_result
+                            # Update database
+                            self.app.db.update_recording(recording_id, soap_note=soap_result)
+                
+                # Generate referral if requested
+                if process_options.get("generate_referral") and results.get("soap_note"):
+                    referral_result = self._generate_referral(results["soap_note"])
+                    if referral_result:
+                        results["referral"] = referral_result
+                        # Update database
+                        self.app.db.update_recording(recording_id, referral=referral_result)
+                
+                # Generate letter if requested
+                if process_options.get("generate_letter"):
+                    content = results.get("soap_note") or recording_data.get("transcript", "")
+                    if content:
+                        letter_result = self._generate_letter(content)
+                        if letter_result:
+                            results["letter"] = letter_result
+                            # Update database
+                            self.app.db.update_recording(recording_id, letter=letter_result)
                 
                 # Mark as completed
-                self._mark_completed(task_id, recording_data, result, time.time() - start_time)
+                self._mark_completed(task_id, recording_data, results, time.time() - start_time)
                 
             else:
-                raise Exception("No processing function available")
+                raise Exception("No app context available")
                 
         except Exception as e:
             # Handle processing error
@@ -187,6 +281,12 @@ class ProcessingQueue:
             # Update stats
             self.stats["total_processed"] += 1
             self._update_avg_processing_time(processing_time)
+            
+            # Update batch tracking if part of a batch
+            batch_id = recording_data.get("batch_id")
+            if batch_id and batch_id in self.batch_tasks:
+                self.batch_tasks[batch_id]["completed"] += 1
+                self._check_batch_completion(batch_id)
         
         # Update database
         if self.app and hasattr(self.app, 'db'):
@@ -220,6 +320,12 @@ class ProcessingQueue:
             
             # Update stats
             self.stats["total_failed"] += 1
+            
+            # Update batch tracking if part of a batch
+            batch_id = recording_data.get("batch_id")
+            if batch_id and batch_id in self.batch_tasks:
+                self.batch_tasks[batch_id]["failed"] += 1
+                self._check_batch_completion(batch_id)
         
         # Update database
         if self.app and hasattr(self.app, 'db'):
@@ -357,3 +463,142 @@ class ProcessingQueue:
         self.executor.shutdown(wait=wait)
         
         logging.info("Processing queue shutdown complete")
+    
+    def _check_batch_completion(self, batch_id: str):
+        """Check if a batch is complete and notify if so."""
+        batch = self.batch_tasks.get(batch_id)
+        if not batch:
+            return
+            
+        total = batch["total"]
+        completed = batch["completed"]
+        failed = batch["failed"]
+        
+        # Notify progress
+        if self.batch_callback:
+            try:
+                self.batch_callback("progress", batch_id, completed + failed, total)
+            except Exception as e:
+                logging.error(f"Error in batch callback: {str(e)}")
+        
+        # Check if batch is complete
+        if completed + failed >= total:
+            batch["completed_at"] = datetime.now()
+            
+            # Calculate duration
+            duration = (batch["completed_at"] - batch["started_at"]).total_seconds()
+            batch["duration"] = duration
+            
+            # Notify completion
+            if self.batch_callback:
+                try:
+                    self.batch_callback("completed", batch_id, completed, total, failed=failed)
+                except Exception as e:
+                    logging.error(f"Error in batch callback: {str(e)}")
+            
+            logging.info(f"Batch {batch_id} completed: {completed} successful, {failed} failed, {duration:.2f}s")
+    
+    def get_batch_status(self, batch_id: str) -> Optional[Dict]:
+        """Get the status of a batch.
+        
+        Args:
+            batch_id: Batch identifier
+            
+        Returns:
+            Batch status dictionary or None if not found
+        """
+        with self.lock:
+            batch = self.batch_tasks.get(batch_id)
+            if batch:
+                return {
+                    "batch_id": batch_id,
+                    "total": batch["total"],
+                    "completed": batch["completed"],
+                    "failed": batch["failed"],
+                    "in_progress": batch["total"] - batch["completed"] - batch["failed"],
+                    "started_at": batch.get("started_at"),
+                    "completed_at": batch.get("completed_at"),
+                    "duration": batch.get("duration"),
+                    "options": batch.get("options", {})
+                }
+        return None
+    
+    def set_batch_callback(self, callback: Callable):
+        """Set the batch progress callback.
+        
+        Args:
+            callback: Function to call with (event, batch_id, current, total, **kwargs)
+        """
+        self.batch_callback = callback
+    
+    def _generate_soap_note(self, transcript: str) -> Optional[str]:
+        """Generate SOAP note from transcript.
+        
+        Args:
+            transcript: The transcript text
+            
+        Returns:
+            Generated SOAP note or None if failed
+        """
+        try:
+            from ai.ai import create_soap_note_with_openai
+            from settings.settings import SETTINGS
+            
+            provider = SETTINGS.get("ai_provider", "openai")
+            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            
+            # Generate SOAP note
+            soap_note = create_soap_note_with_openai(transcript, provider, model)
+            return soap_note
+        except Exception as e:
+            logging.error(f"Error generating SOAP note: {str(e)}")
+            return None
+    
+    def _generate_referral(self, soap_note: str) -> Optional[str]:
+        """Generate referral from SOAP note.
+        
+        Args:
+            soap_note: The SOAP note text
+            
+        Returns:
+            Generated referral or None if failed
+        """
+        try:
+            from ai.ai import create_referral_with_openai
+            from settings.settings import SETTINGS
+            
+            provider = SETTINGS.get("ai_provider", "openai")
+            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            
+            # For batch processing, use a default condition
+            conditions = "Based on the clinical findings in the SOAP note"
+            
+            # Generate referral
+            referral = create_referral_with_openai(soap_note, conditions, provider, model)
+            return referral
+        except Exception as e:
+            logging.error(f"Error generating referral: {str(e)}")
+            return None
+    
+    def _generate_letter(self, content: str) -> Optional[str]:
+        """Generate letter from content.
+        
+        Args:
+            content: The source content (SOAP note or transcript)
+            
+        Returns:
+            Generated letter or None if failed
+        """
+        try:
+            from ai.ai import create_letter_with_ai
+            from settings.settings import SETTINGS
+            
+            provider = SETTINGS.get("ai_provider", "openai")
+            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            
+            # Generate letter
+            letter = create_letter_with_ai(content, provider, model)
+            return letter
+        except Exception as e:
+            logging.error(f"Error generating letter: {str(e)}")
+            return None

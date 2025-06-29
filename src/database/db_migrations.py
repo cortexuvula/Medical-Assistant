@@ -543,6 +543,42 @@ def get_migrations() -> List[Migration]:
         """
     ))
     
+    # Migration 8: Add batch processing support
+    migrations.append(Migration(
+        version=8,
+        name="Add batch processing support",
+        up_sql="""
+        -- Add batch_id column to processing_queue table
+        ALTER TABLE processing_queue ADD COLUMN batch_id TEXT;
+        
+        -- Create index for batch queries
+        CREATE INDEX IF NOT EXISTS idx_processing_queue_batch_id ON processing_queue(batch_id);
+        
+        -- Create batch_processing table to track batch metadata
+        CREATE TABLE IF NOT EXISTS batch_processing (
+            batch_id TEXT PRIMARY KEY,
+            total_count INTEGER NOT NULL,
+            completed_count INTEGER DEFAULT 0,
+            failed_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            options TEXT,  -- JSON string for batch options
+            status TEXT DEFAULT 'pending'
+        );
+        
+        -- Create index for batch status queries
+        CREATE INDEX IF NOT EXISTS idx_batch_processing_status ON batch_processing(status);
+        """,
+        down_sql="""
+        -- Remove batch processing support
+        DROP INDEX IF EXISTS idx_batch_processing_status;
+        DROP TABLE IF EXISTS batch_processing;
+        DROP INDEX IF EXISTS idx_processing_queue_batch_id;
+        -- Cannot drop column in SQLite, would need to recreate table
+        """
+    ))
+    
     return migrations
 
 
