@@ -90,6 +90,57 @@ The periodic analysis feature provides real-time differential diagnosis during r
 - Provider-specific models and temperatures
 - Settings accessible via menu: Settings → Prompt Settings → Advanced Analysis Settings
 
+## Batch Processing Implementation Summary
+
+The batch processing feature allows users to process multiple recordings efficiently:
+
+### Architecture
+- **Enhanced BatchProcessingDialog**: Source selection between database recordings and audio files
+- **Multi-file selection**: Support for selecting multiple audio files from computer
+- **Processing queue integration**: Leverages existing queue system for efficient processing
+- **Progress tracking**: Real-time BatchProgressDialog with statistics and ETA
+
+### Key Features
+- **Dual source support**:
+  - Process selected recordings from database
+  - Process audio files directly from computer
+- **Multi-selection UI**:
+  - Ctrl/Shift+Click for database recordings
+  - File dialog for selecting multiple audio files
+- **Processing options**:
+  - Generate SOAP notes, referrals, and/or letters
+  - Priority settings (low, normal, high)
+  - Skip existing content option
+  - Continue on error handling
+- **Progress monitoring**:
+  - Real-time progress bar and statistics
+  - Processing speed calculation
+  - Detailed log of each item's status
+  - Cancel support for in-progress batches
+
+### UI Integration
+- **Recordings tab buttons**:
+  - "Process Selected" - for database recordings
+  - "Batch Process Files" - for audio files from computer
+- **Dialogs**:
+  - `BatchProcessingDialog` - Configure source and options
+  - `BatchProgressDialog` - Monitor real-time progress
+
+### Processing Flow
+1. User selects source (database or files)
+2. If files: Select audio files via file dialog
+3. Configure processing options
+4. Files are transcribed using selected STT provider
+5. Transcripts saved to database
+6. Documents generated via processing queue
+7. Progress tracked in real-time
+
+### Database Schema
+- Migration 8 adds batch processing support:
+  - `processing_queue` table with `batch_id` column
+  - `batch_processing` table for batch metadata
+  - Indexes for efficient batch queries
+
 ## Development Commands
 
 ### Running the Application
