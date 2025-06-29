@@ -30,14 +30,15 @@ class BatchProcessingDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Options")
-        self.dialog.geometry("500x400")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("600x700")
+        self.dialog.resizable(True, True)
+        self.dialog.minsize(600, 650)
         
         # Center the dialog
         self.dialog.transient(parent)
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (500 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (400 // 2)
+        x = (self.dialog.winfo_screenwidth() // 2) - (600 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
         self.dialog.geometry(f"+{x}+{y}")
         
         # Make modal
@@ -239,14 +240,24 @@ class BatchProcessingDialog:
             
             # Show selected files list if any
             if self.selected_files:
+                # Create frame for text and scrollbar
+                text_frame = ttk.Frame(self.source_info_frame)
+                text_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+                
+                # Create scrollbar
+                scrollbar = ttk.Scrollbar(text_frame)
+                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                
                 files_text = tk.Text(
-                    self.source_info_frame,
-                    height=4,
-                    width=50,
+                    text_frame,
+                    height=6,
+                    width=60,
                     wrap=tk.WORD,
-                    font=("Courier", 9)
+                    font=("Courier", 9),
+                    yscrollcommand=scrollbar.set
                 )
-                files_text.pack(fill=tk.X, pady=(5, 0))
+                files_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                scrollbar.config(command=files_text.yview)
                 
                 # Add file names
                 for file in self.selected_files:
