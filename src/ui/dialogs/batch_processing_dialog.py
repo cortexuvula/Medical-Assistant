@@ -15,15 +15,16 @@ from ttkbootstrap.tooltip import ToolTip
 class BatchProcessingDialog:
     """Dialog for configuring batch processing options."""
     
-    def __init__(self, parent: tk.Tk, recording_ids: List[int]):
+    def __init__(self, parent: tk.Tk, recording_ids: List[int] = None):
         """Initialize the batch processing dialog.
         
         Args:
             parent: Parent window
-            recording_ids: List of recording IDs to process
+            recording_ids: List of recording IDs to process (optional)
         """
         self.parent = parent
-        self.recording_ids = recording_ids
+        self.recording_ids = recording_ids or []
+        self.selected_files = []
         self.result = None
         
         # Create dialog window
@@ -55,13 +56,45 @@ class BatchProcessingDialog:
         main_frame = ttk.Frame(self.dialog, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Title and count
+        # Title
         title_label = ttk.Label(
             main_frame,
-            text=f"Process {len(self.recording_ids)} Recording{'s' if len(self.recording_ids) > 1 else ''}",
+            text="Batch Processing Options",
             font=("", 12, "bold")
         )
-        title_label.pack(pady=(0, 20))
+        title_label.pack(pady=(0, 10))
+        
+        # Source selection frame
+        source_frame = ttk.LabelFrame(main_frame, text="Source Selection", padding=15)
+        source_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # Source type radio buttons
+        self.source_var = tk.StringVar(value="database" if self.recording_ids else "files")
+        
+        database_radio = ttk.Radiobutton(
+            source_frame,
+            text="Selected Database Recordings",
+            variable=self.source_var,
+            value="database",
+            command=self._update_source_display
+        )
+        database_radio.pack(anchor=tk.W, pady=5)
+        
+        files_radio = ttk.Radiobutton(
+            source_frame,
+            text="Audio Files from Computer",
+            variable=self.source_var,
+            value="files",
+            command=self._update_source_display
+        )
+        files_radio.pack(anchor=tk.W, pady=5)
+        
+        # Source info frame
+        self.source_info_frame = ttk.Frame(source_frame)
+        self.source_info_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Initialize source display
+        self._update_source_display()
         
         # Processing options frame
         options_frame = ttk.LabelFrame(main_frame, text="Processing Options", padding=15)
@@ -162,8 +195,102 @@ class BatchProcessingDialog:
         # Focus on process button
         process_btn.focus_set()
         
+    def _update_source_display(self):
+        """Update the source information display based on selection."""
+        # Clear existing widgets
+        for widget in self.source_info_frame.winfo_children():
+            widget.destroy()
+        
+        if self.source_var.get() == "database":
+            # Show database recordings info
+            info_label = ttk.Label(
+                self.source_info_frame,
+                text=f"Selected recordings from database: {len(self.recording_ids)}",
+                foreground="gray"
+            )
+            info_label.pack(anchor=tk.W)
+            
+            if not self.recording_ids:
+                warning_label = ttk.Label(
+                    self.source_info_frame,
+                    text="⚠ No recordings selected. Please select recordings first.",
+                    foreground="orange"
+                )
+                warning_label.pack(anchor=tk.W, pady=(5, 0))
+        else:
+            # Show file selection button
+            file_frame = ttk.Frame(self.source_info_frame)
+            file_frame.pack(fill=tk.X)
+            
+            select_btn = ttk.Button(
+                file_frame,
+                text="Select Audio Files...",
+                command=self._select_files,
+                bootstyle="info"
+            )
+            select_btn.pack(side=tk.LEFT, padx=(0, 10))
+            
+            self.files_label = ttk.Label(
+                file_frame,
+                text=f"{len(self.selected_files)} files selected",
+                foreground="gray"
+            )
+            self.files_label.pack(side=tk.LEFT)
+            
+            # Show selected files list if any
+            if self.selected_files:
+                files_text = tk.Text(
+                    self.source_info_frame,
+                    height=4,
+                    width=50,
+                    wrap=tk.WORD,
+                    font=("Courier", 9)
+                )
+                files_text.pack(fill=tk.X, pady=(5, 0))
+                
+                # Add file names
+                for file in self.selected_files:
+                    files_text.insert(tk.END, f"• {file}\n")
+                
+                files_text.config(state=tk.DISABLED)
+    
+    def _select_files(self):
+        """Open file dialog to select audio files."""
+        from tkinter import filedialog
+        import os
+        
+        files = filedialog.askopenfilenames(
+            parent=self.dialog,
+            title="Select Audio Files",
+            filetypes=[
+                ("Audio Files", "*.mp3 *.wav *.m4a *.flac *.ogg *.opus *.webm *.mp4"),
+                ("All Files", "*.*")
+            ],
+            initialdir=os.path.expanduser("~")
+        )
+        
+        if files:
+            self.selected_files = list(files)
+            self._update_source_display()
+    
     def _on_process(self):
         """Handle process button click."""
+        # Validate source selection
+        if self.source_var.get() == "database" and not self.recording_ids:
+            messagebox.showwarning(
+                "No Recordings Selected",
+                "Please select recordings from the database first.",
+                parent=self.dialog
+            )
+            return
+        elif self.source_var.get() == "files" and not self.selected_files:
+            messagebox.showwarning(
+                "No Files Selected",
+                "Please select audio files to process.",
+                parent=self.dialog
+            )
+            return
+        
         # Validate at least one processing type is selected
         if not any([self.process_soap.get(), self.process_referral.get(), self.process_letter.get()]):
             messagebox.showwarning(
@@ -175,6 +302,9 @@ class BatchProcessingDialog:
         
         # Build result dictionary
         self.result = {
+            "source": self.source_var.get(),
+            "recording_ids": self.recording_ids if self.source_var.get() == "database" else [],
+            "files": self.selected_files if self.source_var.get() == "files" else [],
             "process_soap": self.process_soap.get(),
             "process_referral": self.process_referral.get(),
             "process_letter": self.process_letter.get(),

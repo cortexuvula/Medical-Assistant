@@ -1565,9 +1565,21 @@ class WorkflowUI:
             bootstyle="success-outline",
             width=15
         )
-        process_btn.pack(side=LEFT, padx=(0, 10))
+        process_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(process_btn, "Process selected recordings in batch")
         self.components['batch_process_button'] = process_btn
+        
+        # Batch Process Files button
+        batch_files_btn = ttk.Button(
+            row2_frame,
+            text="Batch Process Files",
+            command=self._batch_process_files,
+            bootstyle="primary-outline",
+            width=15
+        )
+        batch_files_btn.pack(side=LEFT, padx=(0, 10))
+        ToolTip(batch_files_btn, "Select audio files to process in batch")
+        self.components['batch_files_button'] = batch_files_btn
         
         self.recording_count_label = ttk.Label(
             row2_frame,
@@ -1968,23 +1980,47 @@ class WorkflowUI:
         
         if result:
             # Start batch processing
-            self._start_batch_processing(recording_ids, result)
+            self._start_batch_processing(result)
     
-    def _start_batch_processing(self, recording_ids: list, options: dict):
-        """Start batch processing of recordings."""
+    def _batch_process_files(self):
+        """Open dialog to process audio files in batch."""
+        # Import dialog here to avoid circular imports
+        from ui.dialogs.batch_processing_dialog import BatchProcessingDialog
+        
+        # Show batch processing dialog with no pre-selected recordings
+        dialog = BatchProcessingDialog(self.parent)
+        result = dialog.show()
+        
+        if result:
+            # Start batch processing
+            self._start_batch_processing(result)
+    
+    def _start_batch_processing(self, options: dict):
+        """Start batch processing of recordings or files."""
         # Import here to avoid circular imports
         from ui.dialogs.batch_progress_dialog import BatchProgressDialog
         
+        # Determine count based on source
+        if options['source'] == 'database':
+            total_count = len(options['recording_ids'])
+            item_type = "recordings"
+        else:
+            total_count = len(options['files'])
+            item_type = "files"
+        
         # Create progress dialog
-        self.batch_progress_dialog = BatchProgressDialog(self.parent, "batch_" + str(id(recording_ids)), len(recording_ids))
+        self.batch_progress_dialog = BatchProgressDialog(self.parent, "batch_" + str(id(options)), total_count)
         
         # Update status
-        self.parent.status_manager.progress(f"Starting batch processing of {len(recording_ids)} recordings...")
+        self.parent.status_manager.progress(f"Starting batch processing of {total_count} {item_type}...")
         
-        # Disable process button during processing
+        # Disable process buttons during processing
         process_btn = self.components.get('batch_process_button')
+        batch_files_btn = self.components.get('batch_files_button')
         if process_btn:
             process_btn.config(state=tk.DISABLED)
+        if batch_files_btn:
+            batch_files_btn.config(state=tk.DISABLED)
         
         # Track processing state
         self.batch_failed_count = 0
@@ -1992,14 +2028,24 @@ class WorkflowUI:
         # Create task for batch processing
         def task():
             try:
-                # Use document generators for batch processing
-                self.parent.document_generators.process_batch_recordings(
-                    recording_ids, 
-                    options,
-                    on_complete=lambda: self.parent.after(0, self._on_batch_complete),
-                    on_progress=lambda msg, count, total: self.parent.after(0, 
-                        lambda: self._update_batch_progress(msg, count, total))
-                )
+                if options['source'] == 'database':
+                    # Use existing batch processing for database recordings
+                    self.parent.document_generators.process_batch_recordings(
+                        options['recording_ids'], 
+                        options,
+                        on_complete=lambda: self.parent.after(0, self._on_batch_complete),
+                        on_progress=lambda msg, count, total: self.parent.after(0, 
+                            lambda: self._update_batch_progress(msg, count, total))
+                    )
+                else:
+                    # Process audio files
+                    self.parent.document_generators.process_batch_files(
+                        options['files'],
+                        options,
+                        on_complete=lambda: self.parent.after(0, self._on_batch_complete),
+                        on_progress=lambda msg, count, total: self.parent.after(0, 
+                            lambda: self._update_batch_progress(msg, count, total))
+                    )
             except Exception as e:
                 logging.error(f"Batch processing error: {e}")
                 self.parent.after(0, lambda: [
@@ -2040,10 +2086,13 @@ class WorkflowUI:
     
     def _on_batch_complete(self):
         """Handle batch processing completion."""
-        # Re-enable process button
+        # Re-enable process buttons
         process_btn = self.components.get('batch_process_button')
+        batch_files_btn = self.components.get('batch_files_button')
         if process_btn:
             process_btn.config(state=tk.NORMAL)
+        if batch_files_btn:
+            batch_files_btn.config(state=tk.NORMAL)
         
         # Refresh recordings list
         self._refresh_recordings_list()

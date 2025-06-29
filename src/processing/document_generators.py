@@ -1255,3 +1255,157 @@ class DocumentGenerators:
         batch_id = self.app.processing_queue.add_batch_recordings(batch_recordings, batch_options)
         
         logging.info(f"Started batch processing with ID {batch_id} for {len(batch_recordings)} recordings")
+    
+    def process_batch_files(self, file_paths: List[str], options: Dict[str, Any],
+                           on_complete: Callable = None, on_progress: Callable = None) -> None:
+        """Process multiple audio files in batch.
+        
+        Args:
+            file_paths: List of audio file paths to process
+            options: Processing options dictionary
+            on_complete: Callback when batch processing is complete
+            on_progress: Callback for progress updates (message, completed, total)
+        """
+        import os
+        from audio.audio import AudioHandler
+        
+        # Map priority strings to numeric values
+        priority_map = {"low": 3, "normal": 5, "high": 7}
+        numeric_priority = priority_map.get(options.get("priority", "normal"), 5)
+        
+        # Initialize processing queue if not available
+        if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
+            from processing.processing_queue import ProcessingQueue
+            self.app.processing_queue = ProcessingQueue(self.app)
+        
+        # Validate and prepare files
+        valid_files = []
+        for file_path in file_paths:
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                valid_files.append(file_path)
+            else:
+                logging.warning(f"Invalid file path: {file_path}")
+        
+        if not valid_files:
+            self.app.status_manager.error("No valid audio files found for batch processing")
+            if on_complete:
+                on_complete()
+            return
+        
+        total_count = len(valid_files)
+        completed_count = 0
+        
+        # Set up batch callback
+        batch_id = f"files_{id(file_paths)}"
+        
+        def process_single_file(file_path: str, index: int):
+            """Process a single audio file."""
+            nonlocal completed_count
+            
+            try:
+                if on_progress:
+                    on_progress(f"Processing {os.path.basename(file_path)}", index, total_count)
+                
+                # Step 1: Transcribe the audio file
+                audio_handler = AudioHandler()
+                
+                # Get selected STT provider
+                stt_provider = self.app.stt_provider_var.get()
+                
+                # Transcribe the file
+                transcript = None
+                error_msg = None
+                
+                try:
+                    # Use the appropriate STT provider
+                    if stt_provider == "Deepgram":
+                        transcript = self.app.stt_providers["deepgram"].transcribe(file_path)
+                    elif stt_provider == "ElevenLabs":
+                        transcript = self.app.stt_providers["elevenlabs"].transcribe(file_path)
+                    elif stt_provider == "Groq":
+                        transcript = self.app.stt_providers["groq"].transcribe(file_path)
+                    elif stt_provider == "Local Whisper":
+                        transcript = self.app.stt_providers["whisper"].transcribe(file_path)
+                    else:
+                        error_msg = f"Unknown STT provider: {stt_provider}"
+                        
+                except Exception as e:
+                    error_msg = f"Transcription failed: {str(e)}"
+                    logging.error(f"Failed to transcribe {file_path}: {e}")
+                
+                if error_msg:
+                    if options.get("continue_on_error", True):
+                        if on_progress:
+                            on_progress(f"Failed: {os.path.basename(file_path)} - {error_msg}", 
+                                      index + 1, total_count)
+                        return
+                    else:
+                        raise Exception(error_msg)
+                
+                if not transcript:
+                    if on_progress:
+                        on_progress(f"No transcript for {os.path.basename(file_path)}", 
+                                  index + 1, total_count)
+                    return
+                
+                # Step 2: Save recording to database
+                filename = os.path.basename(file_path)
+                rec_id = self.app.db.save_recording(
+                    filename=filename,
+                    transcript=transcript,
+                    audio_path=file_path
+                )
+                
+                if not rec_id:
+                    raise Exception("Failed to save recording to database")
+                
+                # Step 3: Create recording data for processing
+                recording_data = {
+                    "recording_id": rec_id,
+                    "filename": filename,
+                    "transcript": transcript,
+                    "patient_name": f"Patient from {filename}",
+                    "audio_path": file_path,
+                    "process_options": {
+                        "generate_soap": options.get("process_soap", False),
+                        "generate_referral": options.get("process_referral", False),
+                        "generate_letter": options.get("process_letter", False)
+                    },
+                    "priority": numeric_priority
+                }
+                
+                # Step 4: Add to processing queue
+                task_id = self.app.processing_queue.add_recording(recording_data)
+                
+                completed_count += 1
+                
+                if on_progress:
+                    on_progress(f"Queued: {os.path.basename(file_path)}", 
+                              completed_count, total_count)
+                
+            except Exception as e:
+                logging.error(f"Error processing file {file_path}: {e}")
+                if not options.get("continue_on_error", True):
+                    raise
+                if on_progress:
+                    on_progress(f"Error: {os.path.basename(file_path)} - {str(e)}", 
+                              index + 1, total_count)
+        
+        # Process files sequentially (could be parallelized if needed)
+        try:
+            for i, file_path in enumerate(valid_files):
+                process_single_file(file_path, i)
+            
+            # Notify completion
+            if on_complete:
+                on_complete()
+                
+            self.app.status_manager.success(
+                f"Batch file processing completed: {completed_count} files queued for processing"
+            )
+            
+        except Exception as e:
+            logging.error(f"Batch file processing failed: {e}")
+            if on_complete:
+                on_complete()
+            raise
