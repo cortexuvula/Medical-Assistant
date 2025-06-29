@@ -528,10 +528,6 @@ class AudioHandler:
             # Let's prefer sounddevice if possible as it seems more reliable with indexing.
             use_sounddevice = True # Default to sounddevice for now based on previous issues
 
-            # Optional: Add logic here if we want to try soundcard for specific non-Voicemeeter devices
-            # is_voicemeeter = "voicemeeter" in mic_name.lower() or "vb-audio" in mic_name.lower()
-            # if not is_voicemeeter:
-            #    use_sounddevice = False
 
             if use_sounddevice:
                 logging.info(f"Using sounddevice backend for: {mic_name}")
@@ -776,13 +772,6 @@ class AudioHandler:
                 accumulated_data.append(audio_data_copy)
                 accumulated_frames += frames
                 
-                # Log first few callbacks to verify audio is being received
-                if len(accumulated_data) <= 3:
-                    # Debug info commented out - too verbose for normal operation
-                    # max_val = np.abs(audio_data_copy).max()
-                    # mean_val = np.abs(audio_data_copy).mean()
-                    # logging.debug(f"Audio callback {len(accumulated_data)}: frames={frames}, max={max_val:.6f}, mean={mean_val:.6f}")
-                    pass
                 
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames:
@@ -792,8 +781,6 @@ class AudioHandler:
                         # Ensure data is in the right shape (flatten to 1D if needed)
                         if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
                             combined_data = combined_data.flatten()
-                        # logging.debug(f"Audio callback triggered: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
-                        # Call the callback with the combined data
                         self.callback_function(combined_data)
                         
                         # Reset for next accumulation
@@ -963,9 +950,6 @@ class AudioHandler:
                                 self.callback_function(processed_data)
                             except Exception as cb_err:
                                 logging.error(f"Error in soundcard callback execution: {cb_err}", exc_info=True)
-                    # else:
-                    #     logging.debug("Soundcard recorder SC thread yielded no data or recording stopped during record.")
-                    #     time.sleep(0.01) # Prevent busy-waiting if record returns None quickly
 
         except Exception as e:
             logging.error(f"Error in soundcard recording thread (_sc): {e}", exc_info=True)

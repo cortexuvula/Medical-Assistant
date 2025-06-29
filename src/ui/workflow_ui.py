@@ -9,7 +9,7 @@ import tkinter as tk
 import tkinter.messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from typing import Dict, Callable, Tuple, Optional
+from typing import Dict, Callable
 from ui.tooltip import ToolTip
 import logging
 import time

@@ -4,14 +4,13 @@ try:
 except ImportError:
     pass  # Not critical if it fails
 
-# json import removed - not needed after refactoring
 from string import punctuation
 import logging
 import os
 import sys
 import concurrent.futures
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 # Import tkinter constants for compatibility
@@ -22,11 +21,8 @@ from managers.data_folder_manager import data_folder_manager
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
 from typing import Callable, Optional, Dict, Any
 import threading
-import numpy as np
 from pydub import AudioSegment
-import tempfile
 from datetime import datetime
-import asyncio
 from utils.cleanup_utils import clear_all_content, clear_content_except_context
 from database.database import Database
 from audio.audio import AudioHandler
@@ -37,26 +33,19 @@ from managers.log_manager import setup_application_logging
 log_manager = setup_application_logging()
 
 
-# Requests is imported later if needed
-
 from utils.utils import get_valid_microphones
-from ai.ai import create_soap_note_with_openai
 from settings.settings import SETTINGS
-from ui.dialogs.dialogs import create_toplevel_dialog, show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog  # Add this import
+from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog
 from ui.tooltip import ToolTip
 
-# Add near the top of the file
 import time
 
-# Add these imports:
 from core.app_initializer import AppInitializer
 from audio.ffmpeg_utils import configure_pydub
 from ui.menu_manager import MenuManager
 from audio.soap_audio_processor import SOAPAudioProcessor
-from ai.chat_processor import ChatProcessor
 from ui.chat_ui import ChatUI
 
-# Modify the main function to only create the app if check_api_keys returns True
 def main() -> None:
     """Main function to start the application."""
     # Configure FFmpeg paths before anything else
@@ -68,10 +57,6 @@ def main() -> None:
     # Log application startup
     logging.info("Medical Dictation application starting")
     
-    # Check for .env file
-    # Commented out to skip API key dialog
-    # if not check_api_keys():
-    #     return
         
     # Create and start main app
     app = MedicalDictationApp()
