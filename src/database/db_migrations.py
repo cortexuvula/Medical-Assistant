@@ -548,8 +548,22 @@ def get_migrations() -> List[Migration]:
         version=8,
         name="Add batch processing support",
         up_sql="""
-        -- Add batch_id column to processing_queue table
-        ALTER TABLE processing_queue ADD COLUMN batch_id TEXT;
+        -- First ensure processing_queue table exists
+        CREATE TABLE IF NOT EXISTS processing_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recording_id INTEGER NOT NULL,
+            task_id TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'queued',
+            priority INTEGER DEFAULT 5,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            error_count INTEGER DEFAULT 0,
+            last_error TEXT,
+            result TEXT,
+            batch_id TEXT,
+            FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+        );
         
         -- Create index for batch queries
         CREATE INDEX IF NOT EXISTS idx_processing_queue_batch_id ON processing_queue(batch_id);
@@ -575,7 +589,7 @@ def get_migrations() -> List[Migration]:
         DROP INDEX IF EXISTS idx_batch_processing_status;
         DROP TABLE IF EXISTS batch_processing;
         DROP INDEX IF EXISTS idx_processing_queue_batch_id;
-        -- Cannot drop column in SQLite, would need to recreate table
+        DROP TABLE IF EXISTS processing_queue;
         """
     ))
     
