@@ -418,10 +418,18 @@ class MedicalDictationApp(ttk.Window):
             AutoSaveDataProvider.create_recording_state_provider(self)
         )
         
-        # Set up callbacks
-        self.autosave_manager.on_save_start = lambda: self.status_manager.info("Auto-saving...")
-        self.autosave_manager.on_save_complete = lambda: self.status_manager.success("Auto-save complete")
-        self.autosave_manager.on_save_error = lambda e: self.status_manager.error(f"Auto-save failed: {e}")
+        # Set up callbacks (deferred until status_manager is available)
+        def setup_autosave_callbacks():
+            if hasattr(self, 'status_manager') and self.status_manager:
+                self.autosave_manager.on_save_start = lambda: self.status_manager.info("Auto-saving...")
+                self.autosave_manager.on_save_complete = lambda: self.status_manager.success("Auto-save complete")
+                self.autosave_manager.on_save_error = lambda e: self.status_manager.error(f"Auto-save failed: {e}")
+            else:
+                # Try again after a short delay
+                self.after(100, setup_autosave_callbacks)
+        
+        # Delay callback setup until status_manager is ready
+        self.after(100, setup_autosave_callbacks)
         
         # Check for existing auto-save and offer to restore
         self._check_and_restore_autosave()
@@ -491,11 +499,17 @@ class MedicalDictationApp(ttk.Window):
                 state = data["recording_state"]
                 self.current_recording_id = state.get("current_recording_id")
             
-            self.status_manager.success("Auto-save restored successfully")
+            if hasattr(self, 'status_manager') and self.status_manager:
+                self.status_manager.success("Auto-save restored successfully")
+            else:
+                logging.info("Auto-save restored successfully")
             
         except Exception as e:
             logging.error(f"Failed to restore from auto-save: {e}")
-            self.status_manager.error("Failed to restore auto-save")
+            if hasattr(self, 'status_manager') and self.status_manager:
+                self.status_manager.error("Failed to restore auto-save")
+            else:
+                logging.error("Failed to restore auto-save")
 
     def bind_shortcuts(self) -> None:
         # Basic shortcuts

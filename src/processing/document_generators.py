@@ -1267,7 +1267,6 @@ class DocumentGenerators:
             on_progress: Callback for progress updates (message, completed, total)
         """
         import os
-        from audio.audio import AudioHandler
         
         # Map priority strings to numeric values
         priority_map = {"low": 3, "normal": 5, "high": 7}
@@ -1307,25 +1306,32 @@ class DocumentGenerators:
                     on_progress(f"Processing {os.path.basename(file_path)}", index, total_count)
                 
                 # Step 1: Transcribe the audio file
-                audio_handler = AudioHandler()
+                # Get selected STT provider from settings
+                from settings.settings import SETTINGS
+                from pydub import AudioSegment
+                stt_provider = SETTINGS.get("stt_provider", "groq")
                 
-                # Get selected STT provider
-                stt_provider = self.app.stt_provider_var.get()
+                # Use the app's existing audio handler which has initialized STT providers
+                audio_handler = self.app.audio_handler
                 
                 # Transcribe the file
                 transcript = None
                 error_msg = None
                 
                 try:
-                    # Use the appropriate STT provider
-                    if stt_provider == "Deepgram":
-                        transcript = self.app.stt_providers["deepgram"].transcribe(file_path)
-                    elif stt_provider == "ElevenLabs":
-                        transcript = self.app.stt_providers["elevenlabs"].transcribe(file_path)
-                    elif stt_provider == "Groq":
-                        transcript = self.app.stt_providers["groq"].transcribe(file_path)
-                    elif stt_provider == "Local Whisper":
-                        transcript = self.app.stt_providers["whisper"].transcribe(file_path)
+                    # Load the audio file as AudioSegment
+                    audio_segment = AudioSegment.from_file(file_path)
+                    
+                    # Use the appropriate STT provider (handle case variations)
+                    stt_provider_lower = stt_provider.lower()
+                    if stt_provider_lower == "deepgram":
+                        transcript = audio_handler.deepgram_provider.transcribe(audio_segment)
+                    elif stt_provider_lower == "elevenlabs":
+                        transcript = audio_handler.elevenlabs_provider.transcribe(audio_segment)
+                    elif stt_provider_lower == "groq":
+                        transcript = audio_handler.groq_provider.transcribe(audio_segment)
+                    elif stt_provider_lower in ["local whisper", "whisper"]:
+                        transcript = audio_handler.whisper_provider.transcribe(audio_segment)
                     else:
                         error_msg = f"Unknown STT provider: {stt_provider}"
                         
@@ -1350,7 +1356,7 @@ class DocumentGenerators:
                 
                 # Step 2: Save recording to database
                 filename = os.path.basename(file_path)
-                rec_id = self.app.db.save_recording(
+                rec_id = self.app.db.add_recording(
                     filename=filename,
                     transcript=transcript,
                     audio_path=file_path

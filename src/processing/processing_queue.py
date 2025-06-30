@@ -548,7 +548,7 @@ class ProcessingQueue:
             model = SETTINGS.get(f"{provider}_model", "gpt-4")
             
             # Generate SOAP note
-            soap_note = create_soap_note_with_openai(transcript, provider, model)
+            soap_note = create_soap_note_with_openai(transcript)
             return soap_note
         except Exception as e:
             logging.error(f"Error generating SOAP note: {str(e)}")

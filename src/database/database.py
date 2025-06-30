@@ -15,8 +15,12 @@ class Database:
     @db_retry(max_retries=3, initial_delay=0.1)
     def connect(self) -> None:
         """Establish connection to the database"""
-        self.conn = sqlite3.connect(self.db_path, timeout=30.0)  # 30 second timeout
+        # Always create a new connection to avoid threading issues
+        self.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)  # 30 second timeout
         self.cursor = self.conn.cursor()
+        # Enable WAL mode for better concurrency
+        self.cursor.execute("PRAGMA journal_mode=WAL")
+        self.cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
         
     def disconnect(self) -> None:
         """Close the database connection"""

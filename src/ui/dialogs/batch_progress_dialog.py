@@ -36,27 +36,28 @@ class BatchProgressDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Progress")
-        self.dialog.geometry("600x400")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("800x600")
+        self.dialog.resizable(True, True)
+        self.dialog.minsize(700, 500)
         
         # Center the dialog
         self.dialog.transient(parent)
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (600 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (400 // 2)
+        x = (self.dialog.winfo_screenwidth() // 2) - (800 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (600 // 2)
         self.dialog.geometry(f"+{x}+{y}")
         
         # Make modal
         self.dialog.grab_set()
+        
+        # Start time tracking (must be before _create_ui which calls _update_timer)
+        self.start_time = datetime.now()
         
         # Create UI
         self._create_ui()
         
         # Prevent closing while processing
         self.dialog.protocol("WM_DELETE_WINDOW", self._on_close)
-        
-        # Start time tracking
-        self.start_time = datetime.now()
         
     def _create_ui(self):
         """Create the dialog UI."""
@@ -82,7 +83,7 @@ class BatchProgressDialog:
             mode='determinate',
             maximum=self.total_count,
             value=0,
-            length=500
+            length=700
         )
         self.progress_bar.pack(fill=tk.X, pady=(0, 10))
         
@@ -137,7 +138,7 @@ class BatchProgressDialog:
         
         self.details_text = tk.Text(
             details_frame,
-            height=8,
+            height=12,
             wrap=tk.WORD,
             yscrollcommand=text_scroll.set,
             font=("Courier", 9)
