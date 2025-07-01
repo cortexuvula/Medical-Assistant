@@ -10,6 +10,8 @@ import json
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
+import os
+from utils.pdf_exporter import PDFExporter
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,7 @@ class WorkflowResultsDialog:
         self.workflow_text = ""
         self.workflow_type = ""
         self.metadata = {}
+        self.patient_info = {}
         self.step_checkboxes = []
         self.step_status = {}
         
@@ -44,6 +47,7 @@ class WorkflowResultsDialog:
         self.workflow_text = workflow_text
         self.workflow_type = workflow_type
         self.metadata = metadata
+        self.patient_info = patient_info
         
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
@@ -389,6 +393,14 @@ class WorkflowResultsDialog:
         )
         save_progress_btn.pack(side=tk.LEFT, padx=(0, 5))
         
+        export_pdf_btn = ttk.Button(
+            left_frame,
+            text="Export to PDF",
+            command=self._export_to_pdf,
+            width=15
+        )
+        export_pdf_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
         print_btn = ttk.Button(
             left_frame,
             text="Print Workflow",
@@ -496,12 +508,164 @@ class WorkflowResultsDialog:
         )
     
     def print_workflow(self):
-        """Print the workflow (placeholder for actual printing)."""
-        messagebox.showinfo(
-            "Print",
-            "Print functionality would open system print dialog.\nFor now, use Export to save the workflow.",
-            parent=self.dialog
-        )
+        """Print the workflow using system print dialog."""
+        try:
+            # First export to a temporary PDF
+            import tempfile
+            import subprocess
+            import platform
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp_path = tmp.name
+            
+            # Generate PDF
+            if self._export_to_pdf_file(tmp_path):
+                # Open system print dialog
+                system = platform.system()
+                
+                if system == 'Windows':
+                    # Use Windows print command
+                    os.startfile(tmp_path, "print")
+                elif system == 'Darwin':  # macOS
+                    # Use lpr command on macOS
+                    subprocess.run(['lpr', tmp_path])
+                else:  # Linux
+                    # Use lpr command on Linux
+                    subprocess.run(['lpr', tmp_path])
+                
+                # Clean up temp file after a delay
+                self.dialog.after(5000, lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
+                
+                messagebox.showinfo(
+                    "Print",
+                    "Workflow sent to printer.",
+                    parent=self.dialog
+                )
+            else:
+                messagebox.showerror(
+                    "Print Error",
+                    "Failed to prepare document for printing.",
+                    parent=self.dialog
+                )
+                
+        except Exception as e:
+            logging.error(f"Error printing workflow: {str(e)}")
+            messagebox.showerror(
+                "Print Error",
+                f"Failed to print workflow: {str(e)}",
+                parent=self.dialog
+            )
+    
+    def _export_to_pdf(self):
+        """Export the workflow to PDF with file dialog."""
+        try:
+            # Get default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"workflow_{self.workflow_type}_{timestamp}.pdf"
+            
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                parent=self.dialog,
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title="Save Workflow as PDF"
+            )
+            
+            if not file_path:
+                return
+            
+            # Export to PDF
+            if self._export_to_pdf_file(file_path):
+                messagebox.showinfo(
+                    "Export Successful",
+                    f"Workflow exported to:\n{file_path}",
+                    parent=self.dialog
+                )
+                
+                # Optionally open the PDF
+                if messagebox.askyesno(
+                    "Open PDF",
+                    "Would you like to open the PDF now?",
+                    parent=self.dialog
+                ):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', file_path))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(file_path)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', file_path))
+            else:
+                messagebox.showerror(
+                    "Export Failed",
+                    "Failed to export PDF. Check logs for details.",
+                    parent=self.dialog
+                )
+                
+        except Exception as e:
+            logging.error(f"Error exporting to PDF: {str(e)}")
+            messagebox.showerror(
+                "Export Error",
+                f"Failed to export PDF: {str(e)}",
+                parent=self.dialog
+            )
+    
+    def _export_to_pdf_file(self, file_path: str) -> bool:
+        """Export workflow to PDF file.
+        
+        Args:
+            file_path: Path to save the PDF
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create PDF exporter
+            pdf_exporter = PDFExporter()
+            
+            # Prepare workflow data
+            workflow_data = {
+                "workflow_type": self.workflow_type,
+                "workflow_text": self.workflow_text,
+                "patient_info": self.patient_info,
+                "steps": [],
+                "notes": ""
+            }
+            
+            # Extract steps with completion status
+            steps = self._extract_steps()
+            for i, step in enumerate(steps):
+                step_data = {
+                    "description": step['name'],
+                    "time_estimate": step.get('duration', ''),
+                    "completed": self.step_status.get(i, tk.BooleanVar()).get() if self.step_status else False
+                }
+                workflow_data["steps"].append(step_data)
+            
+            # Add metadata
+            if self.metadata:
+                workflow_data.update(self.metadata)
+            
+            # Add progress information
+            if self.step_status:
+                completed = sum(1 for var in self.step_status.values() if var.get())
+                total = len(self.step_status)
+                workflow_data["notes"] = f"Progress: {completed}/{total} steps completed"
+            
+            # Generate PDF
+            success = pdf_exporter.generate_workflow_report_pdf(
+                workflow_data,
+                file_path
+            )
+            
+            return success
+            
+        except Exception as e:
+            logging.error(f"Error generating workflow PDF: {str(e)}")
+            return False
     
     def close(self):
         """Close the dialog."""

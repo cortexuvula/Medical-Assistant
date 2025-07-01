@@ -9,6 +9,8 @@ from tkinter import ttk, messagebox, filedialog
 import json
 import logging
 from typing import Dict, Any
+import os
+from utils.pdf_exporter import PDFExporter
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,8 @@ class DataExtractionResultsDialog:
         self.extracted_data = ""
         self.output_format = "structured_text"
         self.metadata = {}
+        self.extraction_type = ""
+        self.source = ""
         
     def show_results(self, extracted_data: str, extraction_type: str, 
                      source: str, output_format: str, metadata: Dict[str, Any]):
@@ -42,6 +46,8 @@ class DataExtractionResultsDialog:
         self.extracted_data = extracted_data
         self.output_format = output_format
         self.metadata = metadata
+        self.extraction_type = extraction_type
+        self.source = source
         
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
@@ -96,7 +102,15 @@ class DataExtractionResultsDialog:
             command=self.export_to_file,
             width=15
         )
-        export_btn.pack(side=tk.LEFT)
+        export_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        pdf_btn = ttk.Button(
+            export_frame,
+            text="Export to PDF",
+            command=self._export_to_pdf,
+            width=15
+        )
+        pdf_btn.pack(side=tk.LEFT)
         
         # Info labels
         info_frame = ttk.Frame(main_frame)
@@ -294,6 +308,143 @@ class DataExtractionResultsDialog:
                     f"Failed to export data:\n{str(e)}",
                     parent=self.dialog
                 )
+    
+    def _export_to_pdf(self):
+        """Export the extracted data to PDF."""
+        try:
+            # Get default filename
+            default_filename = f"data_extraction_{self.extraction_type}_report.pdf"
+            
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                parent=self.dialog,
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title="Save Data Extraction Report as PDF"
+            )
+            
+            if not file_path:
+                return
+            
+            # Create PDF exporter
+            pdf_exporter = PDFExporter()
+            
+            # Prepare extraction data for PDF
+            extraction_data = self._parse_extraction_data()
+            
+            # Add metadata
+            extraction_data.update({
+                "source": self.source,
+                "extraction_type": self.extraction_type,
+                "format": self.output_format
+            })
+            
+            # Generate PDF
+            success = pdf_exporter.generate_data_extraction_report_pdf(
+                extraction_data,
+                file_path,
+                self.output_format
+            )
+            
+            if success:
+                messagebox.showinfo(
+                    "Export Successful",
+                    f"Data extraction report exported to:\n{file_path}",
+                    parent=self.dialog
+                )
+                
+                # Optionally open the PDF
+                if messagebox.askyesno(
+                    "Open PDF",
+                    "Would you like to open the PDF now?",
+                    parent=self.dialog
+                ):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', file_path))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(file_path)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', file_path))
+            else:
+                messagebox.showerror(
+                    "Export Failed",
+                    "Failed to export PDF. Check logs for details.",
+                    parent=self.dialog
+                )
+                
+        except Exception as e:
+            logger.error(f"Error exporting to PDF: {str(e)}")
+            messagebox.showerror(
+                "Export Error",
+                f"Failed to export PDF: {str(e)}",
+                parent=self.dialog
+            )
+    
+    def _parse_extraction_data(self) -> Dict[str, Any]:
+        """Parse the extracted data based on format.
+        
+        Returns:
+            Dictionary with structured extraction data
+        """
+        data = {
+            "vitals": [],
+            "labs": [],
+            "diagnoses": [],
+            "medications": [],
+            "procedures": []
+        }
+        
+        try:
+            if self.output_format == "json":
+                # Parse JSON data
+                json_data = json.loads(self.extracted_data)
+                
+                # Map JSON fields to expected structure
+                if isinstance(json_data, dict):
+                    data["vitals"] = json_data.get("vital_signs", [])
+                    data["labs"] = json_data.get("laboratory_values", [])
+                    data["diagnoses"] = json_data.get("diagnoses", [])
+                    data["medications"] = json_data.get("medications", [])
+                    data["procedures"] = json_data.get("procedures", [])
+                    
+            elif self.output_format == "csv":
+                # Parse CSV data
+                import csv
+                import io
+                
+                reader = csv.DictReader(io.StringIO(self.extracted_data))
+                for row in reader:
+                    # Categorize based on type field or infer from content
+                    if row.get("type") == "vital" or "blood pressure" in str(row).lower():
+                        data["vitals"].append(row)
+                    elif row.get("type") == "lab" or any(term in str(row).lower() for term in ["glucose", "hemoglobin", "wbc"]):
+                        data["labs"].append(row)
+                    elif row.get("type") == "diagnosis" or "icd" in str(row).lower():
+                        data["diagnoses"].append(row)
+                    elif row.get("type") == "medication" or any(term in str(row).lower() for term in ["mg", "dose", "tablet"]):
+                        data["medications"].append(row)
+                    elif row.get("type") == "procedure":
+                        data["procedures"].append(row)
+                        
+            else:
+                # For structured text, use the raw data
+                # The PDF exporter will handle it as generic content
+                data["raw_content"] = self.extracted_data
+                
+            # Add counts from metadata if available
+            if "counts" in self.metadata:
+                data.update(self.metadata)
+                
+        except Exception as e:
+            logger.error(f"Error parsing extraction data: {str(e)}")
+            # Fallback to raw content
+            data["raw_content"] = self.extracted_data
+            
+        return data
     
     def close(self):
         """Close the dialog."""

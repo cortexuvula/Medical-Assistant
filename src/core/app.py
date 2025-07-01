@@ -521,6 +521,8 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<Control-y>", lambda _: self.redo_text())
         self.bind("<Alt-t>", lambda _: self.toggle_theme())
         self.bind("<F1>", lambda _: self.show_shortcuts())
+        self.bind("<Control-e>", lambda _: self.export_as_pdf())
+        self.bind("<Control-p>", lambda _: self.print_document())
         self.bind("<Control-slash>", lambda _: self._focus_chat_input())
         
         # Recording shortcuts - use bind_all for global access
@@ -779,6 +781,279 @@ class MedicalDictationApp(ttk.Window):
                     self.status_manager.warning("Text saved, but audio save was cancelled")
         elif file_path:
             self.status_manager.success("Text saved successfully")
+
+    def export_as_pdf(self) -> None:
+        """Export current document as PDF."""
+        try:
+            from utils.pdf_exporter import PDFExporter
+            from tkinter import filedialog
+            
+            # Get the currently active tab
+            selected_tab = self.notebook.index('current')
+            
+            # Determine document type and get content
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            if selected_tab >= len(doc_types):
+                messagebox.showwarning("Export Error", "Invalid document tab selected.")
+                return
+                
+            doc_type = doc_types[selected_tab]
+            
+            # Get the content from the appropriate text widget
+            text_widgets = [self.transcript_text, self.soap_text, self.referral_text, 
+                           self.letter_text, self.chat_text]
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+            
+            if not content:
+                messagebox.showwarning("Export Error", f"No {doc_type.replace('_', ' ')} content to export.")
+                return
+            
+            # Generate default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{doc_type}_{timestamp}.pdf"
+            
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title=f"Export {doc_type.replace('_', ' ').title()} as PDF"
+            )
+            
+            if not file_path:
+                return
+            
+            # Create PDF exporter
+            pdf_exporter = PDFExporter()
+            
+            # Export based on document type
+            success = False
+            if doc_type == 'soap_note':
+                # Parse SOAP sections
+                soap_data = self._parse_soap_sections(content)
+                success = pdf_exporter.generate_soap_note_pdf(soap_data, file_path)
+            elif doc_type == 'referral':
+                # Parse referral letter
+                referral_data = {"body": content, "subject": "Medical Referral"}
+                success = pdf_exporter.generate_referral_letter_pdf(referral_data, file_path)
+            elif doc_type == 'letter':
+                # Generic letter
+                letter_data = {"body": content, "subject": "Medical Correspondence"}
+                success = pdf_exporter.generate_referral_letter_pdf(letter_data, file_path)
+            else:
+                # Generic document (transcript, chat)
+                title = doc_type.replace('_', ' ').title()
+                success = pdf_exporter.generate_generic_document_pdf(title, content, file_path)
+            
+            if success:
+                self.status_manager.success(f"{doc_type.replace('_', ' ').title()} exported to PDF successfully")
+                
+                # Ask if user wants to open the PDF
+                if messagebox.askyesno("Open PDF", "Would you like to open the PDF now?"):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', file_path))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(file_path)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', file_path))
+            else:
+                messagebox.showerror("Export Failed", "Failed to export PDF. Check logs for details.")
+                
+        except Exception as e:
+            logging.error(f"Error exporting to PDF: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to export PDF: {str(e)}")
+
+    def export_all_as_pdf(self) -> None:
+        """Export all documents as separate PDFs."""
+        try:
+            from utils.pdf_exporter import PDFExporter
+            from tkinter import filedialog
+            
+            # Ask user for directory
+            directory = filedialog.askdirectory(title="Select Directory for PDF Export")
+            if not directory:
+                return
+            
+            pdf_exporter = PDFExporter()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            exported_count = 0
+            
+            # Export each document
+            documents = [
+                ('transcript', self.transcript_text, 'Transcript'),
+                ('soap_note', self.soap_text, 'SOAP Note'),
+                ('referral', self.referral_text, 'Referral'),
+                ('letter', self.letter_text, 'Letter')
+            ]
+            
+            for doc_type, widget, title in documents:
+                content = widget.get("1.0", tk.END).strip()
+                if content:
+                    file_path = os.path.join(directory, f"{doc_type}_{timestamp}.pdf")
+                    
+                    if doc_type == 'soap_note':
+                        soap_data = self._parse_soap_sections(content)
+                        success = pdf_exporter.generate_soap_note_pdf(soap_data, file_path)
+                    elif doc_type in ['referral', 'letter']:
+                        data = {"body": content, "subject": title}
+                        success = pdf_exporter.generate_referral_letter_pdf(data, file_path)
+                    else:
+                        success = pdf_exporter.generate_generic_document_pdf(title, content, file_path)
+                    
+                    if success:
+                        exported_count += 1
+            
+            if exported_count > 0:
+                self.status_manager.success(f"Exported {exported_count} documents to PDF")
+                
+                # Ask if user wants to open the folder
+                if messagebox.askyesno("Open Folder", "Would you like to open the export folder?"):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', directory))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(directory)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', directory))
+            else:
+                messagebox.showinfo("Export Info", "No documents with content to export.")
+                
+        except Exception as e:
+            logging.error(f"Error exporting all to PDF: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to export PDFs: {str(e)}")
+
+    def print_document(self) -> None:
+        """Print current document."""
+        try:
+            from utils.pdf_exporter import PDFExporter
+            import tempfile
+            import subprocess
+            import platform
+            
+            # Get the currently active tab
+            selected_tab = self.notebook.index('current')
+            
+            # Get content
+            text_widgets = [self.transcript_text, self.soap_text, self.referral_text, 
+                           self.letter_text, self.chat_text]
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+            
+            if not content:
+                messagebox.showwarning("Print Error", "No content to print.")
+                return
+            
+            # Create temporary PDF
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp_path = tmp.name
+            
+            # Generate PDF
+            pdf_exporter = PDFExporter()
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            doc_type = doc_types[selected_tab]
+            
+            if doc_type == 'soap_note':
+                soap_data = self._parse_soap_sections(content)
+                success = pdf_exporter.generate_soap_note_pdf(soap_data, tmp_path)
+            elif doc_type in ['referral', 'letter']:
+                data = {"body": content, "subject": doc_type.title()}
+                success = pdf_exporter.generate_referral_letter_pdf(data, tmp_path)
+            else:
+                title = doc_type.replace('_', ' ').title()
+                success = pdf_exporter.generate_generic_document_pdf(title, content, tmp_path)
+            
+            if success:
+                # Open system print dialog
+                system = platform.system()
+                
+                if system == 'Windows':
+                    os.startfile(tmp_path, "print")
+                elif system == 'Darwin':  # macOS
+                    subprocess.run(['lpr', tmp_path])
+                else:  # Linux
+                    subprocess.run(['lpr', tmp_path])
+                
+                self.status_manager.info("Document sent to printer")
+                
+                # Clean up temp file after a delay
+                self.after(5000, lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
+            else:
+                messagebox.showerror("Print Error", "Failed to prepare document for printing.")
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                    
+        except Exception as e:
+            logging.error(f"Error printing document: {str(e)}")
+            messagebox.showerror("Print Error", f"Failed to print: {str(e)}")
+
+    def _parse_soap_sections(self, content: str) -> Dict[str, str]:
+        """Parse SOAP note content into sections.
+        
+        Args:
+            content: Raw SOAP note text
+            
+        Returns:
+            Dictionary with subjective, objective, assessment, and plan sections
+        """
+        sections = {
+            'subjective': '',
+            'objective': '',
+            'assessment': '',
+            'plan': ''
+        }
+        
+        # Simple parsing - look for section headers
+        lines = content.split('\n')
+        current_section = None
+        section_content = []
+        
+        section_headers = {
+            'subjective': ['subjective:', 's:'],
+            'objective': ['objective:', 'o:'],
+            'assessment': ['assessment:', 'a:'],
+            'plan': ['plan:', 'p:']
+        }
+        
+        for line in lines:
+            line_lower = line.lower().strip()
+            
+            # Check if this line is a section header
+            new_section = None
+            for section, headers in section_headers.items():
+                if any(line_lower.startswith(header) for header in headers):
+                    new_section = section
+                    break
+            
+            if new_section:
+                # Save previous section content
+                if current_section and section_content:
+                    sections[current_section] = '\n'.join(section_content).strip()
+                
+                # Start new section
+                current_section = new_section
+                section_content = []
+                
+                # Add content after the header on the same line
+                header_text = line.split(':', 1)
+                if len(header_text) > 1 and header_text[1].strip():
+                    section_content.append(header_text[1].strip())
+            elif current_section:
+                # Add line to current section
+                section_content.append(line)
+        
+        # Save last section
+        if current_section and section_content:
+            sections[current_section] = '\n'.join(section_content).strip()
+        
+        # If no sections found, put all content in subjective
+        if not any(sections.values()):
+            sections['subjective'] = content
+        
+        return sections
 
     def copy_text(self) -> None:
         active_widget = self.get_active_text_widget()

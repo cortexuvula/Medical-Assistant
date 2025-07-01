@@ -105,6 +105,17 @@ class MenuManager:
         filemenu.add_command(label="New", command=self.app.new_session, accelerator="Ctrl+N")
         filemenu.add_command(label="Save", command=self.app.save_text, accelerator="Ctrl+S")
         filemenu.add_separator()
+        
+        # Export submenu
+        export_menu = tk.Menu(filemenu, tearoff=0)
+        self._style_menu(export_menu, is_dark)
+        export_menu.add_command(label="Export as PDF...", command=self.app.export_as_pdf, accelerator="Ctrl+E")
+        export_menu.add_command(label="Export All Documents as PDF", command=self.app.export_all_as_pdf)
+        filemenu.add_cascade(label="Export", menu=export_menu)
+        
+        filemenu.add_separator()
+        filemenu.add_command(label="Print...", command=self.app.print_document, accelerator="Ctrl+P")
+        filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.app.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
     

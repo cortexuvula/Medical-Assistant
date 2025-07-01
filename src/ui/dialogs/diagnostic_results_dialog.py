@@ -7,10 +7,12 @@ Displays the results of diagnostic analysis in a formatted, user-friendly dialog
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import pyperclip
 import logging
-from typing import Dict
+from typing import Dict, List
+import os
+from utils.pdf_exporter import PDFExporter
 
 
 class DiagnosticResultsDialog:
@@ -24,6 +26,9 @@ class DiagnosticResultsDialog:
         """
         self.parent = parent
         self.analysis_text = ""
+        self.source = ""
+        self.metadata = {}
+        self.dialog = None
         
     def show_results(self, analysis: str, source: str, metadata: Dict):
         """Show the diagnostic analysis results.
@@ -34,6 +39,8 @@ class DiagnosticResultsDialog:
             metadata: Additional metadata from the analysis
         """
         self.analysis_text = analysis
+        self.source = source
+        self.metadata = metadata
         
         # Create dialog window
         dialog = tk.Toplevel(self.parent)
@@ -132,7 +139,15 @@ class DiagnosticResultsDialog:
             text="Copy to Clipboard",
             command=self._copy_to_clipboard,
             bootstyle="info",
-            width=20
+            width=18
+        ).pack(side=LEFT, padx=(0, 5))
+        
+        ttk.Button(
+            button_frame,
+            text="Export to PDF",
+            command=self._export_to_pdf,
+            bootstyle="warning",
+            width=18
         ).pack(side=LEFT, padx=(0, 5))
         
         ttk.Button(
@@ -284,3 +299,175 @@ class DiagnosticResultsDialog:
         
         # Close the dialog
         self.result_text.winfo_toplevel().destroy()
+    
+    def _export_to_pdf(self):
+        """Export the diagnostic analysis to PDF."""
+        try:
+            # Get default filename
+            default_filename = "diagnostic_analysis_report.pdf"
+            
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                parent=self.result_text.winfo_toplevel(),
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title="Save Diagnostic Report as PDF"
+            )
+            
+            if not file_path:
+                return
+            
+            # Create PDF exporter
+            pdf_exporter = PDFExporter()
+            
+            # Parse the analysis text to extract structured data
+            diagnostic_data = self._parse_diagnostic_analysis(self.analysis_text)
+            
+            # Add metadata
+            diagnostic_data.update({
+                "source": self.source,
+                "analysis_date": self.metadata.get("analysis_date", ""),
+                "provider": self.metadata.get("provider", "")
+            })
+            
+            # Generate PDF
+            success = pdf_exporter.generate_diagnostic_report_pdf(
+                diagnostic_data,
+                file_path
+            )
+            
+            if success:
+                messagebox.showinfo(
+                    "Export Successful",
+                    f"Diagnostic report exported to:\n{file_path}",
+                    parent=self.result_text.winfo_toplevel()
+                )
+                
+                # Optionally open the PDF
+                if messagebox.askyesno(
+                    "Open PDF",
+                    "Would you like to open the PDF now?",
+                    parent=self.result_text.winfo_toplevel()
+                ):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', file_path))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(file_path)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', file_path))
+            else:
+                messagebox.showerror(
+                    "Export Failed",
+                    "Failed to export PDF. Check logs for details.",
+                    parent=self.result_text.winfo_toplevel()
+                )
+                
+        except Exception as e:
+            logging.error(f"Error exporting to PDF: {str(e)}")
+            messagebox.showerror(
+                "Export Error",
+                f"Failed to export PDF: {str(e)}",
+                parent=self.result_text.winfo_toplevel()
+            )
+    
+    def _parse_diagnostic_analysis(self, analysis_text: str) -> Dict:
+        """Parse diagnostic analysis text into structured data.
+        
+        Args:
+            analysis_text: The raw analysis text
+            
+        Returns:
+            Dictionary with structured diagnostic data
+        """
+        data = {
+            "clinical_findings": "",
+            "differentials": [],
+            "red_flags": [],
+            "investigations": [],
+            "clinical_pearls": []
+        }
+        
+        # Split into sections
+        lines = analysis_text.split('\n')
+        current_section = None
+        current_content = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Check for section headers
+            if "CLINICAL SUMMARY:" in line:
+                if current_section and current_content:
+                    self._save_section_data(data, current_section, current_content)
+                current_section = "clinical_findings"
+                current_content = []
+            elif "DIFFERENTIAL DIAGNOSES:" in line:
+                if current_section and current_content:
+                    self._save_section_data(data, current_section, current_content)
+                current_section = "differentials"
+                current_content = []
+            elif "RED FLAGS:" in line:
+                if current_section and current_content:
+                    self._save_section_data(data, current_section, current_content)
+                current_section = "red_flags"
+                current_content = []
+            elif "RECOMMENDED INVESTIGATIONS:" in line:
+                if current_section and current_content:
+                    self._save_section_data(data, current_section, current_content)
+                current_section = "investigations"
+                current_content = []
+            elif "CLINICAL PEARLS:" in line:
+                if current_section and current_content:
+                    self._save_section_data(data, current_section, current_content)
+                current_section = "clinical_pearls"
+                current_content = []
+            elif line and current_section:
+                current_content.append(line)
+        
+        # Save last section
+        if current_section and current_content:
+            self._save_section_data(data, current_section, current_content)
+        
+        return data
+    
+    def _save_section_data(self, data: Dict, section: str, content: List[str]):
+        """Save parsed section data to the data dictionary.
+        
+        Args:
+            data: Data dictionary to update
+            section: Section name
+            content: List of content lines
+        """
+        if section == "clinical_findings":
+            data["clinical_findings"] = "\n".join(content)
+        elif section == "differentials":
+            # Parse differentials with their details
+            for line in content:
+                if line and (line[0].isdigit() or line.startswith("-")):
+                    # Extract diagnosis name and any ICD code
+                    import re
+                    icd_match = re.search(r'\((\d{3}\.\d{1,2})\)', line)
+                    if icd_match:
+                        diagnosis = line[:icd_match.start()].strip(" -0123456789.")
+                        icd_code = icd_match.group(1)
+                    else:
+                        diagnosis = line.strip(" -0123456789.")
+                        icd_code = ""
+                    
+                    data["differentials"].append({
+                        "diagnosis": diagnosis,
+                        "icd_code": icd_code,
+                        "probability": "",  # Could be extracted if present
+                        "evidence": [],     # Could be enhanced with more parsing
+                        "tests": []        # Could be enhanced with more parsing
+                    })
+        elif section == "red_flags":
+            data["red_flags"] = [line.strip("- •") for line in content if line.strip()]
+        elif section == "investigations":
+            data["investigations"] = [line.strip("- •") for line in content if line.strip()]
+        elif section == "clinical_pearls":
+            data["clinical_pearls"] = [line.strip("- •") for line in content if line.strip()]

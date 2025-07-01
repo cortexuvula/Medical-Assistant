@@ -7,11 +7,13 @@ Displays the results of medication analysis in a formatted, user-friendly dialog
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import pyperclip
 import logging
 from typing import Dict, Any
 import json
+import os
+from utils.pdf_exporter import PDFExporter
 
 
 class MedicationResultsDialog:
@@ -26,6 +28,10 @@ class MedicationResultsDialog:
         self.parent = parent
         self.analysis_text = ""
         self.result_text = None
+        self.analysis_data = None
+        self.analysis_type = ""
+        self.source = ""
+        self.metadata = {}
         
     def show_results(self, analysis: Any, analysis_type: str, source: str, metadata: Dict):
         """Show the medication analysis results.
@@ -36,6 +42,12 @@ class MedicationResultsDialog:
             source: Source of the analysis (Transcript, SOAP Note, Custom Input)
             metadata: Additional metadata from the analysis
         """
+        # Store data for potential export
+        self.analysis_data = analysis if isinstance(analysis, dict) else {"analysis": analysis}
+        self.analysis_type = analysis_type
+        self.source = source
+        self.metadata = metadata
+        
         # Convert analysis to string if it's a dict
         if isinstance(analysis, dict):
             self.analysis_text = self._format_analysis_dict(analysis, analysis_type)
@@ -152,7 +164,15 @@ class MedicationResultsDialog:
             text="Copy to Clipboard",
             command=self._copy_to_clipboard,
             bootstyle="info",
-            width=20
+            width=18
+        ).pack(side=LEFT, padx=(0, 5))
+        
+        ttk.Button(
+            button_frame,
+            text="Export to PDF",
+            command=self._export_to_pdf,
+            bootstyle="warning",
+            width=18
         ).pack(side=LEFT, padx=(0, 5))
         
         ttk.Button(
@@ -160,7 +180,7 @@ class MedicationResultsDialog:
             text="Add to SOAP Note",
             command=lambda: self._add_to_document("soap"),
             bootstyle="success",
-            width=20
+            width=18
         ).pack(side=LEFT, padx=(0, 5))
         
         ttk.Button(
@@ -168,7 +188,7 @@ class MedicationResultsDialog:
             text="Add to Letter",
             command=lambda: self._add_to_document("letter"),
             bootstyle="primary",
-            width=20
+            width=18
         ).pack(side=LEFT)
         
         ttk.Button(
@@ -342,5 +362,111 @@ class MedicationResultsDialog:
             messagebox.showerror(
                 "Error",
                 f"Failed to add to document: {str(e)}",
+                parent=self.parent
+            )
+    
+    def _export_to_pdf(self):
+        """Export the medication analysis to PDF."""
+        try:
+            # Get default filename
+            default_filename = f"medication_{self.analysis_type}_report.pdf"
+            
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                parent=self.parent,
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title="Save Medication Report as PDF"
+            )
+            
+            if not file_path:
+                return
+            
+            # Create PDF exporter
+            pdf_exporter = PDFExporter()
+            
+            # Prepare medication data for PDF
+            medication_data = {
+                "medications": [],
+                "interactions": [],
+                "warnings": [],
+                "recommendations": ""
+            }
+            
+            # Extract data based on analysis type and structure
+            if isinstance(self.analysis_data, dict):
+                # Extract medications
+                if "medications" in self.analysis_data:
+                    medication_data["medications"] = self.analysis_data["medications"]
+                elif "extracted_medications" in self.analysis_data:
+                    medication_data["medications"] = self.analysis_data["extracted_medications"]
+                
+                # Extract interactions
+                if "interactions" in self.analysis_data:
+                    medication_data["interactions"] = self.analysis_data["interactions"]
+                elif "drug_interactions" in self.analysis_data:
+                    medication_data["interactions"] = self.analysis_data["drug_interactions"]
+                
+                # Extract warnings
+                if "warnings" in self.analysis_data:
+                    medication_data["warnings"] = self.analysis_data["warnings"]
+                elif "alerts" in self.analysis_data:
+                    medication_data["warnings"] = self.analysis_data["alerts"]
+                
+                # Extract recommendations
+                if "recommendations" in self.analysis_data:
+                    medication_data["recommendations"] = self.analysis_data["recommendations"]
+                elif "suggestions" in self.analysis_data:
+                    medication_data["recommendations"] = self.analysis_data["suggestions"]
+            
+            # If data is not properly structured, use the formatted text
+            if not any(medication_data.values()):
+                medication_data["recommendations"] = self.analysis_text
+            
+            # Add metadata to the data
+            medication_data.update(self.metadata)
+            
+            # Generate PDF
+            success = pdf_exporter.generate_medication_report_pdf(
+                medication_data,
+                file_path,
+                self.analysis_type
+            )
+            
+            if success:
+                messagebox.showinfo(
+                    "Export Successful",
+                    f"Medication report exported to:\n{file_path}",
+                    parent=self.parent
+                )
+                
+                # Optionally open the PDF
+                if messagebox.askyesno(
+                    "Open PDF",
+                    "Would you like to open the PDF now?",
+                    parent=self.parent
+                ):
+                    import subprocess
+                    import platform
+                    
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', file_path))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(file_path)
+                    else:                                   # Linux
+                        subprocess.call(('xdg-open', file_path))
+            else:
+                messagebox.showerror(
+                    "Export Failed",
+                    "Failed to export PDF. Check logs for details.",
+                    parent=self.parent
+                )
+                
+        except Exception as e:
+            logging.error(f"Error exporting to PDF: {str(e)}")
+            messagebox.showerror(
+                "Export Error",
+                f"Failed to export PDF: {str(e)}",
                 parent=self.parent
             )
