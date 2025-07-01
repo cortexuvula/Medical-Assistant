@@ -220,9 +220,32 @@ class ProcessingQueue:
                 process_options = recording_data.get("process_options", {})
                 results = {}
                 
+                # First, check if we need to transcribe audio
+                transcript = recording_data.get("transcript", "")
+                if not transcript and recording_data.get("audio_data"):
+                    # Transcribe the audio
+                    logging.info(f"Transcribing audio for recording {recording_id}")
+                    audio_data = recording_data.get("audio_data")
+                    
+                    # Use the app's audio handler to transcribe
+                    if hasattr(self.app, 'audio_handler'):
+                        try:
+                            transcript = self.app.audio_handler.transcribe_audio(audio_data)
+                            if transcript:
+                                # Update the recording data and database
+                                recording_data["transcript"] = transcript
+                                self.app.db.update_recording(recording_id, transcript=transcript)
+                                logging.info(f"Transcription completed for recording {recording_id}")
+                            else:
+                                raise Exception("Transcription returned empty result")
+                        except Exception as e:
+                            logging.error(f"Transcription failed: {str(e)}")
+                            raise Exception(f"Failed to transcribe audio: {str(e)}")
+                    else:
+                        raise Exception("Audio handler not available for transcription")
+                
                 # Generate SOAP note if requested
                 if process_options.get("generate_soap", True):
-                    transcript = recording_data.get("transcript", "")
                     if transcript:
                         soap_result = self._generate_soap_note(transcript)
                         if soap_result:

@@ -2052,7 +2052,12 @@ class MedicalDictationApp(ttk.Window):
                 'recording_id': recording_id,
                 'audio_data': audio_to_process,
                 'patient_name': patient_name,
-                'context': context_text
+                'context': context_text,
+                'process_options': {
+                    'generate_soap': True,
+                    'generate_referral': False,
+                    'generate_letter': False
+                }
             }
             
             # Add to processing queue
