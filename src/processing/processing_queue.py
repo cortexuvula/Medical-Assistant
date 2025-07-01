@@ -290,8 +290,18 @@ class ProcessingQueue:
                 # Log final results
                 logging.info(f"Processing results for recording {recording_id}: {list(results.keys())}")
                 
+                # Format results for callback with expected structure
+                callback_result = {
+                    'success': True,
+                    'transcript': recording_data.get("transcript", ""),
+                    'soap_note': results.get("soap_note", ""),
+                    'referral': results.get("referral", ""),
+                    'letter': results.get("letter", ""),
+                    'completed_at': datetime.now()
+                }
+                
                 # Mark as completed
-                self._mark_completed(task_id, recording_data, results, time.time() - start_time)
+                self._mark_completed(task_id, recording_data, callback_result, time.time() - start_time)
                 
             else:
                 logging.error("No app context available for processing")
