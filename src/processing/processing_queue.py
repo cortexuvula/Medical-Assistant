@@ -227,6 +227,10 @@ class ProcessingQueue:
                     logging.info(f"Transcribing audio for recording {recording_id}")
                     audio_data = recording_data.get("audio_data")
                     
+                    # Log audio data info
+                    if hasattr(audio_data, 'duration_seconds'):
+                        logging.info(f"Audio duration: {audio_data.duration_seconds} seconds")
+                    
                     # Use the app's audio handler to transcribe
                     if hasattr(self.app, 'audio_handler'):
                         try:
@@ -235,23 +239,35 @@ class ProcessingQueue:
                                 # Update the recording data and database
                                 recording_data["transcript"] = transcript
                                 self.app.db.update_recording(recording_id, transcript=transcript)
-                                logging.info(f"Transcription completed for recording {recording_id}")
+                                logging.info(f"Transcription completed for recording {recording_id}: {len(transcript)} characters")
                             else:
                                 raise Exception("Transcription returned empty result")
                         except Exception as e:
-                            logging.error(f"Transcription failed: {str(e)}")
+                            logging.error(f"Transcription failed: {str(e)}", exc_info=True)
                             raise Exception(f"Failed to transcribe audio: {str(e)}")
                     else:
+                        logging.error("Audio handler not available for transcription")
                         raise Exception("Audio handler not available for transcription")
+                else:
+                    if transcript:
+                        logging.info(f"Using existing transcript for recording {recording_id}: {len(transcript)} characters")
+                    else:
+                        logging.warning(f"No transcript or audio data for recording {recording_id}")
                 
                 # Generate SOAP note if requested
                 if process_options.get("generate_soap", True):
                     if transcript:
+                        logging.info(f"Generating SOAP note for recording {recording_id}")
                         soap_result = self._generate_soap_note(transcript)
                         if soap_result:
                             results["soap_note"] = soap_result
                             # Update database
                             self.app.db.update_recording(recording_id, soap_note=soap_result)
+                            logging.info(f"SOAP note generated for recording {recording_id}: {len(soap_result)} characters")
+                        else:
+                            logging.warning(f"SOAP generation returned empty result for recording {recording_id}")
+                    else:
+                        logging.warning(f"No transcript available for SOAP generation for recording {recording_id}")
                 
                 # Generate referral if requested
                 if process_options.get("generate_referral") and results.get("soap_note"):
