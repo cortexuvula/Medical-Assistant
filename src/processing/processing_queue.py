@@ -574,7 +574,7 @@ class ProcessingQueue:
             conditions = "Based on the clinical findings in the SOAP note"
             
             # Generate referral
-            referral = create_referral_with_openai(soap_note, conditions, provider, model)
+            referral = create_referral_with_openai(soap_note, conditions)
             return referral
         except Exception as e:
             logging.error(f"Error generating referral: {str(e)}")
@@ -597,7 +597,7 @@ class ProcessingQueue:
             model = SETTINGS.get(f"{provider}_model", "gpt-4")
             
             # Generate letter
-            letter = create_letter_with_ai(content, provider, model)
+            letter = create_letter_with_ai(content)
             return letter
         except Exception as e:
             logging.error(f"Error generating letter: {str(e)}")
