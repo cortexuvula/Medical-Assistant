@@ -287,10 +287,14 @@ class ProcessingQueue:
                             # Update database
                             self.app.db.update_recording(recording_id, letter=letter_result)
                 
+                # Log final results
+                logging.info(f"Processing results for recording {recording_id}: {list(results.keys())}")
+                
                 # Mark as completed
                 self._mark_completed(task_id, recording_data, results, time.time() - start_time)
                 
             else:
+                logging.error("No app context available for processing")
                 raise Exception("No app context available")
                 
         except Exception as e:
