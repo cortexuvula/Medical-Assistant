@@ -180,12 +180,18 @@ class AutoSaveManager:
             
             if old_backup.exists():
                 if i + 1 <= self.max_backups:
+                    # On Windows, rename fails if destination exists, so remove it first
+                    if new_backup.exists():
+                        new_backup.unlink()
                     old_backup.rename(new_backup)
                 else:
                     old_backup.unlink()  # Delete oldest backup
         
         # Move current to backup_1
         backup_1 = self.save_directory / "autosave_backup_1.json"
+        # On Windows, rename fails if destination exists, so remove it first
+        if backup_1.exists():
+            backup_1.unlink()
         current_file.rename(backup_1)
     
     def load_latest(self) -> Optional[Dict[str, Any]]:
