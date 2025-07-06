@@ -130,7 +130,7 @@ class TTSManager:
             raise
     
     def synthesize_and_play(self, text: str, language: str = None, voice: str = None, 
-                           blocking: bool = False, **kwargs):
+                           blocking: bool = False, output_device: str = None, **kwargs):
         """Synthesize text and play the audio.
         
         Args:
@@ -138,30 +138,85 @@ class TTSManager:
             language: Language code
             voice: Voice ID/name
             blocking: If True, wait for playback to complete
+            output_device: Specific output device to use for playback
             **kwargs: Additional provider-specific parameters
         """
         try:
             # Synthesize audio
             audio = self.synthesize(text, language, voice, **kwargs)
             
-            # Play audio
+            # Play audio with specified device
             if blocking:
-                self._play_audio_blocking(audio)
+                self._play_audio_blocking(audio, output_device)
             else:
-                self._play_audio_async(audio)
+                self._play_audio_async(audio, output_device)
                 
         except Exception as e:
             self.logger.error(f"Failed to synthesize and play: {e}")
             raise
     
-    def _play_audio_blocking(self, audio: AudioSegment):
+    def _play_audio_blocking(self, audio: AudioSegment, output_device: str = None):
         """Play audio synchronously (blocking).
         
         Args:
             audio: AudioSegment to play
+            output_device: Specific output device to use
         """
         try:
-            if self._pygame_available:
+            if output_device:
+                # Use sounddevice for device-specific playback
+                import sounddevice as sd
+                import numpy as np
+                
+                # Convert AudioSegment to numpy array
+                samples = np.array(audio.get_array_of_samples())
+                
+                # Normalize to float32 in range [-1, 1]
+                if audio.sample_width == 2:  # 16-bit
+                    samples = samples.astype(np.float32) / 32768.0
+                elif audio.sample_width == 1:  # 8-bit
+                    samples = (samples.astype(np.float32) - 128) / 128.0
+                    
+                # Reshape for channels
+                if audio.channels == 2:
+                    samples = samples.reshape((-1, 2))
+                    
+                # Find device index
+                devices = sd.query_devices()
+                device_idx = None
+                for idx, dev in enumerate(devices):
+                    if dev['name'] == output_device and dev['max_output_channels'] > 0:
+                        device_idx = idx
+                        break
+                
+                if device_idx is None:
+                    self.logger.warning(f"Output device '{output_device}' not found. Using default.")
+                        
+                # Play audio
+                try:
+                    sd.play(samples, samplerate=audio.frame_rate, device=device_idx)
+                    sd.wait()  # Wait for playback to complete
+                except Exception as e:
+                    self.logger.warning(f"Failed to play on device '{output_device}': {e}. Falling back to default.")
+                    # Fallback to default device
+                    try:
+                        sd.play(samples, samplerate=audio.frame_rate)
+                        sd.wait()
+                    except Exception as e2:
+                        self.logger.error(f"Fallback to default device also failed: {e2}")
+                        # Last resort: use pygame or pydub
+                        if self._pygame_available:
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=True) as temp:
+                                audio.export(temp.name, format='mp3')
+                                pygame.mixer.music.load(temp.name)
+                                pygame.mixer.music.play()
+                                while pygame.mixer.music.get_busy():
+                                    pygame.time.Clock().tick(10)
+                        else:
+                            play(audio)
+                
+            elif self._pygame_available:
                 # Export to temporary file for pygame
                 import tempfile
                 with tempfile.NamedTemporaryFile(suffix='.mp3', delete=True) as temp:
@@ -180,14 +235,15 @@ class TTSManager:
             self.logger.error(f"Audio playback failed: {e}")
             raise
     
-    def _play_audio_async(self, audio: AudioSegment):
+    def _play_audio_async(self, audio: AudioSegment, output_device: str = None):
         """Play audio asynchronously (non-blocking).
         
         Args:
             audio: AudioSegment to play
+            output_device: Specific output device to use
         """
         # Create thread for playback
-        thread = threading.Thread(target=self._play_audio_blocking, args=(audio,))
+        thread = threading.Thread(target=self._play_audio_blocking, args=(audio, output_device))
         thread.daemon = True
         thread.start()
     

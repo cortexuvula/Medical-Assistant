@@ -350,7 +350,9 @@ Follow up:
         "sub_provider": "google",       # Sub-provider (google, deepl, microsoft)
         "patient_language": "es",       # Default patient language (Spanish)
         "doctor_language": "en",        # Default doctor language (English)
-        "auto_detect": True            # Auto-detect patient language
+        "auto_detect": True,           # Auto-detect patient language
+        "input_device": "",            # Translation-specific microphone
+        "output_device": ""            # Translation-specific speaker/output device
     },
     "tts": {
         "provider": "pyttsx3",         # TTS provider (pyttsx3, elevenlabs, google)

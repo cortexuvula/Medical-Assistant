@@ -88,6 +88,55 @@ def get_valid_microphones() -> list[str]:
         logging.error(f"Error getting microphones: {str(e)}", exc_info=True)
         return []
 
+
+def get_valid_output_devices() -> list[str]:
+    """Get list of valid audio output device names."""
+    output_names = []
+    
+    try:
+        # Get sounddevice output devices
+        sd_devices = sd.query_devices()
+        
+        # Get the current platform
+        current_platform = platform.system().lower()
+        
+        for i, device in enumerate(sd_devices):
+            # Only include output devices
+            if device['max_output_channels'] > 0:
+                device_name_lower = device['name'].lower()
+                
+                # Platform-specific filtering
+                if current_platform == 'linux':
+                    # On Linux, skip some virtual devices
+                    if any(skip in device_name_lower for skip in ['pipewire', 'pulse', 'sysdefault', 'lavrate', 'samplerate', 'speexrate', 'speex', 'upmix', 'vdownmix']):
+                        continue
+                elif current_platform == 'windows':
+                    # On Windows, skip mapper devices which are usually duplicates
+                    if 'microsoft sound mapper' in device_name_lower:
+                        continue
+                
+                output_names.append(device['name'])
+        
+        # If no devices found, add default
+        if not output_names:
+            try:
+                # Try to get default output device
+                default_device = sd.query_devices(kind='output')
+                if default_device:
+                    output_names.append(default_device['name'])
+            except Exception as e:
+                logging.error(f"Error getting default output device: {e}")
+                # As a last resort, add a generic default
+                output_names.append("Default Output")
+    
+    except Exception as e:
+        logging.error(f"Error enumerating output devices: {e}")
+        output_names = ["Default Output"]
+    
+    # Remove duplicates while preserving order
+    return list(dict.fromkeys(output_names))
+
+
 def get_device_index_from_name(device_name: str) -> int:
     """Get device index from name for sounddevice.
     

@@ -48,7 +48,7 @@ class AudioHandler:
     DEFAULT_PHRASE_TIME_LIMIT = _config.transcription.chunk_duration_seconds
     
     # Track active listening sessions for proper cleanup
-    _active_streams = []  # Class variable to track all active streams
+    _active_streams = {}  # Class variable to track all active streams by purpose
     
     def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
@@ -168,16 +168,19 @@ class AudioHandler:
         
         # Clean up any active streams from the class list
         streams_closed = 0
-        while AudioHandler._active_streams:
+        stream_purposes = list(AudioHandler._active_streams.keys())
+        for purpose in stream_purposes:
             try:
-                stream = AudioHandler._active_streams.pop()
-                stream.stop()
-                stream.close()
-                streams_closed += 1
-                # Give it a tiny bit of time to fully release resources
-                time.sleep(0.1)
+                stream_info = AudioHandler._active_streams.pop(purpose, None)
+                if stream_info and 'stream' in stream_info:
+                    stream = stream_info['stream']
+                    stream.stop()
+                    stream.close()
+                    streams_closed += 1
+                    # Give it a tiny bit of time to fully release resources
+                    time.sleep(0.1)
             except Exception as e:
-                logging.error(f"AudioHandler: Error stopping stream: {str(e)}", exc_info=True)
+                logging.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}", exc_info=True)
         
         # Terminate sounddevice streams if any are active
         try:
@@ -539,13 +542,14 @@ class AudioHandler:
             logging.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
             
-    def listen_in_background(self, mic_name: str, callback: Callable, phrase_time_limit: Optional[int] = None) -> Callable:
+    def listen_in_background(self, mic_name: str, callback: Callable, phrase_time_limit: Optional[int] = None, stream_purpose: str = "default") -> Callable:
         """Start listening in the background for phrases.
         
         Args:
             mic_name: Name of the microphone to use
             callback: Function to call for each detected phrase
             phrase_time_limit: Max seconds for a phrase, or None for no limit
+            stream_purpose: Purpose identifier for this stream (e.g., "soap", "translation")
             
         Returns:
             Function that when called stops the background listener
@@ -556,6 +560,20 @@ class AudioHandler:
             
         # Log the actual phrase time limit being used
         logging.info(f"Starting background listening with phrase_time_limit: {phrase_time_limit} seconds")
+        
+        # Check if a stream with this purpose already exists
+        if stream_purpose in self._active_streams:
+            logging.warning(f"Stream with purpose '{stream_purpose}' already exists. Stopping existing stream.")
+            # Get the existing stream info
+            existing_info = self._active_streams.get(stream_purpose)
+            if existing_info and 'stream' in existing_info:
+                try:
+                    existing_info['stream'].stop()
+                    existing_info['stream'].close()
+                except Exception as e:
+                    logging.error(f"Error stopping existing stream: {e}")
+            self._active_streams.pop(stream_purpose, None)
+        
         try:
             logging.info(f"Attempting to start background listening for device: {mic_name}")
             self.listening_device = mic_name # Store the requested name
@@ -570,7 +588,7 @@ class AudioHandler:
             if use_sounddevice:
                 logging.info(f"Using sounddevice backend for: {mic_name}")
                 # Delegate to the sounddevice-specific method, passing the name
-                stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
+                stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
                 return stop_function
             else:
                 # --- Soundcard Logic (currently disabled, potentially problematic) ---
@@ -591,7 +609,7 @@ class AudioHandler:
                     if not selected_sc_device:
                         logging.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
                         # Fallback to sounddevice if soundcard match fails
-                        return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
+                        return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
                 except Exception as e:
                     logging.error(f"Soundcard backend failed: {e}. Falling back to sounddevice.")
                     return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
@@ -723,12 +741,13 @@ class AudioHandler:
         
         return channels, self.sample_rate
 
-    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None) -> Callable:
+    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default") -> Callable:
         """Create the stop function for the audio stream.
         
         Args:
             stream: The sounddevice InputStream.
             flush_callback: Optional callback to flush any remaining audio data.
+            stream_purpose: Purpose identifier for this stream
             
         Returns:
             Function to stop the stream.
@@ -750,9 +769,9 @@ class AudioHandler:
                     self.listening_device = None
                     self.callback_function = None
                     
-                    # Remove from active streams
-                    if stream in self._active_streams:
-                        self._active_streams.remove(stream)
+                    # Remove from active streams by purpose
+                    if stream_purpose in self._active_streams:
+                        self._active_streams.pop(stream_purpose, None)
         
         return stop_stream
 
@@ -832,13 +851,14 @@ class AudioHandler:
         
         return audio_callback_sd, flush_accumulated_audio
 
-    def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None) -> Callable:
+    def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None, stream_purpose: str = "default") -> Callable:
         """Listen using sounddevice library, resolving name to index just-in-time.
 
         Args:
             device_name: The target device name string.
             callback: Function to call with audio data.
             phrase_time_limit: Maximum length of audio capture in seconds (uses DEFAULT_PHRASE_TIME_LIMIT if None).
+            stream_purpose: Purpose identifier for this stream (e.g., "soap", "translation")
 
         Returns:
             Function to stop listening.
@@ -892,11 +912,15 @@ class AudioHandler:
             stream.start()
             logging.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
 
-            # Add to active streams
-            self._active_streams.append(stream)
+            # Add to active streams with purpose
+            self._active_streams[stream_purpose] = {
+                'stream': stream,
+                'device': device_name,
+                'callback': callback
+            }
             
             # Create stop function with flush callback
-            stop_function = self._create_stop_function(stream, flush_callback)
+            stop_function = self._create_stop_function(stream, flush_callback, stream_purpose)
             
             return stop_function # Return the specific closer for this stream
 

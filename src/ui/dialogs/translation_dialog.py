@@ -28,10 +28,16 @@ class TranslationDialog:
         
         Args:
             parent: Parent window
-            audio_handler: Audio handler for recording
+            audio_handler: Audio handler for recording (reference for API keys)
         """
         self.parent = parent
-        self.audio_handler = audio_handler
+        # Create a separate audio handler instance for translation
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=audio_handler.elevenlabs_api_key,
+            deepgram_api_key=audio_handler.deepgram_api_key,
+            recognition_language=audio_handler.recognition_language,
+            groq_api_key=audio_handler.groq_api_key
+        )
         self.translation_manager = get_translation_manager()
         self.tts_manager = get_tts_manager()
         
@@ -40,10 +46,12 @@ class TranslationDialog:
         self.stop_recording_func = None
         self.audio_segments = []  # Store audio segments like SOAP recording
         
-        # Get language settings
+        # Get language and device settings
         translation_settings = SETTINGS.get("translation", {})
         self.patient_language = translation_settings.get("patient_language", "es")
         self.doctor_language = translation_settings.get("doctor_language", "en")
+        self.input_device = translation_settings.get("input_device", "")
+        self.output_device = translation_settings.get("output_device", "")
         
         self.logger = logging.getLogger(__name__)
     
@@ -224,7 +232,11 @@ class TranslationDialog:
         microphones = get_valid_microphones()
         
         self.selected_microphone = tk.StringVar()
-        if microphones:
+        if self.input_device and self.input_device in microphones:
+            # Use saved preference if available
+            self.selected_microphone.set(self.input_device)
+        elif microphones:
+            # Default to first available
             self.selected_microphone.set(microphones[0])
         
         self.mic_combo = ttk.Combobox(
@@ -378,6 +390,33 @@ class TranslationDialog:
             text="Real-time translation",
             variable=self.realtime_var
         ).pack(side=LEFT, padx=(20, 0))
+        
+        # Output device selection
+        output_frame = ttk.Frame(parent)
+        output_frame.pack(fill=X, pady=(10, 0))
+        
+        ttk.Label(output_frame, text="Output Device:").pack(side=LEFT, padx=(0, 5))
+        
+        # Get available output devices
+        from utils.utils import get_valid_output_devices
+        output_devices = get_valid_output_devices()
+        
+        self.selected_output = tk.StringVar()
+        if self.output_device and self.output_device in output_devices:
+            # Use saved preference if available
+            self.selected_output.set(self.output_device)
+        elif output_devices:
+            # Default to first available
+            self.selected_output.set(output_devices[0])
+        
+        self.output_combo = ttk.Combobox(
+            output_frame,
+            textvariable=self.selected_output,
+            values=output_devices,
+            width=30,
+            state="readonly"
+        )
+        self.output_combo.pack(side=LEFT)
     
     def _create_button_bar(self, parent):
         """Create bottom button bar.
@@ -455,7 +494,8 @@ class TranslationDialog:
             self.stop_recording_func = self.audio_handler.listen_in_background(
                 mic_name,
                 self._on_audio_data,
-                phrase_time_limit=3  # Same as SOAP recording for consistent behavior
+                phrase_time_limit=3,  # Same as SOAP recording for consistent behavior
+                stream_purpose="translation"  # Use dedicated stream purpose
             )
             
             # Play start sound
@@ -663,11 +703,12 @@ class TranslationDialog:
         
         def synthesize_and_play():
             try:
-                # Synthesize and play
+                # Synthesize and play with selected output device
                 self.tts_manager.synthesize_and_play(
                     text,
                     language=self.patient_language,
-                    blocking=True  # Wait for completion
+                    blocking=True,  # Wait for completion
+                    output_device=self.selected_output.get()  # Pass selected output device
                 )
                 
                 # Re-enable button on main thread
@@ -798,9 +839,17 @@ class TranslationDialog:
         # Stop any TTS playback
         self._stop_playback()
         
-        # Save language preferences
+        # Clean up audio handler
+        try:
+            self.audio_handler.cleanup()
+        except Exception as e:
+            self.logger.error(f"Error cleaning up audio handler: {e}")
+        
+        # Save language and device preferences
         SETTINGS["translation"]["patient_language"] = self.patient_language
         SETTINGS["translation"]["doctor_language"] = self.doctor_language
+        SETTINGS["translation"]["input_device"] = self.selected_microphone.get()
+        SETTINGS["translation"]["output_device"] = self.selected_output.get()
         
         # Destroy dialog
         self.dialog.destroy()
