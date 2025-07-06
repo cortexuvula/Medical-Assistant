@@ -261,6 +261,17 @@ class WorkflowUI:
         ToolTip(self.components['advanced_analysis_checkbox'], 
                 "Enable real-time differential diagnosis during recording (every 2 minutes)")
         
+        # Translation Assistant button
+        translation_btn = ttk.Button(
+            center_frame,
+            text="🌐 Translation Assistant",
+            command=command_map.get("open_translation"),
+            bootstyle="info",
+            width=20
+        )
+        translation_btn.pack(pady=(10, 0))
+        ToolTip(translation_btn, "Open bidirectional translation for patient communication")
+        
         # Initialize UI state - hide controls initially
         self._initialize_recording_ui_state()
         
@@ -510,13 +521,6 @@ class WorkflowUI:
                 "description": "Manage multi-step clinical processes and protocols",
                 "command": command_map.get("manage_workflow"),
                 "bootstyle": "dark"
-            },
-            {
-                "name": "translation",
-                "text": "Translation Assistant",
-                "description": "Real-time bidirectional translation for patient communication",
-                "command": command_map.get("open_translation"),
-                "bootstyle": "info"
             }
         ]
         
