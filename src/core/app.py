@@ -312,6 +312,18 @@ class MedicalDictationApp(ttk.Window):
         self.theme_label = ttk.Label(provider_frame, text="(Light Mode)", width=12)
         self.theme_label.pack(side=LEFT, padx=(5, 0))
         
+        # Restore auto-save button (initially hidden)
+        self.restore_btn = ttk.Button(
+            provider_frame,
+            text="↻ Restore",
+            command=self.restore_autosave,
+            width=10,
+            bootstyle="warning"
+        )
+        self.restore_btn.pack(side=LEFT, padx=(10, 0))
+        self.restore_btn.pack_forget()  # Initially hidden
+        ToolTip(self.restore_btn, "Restore from auto-saved session")
+        
         # Create workflow tabs
         self.workflow_notebook = self.ui.create_workflow_tabs(command_map)
         self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 2))
@@ -456,13 +468,15 @@ class MedicalDictationApp(ttk.Window):
         self.bind("<<RecordingComplete>>", lambda e: self.autosave_manager.perform_save())
 
     def _check_and_restore_autosave(self):
-        """Check for existing auto-save and offer to restore."""
+        """Check for existing auto-save and make it available for manual restoration."""
         if not self.autosave_manager.has_unsaved_data():
+            self.has_available_autosave = False
             return
             
         # Load latest auto-save
         saved_data = self.autosave_manager.load_latest()
         if not saved_data or "data" not in saved_data:
+            self.has_available_autosave = False
             return
             
         # Check if data is recent (within last 24 hours)
@@ -473,23 +487,18 @@ class MedicalDictationApp(ttk.Window):
             if age_hours > 24:
                 # Too old, clear it
                 self.autosave_manager.clear_saves()
+                self.has_available_autosave = False
                 return
         except:
+            self.has_available_autosave = False
             return
             
-        # Ask user if they want to restore
-        result = messagebox.askyesno(
-            "Restore Auto-Save",
-            f"An auto-save from {saved_data['timestamp']} was found.\n\n"
-            "Would you like to restore your previous work?",
-            parent=self
-        )
+        # Store the availability of auto-save data
+        self.has_available_autosave = True
+        self.last_autosave_timestamp = saved_data["timestamp"]
         
-        if result:
-            self._restore_from_autosave(saved_data["data"])
-        else:
-            # Clear auto-saves if user doesn't want to restore
-            self.autosave_manager.clear_saves()
+        # Update UI to show restore button if available
+        self._update_restore_button_visibility()
     
     def _restore_from_autosave(self, data: Dict[str, Any]):
         """Restore application state from auto-save data."""
@@ -523,6 +532,47 @@ class MedicalDictationApp(ttk.Window):
                 self.status_manager.error("Failed to restore auto-save")
             else:
                 logging.error("Failed to restore auto-save")
+    
+    def _update_restore_button_visibility(self):
+        """Update the visibility of the restore button based on auto-save availability."""
+        if hasattr(self, 'restore_btn'):
+            if self.has_available_autosave:
+                self.restore_btn.pack(side=LEFT, padx=(10, 0))
+                # Update tooltip with timestamp
+                if hasattr(self, 'last_autosave_timestamp'):
+                    ToolTip(self.restore_btn, f"Restore from auto-save ({self.last_autosave_timestamp})")
+            else:
+                self.restore_btn.pack_forget()
+    
+    def restore_autosave(self):
+        """Manually restore from auto-save when button is clicked."""
+        if not hasattr(self, 'has_available_autosave') or not self.has_available_autosave:
+            self.status_manager.warning("No auto-save data available")
+            return
+            
+        # Load latest auto-save
+        saved_data = self.autosave_manager.load_latest()
+        if not saved_data or "data" not in saved_data:
+            self.status_manager.error("Failed to load auto-save data")
+            self.has_available_autosave = False
+            self._update_restore_button_visibility()
+            return
+            
+        # Confirm restoration
+        result = messagebox.askyesno(
+            "Restore Auto-Save",
+            f"Restore your work from {saved_data['timestamp']}?\n\n"
+            "This will replace all current content.",
+            parent=self
+        )
+        
+        if result:
+            self._restore_from_autosave(saved_data["data"])
+            # Clear auto-saves after successful restoration
+            self.autosave_manager.clear_saves()
+            self.has_available_autosave = False
+            self._update_restore_button_visibility()
+            self.status_manager.success("Auto-save restored successfully")
 
     def bind_shortcuts(self) -> None:
         # Basic shortcuts

@@ -202,6 +202,10 @@ class AppInitializer:
         self.app.listening = False  # Initialize listening flag for recording state
         self.app.current_recording_id = None  # Track the ID of the currently loaded recording
         
+        # Initialize auto-save state
+        self.app.has_available_autosave = False
+        self.app.last_autosave_timestamp = None
+        
         # Quick continue mode variable for menu checkbox
         self.app.quick_continue_var = tk.BooleanVar()
         self.app.quick_continue_var.set(SETTINGS.get("quick_continue_mode", True))
