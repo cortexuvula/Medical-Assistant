@@ -201,6 +201,44 @@ class AudioHandler:
         self._prefix_audio_checked = False
         logging.info("Prefix audio cache reset - will reload on next use")
 
+    def transcribe_audio_without_prefix(self, segment: AudioSegment) -> str:
+        """Transcribe audio using selected provider without adding prefix audio.
+        
+        This method is used for conversational transcription where medical
+        terminology prefix is not needed (e.g., translation dialog).
+        
+        Args:
+            segment: AudioSegment to transcribe
+            
+        Returns:
+            Transcription text or empty string if transcription failed
+        """
+        # Get the selected STT provider from settings
+        primary_provider = SETTINGS.get("stt_provider", "deepgram")
+        
+        # Track if we've already tried fallback options
+        fallback_attempted = False
+        
+        # First attempt with selected provider
+        transcript = self._try_transcription_with_provider(segment, primary_provider)
+        
+        # Only use fallback if there's an actual error (empty string)
+        # For successful API calls that return a result (even placeholders like "[Silence...]"), 
+        # we don't want to retry with different providers
+        if transcript == "" and self.fallback_callback and not fallback_attempted:
+            logging.info("Primary STT provider failed, attempting fallback")
+            fallback_attempted = True
+            
+            # Try fallback providers
+            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs"] if p != primary_provider]
+            for provider in fallback_providers:
+                transcript = self._try_transcription_with_provider(segment, provider)
+                if transcript:
+                    logging.info(f"Fallback to {provider} successful")
+                    break
+        
+        return transcript
+    
     def transcribe_audio(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider with fallback options.
         

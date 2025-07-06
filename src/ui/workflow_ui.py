@@ -510,6 +510,13 @@ class WorkflowUI:
                 "description": "Manage multi-step clinical processes and protocols",
                 "command": command_map.get("manage_workflow"),
                 "bootstyle": "dark"
+            },
+            {
+                "name": "translation",
+                "text": "Translation Assistant",
+                "description": "Real-time bidirectional translation for patient communication",
+                "command": command_map.get("open_translation"),
+                "bootstyle": "info"
             }
         ]
         

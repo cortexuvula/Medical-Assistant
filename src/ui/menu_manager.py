@@ -136,6 +136,8 @@ class MenuManager:
         # Add STT provider settings menu options
         settings_menu.add_command(label="ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
         settings_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
+        settings_menu.add_command(label="Translation Settings", command=self.app.show_translation_settings)
+        settings_menu.add_command(label="TTS Settings", command=self.app.show_tts_settings)
         settings_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
         settings_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
         

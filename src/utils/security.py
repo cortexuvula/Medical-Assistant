@@ -459,13 +459,17 @@ class SecurityManager:
     
     def _validate_elevenlabs_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate ElevenLabs API key format."""
-        if len(api_key) != 32:
-            return False, "Invalid ElevenLabs API key length"
+        # ElevenLabs keys start with sk_ followed by alphanumeric characters
+        if not api_key.startswith("sk_"):
+            return False, "ElevenLabs API key should start with 'sk_'"
         
-        try:
-            int(api_key, 16)  # Should be hexadecimal
-        except ValueError:
-            return False, "ElevenLabs API key should be hexadecimal"
+        if len(api_key) < 30:
+            return False, "ElevenLabs API key is too short"
+        
+        # Check remaining characters are alphanumeric
+        remaining = api_key[3:]  # Skip 'sk_'
+        if not remaining.isalnum():
+            return False, "ElevenLabs API key should only contain letters and numbers after 'sk_'"
         
         return True, None
     

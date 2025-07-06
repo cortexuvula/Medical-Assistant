@@ -172,6 +172,18 @@ class MedicalDictationApp(ttk.Window):
             recognition_language=self.recognition_language
         )
         self.status_manager.success("Deepgram settings saved successfully")
+    
+    def show_translation_settings(self) -> None:
+        """Show dialog to configure translation settings."""
+        from ui.dialogs.dialogs import show_translation_settings_dialog
+        show_translation_settings_dialog(self)
+        self.status_manager.success("Translation settings saved successfully")
+    
+    def show_tts_settings(self) -> None:
+        """Show dialog to configure TTS settings."""
+        from ui.dialogs.dialogs import show_tts_settings_dialog
+        show_tts_settings_dialog(self)
+        self.status_manager.success("TTS settings saved successfully")
 
     def set_default_folder(self) -> None:
         """Set the default storage folder using FolderDialogManager."""
@@ -205,6 +217,7 @@ class MedicalDictationApp(ttk.Window):
             "analyze_medications": self.analyze_medications,
             "extract_clinical_data": self.extract_clinical_data,
             "manage_workflow": self.manage_workflow,
+            "open_translation": self.open_translation_dialog,
             "toggle_soap_recording": self.toggle_soap_recording,
             "toggle_soap_pause": self.toggle_soap_pause,
             "cancel_soap_recording": self.cancel_soap_recording,
@@ -1820,6 +1833,17 @@ class MedicalDictationApp(ttk.Window):
     def manage_workflow(self) -> None:
         """Manage clinical workflows using DocumentGenerators."""
         self.document_generators.manage_workflow()
+    
+    def open_translation_dialog(self) -> None:
+        """Open the bidirectional translation dialog."""
+        from ui.dialogs.translation_dialog import TranslationDialog
+        
+        try:
+            dialog = TranslationDialog(self, self.audio_handler)
+            dialog.show()
+        except Exception as e:
+            self.logger.error(f"Failed to open translation dialog: {e}")
+            self.status_manager.error(f"Failed to open translation dialog: {str(e)}")
 
     
 

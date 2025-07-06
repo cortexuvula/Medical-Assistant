@@ -344,7 +344,21 @@ Follow up:
     "notification_style": "toast",  # toast, statusbar, popup
     "auto_update_ui_on_completion": True,  # Auto-populate tabs when processing completes
     "autosave_enabled": True,  # Enable auto-save by default
-    "autosave_interval": 300  # Auto-save every 5 minutes (300 seconds)
+    "autosave_interval": 300,  # Auto-save every 5 minutes (300 seconds)
+    "translation": {
+        "provider": "deep_translator",  # Translation provider (deep_translator)
+        "sub_provider": "google",       # Sub-provider (google, deepl, microsoft)
+        "patient_language": "es",       # Default patient language (Spanish)
+        "doctor_language": "en",        # Default doctor language (English)
+        "auto_detect": True            # Auto-detect patient language
+    },
+    "tts": {
+        "provider": "pyttsx3",         # TTS provider (pyttsx3, elevenlabs, google)
+        "voice": "default",            # Voice ID/name (provider-specific)
+        "rate": 150,                   # Speech rate (words per minute)
+        "volume": 1.0,                 # Volume level (0.0 to 1.0)
+        "language": "en"               # Default TTS language
+    }
 }
 
 def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:

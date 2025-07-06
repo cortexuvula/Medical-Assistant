@@ -2172,3 +2172,165 @@ def _fetch_tts_voices(provider: str) -> List[Dict[str, str]]:
         logging.error(f"Error fetching TTS voices for {provider}: {e}")
         return []
 
+
+def show_translation_settings_dialog(parent: tk.Tk) -> None:
+    """Show dialog to configure translation settings."""
+    from settings.settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
+    
+    # Get current translation settings with fallback to defaults
+    translation_settings = SETTINGS.get("translation", {})
+    default_settings = _DEFAULT_SETTINGS.get("translation", {})
+    
+    dialog = create_toplevel_dialog(parent, "Translation Settings", "600x500")
+    
+    # Create the main frame with padding
+    frame = ttk.Frame(dialog, padding=20)
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Title
+    ttk.Label(frame, text="Translation Settings", 
+              font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
+    
+    # Provider selection
+    ttk.Label(frame, text="Translation Provider:").grid(row=1, column=0, sticky="w", pady=10)
+    provider_var = tk.StringVar(value=translation_settings.get("provider", default_settings.get("provider", "deep_translator")))
+    provider_combo = ttk.Combobox(frame, textvariable=provider_var, width=30, state="readonly")
+    provider_combo['values'] = ["deep_translator"]
+    provider_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+    
+    # Sub-provider selection (for deep_translator)
+    ttk.Label(frame, text="Translation Service:").grid(row=2, column=0, sticky="w", pady=10)
+    sub_provider_var = tk.StringVar(value=translation_settings.get("sub_provider", default_settings.get("sub_provider", "google")))
+    sub_provider_combo = ttk.Combobox(frame, textvariable=sub_provider_var, width=30, state="readonly")
+    sub_provider_combo['values'] = ["google", "deepl", "microsoft"]
+    sub_provider_combo.grid(row=2, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Google is free, DeepL and Microsoft require API keys", 
+              wraplength=400, foreground="gray").grid(row=3, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Default patient language
+    ttk.Label(frame, text="Default Patient Language:").grid(row=4, column=0, sticky="w", pady=10)
+    patient_lang_var = tk.StringVar(value=translation_settings.get("patient_language", default_settings.get("patient_language", "es")))
+    patient_lang_entry = ttk.Entry(frame, textvariable=patient_lang_var, width=32)
+    patient_lang_entry.grid(row=4, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Language code (e.g., es, fr, de, zh)", 
+              wraplength=400, foreground="gray").grid(row=5, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Default doctor language
+    ttk.Label(frame, text="Default Doctor Language:").grid(row=6, column=0, sticky="w", pady=10)
+    doctor_lang_var = tk.StringVar(value=translation_settings.get("doctor_language", default_settings.get("doctor_language", "en")))
+    doctor_lang_entry = ttk.Entry(frame, textvariable=doctor_lang_var, width=32)
+    doctor_lang_entry.grid(row=6, column=1, sticky="w", padx=(10, 0), pady=10)
+    
+    # Auto-detect checkbox
+    auto_detect_var = tk.BooleanVar(value=translation_settings.get("auto_detect", default_settings.get("auto_detect", True)))
+    ttk.Checkbutton(frame, text="Auto-detect patient language", 
+                    variable=auto_detect_var).grid(row=7, column=0, columnspan=2, sticky="w", pady=(20, 10))
+    
+    # Button frame
+    button_frame = ttk.Frame(dialog)
+    button_frame.pack(fill=tk.X, pady=(0, 20))
+    
+    def save_translation_settings():
+        """Save the translation settings."""
+        SETTINGS["translation"] = {
+            "provider": provider_var.get(),
+            "sub_provider": sub_provider_var.get(),
+            "patient_language": patient_lang_var.get(),
+            "doctor_language": doctor_lang_var.get(),
+            "auto_detect": auto_detect_var.get()
+        }
+        save_settings(SETTINGS)
+        dialog.destroy()
+    
+    ttk.Button(button_frame, text="Save", command=save_translation_settings).pack(side=tk.RIGHT, padx=(0, 20))
+    ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT)
+
+
+def show_tts_settings_dialog(parent: tk.Tk) -> None:
+    """Show dialog to configure TTS (Text-to-Speech) settings."""
+    from settings.settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
+    
+    # Get current TTS settings with fallback to defaults
+    tts_settings = SETTINGS.get("tts", {})
+    default_settings = _DEFAULT_SETTINGS.get("tts", {})
+    
+    dialog = create_toplevel_dialog(parent, "TTS Settings", "600x550")
+    
+    # Create the main frame with padding
+    frame = ttk.Frame(dialog, padding=20)
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Title
+    ttk.Label(frame, text="Text-to-Speech Settings", 
+              font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
+    
+    # Provider selection
+    ttk.Label(frame, text="TTS Provider:").grid(row=1, column=0, sticky="w", pady=10)
+    provider_var = tk.StringVar(value=tts_settings.get("provider", default_settings.get("provider", "pyttsx3")))
+    provider_combo = ttk.Combobox(frame, textvariable=provider_var, width=30, state="readonly")
+    provider_combo['values'] = ["pyttsx3", "elevenlabs", "google"]
+    provider_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="pyttsx3 is offline, ElevenLabs requires API key, Google is free online", 
+              wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Voice selection (will be populated based on provider)
+    ttk.Label(frame, text="Voice:").grid(row=3, column=0, sticky="w", pady=10)
+    voice_var = tk.StringVar(value=tts_settings.get("voice", default_settings.get("voice", "default")))
+    voice_entry = ttk.Entry(frame, textvariable=voice_var, width=32)
+    voice_entry.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Voice ID or name (provider-specific, 'default' for system default)", 
+              wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Speech rate
+    ttk.Label(frame, text="Speech Rate:").grid(row=5, column=0, sticky="w", pady=10)
+    rate_var = tk.IntVar(value=tts_settings.get("rate", default_settings.get("rate", 150)))
+    rate_scale = ttk.Scale(frame, from_=50, to=300, variable=rate_var, orient="horizontal", length=200)
+    rate_scale.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
+    rate_label = ttk.Label(frame, text=f"{rate_var.get()} words/min")
+    rate_label.grid(row=5, column=1, sticky="e", padx=(0, 10), pady=10)
+    
+    def update_rate_label(value):
+        rate_label.config(text=f"{int(float(value))} words/min")
+    
+    rate_scale.config(command=update_rate_label)
+    
+    # Volume
+    ttk.Label(frame, text="Volume:").grid(row=6, column=0, sticky="w", pady=10)
+    volume_var = tk.DoubleVar(value=tts_settings.get("volume", default_settings.get("volume", 1.0)))
+    volume_scale = ttk.Scale(frame, from_=0.0, to=1.0, variable=volume_var, orient="horizontal", length=200)
+    volume_scale.grid(row=6, column=1, sticky="w", padx=(10, 0), pady=10)
+    volume_label = ttk.Label(frame, text=f"{int(volume_var.get() * 100)}%")
+    volume_label.grid(row=6, column=1, sticky="e", padx=(0, 10), pady=10)
+    
+    def update_volume_label(value):
+        volume_label.config(text=f"{int(float(value) * 100)}%")
+    
+    volume_scale.config(command=update_volume_label)
+    
+    # Default language
+    ttk.Label(frame, text="Default Language:").grid(row=7, column=0, sticky="w", pady=10)
+    language_var = tk.StringVar(value=tts_settings.get("language", default_settings.get("language", "en")))
+    language_entry = ttk.Entry(frame, textvariable=language_var, width=32)
+    language_entry.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Language code (e.g., en, es, fr)", 
+              wraplength=400, foreground="gray").grid(row=8, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Button frame
+    button_frame = ttk.Frame(dialog)
+    button_frame.pack(fill=tk.X, pady=(0, 20))
+    
+    def save_tts_settings():
+        """Save the TTS settings."""
+        SETTINGS["tts"] = {
+            "provider": provider_var.get(),
+            "voice": voice_var.get(),
+            "rate": rate_var.get(),
+            "volume": volume_var.get(),
+            "language": language_var.get()
+        }
+        save_settings(SETTINGS)
+        dialog.destroy()
+    
+    ttk.Button(button_frame, text="Save", command=save_tts_settings).pack(side=tk.RIGHT, padx=(0, 20))
+    ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT)
+

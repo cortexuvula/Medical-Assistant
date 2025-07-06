@@ -24,3 +24,7 @@ webrtcvad>=2.0.10  # For voice activity detection
 elevenlabs>=1.0.0  # For TTS functionality
 pydub>=0.25.1  # Already included, needed for audio manipulation
 reportlab>=4.0.0  # For PDF generation and export functionality
+deep-translator>=1.11.0  # For multi-provider translation support
+pyttsx3>=2.90  # For offline text-to-speech
+gtts>=2.5.0  # For Google text-to-speech
+pygame>=2.5.0  # For audio playback in TTS

@@ -31,6 +31,11 @@ class TranscriptionError(MedicalAssistantError):
     pass
 
 
+class TranslationError(MedicalAssistantError):
+    """Exceptions related to text translation."""
+    pass
+
+
 class APIError(MedicalAssistantError):
     """Base class for API-related errors."""
     def __init__(self, message: str, status_code: int = None, error_code: str = None, details: dict = None):
