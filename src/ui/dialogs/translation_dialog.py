@@ -47,8 +47,41 @@ class TranslationDialog:
         
         self.logger = logging.getLogger(__name__)
     
+    def _hide_all_tooltips(self):
+        """Hide all active tooltips in the application."""
+        try:
+            # Move mouse out of any widget to trigger tooltip hiding
+            # First, get the widget under the mouse
+            widget_under_mouse = self.parent.winfo_containing(
+                self.parent.winfo_pointerx(),
+                self.parent.winfo_pointery()
+            )
+            
+            if widget_under_mouse:
+                # Generate a Leave event on that widget
+                widget_under_mouse.event_generate("<Leave>")
+            
+            # Additionally, destroy any tooltip windows
+            # Tooltips are Toplevel windows with overrideredirect set to True
+            root = self.parent.winfo_toplevel()
+            for child in root.children.values():
+                if isinstance(child, tk.Toplevel):
+                    try:
+                        # Tooltip windows have overrideredirect set to True
+                        # and typically have a yellow background
+                        if child.wm_overrideredirect():
+                            child.destroy()
+                    except tk.TclError:
+                        # Window might already be destroyed
+                        pass
+        except Exception as e:
+            self.logger.debug(f"Error hiding tooltips: {e}")
+    
     def show(self):
         """Show the translation dialog."""
+        # Hide any active tooltips
+        self._hide_all_tooltips()
+            
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Bidirectional Translation Assistant")
@@ -119,23 +152,23 @@ class TranslationDialog:
         lang_codes = [lang[0] for lang in languages]
         
         self.patient_lang_var = tk.StringVar(value=self.patient_language)
-        patient_combo = ttk.Combobox(
+        self.patient_combo = ttk.Combobox(
             lang_frame,
             textvariable=self.patient_lang_var,
-            values=lang_codes,
+            values=lang_names,  # Use lang_names instead of lang_codes
             state="readonly",
-            width=10
+            width=20  # Increase width to accommodate language names
         )
-        patient_combo.pack(side=LEFT, padx=(0, 20))
+        self.patient_combo.pack(side=LEFT, padx=(0, 20))
         
         # Set display value
         try:
             idx = lang_codes.index(self.patient_language)
-            patient_combo.set(lang_names[idx])
+            self.patient_combo.set(lang_names[idx])
         except:
-            patient_combo.set(self.patient_language)
+            self.patient_combo.set(self.patient_language)
         
-        patient_combo.bind("<<ComboboxSelected>>", self._on_patient_language_change)
+        self.patient_combo.bind("<<ComboboxSelected>>", self._on_patient_language_change)
         
         # Arrow indicator
         ttk.Label(lang_frame, text="⟷", font=("", 16)).pack(side=LEFT, padx=20)
@@ -144,23 +177,23 @@ class TranslationDialog:
         ttk.Label(lang_frame, text="Doctor Language:", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 5))
         
         self.doctor_lang_var = tk.StringVar(value=self.doctor_language)
-        doctor_combo = ttk.Combobox(
+        self.doctor_combo = ttk.Combobox(
             lang_frame,
             textvariable=self.doctor_lang_var,
-            values=lang_codes,
+            values=lang_names,  # Use lang_names instead of lang_codes
             state="readonly",
-            width=10
+            width=20  # Increase width to accommodate language names
         )
-        doctor_combo.pack(side=LEFT)
+        self.doctor_combo.pack(side=LEFT)
         
         # Set display value
         try:
             idx = lang_codes.index(self.doctor_language)
-            doctor_combo.set(lang_names[idx])
+            self.doctor_combo.set(lang_names[idx])
         except:
-            doctor_combo.set(self.doctor_language)
+            self.doctor_combo.set(self.doctor_language)
         
-        doctor_combo.bind("<<ComboboxSelected>>", self._on_doctor_language_change)
+        self.doctor_combo.bind("<<ComboboxSelected>>", self._on_doctor_language_change)
         
         # Auto-detect checkbox
         self.auto_detect_var = tk.BooleanVar(value=True)
@@ -538,8 +571,12 @@ class TranslationDialog:
             detected_lang = self.translation_manager.detect_language(transcript)
             if detected_lang:
                 self.patient_language = detected_lang
-                # Update combo box
-                # TODO: Update language combo to show detected language
+                # Update combo box to show detected language
+                languages = self.translation_manager.get_supported_languages()
+                for lang_code, lang_name in languages:
+                    if lang_code == detected_lang:
+                        self.patient_lang_var.set(f"{lang_name} ({lang_code})")
+                        break
         
         # Translate to doctor's language
         self.recording_status.config(text="Translating...", foreground="blue")
