@@ -2416,11 +2416,12 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
                     ])
                     
             except Exception as e:
+                error_msg = str(e)
                 dialog.after(0, lambda: [
                     loading_label.pack_forget(),
                     fetch_button.pack(side=tk.LEFT, padx=(10, 0)),
                     messagebox.showerror("Error", 
-                                       f"Failed to fetch voices: {str(e)}", 
+                                       f"Failed to fetch voices: {error_msg}", 
                                        parent=dialog)
                 ])
         
