@@ -434,7 +434,7 @@ class TranslationDialog:
         
         # Create text areas side by side
         text_container = ttk.Frame(parent)
-        text_container.pack(fill=BOTH, expand=True, pady=(0, 10))
+        text_container.pack(fill=BOTH, expand=False, pady=(0, 10))
         
         # Doctor response (English)
         left_frame = ttk.Frame(text_container)
@@ -453,7 +453,7 @@ class TranslationDialog:
             font=("Consolas", 11),
             background="#f0fff0"  # Light green background
         )
-        self.doctor_input_text.pack(fill=BOTH, expand=True)
+        self.doctor_input_text.pack(fill=BOTH, expand=False)
         scroll1.config(command=self.doctor_input_text.yview)
         
         # Bind for real-time translation
@@ -476,7 +476,7 @@ class TranslationDialog:
             font=("Consolas", 11),
             background="#fff0f5"  # Light pink background
         )
-        self.doctor_translated_text.pack(fill=BOTH, expand=True)
+        self.doctor_translated_text.pack(fill=BOTH, expand=False)
         scroll2.config(command=self.doctor_translated_text.yview)
         
         # Make translated text read-only
