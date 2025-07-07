@@ -2342,11 +2342,11 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
             try:
                 # Import and create TTS manager
                 from managers.tts_manager import get_tts_manager
-                from managers.api_key_manager import get_api_key_manager
+                from utils.security import get_security_manager
                 
                 # Check if API key exists
-                api_key_manager = get_api_key_manager()
-                api_key = api_key_manager.get_api_key("elevenlabs")
+                security_manager = get_security_manager()
+                api_key = security_manager.get_api_key("elevenlabs")
                 
                 if not api_key:
                     dialog.after(0, lambda: [
