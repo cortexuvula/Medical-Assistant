@@ -448,7 +448,7 @@ class TranslationDialog:
         self.doctor_input_text = tk.Text(
             left_frame,
             wrap=WORD,
-            height=10,
+            height=5,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
             background="#f0fff0"  # Light green background
@@ -471,7 +471,7 @@ class TranslationDialog:
         self.doctor_translated_text = tk.Text(
             right_frame,
             wrap=WORD,
-            height=10,
+            height=5,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
             background="#fff0f5"  # Light pink background
