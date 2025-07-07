@@ -98,12 +98,12 @@ class TranslationDialog:
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
         
-        # Set dialog size - maximized to accommodate all UI elements
-        dialog_width = int(screen_width * 0.98)  # Use 98% of screen width
-        dialog_height = int(screen_height * 0.95)  # Use 95% of screen height
+        # Set dialog size - reduced now that doctor text areas are smaller
+        dialog_width = int(screen_width * 0.85)  # Use 85% of screen width
+        dialog_height = int(screen_height * 0.80)  # Use 80% of screen height
         
         self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-        self.dialog.minsize(1500, 900)
+        self.dialog.minsize(1200, 700)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
