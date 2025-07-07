@@ -2343,6 +2343,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
                 # Import and create TTS manager
                 from managers.tts_manager import get_tts_manager
                 from utils.security import get_security_manager
+                from settings.settings import SETTINGS
                 
                 # Check if API key exists
                 security_manager = get_security_manager()
@@ -2358,12 +2359,21 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
                     ])
                     return
                 
-                # Get TTS manager and set to ElevenLabs
+                # Get TTS manager
                 tts_manager = get_tts_manager()
-                tts_manager.set_provider("elevenlabs")
+                
+                # Temporarily update settings to use ElevenLabs provider
+                original_provider = SETTINGS.get("tts", {}).get("provider", "pyttsx3")
+                SETTINGS["tts"]["provider"] = "elevenlabs"
+                
+                # Force provider recreation by setting current provider to None
+                tts_manager._current_provider = None
                 
                 # Fetch voices
                 voices = tts_manager.get_available_voices()
+                
+                # Restore original provider
+                SETTINGS["tts"]["provider"] = original_provider
                 
                 if voices:
                     # Format voices for display
