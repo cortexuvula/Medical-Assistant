@@ -360,6 +360,42 @@ Follow up:
         "rate": 150,                   # Speech rate (words per minute)
         "volume": 1.0,                 # Volume level (0.0 to 1.0)
         "language": "en"               # Default TTS language
+    },
+    "translation_canned_responses": {
+        "categories": ["greeting", "symptom", "history", "instruction", "clarify", "general"],
+        "responses": {
+            # Greetings/General
+            "How are you feeling today?": "greeting",
+            "How can I help you?": "greeting",
+            "Everything looks normal": "general",
+            "I understand your concern": "general",
+            
+            # Symptom questions
+            "Can you describe your symptoms?": "symptom",
+            "How long have you had these symptoms?": "symptom",
+            "Does it hurt when I press here?": "symptom",
+            "On a scale of 1-10, how severe is the pain?": "symptom",
+            "Is the pain constant or does it come and go?": "symptom",
+            
+            # Medical history
+            "Are you taking any medications?": "history",
+            "Do you have any allergies?": "history",
+            "Have you had this problem before?": "history",
+            "Do you have any medical conditions?": "history",
+            
+            # Instructions
+            "I need to examine you": "instruction",
+            "Please take a deep breath": "instruction",
+            "Open your mouth and say 'Ah'": "instruction",
+            "Take this medication twice a day": "instruction",
+            "Please follow up in one week": "instruction",
+            "Rest and drink plenty of fluids": "instruction",
+            
+            # Clarifications
+            "Can you show me where it hurts?": "clarify",
+            "When did this start?": "clarify",
+            "Is there anything else bothering you?": "clarify"
+        }
     }
 }
 

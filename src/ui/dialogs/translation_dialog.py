@@ -312,49 +312,62 @@ class TranslationDialog:
         Args:
             parent: Parent widget
         """
-        # Define canned responses in categories
-        canned_responses = [
-            # Greetings/General
-            ("How are you feeling today?", "greeting"),
-            ("How can I help you?", "greeting"),
-            ("Everything looks normal", "general"),
-            ("I understand your concern", "general"),
-            
-            # Symptom questions
-            ("Can you describe your symptoms?", "symptom"),
-            ("How long have you had these symptoms?", "symptom"),
-            ("Does it hurt when I press here?", "symptom"),
-            ("On a scale of 1-10, how severe is the pain?", "symptom"),
-            ("Is the pain constant or does it come and go?", "symptom"),
-            
-            # Medical history
-            ("Are you taking any medications?", "history"),
-            ("Do you have any allergies?", "history"),
-            ("Have you had this problem before?", "history"),
-            ("Do you have any medical conditions?", "history"),
-            
-            # Instructions
-            ("I need to examine you", "instruction"),
-            ("Please take a deep breath", "instruction"),
-            ("Open your mouth and say 'Ah'", "instruction"),
-            ("Take this medication twice a day", "instruction"),
-            ("Please follow up in one week", "instruction"),
-            ("Rest and drink plenty of fluids", "instruction"),
-            
-            # Clarifications
-            ("Can you show me where it hurts?", "clarify"),
-            ("When did this start?", "clarify"),
-            ("Is there anything else bothering you?", "clarify"),
-        ]
+        # Container for responses and manage button
+        container = ttk.Frame(parent)
+        container.pack(fill=BOTH, expand=True)
+        
+        # Header with manage button
+        header_frame = ttk.Frame(container)
+        header_frame.pack(fill=X, pady=(0, 5))
+        
+        # Manage button on the right
+        manage_btn = ttk.Button(
+            header_frame,
+            text="⚙ Manage",
+            command=self._manage_canned_responses,
+            bootstyle="secondary",
+            width=10
+        )
+        manage_btn.pack(side=RIGHT)
+        ToolTip(manage_btn, "Add, edit, or delete quick responses")
+        
+        # Responses frame
+        responses_frame = ttk.Frame(container)
+        responses_frame.pack(fill=BOTH, expand=True)
+        
+        # Store reference for refresh
+        self.canned_responses_frame = responses_frame
+        
+        # Populate responses
+        self._populate_canned_responses()
+    
+    def _populate_canned_responses(self):
+        """Populate the canned responses from settings."""
+        # Clear existing buttons
+        for widget in self.canned_responses_frame.winfo_children():
+            widget.destroy()
+        
+        # Get responses from settings
+        canned_settings = SETTINGS.get("translation_canned_responses", {})
+        responses = canned_settings.get("responses", {})
+        
+        if not responses:
+            # No responses configured
+            ttk.Label(
+                self.canned_responses_frame,
+                text="No quick responses configured. Click 'Manage' to add some.",
+                foreground="gray"
+            ).pack(pady=20)
+            return
         
         # Create buttons in a grid layout
         row = 0
         col = 0
         max_cols = 3
         
-        for response_text, category in canned_responses:
+        for response_text, category in sorted(responses.items()):
             btn = ttk.Button(
-                parent,
+                self.canned_responses_frame,
                 text=response_text[:25] + "..." if len(response_text) > 25 else response_text,
                 command=lambda text=response_text: self._insert_canned_response(text),
                 bootstyle="outline-primary",
@@ -372,7 +385,16 @@ class TranslationDialog:
         
         # Configure grid weights for responsive layout
         for i in range(max_cols):
-            parent.columnconfigure(i, weight=1)
+            self.canned_responses_frame.columnconfigure(i, weight=1)
+    
+    def _manage_canned_responses(self):
+        """Open the canned responses management dialog."""
+        from ui.dialogs.canned_responses_dialog import CannedResponsesDialog
+        
+        dialog = CannedResponsesDialog(self.dialog)
+        if dialog.show():
+            # Responses were updated, refresh the display
+            self._populate_canned_responses()
     
     def _insert_canned_response(self, text):
         """Insert a canned response into the doctor input field.
