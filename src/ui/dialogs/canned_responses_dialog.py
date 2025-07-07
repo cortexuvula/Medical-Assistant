@@ -46,16 +46,16 @@ class CannedResponsesDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Manage Quick Responses")
-        self.dialog.geometry("800x600")
-        self.dialog.minsize(600, 400)
+        self.dialog.geometry("1000x700")
+        self.dialog.minsize(900, 600)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
         # Center the dialog
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - 800) // 2
-        y = (self.dialog.winfo_screenheight() - 600) // 2
-        self.dialog.geometry(f"800x600+{x}+{y}")
+        x = (self.dialog.winfo_screenwidth() - 1000) // 2
+        y = (self.dialog.winfo_screenheight() - 700) // 2
+        self.dialog.geometry(f"1000x700+{x}+{y}")
         
         # Create main container
         main_container = ttk.Frame(self.dialog)
@@ -144,9 +144,9 @@ class CannedResponsesDialog:
         self.tree.heading("category", text="Category", anchor=W)
         self.tree.heading("actions", text="Actions", anchor=CENTER)
         
-        self.tree.column("#0", width=400, minwidth=300)
-        self.tree.column("category", width=150, minwidth=100)
-        self.tree.column("actions", width=200, minwidth=150)
+        self.tree.column("#0", width=500, minwidth=400)
+        self.tree.column("category", width=200, minwidth=150)
+        self.tree.column("actions", width=250, minwidth=200)
         
         # Add scrollbar
         scrollbar = ttk.Scrollbar(list_frame, command=self.tree.yview)
@@ -398,16 +398,16 @@ class ResponseEditDialog:
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Edit Response" if self.is_edit else "Add Response")
-        self.dialog.geometry("500x300")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("600x400")
+        self.dialog.resizable(True, True)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
         # Center the dialog
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - 500) // 2
-        y = (self.dialog.winfo_screenheight() - 300) // 2
-        self.dialog.geometry(f"500x300+{x}+{y}")
+        x = (self.dialog.winfo_screenwidth() - 600) // 2
+        y = (self.dialog.winfo_screenheight() - 400) // 2
+        self.dialog.geometry(f"600x400+{x}+{y}")
         
         # Create form
         form_frame = ttk.Frame(self.dialog, padding=20)

@@ -98,12 +98,12 @@ class TranslationDialog:
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
         
-        # Set dialog size
-        dialog_width = min(1200, int(screen_width * 0.8))
-        dialog_height = min(800, int(screen_height * 0.85))
+        # Set dialog size - increased to accommodate quick responses
+        dialog_width = min(1400, int(screen_width * 0.9))
+        dialog_height = min(900, int(screen_height * 0.9))
         
         self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-        self.dialog.minsize(1000, 600)
+        self.dialog.minsize(1200, 700)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
