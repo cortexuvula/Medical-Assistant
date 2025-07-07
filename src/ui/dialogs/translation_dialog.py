@@ -98,12 +98,12 @@ class TranslationDialog:
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
         
-        # Set dialog size - increased to accommodate quick responses
-        dialog_width = min(1600, int(screen_width * 0.95))
-        dialog_height = min(1000, int(screen_height * 0.95))
+        # Set dialog size - maximized to accommodate all UI elements
+        dialog_width = int(screen_width * 0.98)  # Use 98% of screen width
+        dialog_height = int(screen_height * 0.95)  # Use 95% of screen height
         
         self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-        self.dialog.minsize(1400, 800)
+        self.dialog.minsize(1500, 900)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
@@ -276,7 +276,7 @@ class TranslationDialog:
         self.patient_original_text = tk.Text(
             left_frame,
             wrap=WORD,
-            height=8,
+            height=10,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11)
         )
@@ -295,7 +295,7 @@ class TranslationDialog:
         self.patient_translated_text = tk.Text(
             right_frame,
             wrap=WORD,
-            height=8,
+            height=10,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
             background="#f0f8ff"  # Light blue background
@@ -448,7 +448,7 @@ class TranslationDialog:
         self.doctor_input_text = tk.Text(
             left_frame,
             wrap=WORD,
-            height=8,
+            height=10,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
             background="#f0fff0"  # Light green background
@@ -471,7 +471,7 @@ class TranslationDialog:
         self.doctor_translated_text = tk.Text(
             right_frame,
             wrap=WORD,
-            height=8,
+            height=10,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
             background="#fff0f5"  # Light pink background
