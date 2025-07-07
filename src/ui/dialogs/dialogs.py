@@ -2276,10 +2276,31 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     # Voice selection (will be populated based on provider)
     ttk.Label(frame, text="Voice:").grid(row=3, column=0, sticky="w", pady=10)
     voice_var = tk.StringVar(value=tts_settings.get("voice", default_settings.get("voice", "default")))
-    voice_entry = ttk.Entry(frame, textvariable=voice_var, width=32)
-    voice_entry.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="Voice ID or name (provider-specific, 'default' for system default)", 
-              wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Create frame for voice selection
+    voice_frame = ttk.Frame(frame)
+    voice_frame.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
+    
+    # Voice combo box (hidden by default, shown for ElevenLabs)
+    voice_combo = ttk.Combobox(voice_frame, textvariable=voice_var, width=40, state="readonly")
+    
+    # Voice entry (shown by default)
+    voice_entry = ttk.Entry(voice_frame, textvariable=voice_var, width=32)
+    voice_entry.pack(side=tk.LEFT)
+    
+    # Fetch voices button (hidden by default)
+    fetch_button = ttk.Button(voice_frame, text="Fetch Voices", width=12)
+    
+    # Loading label
+    loading_label = ttk.Label(voice_frame, text="Loading...", foreground="blue")
+    
+    # Voice description label
+    voice_desc_label = ttk.Label(frame, text="Voice ID or name (provider-specific, 'default' for system default)", 
+                                 wraplength=400, foreground="gray")
+    voice_desc_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Store voice data
+    voices_data = {}
     
     # Speech rate
     ttk.Label(frame, text="Speech Rate:").grid(row=5, column=0, sticky="w", pady=10)
@@ -2307,6 +2328,143 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     
     volume_scale.config(command=update_volume_label)
     
+    # Function to fetch ElevenLabs voices
+    def fetch_elevenlabs_voices():
+        """Fetch available voices from ElevenLabs API."""
+        import threading
+        import os
+        
+        # Show loading
+        fetch_button.pack_forget()
+        loading_label.pack(side=tk.LEFT, padx=(10, 0))
+        
+        def fetch_voices_thread():
+            try:
+                # Import and create TTS manager
+                from managers.tts_manager import get_tts_manager
+                from managers.api_key_manager import get_api_key_manager
+                
+                # Check if API key exists
+                api_key_manager = get_api_key_manager()
+                api_key = api_key_manager.get_api_key("elevenlabs")
+                
+                if not api_key:
+                    dialog.after(0, lambda: [
+                        loading_label.pack_forget(),
+                        fetch_button.pack(side=tk.LEFT, padx=(10, 0)),
+                        messagebox.showwarning("API Key Missing", 
+                                             "Please set your ElevenLabs API key first.", 
+                                             parent=dialog)
+                    ])
+                    return
+                
+                # Get TTS manager and set to ElevenLabs
+                tts_manager = get_tts_manager()
+                tts_manager.set_provider("elevenlabs")
+                
+                # Fetch voices
+                voices = tts_manager.get_available_voices()
+                
+                if voices:
+                    # Format voices for display
+                    voice_display_list = []
+                    voices_data.clear()
+                    
+                    for voice in voices:
+                        # Format: "Voice Name (Category)"
+                        name = voice.get("name", "Unknown")
+                        desc = voice.get("description", "")
+                        category = desc.split(" - ")[0] if " - " in desc else ""
+                        
+                        if category:
+                            display_name = f"{name} ({category})"
+                        else:
+                            display_name = name
+                        
+                        voice_display_list.append(display_name)
+                        voices_data[display_name] = voice.get("id", "")
+                    
+                    # Update UI on main thread
+                    def update_ui():
+                        loading_label.pack_forget()
+                        voice_combo['values'] = sorted(voice_display_list)
+                        voice_desc_label.config(text="Select a voice from the dropdown")
+                        
+                        # Try to select the saved voice
+                        current_voice_id = voice_var.get()
+                        selected = False
+                        
+                        # Look for matching voice ID
+                        for display_name, voice_id in voices_data.items():
+                            if voice_id == current_voice_id:
+                                voice_combo.set(display_name)
+                                selected = True
+                                break
+                        
+                        # If not found, select first voice
+                        if not selected and voice_display_list:
+                            voice_combo.set(voice_display_list[0])
+                    
+                    dialog.after(0, update_ui)
+                else:
+                    dialog.after(0, lambda: [
+                        loading_label.pack_forget(),
+                        fetch_button.pack(side=tk.LEFT, padx=(10, 0)),
+                        messagebox.showwarning("No Voices Found", 
+                                             "Could not fetch voices from ElevenLabs.", 
+                                             parent=dialog)
+                    ])
+                    
+            except Exception as e:
+                dialog.after(0, lambda: [
+                    loading_label.pack_forget(),
+                    fetch_button.pack(side=tk.LEFT, padx=(10, 0)),
+                    messagebox.showerror("Error", 
+                                       f"Failed to fetch voices: {str(e)}", 
+                                       parent=dialog)
+                ])
+        
+        # Start fetch in background thread
+        thread = threading.Thread(target=fetch_voices_thread, daemon=True)
+        thread.start()
+    
+    # Configure fetch button
+    fetch_button.config(command=fetch_elevenlabs_voices)
+    
+    # Function to handle provider change
+    def on_provider_change(*args):
+        """Handle TTS provider change."""
+        provider = provider_var.get()
+        
+        if provider == "elevenlabs":
+            # Show combo box and fetch button
+            voice_entry.pack_forget()
+            voice_combo.pack(side=tk.LEFT)
+            fetch_button.pack(side=tk.LEFT, padx=(10, 0))
+            voice_desc_label.config(text="Click 'Fetch Voices' to load available voices")
+            
+            # If we already have voices data, show them
+            if voices_data:
+                voice_combo['values'] = sorted(voices_data.keys())
+        else:
+            # Show entry field
+            voice_combo.pack_forget()
+            fetch_button.pack_forget()
+            loading_label.pack_forget()
+            voice_entry.pack(side=tk.LEFT)
+            voice_desc_label.config(text="Voice ID or name (provider-specific, 'default' for system default)")
+    
+    # Bind provider change
+    provider_combo.bind("<<ComboboxSelected>>", on_provider_change)
+    
+    # Initialize UI based on current provider
+    on_provider_change()
+    
+    # If ElevenLabs and we have a saved voice ID, try to fetch voices
+    if provider_var.get() == "elevenlabs" and voice_var.get() and voice_var.get() != "default":
+        # Auto-fetch voices on dialog open for ElevenLabs
+        dialog.after(100, fetch_elevenlabs_voices)
+    
     # Default language
     ttk.Label(frame, text="Default Language:").grid(row=7, column=0, sticky="w", pady=10)
     language_var = tk.StringVar(value=tts_settings.get("language", default_settings.get("language", "en")))
@@ -2321,9 +2479,16 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     
     def save_tts_settings():
         """Save the TTS settings."""
+        provider = provider_var.get()
+        voice_value = voice_var.get()
+        
+        # For ElevenLabs, convert display name to voice ID
+        if provider == "elevenlabs" and voice_value in voices_data:
+            voice_value = voices_data[voice_value]
+        
         SETTINGS["tts"] = {
-            "provider": provider_var.get(),
-            "voice": voice_var.get(),
+            "provider": provider,
+            "voice": voice_value,
             "rate": rate_var.get(),
             "volume": volume_var.get(),
             "language": language_var.get()
