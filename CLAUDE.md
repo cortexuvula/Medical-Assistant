@@ -90,6 +90,55 @@ The periodic analysis feature provides real-time differential diagnosis during r
 - Provider-specific models and temperatures
 - Settings accessible via menu: Settings → Prompt Settings → Advanced Analysis Settings
 
+## Bidirectional Translation Implementation Summary
+
+The bidirectional translation assistant enables real-time medical translation for multilingual consultations:
+
+### Architecture
+- **TranslationDialog**: Main dialog in `src/ui/dialogs/translation_dialog.py`
+- **TranslationManager**: Singleton manager in `src/managers/translation_manager.py`
+- **DeepTranslatorProvider**: Translation backend supporting Google, DeepL, Microsoft
+- **Integration**: Accessible via Tools → Translation Assistant menu
+
+### Key Features
+- **Real-time Translation**: Automatic translation as user types with debouncing
+- **Speech-to-Text**: Record patient speech with automatic transcription
+- **Text-to-Speech**: Play translated responses for patients
+- **Language Support**: 100+ languages with automatic detection
+- **Canned Responses**: Customizable quick responses for common phrases
+- **Export**: Save conversation transcripts
+
+### UI Components
+- **Language Selection**: Dropdown menus showing "Language Name (code)"
+- **Recording Controls**: Microphone selection and recording button
+- **Text Areas**: Side-by-side display of original and translated text
+- **TTS Controls**: Play button with output device selection
+- **Canned Responses**: Grid of customizable quick response buttons
+
+### Implementation Details
+- **Language Code Parsing**: Fixed to handle languages with parentheses (e.g., "Chinese (Simplified)")
+  - Uses `rfind('(')` to find last parenthesis for proper code extraction
+- **Audio Handling**: Separate AudioHandler instance for translation recording
+- **Settings Persistence**: Saves language and device preferences
+- **Threading**: Non-blocking translation and TTS operations
+
+### Canned Responses Management
+- **CannedResponsesDialog**: CRUD interface for managing responses
+- **Categories**: Greeting, symptom, history, instruction, clarify, general
+- **Storage**: Responses saved in `settings.json` under `translation_canned_responses`
+- **Default Responses**: Pre-populated common medical phrases
+
+## TTS (Text-to-Speech) Integration
+
+### ElevenLabs TTS Provider
+- **Voice Selection**: Dropdown interface in TTS settings dialog
+- **Model Support**: 
+  - Turbo v2.5 (newest, fastest, low latency)
+  - Multilingual v2 (high quality multilingual)
+  - Monolingual v1 (original English model)
+- **Settings**: Voice ID, model, rate stored in `settings.json`
+- **API Integration**: Fetch available voices dynamically
+
 ## Batch Processing Implementation Summary
 
 The batch processing feature allows users to process multiple recordings efficiently:
@@ -281,6 +330,9 @@ pip install -r requirements-dev.txt  # For development/testing
 8. **src/managers/agent_manager.py**: Agent system management and execution
 9. **src/ai/agents/medication.py**: Medication agent implementation example
 10. **src/ai/agents/workflow.py**: Workflow agent for clinical process coordination
+11. **src/ui/dialogs/translation_dialog.py**: Bidirectional translation implementation
+12. **src/managers/translation_manager.py**: Translation provider management
+13. **src/tts_providers/elevenlabs_tts.py**: ElevenLabs TTS with voice selection
 
 ## Common Development Tasks
 
@@ -333,6 +385,16 @@ When making changes:
 - **Solution**: Added checks for parent window existence in `_refresh_recordings_list` before UI updates
 - **Location**: `src/ui/workflow_ui.py` - wrapped `self.parent.after()` calls in try-except blocks
 
+### Translation Language Parsing
+- **Issue**: Chinese language options "Chinese (Simplified)" and "Chinese (Traditional)" were parsed incorrectly
+- **Solution**: Updated language code extraction to use `rfind('(')` to find the last parenthesis
+- **Location**: `src/ui/dialogs/translation_dialog.py` - `_on_patient_language_change()` and `_on_doctor_language_change()`
+
+### TTS Settings Dialog
+- **Issue**: NameError when opening TTS settings due to lambda closure and widget reference issues
+- **Solution**: Created widgets before function definitions and stored exception messages in variables
+- **Location**: `src/ui/dialogs/dialogs.py` - TTS settings dialog creation
+
 ## Project Structure (Post-Reorganization)
 
 All source code is now organized under the `src/` directory:
@@ -357,4 +419,14 @@ All source code is now organized under the `src/` directory:
   - `dialogs/` - All dialog windows
     - `medication_analysis_dialog.py` - Medication analysis options
     - `medication_results_dialog.py` - Medication results display
+    - `translation_dialog.py` - Bidirectional translation assistant
+    - `canned_responses_dialog.py` - Manage translation quick responses
+    - `workflow_dialog.py` - Clinical workflow selection
+    - `workflow_results_dialog.py` - Interactive workflow tracking
 - `src/utils/` - Utility functions and helpers
+- `src/translation/` - Translation providers
+  - `base.py` - Base translation provider class
+  - `deep_translator_provider.py` - Multi-backend translation support
+- `src/tts_providers/` - Text-to-speech providers
+  - `base.py` - Base TTS provider class
+  - `elevenlabs_tts.py` - ElevenLabs TTS with voice selection

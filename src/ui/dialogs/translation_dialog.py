@@ -936,8 +936,16 @@ class TranslationDialog:
         """Handle patient language selection change."""
         # Extract language code from display value
         selected = self.patient_lang_var.get()
-        if ' (' in selected:
-            self.patient_language = selected.split('(')[1].rstrip(')')
+        
+        # Get the language code from the formatted string "Language Name (code)"
+        # We need to handle special cases like "Chinese (Simplified) (zh-CN)"
+        if selected.endswith(')'):
+            # Find the last occurrence of '(' to get the language code
+            last_paren = selected.rfind('(')
+            if last_paren != -1:
+                self.patient_language = selected[last_paren+1:-1]
+            else:
+                self.patient_language = selected
         else:
             self.patient_language = selected
     
@@ -945,8 +953,16 @@ class TranslationDialog:
         """Handle doctor language selection change."""
         # Extract language code from display value
         selected = self.doctor_lang_var.get()
-        if ' (' in selected:
-            self.doctor_language = selected.split('(')[1].rstrip(')')
+        
+        # Get the language code from the formatted string "Language Name (code)"
+        # We need to handle special cases like "Chinese (Simplified) (zh-CN)"
+        if selected.endswith(')'):
+            # Find the last occurrence of '(' to get the language code
+            last_paren = selected.rfind('(')
+            if last_paren != -1:
+                self.doctor_language = selected[last_paren+1:-1]
+            else:
+                self.doctor_language = selected
         else:
             self.doctor_language = selected
     

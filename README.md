@@ -19,12 +19,15 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 - **Multi-Format Document Generation:** Create SOAP notes, referral letters, and custom medical documents
 - **Smart Context Preservation:** Context information is preserved during SOAP recordings and only cleared on new sessions or manual clearing
 - **Medication Analysis Agent:** Comprehensive medication analysis including extraction, interaction checking, dosing validation, and prescription generation
+- **Clinical Workflow Coordination:** Step-by-step guidance for patient intake, diagnostic workups, treatment protocols, and follow-up care
+- **Bidirectional Translation Assistant:** Real-time medical translation with STT/TTS support for multilingual patient consultations
 
 ### AI & Transcription
 - **Multiple STT Providers:** Deepgram, ElevenLabs, Groq, or local Whisper for speech-to-text conversion
 - **Multiple AI Providers:** OpenAI, Perplexity, Grok, or local Ollama models for text processing
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation
 - **Intelligent Text Processing:** Refine, improve clarity, and generate medical documentation with AI assistance
+- **Text-to-Speech (TTS):** ElevenLabs integration with voice selection and multiple language support
 
 ### Technical Features
 - **Database Storage:** Automatic saving and retrieval of recordings, transcripts, and generated documents
@@ -200,7 +203,18 @@ Desktop shortcuts are automatically created during the build process.
      - Comprehensive analysis
    - View detailed results with warnings and recommendations
 
-9. **Editing Prompts and Models**  
+9. **Using Bidirectional Translation Assistant**
+   - Access via Tools → Translation Assistant menu
+   - Select patient and doctor languages from dropdown menus
+   - Features include:
+     - Real-time speech-to-text for patient input
+     - Automatic translation between languages
+     - Text-to-speech playback for patient responses
+     - Customizable canned responses for common medical phrases
+     - Export conversation transcripts
+   - Supports multiple languages including Chinese (Simplified/Traditional), Spanish, French, and more
+
+10. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for:
    - Refine text processing
    - Improve text clarity
@@ -210,7 +224,7 @@ Desktop shortcuts are automatically created during the build process.
    
    Each provider can have different model selections and temperature settings.
 
-10. **Viewing Application Logs**
+11. **Viewing Application Logs**
     - Access application logs through the "View Logs" option in the Help menu
     - Choose between opening the logs directory or viewing logs directly in the application
     - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
@@ -260,7 +274,25 @@ Desktop shortcuts are automatically created during the build process.
 
 ## Recent Updates
 
-### Version 2.1.0 (Latest)
+### Version 2.2.0 (Latest)
+- **Bidirectional Translation Assistant**: Real-time medical translation system for multilingual consultations
+  - Support for 100+ languages with automatic detection
+  - Speech-to-text input for patient responses
+  - Text-to-speech output for doctor communications
+  - Customizable canned responses for common medical phrases
+  - Fixed Chinese language parsing for Simplified/Traditional variants
+- **Enhanced TTS Integration**: 
+  - ElevenLabs voice selection with dropdown interface
+  - Support for ElevenLabs Turbo v2.5 model for lower latency
+  - Configurable speech rate and voice settings
+- **Batch Processing**: Process multiple recordings or audio files efficiently
+  - Dual source support (database recordings or computer files)
+  - Real-time progress tracking with ETA
+  - Continue on error capability
+- **Clinical Workflow Agent**: Step-by-step guidance for medical processes
+- **Periodic Analysis**: Real-time differential diagnosis during recordings (every 2 minutes)
+
+### Version 2.1.0
 - **Medication Analysis Agent**: New AI-powered medication agent with comprehensive analysis capabilities
   - Extract medications from clinical text
   - Check drug-drug interactions with severity levels
