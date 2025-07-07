@@ -306,12 +306,110 @@ class TranslationDialog:
         # Make translated text read-only
         self.patient_translated_text.bind("<Key>", lambda e: "break")
     
+    def _create_canned_responses(self, parent):
+        """Create canned response buttons for common medical phrases.
+        
+        Args:
+            parent: Parent widget
+        """
+        # Define canned responses in categories
+        canned_responses = [
+            # Greetings/General
+            ("How are you feeling today?", "greeting"),
+            ("How can I help you?", "greeting"),
+            ("Everything looks normal", "general"),
+            ("I understand your concern", "general"),
+            
+            # Symptom questions
+            ("Can you describe your symptoms?", "symptom"),
+            ("How long have you had these symptoms?", "symptom"),
+            ("Does it hurt when I press here?", "symptom"),
+            ("On a scale of 1-10, how severe is the pain?", "symptom"),
+            ("Is the pain constant or does it come and go?", "symptom"),
+            
+            # Medical history
+            ("Are you taking any medications?", "history"),
+            ("Do you have any allergies?", "history"),
+            ("Have you had this problem before?", "history"),
+            ("Do you have any medical conditions?", "history"),
+            
+            # Instructions
+            ("I need to examine you", "instruction"),
+            ("Please take a deep breath", "instruction"),
+            ("Open your mouth and say 'Ah'", "instruction"),
+            ("Take this medication twice a day", "instruction"),
+            ("Please follow up in one week", "instruction"),
+            ("Rest and drink plenty of fluids", "instruction"),
+            
+            # Clarifications
+            ("Can you show me where it hurts?", "clarify"),
+            ("When did this start?", "clarify"),
+            ("Is there anything else bothering you?", "clarify"),
+        ]
+        
+        # Create buttons in a grid layout
+        row = 0
+        col = 0
+        max_cols = 3
+        
+        for response_text, category in canned_responses:
+            btn = ttk.Button(
+                parent,
+                text=response_text[:25] + "..." if len(response_text) > 25 else response_text,
+                command=lambda text=response_text: self._insert_canned_response(text),
+                bootstyle="outline-primary",
+                width=30
+            )
+            btn.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
+            
+            # Add tooltip with full text
+            ToolTip(btn, response_text)
+            
+            col += 1
+            if col >= max_cols:
+                col = 0
+                row += 1
+        
+        # Configure grid weights for responsive layout
+        for i in range(max_cols):
+            parent.columnconfigure(i, weight=1)
+    
+    def _insert_canned_response(self, text):
+        """Insert a canned response into the doctor input field.
+        
+        Args:
+            text: Text to insert
+        """
+        # Get current content
+        current_text = self.doctor_input_text.get("1.0", tk.END).strip()
+        
+        # Add the canned response
+        if current_text:
+            # If there's existing text, add a space and the new text
+            self.doctor_input_text.insert(tk.END, " " + text)
+        else:
+            # If empty, just insert the text
+            self.doctor_input_text.insert("1.0", text)
+        
+        # Trigger translation update
+        self._on_doctor_text_change()
+        
+        # Focus on the text field
+        self.doctor_input_text.focus_set()
+        # Move cursor to end
+        self.doctor_input_text.mark_set(tk.INSERT, tk.END)
+    
     def _create_doctor_section(self, parent):
         """Create doctor input/output section.
         
         Args:
             parent: Parent widget
         """
+        # Create canned responses frame
+        canned_frame = ttk.LabelFrame(parent, text="Quick Responses", padding=5)
+        canned_frame.pack(fill=X, pady=(0, 10))
+        self._create_canned_responses(canned_frame)
+        
         # Create text areas side by side
         text_container = ttk.Frame(parent)
         text_container.pack(fill=BOTH, expand=True, pady=(0, 10))
