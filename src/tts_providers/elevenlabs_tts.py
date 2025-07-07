@@ -21,8 +21,14 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
     API_BASE_URL = "https://api.elevenlabs.io/v1"
     
     # Language to model mapping for multilingual support
-    MULTILINGUAL_MODEL_ID = "eleven_multilingual_v2"
-    MONOLINGUAL_MODEL_ID = "eleven_monolingual_v1"
+    # Latest models as of 2024
+    TURBO_V2_5 = "eleven_turbo_v2_5"  # Newest, fastest model with low latency
+    MULTILINGUAL_V2 = "eleven_multilingual_v2"  # High quality multilingual
+    MONOLINGUAL_V1 = "eleven_monolingual_v1"  # Original English model
+    
+    # Default models for backward compatibility
+    MULTILINGUAL_MODEL_ID = MULTILINGUAL_V2
+    MONOLINGUAL_MODEL_ID = TURBO_V2_5  # Use Turbo v2.5 as default for English
     
     # Supported languages for multilingual model
     SUPPORTED_LANGUAGES = [
@@ -156,11 +162,20 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             if not voice_id:
                 raise ValueError(f"No suitable voice found for language: {language}")
             
-            # Determine model based on language
-            if language == "en":
-                model_id = kwargs.get("model_id", self.MONOLINGUAL_MODEL_ID)
+            # Get model from settings or kwargs
+            tts_settings = SETTINGS.get("tts", {})
+            
+            # Check for model in kwargs first, then settings, then use defaults
+            if "model_id" in kwargs:
+                model_id = kwargs["model_id"]
+            elif "elevenlabs_model" in tts_settings:
+                model_id = tts_settings["elevenlabs_model"]
             else:
-                model_id = self.MULTILINGUAL_MODEL_ID
+                # Default based on language
+                if language == "en":
+                    model_id = self.MONOLINGUAL_MODEL_ID
+                else:
+                    model_id = self.MULTILINGUAL_MODEL_ID
             
             # Get voice settings from kwargs or use defaults
             voice_settings = {

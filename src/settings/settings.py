@@ -359,7 +359,8 @@ Follow up:
         "voice": "default",            # Voice ID/name (provider-specific)
         "rate": 150,                   # Speech rate (words per minute)
         "volume": 1.0,                 # Volume level (0.0 to 1.0)
-        "language": "en"               # Default TTS language
+        "language": "en",              # Default TTS language
+        "elevenlabs_model": "eleven_turbo_v2_5"  # ElevenLabs model (eleven_turbo_v2_5, eleven_multilingual_v2, eleven_monolingual_v1)
     },
     "translation_canned_responses": {
         "categories": ["greeting", "symptom", "history", "instruction", "clarify", "general"],

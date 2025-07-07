@@ -2454,6 +2454,11 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
             fetch_button.pack(side=tk.LEFT, padx=(10, 0))
             voice_desc_label.config(text="Click 'Fetch Voices' to load available voices")
             
+            # Show model selection
+            model_label.grid()
+            model_combo.grid()
+            model_desc_label.grid()
+            
             # If we already have voices data, show them
             if voices_data:
                 voice_combo['values'] = sorted(voices_data.keys())
@@ -2464,6 +2469,11 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
             loading_label.pack_forget()
             voice_entry.pack(side=tk.LEFT)
             voice_desc_label.config(text="Voice ID or name (provider-specific, 'default' for system default)")
+            
+            # Hide model selection
+            model_label.grid_remove()
+            model_combo.grid_remove()
+            model_desc_label.grid_remove()
     
     # Bind provider change
     provider_combo.bind("<<ComboboxSelected>>", on_provider_change)
@@ -2484,6 +2494,28 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     ttk.Label(frame, text="Language code (e.g., en, es, fr)", 
               wraplength=400, foreground="gray").grid(row=8, column=0, columnspan=2, sticky="w", padx=(20, 0))
     
+    # ElevenLabs Model Selection (only shown for ElevenLabs)
+    model_label = ttk.Label(frame, text="ElevenLabs Model:")
+    model_label.grid(row=9, column=0, sticky="w", pady=10)
+    
+    elevenlabs_model_var = tk.StringVar(value=tts_settings.get("elevenlabs_model", default_settings.get("elevenlabs_model", "eleven_turbo_v2_5")))
+    model_combo = ttk.Combobox(frame, textvariable=elevenlabs_model_var, width=30, state="readonly")
+    model_combo['values'] = [
+        "eleven_turbo_v2_5",  # Newest, fastest
+        "eleven_multilingual_v2",  # High quality multilingual
+        "eleven_monolingual_v1"  # Original English
+    ]
+    model_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
+    
+    model_desc_label = ttk.Label(frame, text="Turbo v2.5 is newest & fastest, Multilingual v2 for non-English", 
+                                 wraplength=400, foreground="gray")
+    model_desc_label.grid(row=10, column=0, columnspan=2, sticky="w", padx=(20, 0))
+    
+    # Hide model selection initially
+    model_label.grid_remove()
+    model_combo.grid_remove()
+    model_desc_label.grid_remove()
+    
     # Button frame
     button_frame = ttk.Frame(dialog)
     button_frame.pack(fill=tk.X, pady=(0, 20))
@@ -2502,7 +2534,8 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
             "voice": voice_value,
             "rate": rate_var.get(),
             "volume": volume_var.get(),
-            "language": language_var.get()
+            "language": language_var.get(),
+            "elevenlabs_model": elevenlabs_model_var.get()
         }
         save_settings(SETTINGS)
         dialog.destroy()
