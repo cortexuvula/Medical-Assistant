@@ -743,6 +743,7 @@ class TranslationDialog:
         
         def translate():
             try:
+                self.logger.debug(f"Translating from {self.patient_language} to {self.doctor_language}")
                 translated = self.translation_manager.translate(
                     transcript,
                     source_lang=self.patient_language,
@@ -792,6 +793,7 @@ class TranslationDialog:
         """
         def translate():
             try:
+                self.logger.debug(f"Translating from {self.doctor_language} to {self.patient_language}")
                 translated = self.translation_manager.translate(
                     text,
                     source_lang=self.doctor_language,
@@ -948,6 +950,8 @@ class TranslationDialog:
                 self.patient_language = selected
         else:
             self.patient_language = selected
+        
+        self.logger.debug(f"Patient language changed to: {self.patient_language} (from: {selected})")
     
     def _on_doctor_language_change(self, event=None):
         """Handle doctor language selection change."""
@@ -965,6 +969,8 @@ class TranslationDialog:
                 self.doctor_language = selected
         else:
             self.doctor_language = selected
+        
+        self.logger.debug(f"Doctor language changed to: {self.doctor_language} (from: {selected})")
     
     def _on_close(self):
         """Handle dialog close."""

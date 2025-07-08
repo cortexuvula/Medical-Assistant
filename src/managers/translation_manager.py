@@ -110,6 +110,9 @@ class TranslationManager:
             if target_lang is None:
                 target_lang = translation_settings.get("doctor_language", "en")
             
+            # Log the actual language codes being used
+            self.logger.debug(f"Translation request: source={source_lang}, target={target_lang}, text_length={len(text)}")
+            
             # Perform translation
             result = provider.translate(text, source_lang, target_lang)
             
