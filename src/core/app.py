@@ -329,7 +329,7 @@ class MedicalDictationApp(ttk.Window):
         self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 2))
         
         # Create the text notebook (for transcripts, SOAP, etc.)
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.chat_text, _ = self.ui.create_notebook()
+        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.chat_text, self.rag_text, _ = self.ui.create_notebook()
         self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(2, 0))
         
         # Create chat interface below the notebook
@@ -2220,23 +2220,57 @@ class MedicalDictationApp(ttk.Window):
         """Handle chat message from the chat UI."""
         logging.info(f"Chat message received: {message}")
         
-        if not hasattr(self, 'chat_processor') or not self.chat_processor:
-            self.status_manager.error("Chat processor not available")
-            if hasattr(self, 'chat_ui') and self.chat_ui:
-                self.chat_ui.set_processing(False)
-            return
-            
-        # Update status
-        self.status_manager.info("Processing your request...")
+        # Check which tab is currently active
+        current_tab = self.notebook.index(self.notebook.select())
         
-        # Process the message
-        def on_complete():
-            """Called when chat processing is complete."""
-            if hasattr(self, 'chat_ui') and self.chat_ui:
-                self.chat_ui.set_processing(False)
-            self.status_manager.success("Chat response ready")
+        # Route to appropriate processor based on tab
+        if current_tab == 5:  # RAG tab (0-indexed)
+            # Check for clear command
+            message_lower = message.lower().strip()
+            if message_lower in ["clear rag history", "clear rag", "clear", "/clear"]:
+                if hasattr(self, 'rag_processor') and self.rag_processor:
+                    self.rag_processor.clear_history()
+                    self.status_manager.success("RAG history cleared")
+                if hasattr(self, 'chat_ui') and self.chat_ui:
+                    self.chat_ui.set_processing(False)
+                return
             
-        self.chat_processor.process_message(message, on_complete)
+            if not hasattr(self, 'rag_processor') or not self.rag_processor:
+                self.status_manager.error("RAG processor not available")
+                if hasattr(self, 'chat_ui') and self.chat_ui:
+                    self.chat_ui.set_processing(False)
+                return
+                
+            # Update status
+            self.status_manager.info("Searching documents...")
+            
+            # Process the RAG query
+            def on_complete():
+                """Called when RAG processing is complete."""
+                if hasattr(self, 'chat_ui') and self.chat_ui:
+                    self.chat_ui.set_processing(False)
+                self.status_manager.success("Document search complete")
+                
+            self.rag_processor.process_message(message, on_complete)
+            
+        else:  # Chat tab or other tabs
+            if not hasattr(self, 'chat_processor') or not self.chat_processor:
+                self.status_manager.error("Chat processor not available")
+                if hasattr(self, 'chat_ui') and self.chat_ui:
+                    self.chat_ui.set_processing(False)
+                return
+                
+            # Update status
+            self.status_manager.info("Processing your request...")
+            
+            # Process the message
+            def on_complete():
+                """Called when chat processing is complete."""
+                if hasattr(self, 'chat_ui') and self.chat_ui:
+                    self.chat_ui.set_processing(False)
+                self.status_manager.success("Chat response ready")
+                
+            self.chat_processor.process_message(message, on_complete)
     
     def _update_chat_suggestions(self):
         """Update chat suggestions based on current tab and content."""
@@ -2259,7 +2293,7 @@ class MedicalDictationApp(ttk.Window):
         suggestions.extend(global_custom)
         
         # Determine context and content state
-        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter", 4: "chat"}
+        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter", 4: "chat", 5: "rag"}
         context = context_map.get(current_tab, "transcript")
         content_state = "with_content" if has_content else "without_content"
         
@@ -2361,6 +2395,22 @@ class MedicalDictationApp(ttk.Window):
                         "Explain this medical term",
                         "Help me understand my diagnosis"
                     ]
+        elif current_tab == 5:  # RAG
+            if has_content:
+                return [
+                    "Clear RAG history",
+                    "Find related documents",
+                    "Search for similar cases"
+                ]
+            else:
+                return [
+                    "What is advance care planning?",
+                    "Search for treatment protocols",
+                    "Find patient education materials",
+                    "Look up clinical guidelines",
+                    "Search medication information",
+                    "Find procedure documentation"
+                ]
         return []
     
     def _focus_chat_input(self):

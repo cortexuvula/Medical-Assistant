@@ -308,7 +308,7 @@ class ChatUI:
         """Update the context indicator based on active tab"""
         if hasattr(self.app, 'notebook') and self.app.notebook:
             tab_index = self.app.notebook.index("current")
-            tab_names = ["Transcript", "SOAP Note", "Referral", "Letter", "Chat"]
+            tab_names = ["Transcript", "SOAP Note", "Referral", "Letter", "Chat", "RAG"]
             
             if 0 <= tab_index < len(tab_names):
                 self.context_indicator.config(text=f"Context: {tab_names[tab_index]}")
