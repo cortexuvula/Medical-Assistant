@@ -212,3 +212,9 @@ code_improvements.txt
 # Debug files
 last_llm_prompt.txt
 AppData/logs/last_llm_prompt.txt
+
+# Project PRPs
+PRPs/
+
+# Project-specific files
+INITIAL.md

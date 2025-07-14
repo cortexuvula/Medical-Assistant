@@ -1339,10 +1339,10 @@ class WorkflowUI:
         return status_frame, status_icon_label, status_label, provider_indicator, progress_bar
     
     def create_notebook(self) -> tuple:
-        """Create the notebook with tabs for transcript, soap note, referral, letter, and chat.
+        """Create the notebook with tabs for transcript, soap note, referral, letter, chat, and RAG.
         
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text, context_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text, rag_text, context_text)
         """
         notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
         
@@ -1352,7 +1352,8 @@ class WorkflowUI:
             ("SOAP Note", "soap"),
             ("Referral", "referral"),
             ("Letter", "letter"),
-            ("Chat", "chat")
+            ("Chat", "chat"),
+            ("RAG", "rag")
         ]
         
         text_widgets = {}
@@ -1396,6 +1397,23 @@ class WorkflowUI:
                 
                 # Make text widget read-only but still selectable
                 text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
+            
+            # Add welcome message to RAG tab
+            elif widget_key == "rag":
+                text_widget.insert("1.0", "Welcome to the RAG Document Search!\n\n")
+                text_widget.insert("end", "This interface allows you to search your document database:\n")
+                text_widget.insert("end", "• Query documents stored in your RAG database\n")
+                text_widget.insert("end", "• Get relevant information from your knowledge base\n")
+                text_widget.insert("end", "• Search through previously uploaded documents\n\n")
+                text_widget.insert("end", "Type your question in the AI Assistant chat box below to search your documents!\n")
+                text_widget.insert("end", "="*50 + "\n\n")
+                
+                # Configure initial styling
+                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
+                text_widget.tag_add("welcome", "1.0", "end")
+                
+                # Make text widget read-only but still selectable
+                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
         
         # Return in expected order
         return (
@@ -1405,6 +1423,7 @@ class WorkflowUI:
             text_widgets["referral"],
             text_widgets["letter"],
             text_widgets["chat"],
+            text_widgets["rag"],
             None  # No context text in notebook for workflow UI
         )
     

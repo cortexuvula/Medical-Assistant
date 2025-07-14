@@ -23,6 +23,7 @@ from processing.text_processor import TextProcessor
 from ui.workflow_ui import WorkflowUI
 from ui.chat_ui import ChatUI
 from ai.chat_processor import ChatProcessor
+from ai.rag_processor import RagProcessor
 from ui.status_manager import StatusManager
 from audio.recording_manager import RecordingManager
 from audio.audio_state_manager import AudioStateManager
@@ -267,6 +268,7 @@ class AppInitializer:
         self.app.soap_audio_processor = SOAPAudioProcessor(self.app)
         self.app.file_processor = FileProcessor(self.app)
         self.app.chat_processor = ChatProcessor(self.app)
+        self.app.rag_processor = RagProcessor(self.app)
         
         # Initialize processing queue
         self.app.processing_queue = ProcessingQueue(self.app)
