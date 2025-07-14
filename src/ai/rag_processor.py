@@ -186,8 +186,12 @@ class RagProcessor:
             # Insert sender name with timestamp
             self.app.rag_text.insert("end", f"{sender} ({timestamp}):\n", "sender")
             
-            # Insert message
-            self.app.rag_text.insert("end", f"{message}\n\n", "message")
+            # If this is from the RAG Assistant, render markdown
+            if sender == "RAG Assistant":
+                self._render_markdown(message)
+            else:
+                # Insert plain message for user messages
+                self.app.rag_text.insert("end", f"{message}\n\n", "message")
             
             # Add separator
             self.app.rag_text.insert("end", "-" * 50 + "\n\n")
@@ -201,6 +205,61 @@ class RagProcessor:
             
         # Update UI in main thread
         self.app.after(0, update_ui)
+        
+    def _render_markdown(self, markdown_text: str):
+        """Render markdown text with basic formatting in the text widget."""
+        import re
+        
+        lines = markdown_text.split('\n')
+        
+        for line in lines:
+            # Headers
+            if line.startswith('### '):
+                self.app.rag_text.insert("end", line[4:] + "\n", "h3")
+            elif line.startswith('## '):
+                self.app.rag_text.insert("end", line[3:] + "\n", "h2")
+            elif line.startswith('# '):
+                self.app.rag_text.insert("end", line[2:] + "\n", "h1")
+            
+            # Bold text
+            elif '**' in line:
+                parts = re.split(r'\*\*(.*?)\*\*', line)
+                for i, part in enumerate(parts):
+                    if i % 2 == 0:
+                        self.app.rag_text.insert("end", part)
+                    else:
+                        self.app.rag_text.insert("end", part, "bold")
+                self.app.rag_text.insert("end", "\n")
+            
+            # Bullet points
+            elif line.strip().startswith('- ') or line.strip().startswith('* '):
+                indent = len(line) - len(line.lstrip())
+                bullet_text = line.strip()[2:]
+                self.app.rag_text.insert("end", " " * indent + "• " + bullet_text + "\n", "bullet")
+            
+            # Numbered lists
+            elif re.match(r'^\s*\d+\.\s', line):
+                self.app.rag_text.insert("end", line + "\n", "numbered")
+            
+            # Code blocks (simple)
+            elif line.strip().startswith('```'):
+                self.app.rag_text.insert("end", line + "\n", "code")
+            
+            # Regular text
+            else:
+                self.app.rag_text.insert("end", line + "\n", "message")
+        
+        # Add an extra newline at the end
+        self.app.rag_text.insert("end", "\n")
+        
+        # Configure markdown tags
+        self.app.rag_text.tag_config("h1", font=("Arial", 16, "bold"), spacing3=5)
+        self.app.rag_text.tag_config("h2", font=("Arial", 14, "bold"), spacing3=4)
+        self.app.rag_text.tag_config("h3", font=("Arial", 12, "bold"), spacing3=3)
+        self.app.rag_text.tag_config("bold", font=("Arial", 10, "bold"))
+        self.app.rag_text.tag_config("bullet", lmargin1=20, lmargin2=30)
+        self.app.rag_text.tag_config("numbered", lmargin1=20, lmargin2=30)
+        self.app.rag_text.tag_config("code", font=("Courier", 10), background="#f0f0f0", relief="solid", borderwidth=1)
         
     def _display_error(self, error_message: str):
         """Display an error message in the RAG tab."""
