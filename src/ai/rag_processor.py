@@ -186,9 +186,15 @@ class RagProcessor:
             # Insert sender name with timestamp
             self.app.rag_text.insert("end", f"{sender} ({timestamp}):\n", "sender")
             
-            # If this is from the RAG Assistant, render markdown
+            # If this is from the RAG Assistant, render markdown and add copy button
             if sender == "RAG Assistant":
+                # Store the response start position
+                response_start = self.app.rag_text.index("end-1c")
                 self._render_markdown(message)
+                response_end = self.app.rag_text.index("end-1c")
+                
+                # Add copy button
+                self._add_copy_button(message)
             else:
                 # Insert plain message for user messages
                 self.app.rag_text.insert("end", f"{message}\n\n", "message")
@@ -260,6 +266,52 @@ class RagProcessor:
         self.app.rag_text.tag_config("bullet", lmargin1=20, lmargin2=30)
         self.app.rag_text.tag_config("numbered", lmargin1=20, lmargin2=30)
         self.app.rag_text.tag_config("code", font=("Courier", 10), background="#f0f0f0", relief="solid", borderwidth=1)
+        
+    def _add_copy_button(self, response_text: str):
+        """Add a copy button for the response."""
+        import tkinter as tk
+        import ttkbootstrap as ttk
+        
+        # Add some space before the button
+        self.app.rag_text.insert("end", "  ")
+        
+        # Create frame for button
+        button_frame = ttk.Frame(self.app.rag_text)
+        button_frame.configure(cursor="arrow")
+        
+        # Create copy button
+        copy_btn = ttk.Button(
+            button_frame,
+            text="Copy",
+            bootstyle="secondary-link",
+            command=lambda: self._copy_to_clipboard(response_text)
+        )
+        copy_btn.pack(padx=2)
+        
+        # Add tooltip
+        from ui.tooltip import ToolTip
+        ToolTip(copy_btn, "Copy this response to clipboard")
+        
+        # Create window for button frame in text widget
+        self.app.rag_text.window_create("end-1c", window=button_frame)
+        self.app.rag_text.insert("end", "\n\n")
+        
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to clipboard."""
+        try:
+            # Clear clipboard and append new text
+            self.app.clipboard_clear()
+            self.app.clipboard_append(text)
+            self.app.update()  # Required to finalize clipboard operation
+            
+            # Show brief success message
+            if hasattr(self.app, 'status_manager'):
+                self.app.status_manager.success("Response copied to clipboard")
+            logging.info("RAG response copied to clipboard")
+        except Exception as e:
+            logging.error(f"Failed to copy to clipboard: {e}")
+            if hasattr(self.app, 'status_manager'):
+                self.app.status_manager.error("Failed to copy response")
         
     def _display_error(self, error_message: str):
         """Display an error message in the RAG tab."""
