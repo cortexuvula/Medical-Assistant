@@ -90,6 +90,37 @@ The periodic analysis feature provides real-time differential diagnosis during r
 - Provider-specific models and temperatures
 - Settings accessible via menu: Settings → Prompt Settings → Advanced Analysis Settings
 
+## RAG (Retrieval-Augmented Generation) Tab Implementation Summary
+
+The RAG tab provides document search capabilities through N8N webhook integration:
+
+### Architecture
+- **RagProcessor**: Core class in `src/ai/rag_processor.py` handling N8N webhook communication
+- **N8N Integration**: Webhook-based document search with authorization headers
+- **UI Integration**: New tab alongside Chat tab with shared AI Assistant input
+- **Session Management**: Persistent session IDs for conversation continuity
+
+### Key Features
+- Query documents stored in your RAG database via N8N webhook
+- Markdown rendering for formatted responses
+- Copy button for each RAG response
+- Clear history button to start new search sessions
+- Session persistence across queries
+
+### Implementation Details
+- **Environment Variables**: N8N_URL and N8N_AUTHORIZATION_SECRET loaded from .env
+- **Request Format**: Sends `chatInput` and `sessionId` fields to N8N
+- **Response Handling**: Supports both array and object response formats
+- **Markdown Support**: Renders headers, bold text, bullets, numbered lists, and code blocks
+- **Error Handling**: Graceful handling of timeouts, connection errors, and empty responses
+
+### UI Components
+- RAG tab in main notebook (index 5, 0-based)
+- Clear RAG History button in top-right corner
+- Read-only text widget with markdown rendering
+- Copy buttons for each assistant response
+- Welcome message with usage instructions
+
 ## Bidirectional Translation Implementation Summary
 
 The bidirectional translation assistant enables real-time medical translation for multilingual consultations:
@@ -333,6 +364,7 @@ pip install -r requirements-dev.txt  # For development/testing
 11. **src/ui/dialogs/translation_dialog.py**: Bidirectional translation implementation
 12. **src/managers/translation_manager.py**: Translation provider management
 13. **src/tts_providers/elevenlabs_tts.py**: ElevenLabs TTS with voice selection
+14. **src/ai/rag_processor.py**: RAG tab N8N webhook integration
 
 ## Common Development Tasks
 

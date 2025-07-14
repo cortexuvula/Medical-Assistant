@@ -5,8 +5,9 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 ## Features
 
 ### Core Features
-- **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 5 text editor tabs
+- **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 6 text editor tabs
 - **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
+- **RAG Document Search:** New RAG tab enables searching your document database via N8N webhook integration with markdown rendering
 - **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
 - **Real-Time Analysis:** Optional periodic analysis during recording generates differential diagnoses every 2 minutes
 - **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
@@ -60,6 +61,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
      - **Speech-to-Text Services:** `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`
      - **Local Models:** `OLLAMA_API_URL` (defaults to "http://localhost:11434")
      - **Language Settings:** `RECOGNITION_LANGUAGE` (defaults to "en-US")
+     - **RAG Integration:** `N8N_URL` and `N8N_AUTHORIZATION_SECRET` for document search
    - **Minimum Requirements:** You need at least one LLM provider and one STT provider to use the application.
 
 4. **Ollama Setup (Optional)**  
@@ -214,7 +216,18 @@ Desktop shortcuts are automatically created during the build process.
      - Export conversation transcripts
    - Supports multiple languages including Chinese (Simplified/Traditional), Spanish, French, and more
 
-10. **Editing Prompts and Models**  
+10. **Using the RAG Document Search**
+    - Navigate to the RAG tab (next to Chat tab)
+    - Type your query in the AI Assistant chat box at the bottom
+    - The system will search your document database via N8N webhook
+    - Features include:
+      - Markdown-formatted responses with headers, bullets, and code blocks
+      - Copy button for each response to save important information
+      - Clear RAG History button to start fresh searches
+      - Session persistence for continuous conversations
+    - Configure N8N webhook URL and authorization in your .env file
+
+11. **Editing Prompts and Models**  
    Use the "Prompt Settings" menu to modify and update prompts and models for:
    - Refine text processing
    - Improve text clarity
@@ -224,7 +237,7 @@ Desktop shortcuts are automatically created during the build process.
    
    Each provider can have different model selections and temperature settings.
 
-11. **Viewing Application Logs**
+12. **Viewing Application Logs**
     - Access application logs through the "View Logs" option in the Help menu
     - Choose between opening the logs directory or viewing logs directly in the application
     - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
