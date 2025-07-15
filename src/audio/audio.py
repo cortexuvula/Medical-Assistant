@@ -506,8 +506,17 @@ class AudioHandler:
                     logging.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
                     return False
                     
+                logging.info(f"Exporting audio to {file_path} with format=mp3, bitrate=192k")
                 combined.export(file_path, format="mp3", bitrate="192k")
-                logging.info(f"Audio saved to {file_path}")
+                
+                # Verify file was created
+                if os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    logging.info(f"Audio successfully saved to {file_path} (size: {file_size} bytes)")
+                else:
+                    logging.error(f"Audio export completed but file not found at {file_path}")
+                    return False
+                    
                 return True
             return False
         except Exception as e:

@@ -78,13 +78,20 @@ class SOAPProcessor:
                 
                 # Try to get storage folder from both possible keys for backward compatibility
                 storage_folder = SETTINGS.get("storage_folder")
+                logging.info(f"Storage folder from settings: {storage_folder}")
+                
                 if not storage_folder:
                     storage_folder = SETTINGS.get("default_storage_folder")
+                    logging.info(f"Using default_storage_folder instead: {storage_folder}")
                 
                 # If no storage folder is set, create default one
                 if not storage_folder or not os.path.exists(storage_folder):
+                    logging.warning(f"Storage folder '{storage_folder}' not found or not set, using default")
                     storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                     os.makedirs(storage_folder, exist_ok=True)
+                    logging.info(f"Created/using default storage folder: {storage_folder}")
+                else:
+                    logging.info(f"Using configured storage folder: {storage_folder}")
                     
                 # Create a user-friendly timestamp format: DD-MM-YY_HH-MM as requested
                 date_formatted = dt.now().strftime("%d-%m-%y")
@@ -110,9 +117,22 @@ class SOAPProcessor:
                     if segment_length_ms < 100:  # Less than 100ms is probably empty
                         logging.warning(f"SOAP audio segment is too short ({segment_length_ms}ms), might be empty")
                     
-                if self.audio_handler.save_audio([audio_segment], audio_path):
-                    logging.info(f"SOAP audio saved to: {audio_path}")
-                    self.app.after(0, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
+                logging.info(f"Attempting to save SOAP audio to: {audio_path}")
+                save_result = self.audio_handler.save_audio([audio_segment], audio_path)
+                logging.info(f"Audio save result: {save_result}")
+                
+                if save_result:
+                    # Verify file was actually created
+                    if os.path.exists(audio_path):
+                        file_size = os.path.getsize(audio_path)
+                        logging.info(f"SOAP audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+                        self.app.after(0, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
+                    else:
+                        logging.error(f"Audio save reported success but file not found: {audio_path}")
+                        self.app.after(0, lambda: self.status_manager.progress("Warning: Audio file may not have been saved"))
+                else:
+                    logging.error(f"Failed to save SOAP audio to: {audio_path}")
+                    self.app.after(0, lambda: self.status_manager.progress("Failed to save audio file"))
                 
                 # Update status on UI thread
                 self.app.after(0, lambda: [
@@ -228,10 +248,20 @@ class SOAPProcessor:
                 raise ValueError("Failed to create audio segment")
             
             # Generate filename and save audio
-            storage_folder = SETTINGS.get("storage_folder") or SETTINGS.get("default_storage_folder")
+            storage_folder = SETTINGS.get("storage_folder")
+            logging.info(f"[Async] Storage folder from settings: {storage_folder}")
+            
+            if not storage_folder:
+                storage_folder = SETTINGS.get("default_storage_folder")
+                logging.info(f"[Async] Using default_storage_folder instead: {storage_folder}")
+            
             if not storage_folder or not os.path.exists(storage_folder):
+                logging.warning(f"[Async] Storage folder '{storage_folder}' not found or not set, using default")
                 storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                 os.makedirs(storage_folder, exist_ok=True)
+                logging.info(f"[Async] Created/using default storage folder: {storage_folder}")
+            else:
+                logging.info(f"[Async] Using configured storage folder: {storage_folder}")
             
             # Create filename with patient name if available
             patient_name = recording_data.get('patient_name', 'Unknown')
@@ -242,10 +272,20 @@ class SOAPProcessor:
             audio_path = os.path.join(storage_folder, f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}.mp3")
             
             # Save audio
-            if not self.audio_handler.save_audio([audio_segment], audio_path):
+            logging.info(f"[Async] Attempting to save audio to: {audio_path}")
+            save_result = self.audio_handler.save_audio([audio_segment], audio_path)
+            logging.info(f"[Async] Audio save result: {save_result}")
+            
+            if not save_result:
                 raise ValueError("Failed to save audio file")
             
-            logging.info(f"Audio saved to: {audio_path}")
+            # Verify file was actually created
+            if os.path.exists(audio_path):
+                file_size = os.path.getsize(audio_path)
+                logging.info(f"[Async] Audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+            else:
+                logging.error(f"[Async] Audio save reported success but file not found: {audio_path}")
+                raise ValueError("Audio file not found after save")
             
             # Transcribe audio
             transcript = self.audio_handler.transcribe_audio(audio_segment)

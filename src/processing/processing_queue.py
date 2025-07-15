@@ -227,6 +227,56 @@ class ProcessingQueue:
                     logging.info(f"Transcribing audio for recording {recording_id}")
                     audio_data = recording_data.get("audio_data")
                     
+                    # Save audio file before transcription
+                    try:
+                        from settings.settings import SETTINGS
+                        from datetime import datetime as dt
+                        import os
+                        
+                        # Get storage folder
+                        storage_folder = SETTINGS.get("storage_folder")
+                        logging.info(f"[Queue] Storage folder from settings: {storage_folder}")
+                        
+                        if not storage_folder:
+                            storage_folder = SETTINGS.get("default_storage_folder")
+                            logging.info(f"[Queue] Using default_storage_folder instead: {storage_folder}")
+                        
+                        if not storage_folder or not os.path.exists(storage_folder):
+                            logging.warning(f"[Queue] Storage folder '{storage_folder}' not found or not set, using default")
+                            storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
+                            os.makedirs(storage_folder, exist_ok=True)
+                            logging.info(f"[Queue] Created/using default storage folder: {storage_folder}")
+                        else:
+                            logging.info(f"[Queue] Using configured storage folder: {storage_folder}")
+                        
+                        # Create filename with patient name
+                        patient_name = recording_data.get('patient_name', 'Patient')
+                        safe_patient_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                        date_formatted = dt.now().strftime("%d-%m-%y")
+                        time_formatted = dt.now().strftime("%H-%M")
+                        audio_path = os.path.join(storage_folder, f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}.mp3")
+                        
+                        # Save audio using audio handler
+                        logging.info(f"[Queue] Attempting to save audio to: {audio_path}")
+                        if hasattr(self.app, 'audio_handler'):
+                            # Convert audio_data to list if needed
+                            audio_segments = [audio_data] if not isinstance(audio_data, list) else audio_data
+                            save_result = self.app.audio_handler.save_audio(audio_segments, audio_path)
+                            logging.info(f"[Queue] Audio save result: {save_result}")
+                            
+                            if save_result:
+                                # Verify file was actually created
+                                if os.path.exists(audio_path):
+                                    file_size = os.path.getsize(audio_path)
+                                    logging.info(f"[Queue] Audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+                                else:
+                                    logging.error(f"[Queue] Audio save reported success but file not found: {audio_path}")
+                            else:
+                                logging.error(f"[Queue] Failed to save audio to: {audio_path}")
+                    except Exception as e:
+                        logging.error(f"[Queue] Error saving audio file: {str(e)}", exc_info=True)
+                        # Continue with transcription even if audio save fails
+                    
                     # Log audio data info
                     if hasattr(audio_data, 'duration_seconds'):
                         logging.info(f"Audio duration: {audio_data.duration_seconds} seconds")
