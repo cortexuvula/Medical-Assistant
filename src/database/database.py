@@ -525,3 +525,38 @@ class Database:
         except Exception as e:
             self.disconnect()
             raise e
+    
+    def get_failed_recordings(self, limit: int = 100) -> List[Dict]:
+        """Get recordings that have failed processing.
+        
+        Parameters:
+        - limit: Maximum number of recordings to return
+        
+        Returns:
+        - List of recording dictionaries with failed status
+        """
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM recordings 
+            WHERE processing_status = 'failed'
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (limit,))
+        
+        recordings = self.cursor.fetchall()
+        self.disconnect()
+        
+        # Convert to list of dictionaries
+        result = []
+        for rec in recordings:
+            recording_dict = dict(rec)
+            # Parse metadata JSON if present
+            if recording_dict.get('metadata'):
+                try:
+                    import json
+                    recording_dict['metadata'] = json.loads(recording_dict['metadata'])
+                except:
+                    pass  # Leave as string if parsing fails
+            result.append(recording_dict)
+        
+        return result

@@ -1638,9 +1638,21 @@ class WorkflowUI:
             bootstyle="primary-outline",
             width=15
         )
-        batch_files_btn.pack(side=LEFT, padx=(0, 10))
+        batch_files_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(batch_files_btn, "Select audio files to process in batch")
         self.components['batch_files_button'] = batch_files_btn
+        
+        # Reprocess Failed button
+        reprocess_btn = ttk.Button(
+            row2_frame,
+            text="Reprocess Failed",
+            command=self._reprocess_failed_recordings,
+            bootstyle="warning-outline",
+            width=15
+        )
+        reprocess_btn.pack(side=LEFT, padx=(0, 10))
+        ToolTip(reprocess_btn, "Reprocess selected failed recordings")
+        self.components['reprocess_failed_button'] = reprocess_btn
         
         self.recording_count_label = ttk.Label(
             row2_frame,
@@ -1655,6 +1667,12 @@ class WorkflowUI:
         
         # Bind selection change to update count
         self.recordings_tree.bind("<<TreeviewSelect>>", self._on_selection_change)
+        
+        # Bind right-click for context menu
+        self.recordings_tree.bind("<Button-3>", self._show_recordings_context_menu)
+        
+        # Create context menu
+        self._create_recordings_context_menu()
         
         # Load initial recordings
         self._refresh_recordings_list()
@@ -2019,6 +2037,62 @@ class WorkflowUI:
                 f"Failed to clear recordings: {str(e)}"
             )
     
+    def _reprocess_failed_recordings(self):
+        """Reprocess selected failed recordings."""
+        selection = self.recordings_tree.selection()
+        if not selection:
+            tk.messagebox.showwarning("No Selection", "Please select failed recordings to reprocess.")
+            return
+        
+        # Get recording IDs and check if they're failed
+        failed_recording_ids = []
+        non_failed_count = 0
+        
+        for item in selection:
+            rec_id = int(self.recordings_tree.item(item, 'text'))
+            values = self.recordings_tree.item(item, 'values')
+            
+            # Check processing status (it's in the values)
+            try:
+                # Get the recording to check status
+                recording = self.parent.db.get_recording(rec_id)
+                if recording and recording.get('processing_status') == 'failed':
+                    failed_recording_ids.append(rec_id)
+                else:
+                    non_failed_count += 1
+            except Exception as e:
+                logging.error(f"Error checking recording {rec_id}: {e}")
+        
+        if not failed_recording_ids:
+            if non_failed_count > 0:
+                tk.messagebox.showinfo("No Failed Recordings", 
+                    "None of the selected recordings have failed status.")
+            return
+        
+        # Confirm reprocessing
+        count = len(failed_recording_ids)
+        message = f"Reprocess {count} failed recording{'s' if count > 1 else ''}?"
+        if non_failed_count > 0:
+            message += f"\n\n({non_failed_count} non-failed recording{'s' if non_failed_count > 1 else ''} will be skipped)"
+        
+        if not tk.messagebox.askyesno("Confirm Reprocess", message):
+            return
+        
+        # Reprocess the recordings
+        try:
+            if hasattr(self.parent, 'reprocess_failed_recordings'):
+                self.parent.reprocess_failed_recordings(failed_recording_ids)
+                self.parent.status_manager.success(f"Queued {count} recording{'s' if count > 1 else ''} for reprocessing")
+                
+                # Refresh the list after a short delay
+                self.parent.after(1000, self._refresh_recordings_list)
+            else:
+                tk.messagebox.showerror("Error", "Reprocessing functionality not available")
+                
+        except Exception as e:
+            logging.error(f"Error reprocessing recordings: {e}")
+            tk.messagebox.showerror("Reprocess Error", f"Failed to reprocess recordings: {str(e)}")
+    
     def _process_selected_recordings(self):
         """Process selected recordings in batch."""
         selection = self.recordings_tree.selection()
@@ -2259,4 +2333,63 @@ class WorkflowUI:
             logging.error(f"Error clearing RAG history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear RAG history")
+    
+    def _create_recordings_context_menu(self):
+        """Create the context menu for recordings tree."""
+        self.recordings_context_menu = tk.Menu(self.parent, tearoff=0)
+        
+        self.recordings_context_menu.add_command(
+            label="Load",
+            command=self._load_selected_recording,
+            accelerator="Double-click"
+        )
+        
+        self.recordings_context_menu.add_separator()
+        
+        self.recordings_context_menu.add_command(
+            label="Reprocess (if failed)",
+            command=self._reprocess_failed_recordings
+        )
+        
+        self.recordings_context_menu.add_command(
+            label="Export",
+            command=self._export_selected_recording
+        )
+        
+        self.recordings_context_menu.add_separator()
+        
+        self.recordings_context_menu.add_command(
+            label="Delete",
+            command=self._delete_selected_recording
+        )
+    
+    def _show_recordings_context_menu(self, event):
+        """Show context menu for recordings tree."""
+        try:
+            # Select the item under the cursor
+            item = self.recordings_tree.identify_row(event.y)
+            if item:
+                # If item not already selected, select it
+                if item not in self.recordings_tree.selection():
+                    self.recordings_tree.selection_set(item)
+                
+                # Check if any selected recording is failed
+                has_failed = False
+                for selected in self.recordings_tree.selection():
+                    rec_id = int(self.recordings_tree.item(selected, 'text'))
+                    recording = self.parent.db.get_recording(rec_id)
+                    if recording and recording.get('processing_status') == 'failed':
+                        has_failed = True
+                        break
+                
+                # Enable/disable reprocess option based on failed status
+                if has_failed:
+                    self.recordings_context_menu.entryconfig("Reprocess (if failed)", state=tk.NORMAL)
+                else:
+                    self.recordings_context_menu.entryconfig("Reprocess (if failed)", state=tk.DISABLED)
+                
+                # Show the menu
+                self.recordings_context_menu.post(event.x_root, event.y_root)
+        except Exception as e:
+            logging.error(f"Error showing context menu: {e}")
     

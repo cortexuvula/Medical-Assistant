@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 import openai
 from managers.data_folder_manager import data_folder_manager
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional, Dict, Any, List
 import threading
 from pydub import AudioSegment
 from datetime import datetime
@@ -2515,6 +2515,41 @@ class MedicalDictationApp(ttk.Window):
             self.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
         
         logging.info(f"Quick Continue Mode set to: {new_value}")
+    
+    def reprocess_failed_recordings(self, recording_ids: List[int]):
+        """Reprocess failed recordings by re-adding them to the queue.
+        
+        Args:
+            recording_ids: List of recording IDs to reprocess
+        """
+        try:
+            if not hasattr(self, 'processing_queue') or not self.processing_queue:
+                self.status_manager.error("Processing queue not available")
+                return
+            
+            # Reprocess each recording
+            success_count = 0
+            failed_count = 0
+            
+            for rec_id in recording_ids:
+                task_id = self.processing_queue.reprocess_failed_recording(rec_id)
+                if task_id:
+                    success_count += 1
+                    logging.info(f"Recording {rec_id} queued for reprocessing as task {task_id}")
+                else:
+                    failed_count += 1
+                    logging.error(f"Failed to reprocess recording {rec_id}")
+            
+            # Show status
+            if success_count > 0:
+                self.status_manager.success(f"Queued {success_count} recording{'s' if success_count > 1 else ''} for reprocessing")
+            
+            if failed_count > 0:
+                self.status_manager.warning(f"Failed to reprocess {failed_count} recording{'s' if failed_count > 1 else ''}")
+                
+        except Exception as e:
+            logging.error(f"Error reprocessing recordings: {str(e)}", exc_info=True)
+            self.status_manager.error(f"Failed to reprocess recordings: {str(e)}")
     
     def _start_periodic_analysis(self):
         """Start periodic analysis during recording."""

@@ -8,6 +8,7 @@ continuation with next patient consultation.
 import logging
 import uuid
 import time
+import os
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, Future
 from threading import Thread, Lock, Event
@@ -705,3 +706,92 @@ class ProcessingQueue:
         except Exception as e:
             logging.error(f"Error generating letter: {str(e)}")
             return None
+    
+    def reprocess_failed_recording(self, recording_id: int) -> Optional[str]:
+        """Reprocess a failed recording by re-adding it to the queue.
+        
+        Args:
+            recording_id: ID of the failed recording to reprocess
+            
+        Returns:
+            Task ID if successfully queued, None if failed
+        """
+        try:
+            # Get recording from database
+            if not self.app or not hasattr(self.app, 'db'):
+                logging.error("No app context available for reprocessing")
+                return None
+            
+            recording = self.app.db.get_recording(recording_id)
+            if not recording:
+                logging.error(f"Recording {recording_id} not found")
+                return None
+            
+            # Check if it's actually failed
+            if recording.get('processing_status') != 'failed':
+                logging.warning(f"Recording {recording_id} is not in failed status (current: {recording.get('processing_status')})")
+                return None
+            
+            # Load audio from file if available
+            audio_path = recording.get('audio_path')
+            audio_data = None
+            
+            if audio_path and os.path.exists(audio_path):
+                try:
+                    from pydub import AudioSegment
+                    audio_data = AudioSegment.from_mp3(audio_path)
+                    logging.info(f"Loaded audio from {audio_path} for reprocessing")
+                except Exception as e:
+                    logging.error(f"Failed to load audio from {audio_path}: {str(e)}")
+                    # Continue without audio - transcript might be available
+            
+            # Reset processing fields
+            self.app.db.update_recording(
+                recording_id,
+                processing_status='pending',
+                error_message=None,
+                retry_count=0,
+                processing_started_at=None,
+                processing_completed_at=None
+            )
+            
+            # Prepare task data
+            task_data = {
+                'recording_id': recording_id,
+                'audio_data': audio_data,
+                'transcript': recording.get('transcript', ''),  # Use existing transcript if available
+                'patient_name': recording.get('patient_name', 'Patient'),
+                'context': recording.get('metadata', {}).get('context', '') if isinstance(recording.get('metadata'), dict) else '',
+                'process_options': {
+                    'generate_soap': not bool(recording.get('soap_note')),
+                    'generate_referral': not bool(recording.get('referral')),
+                    'generate_letter': not bool(recording.get('letter'))
+                },
+                'is_reprocess': True,
+                'priority': 3  # Higher priority for manual reprocess
+            }
+            
+            # Add to queue
+            task_id = self.add_recording(task_data)
+            
+            logging.info(f"Recording {recording_id} queued for reprocessing as task {task_id}")
+            return task_id
+            
+        except Exception as e:
+            logging.error(f"Error reprocessing recording {recording_id}: {str(e)}", exc_info=True)
+            return None
+    
+    def reprocess_multiple_failed_recordings(self, recording_ids: List[int]) -> Dict[int, Optional[str]]:
+        """Reprocess multiple failed recordings.
+        
+        Args:
+            recording_ids: List of recording IDs to reprocess
+            
+        Returns:
+            Dictionary mapping recording_id to task_id (or None if failed)
+        """
+        results = {}
+        for recording_id in recording_ids:
+            task_id = self.reprocess_failed_recording(recording_id)
+            results[recording_id] = task_id
+        return results
