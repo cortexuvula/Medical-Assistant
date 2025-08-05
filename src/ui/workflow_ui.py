@@ -18,6 +18,7 @@ import numpy as np
 import os
 from datetime import datetime
 from settings.settings import SETTINGS
+from ui.scaling_utils import ui_scaler
 
 
 class WorkflowUI:
@@ -117,7 +118,7 @@ class WorkflowUI:
         self.components['recording_status'] = ttk.Label(
             status_frame, 
             text="", 
-            font=("Segoe UI", 12)
+            font=("Segoe UI", ui_scaler.scale_font_size(12))
         )
         self.components['recording_status'].pack()
         
@@ -184,24 +185,22 @@ class WorkflowUI:
         self.components['cancel_button'].pack_forget()  # Initially hidden
         ToolTip(self.components['cancel_button'], "Cancel recording and discard audio (Esc)")
         
-        # Fixed-height container for timer to prevent resize
-        timer_container = ttk.Frame(center_frame, height=35)
-        timer_container.pack(pady=2, fill=X)
-        timer_container.pack_propagate(False)  # Maintain fixed height
+        # Container for timer
+        timer_container = ttk.Frame(center_frame)
+        timer_container.pack(pady=ui_scaler.get_padding(2), fill=X)
         
         # Timer display inside the container
         self.components['timer_label'] = ttk.Label(
             timer_container,
             text="00:00",
-            font=("Segoe UI", 20, "bold")
+            font=("Segoe UI", ui_scaler.scale_font_size(20), "bold")
         )
         self.components['timer_label'].pack(expand=True)
         self.components['timer_container'] = timer_container
         
-        # Fixed-height container for audio visualization to prevent resize
-        audio_viz_container = ttk.Frame(center_frame, height=50)
-        audio_viz_container.pack(pady=(0, 3), fill=X)
-        audio_viz_container.pack_propagate(False)  # Maintain fixed height
+        # Container for audio visualization
+        audio_viz_container = ttk.Frame(center_frame)
+        audio_viz_container.pack(pady=(0, ui_scaler.get_padding(3)), fill=X)
         
         # Audio visualization panel inside the container
         audio_viz_frame = ttk.Frame(audio_viz_container)
@@ -222,16 +221,16 @@ class WorkflowUI:
         info_left = ttk.Frame(self.session_info_frame)
         info_left.pack(side=LEFT, fill=X, expand=True)
         
-        self.quality_label = ttk.Label(info_left, text="Quality: 44.1kHz • 16-bit", font=("Segoe UI", 8), foreground="gray")
+        self.quality_label = ttk.Label(info_left, text="Quality: 44.1kHz • 16-bit", font=("Segoe UI", ui_scaler.scale_font_size(8)), foreground="gray")
         self.quality_label.pack(side=LEFT)
         
         info_right = ttk.Frame(self.session_info_frame)
         info_right.pack(side=RIGHT)
         
-        self.file_size_label = ttk.Label(info_right, text="Size: 0 KB", font=("Segoe UI", 8), foreground="gray")
+        self.file_size_label = ttk.Label(info_right, text="Size: 0 KB", font=("Segoe UI", ui_scaler.scale_font_size(8)), foreground="gray")
         self.file_size_label.pack(side=RIGHT, padx=(5, 0))
         
-        self.duration_label = ttk.Label(info_right, text="Duration: 00:00", font=("Segoe UI", 8), foreground="gray")
+        self.duration_label = ttk.Label(info_right, text="Duration: 00:00", font=("Segoe UI", ui_scaler.scale_font_size(8)), foreground="gray")
         self.duration_label.pack(side=RIGHT, padx=(5, 0))
         
         self.components['session_info'] = {
@@ -267,9 +266,9 @@ class WorkflowUI:
             text="🌐 Translation Assistant",
             command=command_map.get("open_translation"),
             bootstyle="info",
-            width=20
+            width=ui_scaler.get_button_width(20)
         )
-        translation_btn.pack(pady=(10, 0))
+        translation_btn.pack(pady=(ui_scaler.get_padding(10), 0))
         ToolTip(translation_btn, "Open bidirectional translation for patient communication")
         
         # Initialize UI state - hide controls initially
@@ -289,7 +288,7 @@ class WorkflowUI:
             text="Clear",
             command=command_map.get("clear_advanced_analysis"),
             bootstyle="secondary",
-            width=8
+            width=ui_scaler.get_button_width(8)
         )
         clear_btn.pack(side=RIGHT)
         ToolTip(clear_btn, "Clear analysis results")
@@ -554,8 +553,8 @@ class WorkflowUI:
             desc_label = ttk.Label(
                 doc_frame,
                 text=doc["description"],
-                font=("Segoe UI", 9),
-                wraplength=250  # Slightly smaller wrap length for 2-column layout
+                font=("Segoe UI", ui_scaler.scale_font_size(9)),
+                wraplength=ui_scaler.scale_dimension(250)  # Slightly smaller wrap length for 2-column layout
             )
             desc_label.pack(side=LEFT, fill=X, expand=True)
             
@@ -731,30 +730,32 @@ class WorkflowUI:
         # Create dialog to get template name
         dialog = tk.Toplevel(self.parent)
         dialog.title("Save Context Template")
-        dialog.geometry("400x200")
+        # Get responsive dialog size
+        width, height = ui_scaler.get_dialog_size(400, 200, min_width=350, min_height=150)
+        dialog.geometry(f"{width}x{height}")
         dialog.resizable(False, False)
         dialog.transient(self.parent)
         dialog.grab_set()
         
         # Center the dialog
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
         
         # Dialog content
-        ttk.Label(dialog, text="Template Name:", font=("Segoe UI", 11)).pack(pady=10)
+        ttk.Label(dialog, text="Template Name:", font=("Segoe UI", ui_scaler.scale_font_size(11))).pack(pady=ui_scaler.get_padding(10))
         
         name_var = tk.StringVar()
-        name_entry = ttk.Entry(dialog, textvariable=name_var, width=40, font=("Segoe UI", 10))
-        name_entry.pack(pady=5)
+        name_entry = ttk.Entry(dialog, textvariable=name_var, width=ui_scaler.scale_dimension(40), font=("Segoe UI", ui_scaler.scale_font_size(10)))
+        name_entry.pack(pady=ui_scaler.get_padding(5))
         name_entry.focus()
         
         # Preview of content
-        ttk.Label(dialog, text="Content Preview:", font=("Segoe UI", 10)).pack(pady=(15, 5))
+        ttk.Label(dialog, text="Content Preview:", font=("Segoe UI", ui_scaler.scale_font_size(10))).pack(pady=(ui_scaler.get_padding(15), ui_scaler.get_padding(5)))
         preview_text = context_text[:100] + "..." if len(context_text) > 100 else context_text
-        preview_label = ttk.Label(dialog, text=preview_text, font=("Segoe UI", 9), foreground="gray")
-        preview_label.pack(pady=5, padx=20)
+        preview_label = ttk.Label(dialog, text=preview_text, font=("Segoe UI", ui_scaler.scale_font_size(9)), foreground="gray")
+        preview_label.pack(pady=ui_scaler.get_padding(5), padx=ui_scaler.get_padding(20))
         
         result = {"saved": False}
         
@@ -1297,9 +1298,9 @@ class WorkflowUI:
             status_frame, 
             text="Status: Idle", 
             anchor="w",
-            font=("Segoe UI", 10)
+            font=("Segoe UI", ui_scaler.scale_font_size(10))
         )
-        status_label.pack(side=LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        status_label.pack(side=LEFT, fill=tk.X, expand=True, padx=(ui_scaler.get_padding(5), 0))
         
         # Provider indicator
         provider = SETTINGS.get("ai_provider", "openai").capitalize()
@@ -1318,10 +1319,10 @@ class WorkflowUI:
             status_frame,
             text="",  # Empty initially
             anchor="e",
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI", ui_scaler.scale_font_size(9), "bold"),
             foreground="gray"
         )
-        queue_status_label.pack(side=LEFT, padx=(0, 10))
+        queue_status_label.pack(side=LEFT, padx=(0, ui_scaler.get_padding(10)))
         
         # Store reference for later use
         self.components['queue_status_label'] = queue_status_label
@@ -1576,7 +1577,7 @@ class WorkflowUI:
             text="Load",
             command=self._load_selected_recording,
             bootstyle="primary-outline",
-            width=10
+            width=ui_scaler.get_button_width(10)
         )
         load_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(load_btn, "Load selected recording")
@@ -1587,7 +1588,7 @@ class WorkflowUI:
             text="Delete",
             command=self._delete_selected_recording,
             bootstyle="danger-outline",
-            width=10
+            width=ui_scaler.get_button_width(10)
         )
         delete_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(delete_btn, "Delete selected recording")
@@ -1598,7 +1599,7 @@ class WorkflowUI:
             text="Export",
             command=self._export_selected_recording,
             bootstyle="info-outline",
-            width=10
+            width=ui_scaler.get_button_width(10)
         )
         export_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(export_btn, "Export selected recording")
@@ -1609,7 +1610,7 @@ class WorkflowUI:
             text="Clear All",
             command=self._clear_all_recordings,
             bootstyle="danger-outline",
-            width=10
+            width=ui_scaler.get_button_width(10)
         )
         clear_all_btn.pack(side=LEFT)
         ToolTip(clear_all_btn, "Clear all recordings from database")
@@ -1624,7 +1625,7 @@ class WorkflowUI:
             text="Process Selected",
             command=self._process_selected_recordings,
             bootstyle="success-outline",
-            width=15
+            width=ui_scaler.get_button_width(15)
         )
         process_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(process_btn, "Process selected recordings in batch")
@@ -1636,7 +1637,7 @@ class WorkflowUI:
             text="Batch Process Files",
             command=self._batch_process_files,
             bootstyle="primary-outline",
-            width=15
+            width=ui_scaler.get_button_width(15)
         )
         batch_files_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(batch_files_btn, "Select audio files to process in batch")
@@ -1648,7 +1649,7 @@ class WorkflowUI:
             text="Reprocess Failed",
             command=self._reprocess_failed_recordings,
             bootstyle="warning-outline",
-            width=15
+            width=ui_scaler.get_button_width(15)
         )
         reprocess_btn.pack(side=LEFT, padx=(0, 10))
         ToolTip(reprocess_btn, "Reprocess selected failed recordings")

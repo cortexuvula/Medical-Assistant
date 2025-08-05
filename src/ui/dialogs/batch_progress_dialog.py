@@ -7,6 +7,7 @@ Displays real-time progress of batch processing operations.
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict, Optional, Callable
+from ui.scaling_utils import ui_scaler
 import logging
 import threading
 from datetime import datetime
@@ -36,7 +37,8 @@ class BatchProgressDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Progress")
-        self.dialog.geometry("800x600")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.minsize(700, 500)
         

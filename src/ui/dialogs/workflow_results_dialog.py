@@ -6,6 +6,7 @@ Displays workflow steps and provides interactive tracking capabilities.
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from ui.scaling_utils import ui_scaler
 import json
 import logging
 from typing import Dict, Any, List
@@ -52,7 +53,8 @@ class WorkflowResultsDialog:
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Clinical Workflow")
-        self.dialog.geometry("1000x800")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(1000, 800)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         

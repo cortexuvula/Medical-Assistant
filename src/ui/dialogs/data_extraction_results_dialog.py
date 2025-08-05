@@ -6,6 +6,7 @@ Displays extracted clinical data with export options.
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from ui.scaling_utils import ui_scaler
 import json
 import logging
 from typing import Dict, Any
@@ -52,7 +53,8 @@ class DataExtractionResultsDialog:
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Data Extraction Results")
-        self.dialog.geometry("900x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         

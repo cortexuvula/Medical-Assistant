@@ -7,6 +7,7 @@ temperature, max tokens, and system prompts for each agent type.
 
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from typing import Dict, Any, Optional
 import logging
@@ -118,7 +119,8 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         """Show the agent settings dialog."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Agent Settings")
-        self.dialog.geometry("900x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.minsize(800, 600)
         
         # Make it modal

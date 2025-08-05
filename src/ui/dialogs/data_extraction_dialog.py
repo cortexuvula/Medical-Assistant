@@ -7,6 +7,7 @@ Provides options for selecting data extraction source, type, and output format.
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Dict, Any
+from ui.scaling_utils import ui_scaler
 
 
 class DataExtractionDialog:

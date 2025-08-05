@@ -5,6 +5,7 @@ Displays the results of medication analysis in a formatted, user-friendly dialog
 """
 
 import tkinter as tk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import messagebox, filedialog
@@ -57,7 +58,8 @@ class MedicationResultsDialog:
         # Create dialog window
         dialog = tk.Toplevel(self.parent)
         dialog.title("Medication Analysis Results")
-        dialog.geometry("950x750")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(950, 750)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.minsize(900, 700)  # Set minimum size
         dialog.transient(self.parent)
         dialog.grab_set()

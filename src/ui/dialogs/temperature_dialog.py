@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from settings.settings import load_settings, save_settings, _DEFAULT_SETTINGS
 
@@ -15,7 +16,8 @@ def show_temperature_settings_dialog(parent):
     
     dialog = tk.Toplevel(parent)
     dialog.title("Temperature Settings")
-    dialog.geometry("800x600")
+    dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.minsize(700, 500)
     
     # Make it modal

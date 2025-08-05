@@ -5,6 +5,7 @@ Allows users to add, edit, and delete canned responses for the translation dialo
 """
 
 import tkinter as tk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import logging
@@ -46,7 +47,8 @@ class CannedResponsesDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Manage Quick Responses")
-        self.dialog.geometry("1000x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(1000, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.minsize(900, 600)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
@@ -398,7 +400,8 @@ class ResponseEditDialog:
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Edit Response" if self.is_edit else "Add Response")
-        self.dialog.geometry("600x400")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 400)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()

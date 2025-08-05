@@ -7,6 +7,7 @@ Provides options for selecting and configuring clinical workflows.
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Dict, Any
+from ui.scaling_utils import ui_scaler
 
 
 class WorkflowDialog:
@@ -24,7 +25,8 @@ class WorkflowDialog:
         # Create dialog
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Clinical Workflow Options")
-        self.dialog.geometry("800x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         

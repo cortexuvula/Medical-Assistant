@@ -6,6 +6,7 @@ native file dialogs to prevent UI freezing issues.
 """
 
 import os
+from ui.scaling_utils import ui_scaler
 import logging
 import tkinter as tk
 from tkinter import messagebox
@@ -33,7 +34,8 @@ class FolderDialogManager:
         # Create a custom folder selection dialog
         dialog = tk.Toplevel(self.app)
         dialog.title("Select Storage Folder")
-        dialog.geometry("600x500")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 500)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.transient(self.app)
         dialog.grab_set()
         

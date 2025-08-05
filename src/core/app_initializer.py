@@ -42,6 +42,7 @@ from database.database import Database
 from processing.processing_queue import ProcessingQueue
 from managers.notification_manager import NotificationManager
 from audio.periodic_analysis import PeriodicAnalyzer
+from ui.scaling_utils import ui_scaler
 
 
 class AppInitializer:
@@ -93,9 +94,8 @@ class AppInitializer:
         ttk.Window.__init__(self.app, themename=self.app.current_theme)
         self.app.title("Medical Assistant")
         
-        # Get screen dimensions and calculate appropriate window size
-        screen_width = self.app.winfo_screenwidth()
-        screen_height = self.app.winfo_screenheight()
+        # Initialize UI scaler with the root window
+        ui_scaler.initialize(self.app)
         
         # Check if we have saved window dimensions in settings
         saved_width = SETTINGS.get("window_width", 0)
@@ -103,23 +103,36 @@ class AppInitializer:
         
         if saved_width > 0 and saved_height > 0:
             # Use saved dimensions if they exist and are valid
-            window_width = saved_width
-            window_height = saved_height
+            # But ensure they fit on current screen
+            screen_width = ui_scaler.screen_width or self.app.winfo_screenwidth()
+            screen_height = ui_scaler.screen_height or self.app.winfo_screenheight()
+            
+            # Clamp saved dimensions to current screen size
+            window_width = min(saved_width, int(screen_width * 0.95))
+            window_height = min(saved_height, int(screen_height * 0.95))
         else:
-            # Calculate responsive window size (80% of screen size, but not larger than 1700x1100)
-            # Increased default height to better accommodate workflow UI and recordings panel
-            window_width = min(int(screen_width * 0.8), 1700)
-            window_height = min(int(screen_height * 0.85), 1100)
+            # Calculate responsive window size based on screen category
+            if ui_scaler.screen_category == ui_scaler.ULTRAWIDE:
+                # For ultrawide, use less width percentage
+                window_width, window_height = ui_scaler.get_window_size(0.6, 0.85)
+            elif ui_scaler.screen_category == ui_scaler.SMALL:
+                # For small screens, use more of available space
+                window_width, window_height = ui_scaler.get_window_size(0.9, 0.9)
+            else:
+                # Standard sizing
+                window_width, window_height = ui_scaler.get_window_size(0.8, 0.85)
         
         # Apply the calculated window size
         self.app.geometry(f"{window_width}x{window_height}")
         
-        # Set a reasonable minimum size that ensures all UI elements are visible
-        # Increased minimum height to accommodate workflow UI recording controls and recordings panel
-        self.app.minsize(1200, 950)
+        # Set responsive minimum size based on screen dimensions
+        min_width, min_height = ui_scaler.get_minimum_window_size()
+        self.app.minsize(min_width, min_height)
         
         # Center the window on the screen
         self.app.update_idletasks()  # Ensure window dimensions are calculated
+        screen_width = ui_scaler.screen_width or self.app.winfo_screenwidth()
+        screen_height = ui_scaler.screen_height or self.app.winfo_screenheight()
         x = (screen_width // 2) - (window_width // 2)
         y = (screen_height // 2) - (window_height // 2)
         self.app.geometry(f"{window_width}x{window_height}+{x}+{y}")
@@ -131,6 +144,9 @@ class AppInitializer:
         self.app.resize_timer = None
         self.app.last_width = window_width
         self.app.last_height = window_height
+        
+        # Store scaler reference in app for access by other components
+        self.app.ui_scaler = ui_scaler
         
     def _setup_api_keys(self):
         """Initialize and validate API keys."""

@@ -1,4 +1,5 @@
 import os
+from ui.scaling_utils import ui_scaler
 import logging
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
@@ -355,7 +356,8 @@ def prompt_for_api_key(provider: str = "Grok") -> str:
     """Prompt the user for their API key."""
     dialog = tk.Toplevel()
     dialog.title(f"{provider} API Key Required")
-    dialog.geometry("450x200")
+    dialog_width, dialog_height = ui_scaler.get_dialog_size(450, 200)
+    dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.grab_set()
     
     env_var_name = {
@@ -711,7 +713,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     # Create dialog
     dialog = tk.Toplevel(parent)
     dialog.title(title)
-    dialog.geometry("950x700")
+    dialog_width, dialog_height = ui_scaler.get_dialog_size(950, 700)
+    dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.transient(parent)
     dialog.grab_set()
     
@@ -719,9 +722,9 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     dialog.update_idletasks()
     screen_width = dialog.winfo_screenwidth()
     screen_height = dialog.winfo_screenheight()
-    x = (screen_width // 2) - (950 // 2)
-    y = (screen_height // 2) - (700 // 2)
-    dialog.geometry(f"950x700+{x}+{y}")
+    x = (screen_width // 2) - (dialog_width // 2)
+    y = (screen_height // 2) - (dialog_height // 2)
+    dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
     # Create notebook for tabs
     notebook = ttk.Notebook(dialog)
@@ -1850,16 +1853,17 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
     # Create dialog
     dialog = tk.Toplevel(parent)
     dialog.title("Manage Custom Chat Suggestions")
-    dialog.geometry("700x600")
+    dialog_width, dialog_height = ui_scaler.get_dialog_size(700, 600)
+    dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.resizable(True, True)
     dialog.transient(parent)
     dialog.grab_set()
     
     # Center the dialog
     dialog.update_idletasks()
-    x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-    y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-    dialog.geometry(f"+{x}+{y}")
+    x = (dialog.winfo_screenwidth() // 2) - (dialog_width // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog_height // 2)
+    dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
     # Main frame with padding
     main_frame = ttk.Frame(dialog, padding=15)

@@ -7,6 +7,7 @@ Provides UI for configuring batch processing of multiple recordings.
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Dict, Optional
+from ui.scaling_utils import ui_scaler
 import logging
 
 from ttkbootstrap.tooltip import ToolTip
@@ -30,7 +31,8 @@ class BatchProcessingDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Options")
-        self.dialog.geometry("600x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.minsize(600, 650)
         

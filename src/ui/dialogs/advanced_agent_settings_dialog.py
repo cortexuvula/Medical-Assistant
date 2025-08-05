@@ -7,6 +7,7 @@ sub-agents, and agent chains.
 
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, filedialog, ttk as tk_ttk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from typing import Dict, Any, Optional, List
 import logging
@@ -824,7 +825,8 @@ class SubAgentDialog:
         """Show the dialog and return the result."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Configure Sub-Agent")
-        self.dialog.geometry("400x350")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 350)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
@@ -967,7 +969,8 @@ class TemplateSelectionDialog:
         """Show the dialog and return selected template."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Select Template")
-        self.dialog.geometry("600x400")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 400)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
@@ -1038,7 +1041,8 @@ class SaveTemplateDialog:
         """Show the dialog and return template info."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Save as Template")
-        self.dialog.geometry("400x300")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 300)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         

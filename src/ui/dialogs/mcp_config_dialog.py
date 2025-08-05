@@ -3,6 +3,7 @@ MCP Configuration Dialog - UI for managing MCP servers
 """
 
 import tkinter as tk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from tkinter import messagebox, scrolledtext
 import json
@@ -29,7 +30,8 @@ class MCPConfigDialog:
         """Show the MCP configuration dialog"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("MCP Tool Configuration")
-        self.dialog.geometry("800x600")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         
         # Make dialog modal
@@ -368,7 +370,8 @@ class MCPConfigDialog:
         # Show progress
         progress = ttk.Toplevel(self.dialog)
         progress.title("Testing Connection")
-        progress.geometry("300x100")
+        progress_width, progress_height = ui_scaler.get_dialog_size(300, 100)
+        progress.geometry(f"{progress_width}x{progress_height}")
         progress.transient(self.dialog)
         
         ttk.Label(progress, text="Testing MCP server connection...").pack(pady=20)
@@ -492,7 +495,8 @@ class ServerEditDialog:
         """Show the edit dialog"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Edit MCP Server" if self.original_name else "Add MCP Server")
-        self.dialog.geometry("600x500")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 500)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         
         # Make modal
         self.dialog.transient(self.parent)

@@ -5,6 +5,7 @@ Displays the results of diagnostic analysis in a formatted, user-friendly dialog
 """
 
 import tkinter as tk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import messagebox, filedialog
@@ -45,7 +46,8 @@ class DiagnosticResultsDialog:
         # Create dialog window
         dialog = tk.Toplevel(self.parent)
         dialog.title("Diagnostic Analysis Results")
-        dialog.geometry("900x700")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.minsize(850, 650)  # Set minimum size
         dialog.transient(self.parent)
         dialog.grab_set()

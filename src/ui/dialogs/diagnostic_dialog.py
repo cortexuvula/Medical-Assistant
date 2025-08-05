@@ -6,6 +6,7 @@ and optionally input custom findings for diagnostic analysis.
 """
 
 import tkinter as tk
+from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from typing import Optional, Dict
@@ -44,7 +45,8 @@ class DiagnosticAnalysisDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Diagnostic Analysis Options")
-        self.dialog.geometry("800x700")
+        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 700)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.minsize(750, 650)  # Set minimum size
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
