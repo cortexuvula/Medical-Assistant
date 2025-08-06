@@ -32,6 +32,8 @@ class ChatUI:
         self.char_counter = None
         self.context_indicator = None
         self.is_processing = False
+        self.is_collapsed = False
+        self.collapse_button = None
         
         # Callbacks
         self.on_send_callback = None
@@ -42,6 +44,7 @@ class ChatUI:
         self.max_input_length = chat_config.get("max_input_length", 2000)
         self.min_input_lines = 2
         self.max_input_lines = 5
+        self.is_collapsed = chat_config.get("collapsed", False)
         
         # Content frame reference
         self.content_frame = None
@@ -51,13 +54,40 @@ class ChatUI:
         
     def create_chat_interface(self):
         """Create the main chat interface components"""
-        # Main chat frame with border - increased padding for label
+        # Create a container frame for the title row and content
+        container_frame = ttk.Frame(self.parent_frame)
+        container_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
+        
+        # Title row with collapse button
+        title_frame = ttk.Frame(container_frame)
+        title_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Collapse/expand button
+        self.collapse_button = ttk.Button(
+            title_frame,
+            text="▼",
+            command=self.toggle_collapse,
+            width=3,
+            bootstyle="link"
+        )
+        self.collapse_button.pack(side=tk.LEFT, padx=(0, 5))
+        ToolTip(self.collapse_button, "Collapse/Expand AI Assistant Chat")
+        
+        # Title label
+        title_label = ttk.Label(
+            title_frame,
+            text="AI Assistant Chat",
+            font=("Arial", 11, "bold")
+        )
+        title_label.pack(side=tk.LEFT)
+        
+        # Main chat frame with border
         self.chat_frame = ttk.LabelFrame(
-            self.parent_frame, 
-            text="  AI Assistant Chat  ",  # Added spaces for better spacing
+            container_frame, 
+            text="",  # No text since we have a separate title
             padding=(10, 10)
         )
-        self.chat_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
+        self.chat_frame.pack(fill=tk.BOTH, expand=False)
         
         # Content frame
         self.content_frame = ttk.Frame(self.chat_frame)
@@ -184,6 +214,12 @@ class ChatUI:
         
         # Initial setup
         self.update_context_indicator()
+        
+        # Apply initial collapsed state if needed
+        if self.is_collapsed:
+            self.chat_frame.pack_forget()
+            self.collapse_button.config(text="▶")
+            ToolTip(self.collapse_button, "Expand AI Assistant Chat")
         
     def _apply_text_styling(self):
         """Apply theme-aware styling to the text widget"""
@@ -464,6 +500,13 @@ class ChatUI:
             else:
                 # Light theme styling
                 self.chat_frame.configure(style="TLabelframe")
+        
+        # Update collapse button icon color based on theme
+        if self.collapse_button:
+            if is_dark:
+                self.collapse_button.configure(bootstyle="light-link")
+            else:
+                self.collapse_button.configure(bootstyle="link")
                 
         # Update scrollbar styling
         if hasattr(self, 'input_text') and self.input_text:
@@ -473,6 +516,36 @@ class ChatUI:
                     # Scrollbar will automatically inherit theme colors
                     widget.update()
                     break
+    
+    def toggle_collapse(self):
+        """Toggle the collapsed state of the chat interface"""
+        self.is_collapsed = not self.is_collapsed
+        
+        # Save the state to settings
+        from settings.settings import SETTINGS, save_settings
+        SETTINGS.setdefault("chat_interface", {})["collapsed"] = self.is_collapsed
+        save_settings(SETTINGS)
+        
+        if self.is_collapsed:
+            # Hide the chat frame content
+            self.chat_frame.pack_forget()
+            self.collapse_button.config(text="▶")
+            ToolTip(self.collapse_button, "Expand AI Assistant Chat")
+        else:
+            # Show the chat frame content
+            self.chat_frame.pack(fill=tk.BOTH, expand=False)
+            self.collapse_button.config(text="▼")
+            ToolTip(self.collapse_button, "Collapse AI Assistant Chat")
+    
+    def expand(self):
+        """Expand the chat interface if collapsed"""
+        if self.is_collapsed:
+            self.toggle_collapse()
+    
+    def collapse(self):
+        """Collapse the chat interface if expanded"""
+        if not self.is_collapsed:
+            self.toggle_collapse()
     
     
     def _toggle_tools(self):
