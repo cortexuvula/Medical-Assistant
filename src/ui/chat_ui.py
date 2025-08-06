@@ -44,7 +44,8 @@ class ChatUI:
         self.max_input_length = chat_config.get("max_input_length", 2000)
         self.min_input_lines = 2
         self.max_input_lines = 5
-        self.is_collapsed = chat_config.get("collapsed", False)
+        # Default to collapsed state on startup
+        self.is_collapsed = chat_config.get("collapsed", True)
         
         # Content frame reference
         self.content_frame = None
