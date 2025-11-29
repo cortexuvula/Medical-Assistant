@@ -26,40 +26,170 @@ from utils.exceptions import ConfigurationError, APIError
 
 class SecureKeyStorage:
     """Secure storage for API keys with encryption at rest."""
-    
+
+    # Salt length in bytes (256 bits)
+    SALT_LENGTH = 32
+
+    # Legacy static salt for backward compatibility during migration
+    LEGACY_SALT = b'medical_assistant_salt_v1'
+
+    # Current salt version for tracking migrations
+    SALT_VERSION = 2
+
     def __init__(self, key_file: Optional[Path] = None):
         """Initialize secure key storage.
-        
+
         Args:
             key_file: Path to encrypted key file (default: config/keys.enc)
         """
         self.logger = logging.getLogger(__name__)
         self.config = get_config()
-        
+
         if key_file is None:
             key_file = Path(self.config.storage.base_folder) / ".keys" / "keys.enc"
-        
+
         self.key_file = key_file
+        self.salt_file = key_file.parent / "salt.bin"
         self.key_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Lock for thread safety
         self._lock = Lock()
-        
-        # Initialize encryption
+
+        # Initialize encryption with unique salt
         self._init_encryption()
     
     def _init_encryption(self):
         """Initialize encryption key from master password or environment."""
         # Try to get master key from environment
         master_key = os.getenv("MEDICAL_ASSISTANT_MASTER_KEY")
-        
+
         if not master_key:
             # Generate from machine-specific data
             machine_id = self._get_machine_id()
             master_key = machine_id
-        
-        # Derive encryption key from master key
-        self._cipher_suite = self._create_cipher(master_key)
+
+        # Get or create unique salt for this installation
+        self._salt = self._get_or_create_salt()
+
+        # Derive encryption key from master key with unique salt
+        self._cipher_suite = self._create_cipher(master_key, self._salt)
+
+        # Check if migration from legacy salt is needed
+        self._migrate_legacy_keys_if_needed(master_key)
+
+    def _get_or_create_salt(self) -> bytes:
+        """Get existing salt or create a new one.
+
+        Returns:
+            Salt bytes for key derivation
+        """
+        if self.salt_file.exists():
+            try:
+                with open(self.salt_file, 'rb') as f:
+                    salt_data = f.read()
+                    # Validate salt length
+                    if len(salt_data) >= self.SALT_LENGTH:
+                        return salt_data[:self.SALT_LENGTH]
+                    else:
+                        self.logger.warning("Invalid salt file, generating new salt")
+            except Exception as e:
+                self.logger.warning(f"Failed to read salt file: {e}")
+
+        # Generate new cryptographically secure salt
+        new_salt = secrets.token_bytes(self.SALT_LENGTH)
+        self._save_salt(new_salt)
+        return new_salt
+
+    def _save_salt(self, salt: bytes):
+        """Save salt to file with secure permissions.
+
+        Args:
+            salt: Salt bytes to save
+        """
+        try:
+            with open(self.salt_file, 'wb') as f:
+                f.write(salt)
+
+            # Set restrictive permissions (owner read/write only)
+            if os.name == 'posix':
+                os.chmod(self.salt_file, 0o600)
+
+            self.logger.debug("Salt file saved successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to save salt file: {e}")
+            raise ConfigurationError(f"Failed to save encryption salt: {e}")
+
+    def _migrate_legacy_keys_if_needed(self, master_key: str):
+        """Migrate keys from legacy static salt to unique salt.
+
+        Args:
+            master_key: Master key for encryption
+        """
+        keys = self._load_keys()
+
+        # Check if migration is needed
+        metadata = keys.get("_metadata", {})
+        current_version = metadata.get("salt_version", 1)
+
+        if current_version >= self.SALT_VERSION:
+            return  # Already migrated
+
+        if not keys or (len(keys) == 1 and "_metadata" in keys):
+            # No keys to migrate, just update version
+            self._update_metadata_version(keys)
+            return
+
+        self.logger.info("Migrating API keys to new salt format...")
+
+        try:
+            # Create cipher with legacy salt for decryption
+            legacy_cipher = self._create_cipher(master_key, self.LEGACY_SALT)
+
+            # Migrate each key
+            migrated_keys = {"_metadata": {"salt_version": self.SALT_VERSION}}
+
+            for provider, data in keys.items():
+                if provider == "_metadata":
+                    continue
+
+                try:
+                    # Decrypt with legacy cipher
+                    encrypted_key = base64.b64decode(data["encrypted_key"])
+                    decrypted_key = legacy_cipher.decrypt(encrypted_key).decode()
+
+                    # Re-encrypt with new salt
+                    new_encrypted = self._cipher_suite.encrypt(decrypted_key.encode())
+
+                    migrated_keys[provider] = {
+                        "encrypted_key": base64.b64encode(new_encrypted).decode(),
+                        "stored_at": data.get("stored_at", datetime.now().isoformat()),
+                        "key_hash": data.get("key_hash", hashlib.sha256(decrypted_key.encode()).hexdigest()[:8])
+                    }
+
+                    self.logger.info(f"Migrated key for {provider}")
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to migrate key for {provider}: {e}")
+                    # Keep the old format - will fail on decrypt but preserves data
+                    migrated_keys[provider] = data
+
+            # Save migrated keys
+            self._save_keys(migrated_keys)
+            self.logger.info("Key migration completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"Key migration failed: {e}")
+            # Don't raise - allow app to continue with potentially broken keys
+            # User can re-enter keys if needed
+
+    def _update_metadata_version(self, keys: Dict[str, Any]):
+        """Update metadata version without full migration.
+
+        Args:
+            keys: Current keys dictionary
+        """
+        keys["_metadata"] = {"salt_version": self.SALT_VERSION}
+        self._save_keys(keys)
     
     def _get_machine_id(self) -> str:
         """Get a unique machine identifier for key derivation."""
@@ -88,27 +218,28 @@ class SecureKeyStorage:
                 )
                 if result.returncode == 0:
                     sources.append(result.stdout.strip())
-        except:
-            pass
+        except (OSError, subprocess.SubprocessError, ImportError):
+            pass  # Continue with other sources if machine ID retrieval fails
         
         # Combine sources
         combined = "|".join(sources)
         return hashlib.sha256(combined.encode()).hexdigest()
     
-    def _create_cipher(self, password: str) -> Fernet:
-        """Create a cipher suite from a password.
-        
+    def _create_cipher(self, password: str, salt: bytes) -> Fernet:
+        """Create a cipher suite from a password and salt.
+
         Args:
             password: Password to derive key from
-            
+            salt: Unique salt for key derivation (should be cryptographically random)
+
         Returns:
             Fernet cipher suite
         """
-        # Use PBKDF2 to derive a key from the password
+        # Use PBKDF2 to derive a key from the password with unique salt
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b'medical_assistant_salt_v1',  # Static salt for this application
+            salt=salt,
             iterations=100000,
             backend=default_backend()
         )

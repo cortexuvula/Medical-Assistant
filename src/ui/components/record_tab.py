@@ -459,8 +459,8 @@ class RecordTab:
                 
                 if session_info and 'file_size' in session_info:
                     session_info['file_size'].config(text=f"Size: ~{size_str}")
-        except:
-            pass  # Ignore errors in size calculation
+        except (tk.TclError, KeyError, TypeError, ZeroDivisionError):
+            pass  # Ignore errors in size calculation or widget updates
     
     def start_timer(self):
         """Start the recording timer."""

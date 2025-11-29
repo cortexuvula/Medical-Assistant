@@ -17,6 +17,7 @@ from ai.agents.models import (
     AgentChain
 )
 from managers.agent_manager import agent_manager
+from utils.safe_eval import safe_eval
 
 logger = logging.getLogger(__name__)
 
@@ -212,12 +213,11 @@ class ChainExecutor:
         # Get condition function
         condition_func = self.conditions.get(condition_name)
         if not condition_func:
-            # Try to evaluate as expression
-            try:
-                result = eval(condition_name, {"__builtins__": {}}, context.data)
-            except Exception as e:
-                context.add_error(f"Failed to evaluate condition: {e}")
-                return False
+            # Safely evaluate as expression using safe_eval
+            result = safe_eval(condition_name, context.data, default=False)
+            if result is False and condition_name not in ('false', 'False', '0'):
+                # Log if evaluation may have failed (returned default)
+                logger.debug(f"Condition '{condition_name}' evaluated to False")
         else:
             result = condition_func(context)
             
@@ -414,11 +414,8 @@ class ChainExecutor:
             elif loop_type == "condition":
                 condition = node.config.get("condition")
                 if condition:
-                    try:
-                        if not eval(condition, {"__builtins__": {}}, context.data):
-                            break
-                    except Exception as e:
-                        context.add_error(f"Failed to evaluate loop condition: {e}")
+                    # Use safe_eval instead of eval for security
+                    if not safe_eval(condition, context.data, default=False):
                         break
                         
             # Execute loop body
@@ -451,19 +448,19 @@ class ChainExecutor:
         
     def _register_default_transformers(self):
         """Register default transformers."""
-        
+
         def json_to_dict(data: str, config: dict) -> dict:
             """Convert JSON string to dictionary."""
             try:
                 return json.loads(data)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return {}
-                
+
         def extract_field(data: dict, config: dict) -> Any:
             """Extract field from dictionary."""
             field_name = config.get("field")
             return data.get(field_name) if field_name else None
-            
+
         def format_template(data: Any, config: dict) -> str:
             """Format template with data."""
             template = config.get("template", "{}")
@@ -472,7 +469,7 @@ class ChainExecutor:
                     return template.format(**data)
                 else:
                     return template.format(data)
-            except:
+            except (KeyError, IndexError, ValueError):
                 return str(data)
                 
         self.transformers["json_to_dict"] = json_to_dict

@@ -142,8 +142,8 @@ class PyttsxProvider(BaseTTSProvider):
             if temp_file and os.path.exists(temp_file):
                 try:
                     os.unlink(temp_file)
-                except:
-                    pass
+                except OSError:
+                    pass  # File may be in use or already deleted
     
     def get_available_voices(self, language: str = None) -> List[Dict[str, str]]:
         """Get available voices from the system.

@@ -1,31 +1,160 @@
 import sqlite3
 import datetime
 import json
+import threading
+import logging
 from typing import Optional, Dict, List, Any, Union
+from contextlib import contextmanager
 from managers.data_folder_manager import data_folder_manager
 from utils.retry_decorator import db_retry
 
+logger = logging.getLogger(__name__)
+
+
 class Database:
+    """Thread-safe database wrapper using thread-local connections.
+
+    Each thread gets its own connection, preventing race conditions
+    when the same Database instance is used across multiple threads.
+    """
+
     def __init__(self, db_path: str = None) -> None:
-        """Initialize database connection"""
+        """Initialize database connection manager.
+
+        Args:
+            db_path: Path to SQLite database file. Defaults to app data folder.
+        """
         self.db_path = db_path if db_path else str(data_folder_manager.database_file_path)
-        self.conn = None
-        self.cursor = None
-        
+        # Thread-local storage for connections
+        self._local = threading.local()
+        # Lock for connection management
+        self._lock = threading.Lock()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get or create a connection for the current thread.
+
+        Returns:
+            sqlite3.Connection for the current thread
+        """
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = self._create_connection()
+        return self._local.conn
+
+    def _get_cursor(self) -> sqlite3.Cursor:
+        """Get or create a cursor for the current thread.
+
+        Returns:
+            sqlite3.Cursor for the current thread
+        """
+        if not hasattr(self._local, 'cursor') or self._local.cursor is None:
+            self._local.cursor = self._get_connection().cursor()
+        return self._local.cursor
+
+    @db_retry(max_retries=3, initial_delay=0.1)
+    def _create_connection(self) -> sqlite3.Connection:
+        """Create a new database connection with optimized settings.
+
+        Returns:
+            Configured sqlite3.Connection
+        """
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=30.0,
+            check_same_thread=True  # Enforce single-thread per connection
+        )
+        # Enable WAL mode for better concurrency
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    @contextmanager
+    def connection(self):
+        """Context manager for database operations.
+
+        Yields:
+            Tuple of (connection, cursor) for the current thread
+
+        Example:
+            with db.connection() as (conn, cursor):
+                cursor.execute("SELECT * FROM recordings")
+                results = cursor.fetchall()
+        """
+        conn = self._get_connection()
+        cursor = self._get_cursor()
+        try:
+            yield conn, cursor
+        except Exception:
+            conn.rollback()
+            raise
+        else:
+            conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        """Context manager for explicit transaction handling.
+
+        Automatically commits on success, rolls back on exception.
+
+        Yields:
+            Tuple of (connection, cursor) for the current thread
+        """
+        conn = self._get_connection()
+        cursor = self._get_cursor()
+        try:
+            yield conn, cursor
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    # Legacy methods for backward compatibility
     @db_retry(max_retries=3, initial_delay=0.1)
     def connect(self) -> None:
-        """Establish connection to the database"""
-        # Always create a new connection to avoid threading issues
-        self.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)  # 30 second timeout
-        self.cursor = self.conn.cursor()
-        # Enable WAL mode for better concurrency
-        self.cursor.execute("PRAGMA journal_mode=WAL")
-        self.cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
-        
+        """Establish connection to the database.
+
+        Note: This method is kept for backward compatibility.
+        Prefer using the connection() context manager instead.
+        """
+        # Get or create thread-local connection
+        self._get_connection()
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Get the connection for the current thread.
+
+        Returns:
+            sqlite3.Connection for the current thread
+        """
+        return self._get_connection()
+
+    @property
+    def cursor(self) -> sqlite3.Cursor:
+        """Get the cursor for the current thread.
+
+        Returns:
+            sqlite3.Cursor for the current thread
+        """
+        return self._get_cursor()
+
     def disconnect(self) -> None:
-        """Close the database connection"""
-        if self.conn:
-            self.conn.close()
+        """Close the database connection for the current thread."""
+        if hasattr(self._local, 'conn') and self._local.conn is not None:
+            try:
+                self._local.conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing database connection: {e}")
+            finally:
+                self._local.conn = None
+                self._local.cursor = None
+
+    def close_all_connections(self) -> None:
+        """Close all thread-local connections.
+
+        Note: This only closes the connection for the calling thread.
+        Other threads must close their own connections.
+        """
+        self.disconnect()
             
     def create_tables(self) -> None:
         """Create the recordings table if it doesn't exist"""
@@ -553,9 +682,8 @@ class Database:
             # Parse metadata JSON if present
             if recording_dict.get('metadata'):
                 try:
-                    import json
                     recording_dict['metadata'] = json.loads(recording_dict['metadata'])
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     pass  # Leave as string if parsing fails
             result.append(recording_dict)
         

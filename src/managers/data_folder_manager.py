@@ -2,10 +2,13 @@
 Data folder management for Medical Assistant application.
 Centralizes all application data files into a proper folder structure.
 """
+import logging
 import os
 import sys
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class DataFolderManager:
@@ -100,10 +103,10 @@ class DataFolderManager:
             if old_path.exists() and not new_path.exists():
                 try:
                     old_path.rename(new_path)
-                    print(f"Migrated {old_name} to {new_path}")
+                    logger.info(f"Migrated {old_name} to {new_path}")
                 except Exception as e:
-                    print(f"Failed to migrate {old_name}: {e}")
-        
+                    logger.warning(f"Failed to migrate {old_name}: {e}")
+
         # Migrate config folder contents
         old_config = old_dir / "config"
         if old_config.exists() and old_config.is_dir():
@@ -112,9 +115,9 @@ class DataFolderManager:
                 if not new_config_path.exists():
                     try:
                         config_file.rename(new_config_path)
-                        print(f"Migrated {config_file.name} to config folder")
+                        logger.info(f"Migrated {config_file.name} to config folder")
                     except Exception as e:
-                        print(f"Failed to migrate {config_file.name}: {e}")
+                        logger.warning(f"Failed to migrate {config_file.name}: {e}")
 
 
 # Global instance

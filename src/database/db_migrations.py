@@ -618,26 +618,26 @@ def get_migration_manager() -> MigrationManager:
 def run_migrations():
     """Run all pending migrations."""
     manager = get_migration_manager()
-    
+
     current_version = manager.get_current_version()
     pending = manager.get_pending_migrations()
-    
+
     if not pending:
-        print(f"Database is up to date (version {current_version})")
+        logging.info(f"Database is up to date (version {current_version})")
         return
-    
-    print(f"Current database version: {current_version}")
-    print(f"Found {len(pending)} pending migrations:")
+
+    logging.info(f"Current database version: {current_version}")
+    logging.info(f"Found {len(pending)} pending migrations:")
     for migration in pending:
-        print(f"  - Version {migration.version}: {migration.name}")
-    
+        logging.info(f"  - Version {migration.version}: {migration.name}")
+
     # Apply migrations
     try:
         applied = manager.migrate()
-        print(f"\nSuccessfully applied {applied} migrations")
-        print(f"Database is now at version {manager.get_current_version()}")
+        logging.info(f"Successfully applied {applied} migrations")
+        logging.info(f"Database is now at version {manager.get_current_version()}")
     except DatabaseError as e:
-        print(f"\nError applying migrations: {e}")
+        logging.error(f"Error applying migrations: {e}")
         raise
 
 

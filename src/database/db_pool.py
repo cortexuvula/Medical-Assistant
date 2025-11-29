@@ -50,10 +50,14 @@ class ConnectionPool:
     
     def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection with optimized settings."""
+        # NOTE: check_same_thread=False is intentional and safe here because:
+        # 1. The connection pool manages access via a thread-safe queue
+        # 2. Only one thread can hold a connection at a time (acquired/released atomically)
+        # 3. Connections are validated before being returned to the pool
         conn = sqlite3.connect(
             self.database_path,
             timeout=self.timeout,
-            check_same_thread=False  # Allow connections to be used across threads
+            check_same_thread=False  # Safe: pool ensures single-thread access
         )
         
         # Enable foreign keys
@@ -105,8 +109,8 @@ class ConnectionPool:
                     self.logger.warning("Replacing broken database connection")
                     try:
                         conn.close()
-                    except:
-                        pass
+                    except sqlite3.Error:
+                        pass  # Ignore errors when closing broken connection
                     new_conn = self._create_connection()
                     self._pool.put(new_conn)
                     with self._lock:

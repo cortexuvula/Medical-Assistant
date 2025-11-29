@@ -7,9 +7,13 @@ including text widgets, audio segments, and other application data.
 
 import tkinter as tk
 import logging
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.app import MedicalDictationApp
 
 
-def clear_all_content(app_instance):
+def clear_all_content(app_instance: "MedicalDictationApp") -> None:
     """
     Clear all content in the application, including text widgets and audio segments.
     
@@ -49,10 +53,10 @@ def clear_all_content(app_instance):
         app_instance.update_status("All content cleared", "info")
 
 
-def clear_text_only(app_instance):
+def clear_text_only(app_instance: "MedicalDictationApp") -> None:
     """
     Clear just the text widgets without affecting audio segments.
-    
+
     Args:
         app_instance: The main application instance with references to text widgets
     """
@@ -75,10 +79,10 @@ def clear_text_only(app_instance):
         app_instance.update_status("All text cleared", "info")
 
 
-def clear_audio_only(app_instance):
+def clear_audio_only(app_instance: "MedicalDictationApp") -> None:
     """
     Clear just the audio segments without affecting text widgets.
-    
+
     Args:
         app_instance: The main application instance with references to audio segments
     """
@@ -103,13 +107,13 @@ def clear_audio_only(app_instance):
         app_instance.update_status("All audio cleared", "info")
 
 
-def clear_content_except_context(app_instance):
+def clear_content_except_context(app_instance: "MedicalDictationApp") -> None:
     """
     Clear all content except the context tab text.
-    
+
     This function is used when starting SOAP recording to preserve context information
     while clearing other content.
-    
+
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """

@@ -386,7 +386,7 @@ class ImprovedDatabase:
         try:
             self.db_manager.execute("SELECT 1 FROM recordings_fts LIMIT 1")
             return True
-        except:
+        except (sqlite3.OperationalError, sqlite3.DatabaseError):
             return False
     
     def _row_to_dict(self, row: tuple) -> Dict[str, Any]:
@@ -408,7 +408,7 @@ class ImprovedDatabase:
         if result.get('tags'):
             try:
                 result['tags'] = json.loads(result['tags'])
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 result['tags'] = []
         
         return result

@@ -177,7 +177,7 @@ class GoogleTTSProvider(BaseTTSProvider):
         try:
             supported = lang.tts_langs()
             return language in supported
-        except:
-            # Fallback check
+        except (RuntimeError, ValueError, ConnectionError):
+            # Fallback check when language list unavailable
             common_langs = ["en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh-CN", "ar", "hi"]
             return language in common_langs

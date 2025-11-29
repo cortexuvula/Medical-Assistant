@@ -41,6 +41,8 @@ from ui.tooltip import ToolTip
 import time
 
 from core.app_initializer import AppInitializer
+from core.app_settings_mixin import AppSettingsMixin
+from core.app_chat_mixin import AppChatMixin
 from audio.ffmpeg_utils import configure_pydub
 from ui.menu_manager import MenuManager
 from audio.soap_audio_processor import SOAPAudioProcessor
@@ -66,17 +68,17 @@ def main() -> None:
         try:
             # Try to log the error
             logging.error(f"Uncaught exception: type: {exc_type}")
-        except:
-            # If logging fails, just print to stderr
-            logging.debug(f"Error: {exc_type.__name__}: {exc_value}", file=sys.stderr)
-        
+        except (OSError, IOError):
+            # If logging fails, write to stderr as fallback
+            sys.stderr.write(f"Error: {exc_type.__name__}: {exc_value}\n")
+
         # Don't show popup for TclErrors - these are usually harmless UI timing issues
         if exc_type.__name__ != "TclError":
             # Show error message to user for other types of errors
             try:
                 messagebox.showerror("Error", f"An unexpected error occurred:\n{exc_type.__name__}: {str(exc_value)}")
-            except:
-                pass
+            except tk.TclError:
+                pass  # UI may be unavailable during shutdown
     
     # Set exception handler for uncaught exceptions - bind to the app instance
     app.report_callback_exception = lambda exc_type, exc_value, exc_tb: handle_exception(exc_type, exc_value, exc_tb)
@@ -87,7 +89,14 @@ def main() -> None:
     # Log application shutdown
     logging.info("Medical Dictation application shutting down")
 
-class MedicalDictationApp(ttk.Window):
+class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
+    """Main application class for the Medical Dictation App.
+
+    This class inherits from ttk.Window and uses mixins to organize functionality:
+    - AppSettingsMixin: Settings dialog and save settings methods
+    - AppChatMixin: Chat-related methods and suggestions
+    """
+
     def __init__(self) -> None:
         """Initialize the Medical Dictation App using AppInitializer."""
         # Use AppInitializer to handle the complex initialization process
@@ -483,13 +492,14 @@ class MedicalDictationApp(ttk.Window):
         try:
             saved_time = datetime.fromisoformat(saved_data["timestamp"])
             age_hours = (datetime.now() - saved_time).total_seconds() / 3600
-            
+
             if age_hours > 24:
                 # Too old, clear it
                 self.autosave_manager.clear_saves()
                 self.has_available_autosave = False
                 return
-        except:
+        except (ValueError, TypeError, KeyError) as e:
+            logging.debug(f"Error checking autosave age: {e}")
             self.has_available_autosave = False
             return
             
@@ -612,210 +622,7 @@ class MedicalDictationApp(ttk.Window):
             # Safe to trigger pause/resume
             self.toggle_soap_pause()
 
-    def show_refine_settings_dialog(self) -> None:
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        from ai.prompts import REFINE_PROMPT, REFINE_SYSTEM_MESSAGE
-        cfg = SETTINGS.get("refine_text", {})
-        show_settings_dialog(
-            parent=self,
-            title="Refine Text Settings",
-            config=cfg,
-            default=_DEFAULT_SETTINGS["refine_text"],
-            current_prompt=cfg.get("prompt", REFINE_PROMPT),
-            current_model=cfg.get("model", _DEFAULT_SETTINGS["refine_text"].get("model", "gpt-3.5-turbo")),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["refine_text"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["refine_text"].get("grok_model", "grok-1")),
-            save_callback=self.save_refine_settings,
-            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
-        )
-
-    def show_improve_settings_dialog(self) -> None:
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        from ai.prompts import IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE
-        cfg = SETTINGS.get("improve_text", {})
-        show_settings_dialog(
-            parent=self,
-            title="Improve Text Settings",
-            config=cfg,
-            default=_DEFAULT_SETTINGS["improve_text"],
-            current_prompt=cfg.get("prompt", IMPROVE_PROMPT),
-            current_model=cfg.get("model", _DEFAULT_SETTINGS["improve_text"].get("model", "gpt-3.5-turbo")),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["improve_text"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["improve_text"].get("grok_model", "grok-1")),
-            save_callback=self.save_improve_settings,
-            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
-        )
-
-    def show_soap_settings_dialog(self) -> None:
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        from ai.prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
-        cfg = SETTINGS.get("soap_note", {})
-        default_system_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", SOAP_SYSTEM_MESSAGE)
-        default_model = _DEFAULT_SETTINGS["soap_note"].get("model", "")
-        show_settings_dialog(
-            parent=self,
-            title="SOAP Note Settings",
-            config=cfg,
-            default=_DEFAULT_SETTINGS["soap_note"],
-            current_prompt=cfg.get("prompt", SOAP_PROMPT_TEMPLATE),
-            current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["soap_note"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["soap_note"].get("grok_model", "grok-1")),
-            save_callback=self.save_soap_settings,
-            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229"))
-        )
-
-    def show_referral_settings_dialog(self) -> None:
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        cfg = SETTINGS.get("referral", {})
-        default_prompt = _DEFAULT_SETTINGS["referral"].get("prompt", "")
-        default_system_prompt = _DEFAULT_SETTINGS["referral"].get("system_message", "")
-        default_model = _DEFAULT_SETTINGS["referral"].get("model", "")
-        show_settings_dialog(
-            parent=self,
-            title="Referral Prompt Settings",
-            config=cfg,
-            default=_DEFAULT_SETTINGS["referral"],
-            current_prompt=cfg.get("prompt", default_prompt),
-            current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["referral"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["referral"].get("grok_model", "grok-1")),
-            save_callback=self.save_referral_settings,
-            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229"))
-        )
-
-    def show_advanced_analysis_settings_dialog(self) -> None:
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        cfg = SETTINGS.get("advanced_analysis", {})
-        default_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("prompt", "")
-        default_system_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("system_message", "")
-        default_model = _DEFAULT_SETTINGS["advanced_analysis"].get("model", "")
-        show_settings_dialog(
-            parent=self,
-            title="Advanced Analysis Settings",
-            config=cfg,
-            default=_DEFAULT_SETTINGS["advanced_analysis"],
-            current_prompt=cfg.get("prompt", default_prompt),
-            current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["advanced_analysis"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["advanced_analysis"].get("grok_model", "grok-1")),
-            save_callback=self.save_advanced_analysis_settings,
-            current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
-            current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229"))
-        )
-
-    def show_temperature_settings(self) -> None:
-        """Show dialog to configure temperature settings for each AI provider."""
-        from ui.dialogs.temperature_dialog import show_temperature_settings_dialog
-        show_temperature_settings_dialog(self)
-        self.status_manager.success("Temperature settings saved successfully")
-
-    def show_agent_settings(self) -> None:
-        """Show dialog to configure AI agent settings."""
-        # Check if advanced settings should be shown based on a setting or default to basic
-        from settings.settings import SETTINGS
-        use_advanced = SETTINGS.get("use_advanced_agent_settings", True)
-        
-        try:
-            if use_advanced:
-                from ui.dialogs.advanced_agent_settings_dialog import show_advanced_agent_settings_dialog
-                show_advanced_agent_settings_dialog(self)
-            else:
-                from ui.dialogs.agent_settings_dialog import show_agent_settings_dialog
-                show_agent_settings_dialog(self)
-                
-            # Reload agents after settings change
-            from managers.agent_manager import agent_manager
-            agent_manager.reload_agents()
-            
-            self.status_manager.success("Agent settings saved successfully")
-        except Exception as e:
-            # Fall back to basic dialog on error
-            logger.error(f"Error showing agent settings dialog: {e}", exc_info=True)
-            try:
-                from ui.dialogs.agent_settings_dialog import show_agent_settings_dialog
-                show_agent_settings_dialog(self)
-                self.status_manager.warning("Showing basic agent settings due to error")
-            except Exception as e2:
-                logger.error(f"Error showing basic dialog: {e2}", exc_info=True)
-                self.status_manager.error("Failed to show agent settings dialog")
-
-    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
-        from settings.settings import save_settings, SETTINGS
-        SETTINGS["refine_text"] = {
-            "prompt": prompt,
-            "system_message": system_prompt,
-            "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
-            "ollama_model": ollama_model,
-            "anthropic_model": anthropic_model
-        }
-        save_settings(SETTINGS)
-        self.status_manager.success("Refine text settings saved successfully")
-
-    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
-        from settings.settings import save_settings, SETTINGS
-        SETTINGS["improve_text"] = {
-            "prompt": prompt,
-            "system_message": system_prompt,
-            "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
-            "ollama_model": ollama_model,
-            "anthropic_model": anthropic_model
-        }
-        save_settings(SETTINGS)
-        self.status_manager.success("Improve text settings saved successfully")
-
-    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
-        from settings.settings import save_settings, SETTINGS
-        # Preserve existing temperature settings
-        SETTINGS["soap_note"]["prompt"] = prompt
-        SETTINGS["soap_note"]["system_message"] = system_prompt
-        SETTINGS["soap_note"]["model"] = openai_model
-        SETTINGS["soap_note"]["perplexity_model"] = perplexity_model
-        SETTINGS["soap_note"]["grok_model"] = grok_model
-        SETTINGS["soap_note"]["ollama_model"] = ollama_model
-        SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
-        save_settings(SETTINGS)
-        self.status_manager.success("SOAP note settings saved successfully")
-
-    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
-        from settings.settings import save_settings, SETTINGS
-        # Preserve existing temperature settings
-        SETTINGS["referral"]["prompt"] = prompt
-        SETTINGS["referral"]["system_message"] = system_prompt
-        SETTINGS["referral"]["model"] = openai_model
-        SETTINGS["referral"]["perplexity_model"] = perplexity_model
-        SETTINGS["referral"]["grok_model"] = grok_model
-        SETTINGS["referral"]["ollama_model"] = ollama_model
-        SETTINGS["referral"]["anthropic_model"] = anthropic_model
-        save_settings(SETTINGS)
-        self.status_manager.success("Referral settings saved successfully")
-
-    def save_advanced_analysis_settings(self, prompt: str, openai_model: str, perplexity_model: str, grok_model: str, ollama_model: str, system_prompt: str, anthropic_model: str) -> None:
-        from settings.settings import save_settings, SETTINGS
-        # Preserve existing temperature settings
-        SETTINGS["advanced_analysis"]["prompt"] = prompt
-        SETTINGS["advanced_analysis"]["system_message"] = system_prompt
-        SETTINGS["advanced_analysis"]["model"] = openai_model
-        SETTINGS["advanced_analysis"]["perplexity_model"] = perplexity_model
-        SETTINGS["advanced_analysis"]["grok_model"] = grok_model
-        SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
-        SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
-        save_settings(SETTINGS)
-        self.status_manager.success("Advanced analysis settings saved successfully")
-
+    # Settings dialog methods are provided by AppSettingsMixin
 
     def new_session(self) -> None:
         if messagebox.askyesno("New Dictation", "Start a new session? Unsaved changes will be lost."):
@@ -910,18 +717,14 @@ class MedicalDictationApp(ttk.Window):
             
             if success:
                 self.status_manager.success(f"{doc_type.replace('_', ' ').title()} exported to PDF successfully")
-                
+
                 # Ask if user wants to open the PDF
                 if messagebox.askyesno("Open PDF", "Would you like to open the PDF now?"):
-                    import subprocess
-                    import platform
-                    
-                    if platform.system() == 'Darwin':       # macOS
-                        subprocess.call(('open', file_path))
-                    elif platform.system() == 'Windows':    # Windows
-                        os.startfile(file_path)
-                    else:                                   # Linux
-                        subprocess.call(('xdg-open', file_path))
+                    from utils.validation import open_file_or_folder_safely
+                    success, error = open_file_or_folder_safely(file_path, operation="open")
+                    if not success:
+                        logging.error(f"Failed to open PDF: {error}")
+                        messagebox.showerror("Error", f"Could not open PDF: {error}")
             else:
                 messagebox.showerror("Export Failed", "Failed to export PDF. Check logs for details.")
                 
@@ -971,18 +774,14 @@ class MedicalDictationApp(ttk.Window):
             
             if exported_count > 0:
                 self.status_manager.success(f"Exported {exported_count} documents to PDF")
-                
+
                 # Ask if user wants to open the folder
                 if messagebox.askyesno("Open Folder", "Would you like to open the export folder?"):
-                    import subprocess
-                    import platform
-                    
-                    if platform.system() == 'Darwin':       # macOS
-                        subprocess.call(('open', directory))
-                    elif platform.system() == 'Windows':    # Windows
-                        os.startfile(directory)
-                    else:                                   # Linux
-                        subprocess.call(('xdg-open', directory))
+                    from utils.validation import open_file_or_folder_safely
+                    success, error = open_file_or_folder_safely(directory, operation="open")
+                    if not success:
+                        logging.error(f"Failed to open folder: {error}")
+                        messagebox.showerror("Error", f"Could not open folder: {error}")
             else:
                 messagebox.showinfo("Export Info", "No documents with content to export.")
                 
@@ -994,31 +793,30 @@ class MedicalDictationApp(ttk.Window):
         """Print current document."""
         try:
             from utils.pdf_exporter import PDFExporter
+            from utils.validation import open_file_or_folder_safely
             import tempfile
-            import subprocess
-            import platform
-            
+
             # Get the currently active tab
             selected_tab = self.notebook.index('current')
-            
+
             # Get content
-            text_widgets = [self.transcript_text, self.soap_text, self.referral_text, 
+            text_widgets = [self.transcript_text, self.soap_text, self.referral_text,
                            self.letter_text, self.chat_text]
             content = text_widgets[selected_tab].get("1.0", tk.END).strip()
-            
+
             if not content:
                 messagebox.showwarning("Print Error", "No content to print.")
                 return
-            
+
             # Create temporary PDF
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp_path = tmp.name
-            
+
             # Generate PDF
             pdf_exporter = PDFExporter()
             doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
             doc_type = doc_types[selected_tab]
-            
+
             if doc_type == 'soap_note':
                 soap_data = self._parse_soap_sections(content)
                 success = pdf_exporter.generate_soap_note_pdf(soap_data, tmp_path)
@@ -1028,20 +826,17 @@ class MedicalDictationApp(ttk.Window):
             else:
                 title = doc_type.replace('_', ' ').title()
                 success = pdf_exporter.generate_generic_document_pdf(title, content, tmp_path)
-            
+
             if success:
-                # Open system print dialog
-                system = platform.system()
-                
-                if system == 'Windows':
-                    os.startfile(tmp_path, "print")
-                elif system == 'Darwin':  # macOS
-                    subprocess.run(['lpr', tmp_path])
-                else:  # Linux
-                    subprocess.run(['lpr', tmp_path])
-                
-                self.status_manager.info("Document sent to printer")
-                
+                # Open system print dialog using safe path handling
+                print_success, error = open_file_or_folder_safely(tmp_path, operation="print")
+
+                if print_success:
+                    self.status_manager.info("Document sent to printer")
+                else:
+                    logging.error(f"Failed to print: {error}")
+                    messagebox.showerror("Print Error", f"Failed to print document: {error}")
+
                 # Clean up temp file after a delay
                 self.after(5000, lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
             else:
@@ -1391,7 +1186,7 @@ class MedicalDictationApp(ttk.Window):
         # Set wait cursor (use watch which is cross-platform)
         try:
             self.config(cursor="watch")
-        except:
+        except tk.TclError:
             # Some platforms may not support cursor changes
             pass
         
@@ -1474,12 +1269,12 @@ class MedicalDictationApp(ttk.Window):
                 
                 if not cursor_reset:
                     logging.warning("Could not reset cursor after microphone refresh")
-                
+
                 # Force cursor update by updating the window
                 try:
                     self.update_idletasks()
-                except:
-                    pass
+                except tk.TclError:
+                    pass  # Window may be closing
         
         # Start the animation
         animate_refresh()
@@ -1496,11 +1291,11 @@ class MedicalDictationApp(ttk.Window):
                 # Try to reset cursor
                 try:
                     self.config(cursor="")
-                except:
+                except tk.TclError:
                     try:
                         self.config(cursor="arrow")
-                    except:
-                        pass
+                    except tk.TclError:
+                        pass  # Cursor change not supported
                 # Re-enable refresh button
                 refresh_btn = self.ui.components.get('refresh_btn')
                 if refresh_btn:
@@ -2157,11 +1952,11 @@ class MedicalDictationApp(ttk.Window):
     def _open_logs_folder(self, log_dir):
         """Open the logs directory using file explorer"""
         try:
-            if os.name == 'nt':  # Windows
-                os.startfile(log_dir)
-            else:  # macOS or Linux
-                import subprocess
-                subprocess.Popen(['open', log_dir] if sys.platform == 'darwin' else ['xdg-open', log_dir])
+            from utils.validation import open_file_or_folder_safely
+            success, error = open_file_or_folder_safely(log_dir, operation="open")
+            if not success:
+                messagebox.showerror("Error", f"Could not open logs directory: {error}")
+                logging.error(f"Error opening logs directory: {error}")
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
             logging.error(f"Error opening logs directory: {str(e)}")
@@ -2215,208 +2010,8 @@ class MedicalDictationApp(ttk.Window):
         save_settings(SETTINGS)
         # No status message needed for this automatic action
         self.resize_timer = None  # Clear the timer reference
-    
-    def _handle_chat_message(self, message: str):
-        """Handle chat message from the chat UI."""
-        logging.info(f"Chat message received: {message}")
-        
-        # Check which tab is currently active
-        current_tab = self.notebook.index(self.notebook.select())
-        
-        # Route to appropriate processor based on tab
-        if current_tab == 5:  # RAG tab (0-indexed)
-            # Check for clear command
-            message_lower = message.lower().strip()
-            if message_lower in ["clear rag history", "clear rag", "clear", "/clear"]:
-                if hasattr(self, 'rag_processor') and self.rag_processor:
-                    self.rag_processor.clear_history()
-                    self.status_manager.success("RAG history cleared")
-                if hasattr(self, 'chat_ui') and self.chat_ui:
-                    self.chat_ui.set_processing(False)
-                return
-            
-            if not hasattr(self, 'rag_processor') or not self.rag_processor:
-                self.status_manager.error("RAG processor not available")
-                if hasattr(self, 'chat_ui') and self.chat_ui:
-                    self.chat_ui.set_processing(False)
-                return
-                
-            # Update status
-            self.status_manager.info("Searching documents...")
-            
-            # Process the RAG query
-            def on_complete():
-                """Called when RAG processing is complete."""
-                if hasattr(self, 'chat_ui') and self.chat_ui:
-                    self.chat_ui.set_processing(False)
-                self.status_manager.success("Document search complete")
-                
-            self.rag_processor.process_message(message, on_complete)
-            
-        else:  # Chat tab or other tabs
-            if not hasattr(self, 'chat_processor') or not self.chat_processor:
-                self.status_manager.error("Chat processor not available")
-                if hasattr(self, 'chat_ui') and self.chat_ui:
-                    self.chat_ui.set_processing(False)
-                return
-                
-            # Update status
-            self.status_manager.info("Processing your request...")
-            
-            # Process the message
-            def on_complete():
-                """Called when chat processing is complete."""
-                if hasattr(self, 'chat_ui') and self.chat_ui:
-                    self.chat_ui.set_processing(False)
-                self.status_manager.success("Chat response ready")
-                
-            self.chat_processor.process_message(message, on_complete)
-    
-    def _update_chat_suggestions(self):
-        """Update chat suggestions based on current tab and content."""
-        if not hasattr(self, 'chat_ui') or not self.chat_ui:
-            return
-            
-        current_tab = self.notebook.index(self.notebook.select())
-        suggestions = []
-        
-        # Get current content
-        content = self.active_text_widget.get("1.0", tk.END).strip()
-        has_content = bool(content)
-        
-        # Get custom suggestions from settings
-        from settings.settings import SETTINGS
-        custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
-        
-        # Add global custom suggestions first
-        global_custom = custom_suggestions.get("global", [])
-        suggestions.extend(global_custom)
-        
-        # Determine context and content state
-        context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter", 4: "chat", 5: "rag"}
-        context = context_map.get(current_tab, "transcript")
-        content_state = "with_content" if has_content else "without_content"
-        
-        # Add context-specific custom suggestions
-        context_custom = custom_suggestions.get(context, {}).get(content_state, [])
-        suggestions.extend(context_custom)
-        
-        # Add built-in suggestions as fallback/additional options
-        builtin_suggestions = self._get_builtin_suggestions(current_tab, has_content)
-        suggestions.extend(builtin_suggestions)
-        
-        # Remove duplicates while preserving order (custom suggestions first)
-        seen = set()
-        unique_suggestions = []
-        for suggestion in suggestions:
-            if suggestion not in seen:
-                seen.add(suggestion)
-                unique_suggestions.append(suggestion)
-        
-        # Limit to max 6 suggestions to avoid UI clutter
-        self.chat_ui.set_suggestions(unique_suggestions[:6])
-    
-    def _get_builtin_suggestions(self, current_tab: int, has_content: bool):
-        """Get built-in suggestions for the given context."""
-        if current_tab == 0:  # Transcript
-            if has_content:
-                return [
-                    "Summarize key points",
-                    "Extract symptoms mentioned",
-                    "Identify medications"
-                ]
-            else:
-                return [
-                    "Analyze uploaded audio",
-                    "Extract medical terms",
-                    "Create summary"
-                ]
-        elif current_tab == 1:  # SOAP
-            if has_content:
-                return [
-                    "Improve grammar and clarity",
-                    "Add more detail to assessment",
-                    "Suggest differential diagnoses"
-                ]
-            else:
-                return [
-                    "Create SOAP from transcript",
-                    "Generate assessment",
-                    "Suggest treatment plan"
-                ]
-        elif current_tab == 2:  # Referral
-            if has_content:
-                return [
-                    "Make more formal",
-                    "Add urgency indicators",
-                    "Include relevant history"
-                ]
-            else:
-                return [
-                    "Generate referral letter",
-                    "Create specialist request",
-                    "Draft consultation note"
-                ]
-        elif current_tab == 3:  # Letter
-            if has_content:
-                return [
-                    "Improve tone and clarity",
-                    "Make more empathetic",
-                    "Simplify language"
-                ]
-            else:
-                return [
-                    "Draft patient letter",
-                    "Create discharge summary",
-                    "Write follow-up instructions"
-                ]
-        elif current_tab == 4:  # Chat
-            if has_content:
-                return [
-                    "Clear chat history",
-                    "Summarize our conversation",
-                    "What else can you help with?"
-                ]
-            else:
-                # Include tool examples if tools are enabled
-                chat_config = SETTINGS.get("chat_interface", {})
-                if chat_config.get("enable_tools", True):
-                    return [
-                        "Calculate BMI for 70kg, 175cm",
-                        "Check drug interaction warfarin aspirin",
-                        "What's 15 * 8 + 32?",
-                        "What's the current time?",
-                        "Calculate dosage: 25mg/kg for 30kg",
-                        "Explain this medical term"
-                    ]
-                else:
-                    return [
-                        "What is this medication for?",
-                        "Explain this medical term",
-                        "Help me understand my diagnosis"
-                    ]
-        elif current_tab == 5:  # RAG
-            if has_content:
-                return [
-                    "Clear RAG history",
-                    "Find related documents",
-                    "Search for similar cases"
-                ]
-            else:
-                return [
-                    "What is advance care planning?",
-                    "Search for treatment protocols",
-                    "Find patient education materials",
-                    "Look up clinical guidelines",
-                    "Search medication information",
-                    "Find procedure documentation"
-                ]
-        return []
-    
-    def _focus_chat_input(self):
-        """Focus the chat input field."""
-        if hasattr(self, 'chat_ui') and self.chat_ui:
-            self.chat_ui.focus_input()
+
+    # Chat-related methods are provided by AppChatMixin
 
     def play_recording_sound(self, start=True):
         """Play a sound to indicate recording start/stop."""

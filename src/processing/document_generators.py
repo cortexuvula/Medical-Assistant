@@ -1,8 +1,10 @@
 """
 Document Generators Module
 
-Handles the generation of medical documents including SOAP notes, referrals, 
+Handles the generation of medical documents including SOAP notes, referrals,
 letters, and diagnostic analyses from transcripts using AI processing.
+
+Batch processing functionality is in processing/batch_processor.py.
 """
 
 import logging
@@ -18,18 +20,41 @@ from ai.agents import AgentTask, AgentType
 from ui.dialogs.diagnostic_dialog import DiagnosticAnalysisDialog
 from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
 from utils.progress_tracker import DocumentGenerationProgress, create_progress_callback
+from utils.error_handling import AsyncUIErrorHandler
+from processing.batch_processor import BatchProcessor
 
 
 class DocumentGenerators:
-    """Manages medical document generation functionality."""
-    
+    """Manages medical document generation functionality.
+
+    Batch processing methods are delegated to BatchProcessor.
+    """
+
     def __init__(self, parent_app):
         """Initialize the document generators.
-        
+
         Args:
             parent_app: The main application instance
         """
         self.app = parent_app
+        self._batch_processor = None
+
+    @property
+    def batch_processor(self) -> BatchProcessor:
+        """Get or create the batch processor instance."""
+        if self._batch_processor is None:
+            self._batch_processor = BatchProcessor(self.app)
+        return self._batch_processor
+
+    def process_batch_recordings(self, recording_ids: List[int], options: Dict[str, Any],
+                                 on_complete: Callable = None, on_progress: Callable = None) -> None:
+        """Process multiple recordings in batch. Delegates to BatchProcessor."""
+        self.batch_processor.process_batch_recordings(recording_ids, options, on_complete, on_progress)
+
+    def process_batch_files(self, file_paths: List[str], options: Dict[str, Any],
+                            on_complete: Callable = None, on_progress: Callable = None) -> None:
+        """Process multiple audio files in batch. Delegates to BatchProcessor."""
+        self.batch_processor.process_batch_files(file_paths, options, on_complete, on_progress)
         
     def create_soap_note(self) -> None:
         """Create a SOAP note from the selected text using AI with improved concurrency."""
@@ -38,52 +63,56 @@ class DocumentGenerators:
             messagebox.showwarning("Create SOAP Note", "There is no transcript to process.")
             return
 
-        self.app.status_manager.progress("Creating SOAP note (this may take a moment)...")
-        self.app.soap_button.config(state=DISABLED)
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=self.app.soap_button,
+            progress_bar=self.app.progress_bar,
+            operation_name="Creating SOAP note"
+        )
+        error_handler.start()
 
         def task() -> None:
             try:
                 # Create progress tracker
                 progress_callback = create_progress_callback(self.app.status_manager)
                 tracker = DocumentGenerationProgress.create_soap_tracker(progress_callback)
-                
+
                 # Step 1: Prepare transcript
                 tracker.update("Preparing transcript...")
                 context_text = self.app.context_text.get("1.0", "end").strip()
-                
+
                 # Step 2: Extract context
                 tracker.update("Extracting context...")
-                
+
                 # Step 3: Generate SOAP sections
                 tracker.update("Generating SOAP sections...")
-                
+
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.app.io_executor.submit(
                     create_soap_note_with_openai,
                     transcript,
                     context_text
                 )
-                
+
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
-                
+
                 # Step 4: Format output
                 tracker.update("Formatting output...")
-                
+
                 # Step 5: Finalize
                 tracker.update("Finalizing document...")
-                
+
                 # Store the values we need for database operations
                 soap_note = result
                 filename = "Transcript"
-                
+
                 # Schedule UI update on the main thread and save to database
                 def update_ui_and_save():
                     self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text)
                     self.app.notebook.select(1)  # Switch to SOAP tab
-                    
+
                     # Check if we have an existing recording from file upload
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
                         # Update existing recording with SOAP note
@@ -98,7 +127,7 @@ class DocumentGenerators:
                     else:
                         # No existing recording, create a new one
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
-                    
+
                     # Check if diagnostic agent is enabled and offer to run analysis
                     if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
                         # Ask user if they want to run diagnostic analysis
@@ -110,27 +139,15 @@ class DocumentGenerators:
                         ):
                             # Run diagnostic analysis on the SOAP note
                             self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
-                
+
                 # Mark progress as complete
                 tracker.complete("SOAP note created successfully")
-                
-                self.app.after(0, update_ui_and_save)
+
+                error_handler.complete(callback=update_ui_and_save)
             except concurrent.futures.TimeoutError:
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error("SOAP note creation timed out. Please try again."),
-                    self.app.soap_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
+                error_handler.fail("SOAP note creation timed out. Please try again.")
             except Exception as e:
-                error_msg = f"Error creating SOAP note: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.soap_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
+                error_handler.fail(e)
 
         # Use I/O executor for task management since it involves UI coordination
         self.app.io_executor.submit(task)
@@ -200,68 +217,60 @@ class DocumentGenerators:
         """Continue referral creation process after condition analysis."""
         self.app.progress_bar.stop()
         self.app.progress_bar.pack_forget()
-        
+
         conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
-        
+
         # Use ask_conditions_dialog as an imported function
         focus = ask_conditions_dialog(self.app, "Select Conditions", "Select conditions to focus on:", conditions_list)
-        
+
         if not focus:
             self.app.update_status("Referral cancelled or no conditions selected.", status_type="warning")
             return
-        
-        # Use "progress" status type to prevent auto-clearing for long-running operations
-        self.app.status_manager.progress(f"Creating referral for conditions: {focus}...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        self.app.referral_button.config(state=DISABLED)  # Disable button while processing
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=self.app.referral_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Creating referral for {focus}"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 transcript = self.app.transcript_text.get("1.0", "end").strip()
-                
+
                 # Use our custom scheduler for status updates
                 self.app.schedule_status_update(3000, f"Still generating referral for: {focus}...", "progress")
                 self.app.schedule_status_update(10000, f"Processing referral (this may take a moment)...", "progress")
-                
+
                 # Log that we're waiting for result
                 logging.info(f"Starting referral generation for conditions: {focus}")
-                
+
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.app.io_executor.submit(create_referral_with_openai, transcript, focus)
-                
+
                 # Get result with a longer timeout to prevent hanging (5 minutes instead of 2)
                 result = future.result(timeout=300)
-                
+
                 # Log the successful completion
                 logging.info(f"Successfully generated referral for conditions: {focus}")
-                
+
                 # Check if result contains error message
                 if result.startswith("Error creating referral:"):
                     raise Exception(result)
-                    
+
                 # Schedule UI update on the main thread
-                self.app.after(0, lambda: [
-                    self.app._update_text_area(result, f"Referral created for: {focus}", self.app.referral_button, self.app.referral_text),
+                def update_ui():
+                    self.app._update_text_area(result, f"Referral created for: {focus}", self.app.referral_button, self.app.referral_text)
                     self.app.notebook.select(2)  # Switch focus to Referral tab
-                ])
+
+                error_handler.complete(callback=update_ui, success_message=f"Referral created for: {focus}")
             except concurrent.futures.TimeoutError:
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error("Referral creation timed out. Please try again."),
-                    self.app.referral_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
+                error_handler.fail("Referral creation timed out. Please try again.")
             except Exception as e:
-                error_msg = f"Error creating referral: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.referral_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
-        
+                error_handler.fail(e)
+
         # Actually submit the task to be executed
         self.app.io_executor.submit(task)
 
@@ -269,10 +278,10 @@ class DocumentGenerators:
         """Create a letter from transcript with improved concurrency."""
         # Get source and specifications
         source, specs = self.app.show_letter_options_dialog()
-        
+
         if source is None:  # User cancelled
             return
-        
+
         # Get the appropriate text based on source
         if source == "transcript":
             text = self.app.transcript_text.get("1.0", "end").strip()
@@ -280,63 +289,54 @@ class DocumentGenerators:
         else:  # source == "soap"
             text = self.app.soap_text.get("1.0", "end").strip()
             source_name = "SOAP"
-        
+
         if not text:
             messagebox.showwarning("Empty Text", f"The {source_name} tab is empty. Please add content before creating a letter.")
             return
-        
-        # Show progress
-        self.app.status_manager.progress(f"Generating letter from {source_name} text...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        self.app.letter_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=self.app.letter_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Generating letter from {source_name}"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Use our custom scheduler for status updates
                 self.app.schedule_status_update(3000, f"Still generating letter from {source_name}...", "progress")
                 self.app.schedule_status_update(10000, f"Processing letter (this may take a moment)...", "progress")
-                
+
                 # Log that we're starting letter generation
                 logging.info(f"Starting letter generation from {source_name} with specs: {specs}")
-                
+
                 # Use CPU executor for the AI processing which is CPU-intensive
                 future = self.app.io_executor.submit(create_letter_with_ai, text, specs)
-                
+
                 # Get result with a longer timeout to prevent hanging (5 minutes)
                 result = future.result(timeout=300)
-                
+
                 # Log the successful completion
                 logging.info("Successfully generated letter")
-                
+
                 # Check if result contains error message
                 if result.startswith("Error creating letter:"):
                     raise Exception(result)
-                
+
                 # Schedule UI update on the main thread
-                # Note: _update_text_area already handles database updates for letters
-                self.app.after(0, lambda: [
-                    self.app._update_text_area(result, f"Letter generated from {source_name}", self.app.letter_button, self.app.letter_text),
+                def update_ui():
+                    self.app._update_text_area(result, f"Letter generated from {source_name}", self.app.letter_button, self.app.letter_text)
                     self.app.notebook.select(3)  # Show letter in Letter tab (index 3)
-                ])
-                        
+
+                error_handler.complete(callback=update_ui, success_message=f"Letter generated from {source_name}")
+
             except concurrent.futures.TimeoutError:
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error("Letter creation timed out. Please try again."),
-                    self.app.letter_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
+                error_handler.fail("Letter creation timed out. Please try again.")
             except Exception as e:
-                error_msg = f"Error creating letter: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.letter_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
-        
+                error_handler.fail(e)
+
         # Actually submit the task to be executed
         self.app.io_executor.submit(task)
 
@@ -396,16 +396,18 @@ class DocumentGenerators:
             clinical_findings = transcript
             source_name = "Transcript"
         
-        # Update status and show progress
-        self.app.status_manager.progress("Analyzing clinical findings...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
-        # Disable the diagnostic button during processing
+        # Get the diagnostic button for error handler
         diagnostic_button = self.app.ui.components.get('generate_diagnostic_button')
-        if diagnostic_button:
-            diagnostic_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=diagnostic_button,
+            progress_bar=self.app.progress_bar,
+            operation_name="Analyzing clinical findings"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Create agent task
@@ -419,69 +421,62 @@ class DocumentGenerators:
                         task_description=f"Analyze SOAP note for diagnostic insights",
                         input_data=input_data
                     )
-                
+
                 # Execute diagnostic analysis
                 response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_diagnostic_display(
-                        response.result, 
-                        source_name,
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_diagnostic_display(
+                            response.result,
+                            source_name,
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error creating diagnostic analysis: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    diagnostic_button.config(state=NORMAL) if diagnostic_button else None,
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
     
     def _update_diagnostic_display(self, analysis: str, source: str, metadata: dict) -> None:
-        """Update the UI with diagnostic analysis results."""
-        # Stop progress bar
-        self.app.progress_bar.stop()
-        self.app.progress_bar.pack_forget()
-        
-        # Re-enable diagnostic button
-        diagnostic_button = self.app.ui.components.get('generate_diagnostic_button')
-        if diagnostic_button:
-            diagnostic_button.config(state=NORMAL)
-        
+        """Update the UI with diagnostic analysis results.
+
+        Note: Progress bar and button state are handled by AsyncUIErrorHandler.
+        """
         # Show results in a dialog
         dialog = DiagnosticResultsDialog(self.app)
         dialog.show_results(analysis, source, metadata)
-        
+
         # Update status
         diff_count = metadata.get('differential_count', 0)
         has_red_flags = metadata.get('has_red_flags', False)
         status_msg = f"Diagnostic analysis completed: {diff_count} differentials"
         if has_red_flags:
             status_msg += " (RED FLAGS identified)"
-        
+
         self.app.status_manager.success(status_msg)
     
     def _run_diagnostic_on_soap(self, soap_note: str) -> None:
         """Run diagnostic analysis on a SOAP note.
-        
+
         Args:
             soap_note: The SOAP note text to analyze
         """
-        # Update status and show progress
-        self.app.status_manager.progress("Running diagnostic analysis on SOAP note...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=None,  # No button to disable for auto-analysis
+            progress_bar=self.app.progress_bar,
+            operation_name="Running diagnostic analysis on SOAP note"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Create agent task for SOAP analysis
@@ -489,30 +484,26 @@ class DocumentGenerators:
                     task_description="Analyze SOAP note for diagnostic insights",
                     input_data={"soap_note": soap_note}
                 )
-                
+
                 # Execute diagnostic analysis
                 response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_diagnostic_display(
-                        response.result, 
-                        "SOAP Note (Auto-Analysis)",
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_diagnostic_display(
+                            response.result,
+                            "SOAP Note (Auto-Analysis)",
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error running diagnostic analysis: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
 
@@ -582,16 +573,18 @@ class DocumentGenerators:
             content = transcript
             source_name = "Transcript"
         
-        # Update status and show progress
-        self.app.status_manager.progress(f"Analyzing medications from {source_name}...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
-        # Disable the medication button during processing
+        # Get the medication button for error handler
         medication_button = self.app.ui.components.get('generate_medication_button')
-        if medication_button:
-            medication_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=medication_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Analyzing medications from {source_name}"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Build task description based on analysis type
@@ -603,16 +596,16 @@ class DocumentGenerators:
                     "prescription": "Generate prescription",
                     "comprehensive": "Comprehensive medication analysis"
                 }
-                
+
                 task_description = task_descriptions.get(analysis_type, "Analyze medications")
-                
+
                 # Create agent task with properly mapped input data
                 input_data = {
                     "clinical_text": content,  # Medication agent expects clinical_text
                     "source": source_name,
                     "analysis_type": analysis_type
                 }
-                
+
                 # For comprehensive analysis, try to parse medications if they look like a list
                 if analysis_type == "comprehensive" and "\n" in content:
                     lines = content.strip().split("\n")
@@ -620,66 +613,55 @@ class DocumentGenerators:
                     # If it looks like a medication list, add as current_medications
                     if medication_lines and any(mg in content.lower() for mg in ["mg", "ml", "tablet", "daily"]):
                         input_data["current_medications"] = medication_lines
-                
+
                 task_data = AgentTask(
                     task_description=task_description,
                     input_data=input_data
                 )
-                
+
                 # Execute medication analysis
                 response = agent_manager.execute_agent_task(AgentType.MEDICATION, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_medication_display(
-                        response.result,
-                        analysis_type,
-                        source_name,
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_medication_display(
+                            response.result,
+                            analysis_type,
+                            source_name,
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error analyzing medications: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget(),
-                    medication_button.config(state=NORMAL) if medication_button else None
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
     
     def _update_medication_display(self, analysis: dict, analysis_type: str, source: str, metadata: dict) -> None:
-        """Update UI with medication analysis results."""
-        # Hide progress
-        self.app.progress_bar.stop()
-        self.app.progress_bar.pack_forget()
-        
-        # Re-enable medication button
-        medication_button = self.app.ui.components.get('generate_medication_button')
-        if medication_button:
-            medication_button.config(state=NORMAL)
-        
+        """Update UI with medication analysis results.
+
+        Note: Progress bar and button state are handled by AsyncUIErrorHandler.
+        """
         # Import here to avoid circular imports
         from ui.dialogs.medication_results_dialog import MedicationResultsDialog
-        
+
         # Show results in a dialog
         dialog = MedicationResultsDialog(self.app)
         dialog.show_results(analysis, analysis_type, source, metadata)
-        
+
         # Update status
         med_count = metadata.get('medication_count', 0)
         interaction_count = metadata.get('interaction_count', 0)
-        
+
         status_msg = f"Medication analysis completed: {med_count} medications"
         if interaction_count > 0:
             status_msg += f", {interaction_count} interactions found"
-        
+
         self.app.status_manager.success(status_msg)
     
     def _create_referral_with_agent(self) -> None:
@@ -732,97 +714,89 @@ class DocumentGenerators:
         
         future.add_done_callback(on_conditions_done)
     
-    def _create_referral_with_agent_continued(self, source_text: str, source_name: str, 
+    def _create_referral_with_agent_continued(self, source_text: str, source_name: str,
                                               suggestions: str, is_soap: bool) -> None:
         """Continue referral creation with agent after condition analysis."""
         self.app.progress_bar.stop()
         self.app.progress_bar.pack_forget()
-        
+
         conditions_list = [cond.strip() for cond in suggestions.split(",") if cond.strip()]
-        
+
         # Use ask_conditions_dialog to select conditions
-        focus = ask_conditions_dialog(self.app, "Select Conditions", 
+        focus = ask_conditions_dialog(self.app, "Select Conditions",
                                        "Select conditions to focus on:", conditions_list)
-        
+
         if not focus:
-            self.app.update_status("Referral cancelled or no conditions selected.", 
+            self.app.update_status("Referral cancelled or no conditions selected.",
                                    status_type="warning")
             return
-        
-        # Update status
-        self.app.status_manager.progress(f"Generating referral for: {focus}...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
-        # Disable referral button
-        self.app.referral_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=self.app.referral_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Generating referral for {focus}"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Create agent task
                 input_data = {
                     "conditions": focus
                 }
-                
+
                 if is_soap:
                     input_data["soap_note"] = source_text
                 else:
                     input_data["transcript"] = source_text
-                
+
                 task_data = AgentTask(
                     task_description=f"Generate referral letter from {source_name} for conditions: {focus}",
                     input_data=input_data
                 )
-                
+
                 # Execute referral generation
                 response = agent_manager.execute_agent_task(AgentType.REFERRAL, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_referral_display(
-                        response.result,
-                        focus,
-                        source_name,
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_referral_display(
+                            response.result,
+                            focus,
+                            source_name,
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error creating referral: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.referral_button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
     
-    def _update_referral_display(self, referral_text: str, conditions: str, 
+    def _update_referral_display(self, referral_text: str, conditions: str,
                                  source: str, metadata: dict) -> None:
-        """Update UI with referral agent results."""
-        # Stop progress bar
-        self.app.progress_bar.stop()
-        self.app.progress_bar.pack_forget()
-        
-        # Re-enable referral button
-        self.app.referral_button.config(state=NORMAL)
-        
+        """Update UI with referral agent results.
+
+        Note: Progress bar and button state are handled by AsyncUIErrorHandler.
+        """
         # Update text area
         self.app._update_text_area(
-            referral_text, 
-            f"Referral created for: {conditions}", 
-            self.app.referral_button, 
+            referral_text,
+            f"Referral created for: {conditions}",
+            self.app.referral_button,
             self.app.referral_text
         )
-        
+
         # Switch to referral tab
         self.app.notebook.select(2)
-        
+
         # Update status with metadata
         urgency = metadata.get('urgency_level', 'standard')
         specialty = metadata.get('specialty', 'N/A')
@@ -831,7 +805,7 @@ class DocumentGenerators:
             status_msg += f" (Urgency: {urgency.upper()})"
         if specialty != 'N/A':
             status_msg += f" - {specialty}"
-        
+
         self.app.status_manager.success(status_msg)
     
     def extract_clinical_data(self) -> None:
@@ -896,16 +870,18 @@ class DocumentGenerators:
             content = transcript
             source_name = "Transcript"
         
-        # Update status and show progress
-        self.app.status_manager.progress(f"Extracting clinical data from {source_name}...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
-        # Disable the data extraction button during processing
+        # Get the data extraction button for error handler
         data_extraction_button = self.app.ui.components.get('generate_data_extraction_button')
-        if data_extraction_button:
-            data_extraction_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=data_extraction_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Extracting clinical data from {source_name}"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Build task description based on extraction type
@@ -917,9 +893,9 @@ class DocumentGenerators:
                     "diagnoses": "Extract diagnoses with ICD codes",
                     "procedures": "Extract procedures and interventions"
                 }
-                
+
                 task_description = task_descriptions.get(extraction_type, "Extract clinical data")
-                
+
                 # Create agent task
                 input_data = {
                     "clinical_text": content,
@@ -927,69 +903,57 @@ class DocumentGenerators:
                     "extraction_type": extraction_type,
                     "output_format": output_format
                 }
-                
+
                 task_data = AgentTask(
                     task_description=task_description,
                     input_data=input_data
                 )
-                
+
                 # Execute data extraction
                 response = agent_manager.execute_agent_task(AgentType.DATA_EXTRACTION, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_data_extraction_display(
-                        response.result,
-                        extraction_type,
-                        source_name,
-                        output_format,
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_data_extraction_display(
+                            response.result,
+                            extraction_type,
+                            source_name,
+                            output_format,
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error extracting clinical data: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget(),
-                    data_extraction_button.config(state=NORMAL) if data_extraction_button else None
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
     
     def _update_data_extraction_display(self, extracted_data: str, extraction_type: str, 
                                         source: str, output_format: str, metadata: dict) -> None:
         """Update UI with data extraction results."""
-        # Hide progress
-        self.app.progress_bar.stop()
-        self.app.progress_bar.pack_forget()
-        
-        # Re-enable data extraction button
-        data_extraction_button = self.app.ui.components.get('generate_data_extraction_button')
-        if data_extraction_button:
-            data_extraction_button.config(state=NORMAL)
-        
+        # Note: Progress bar and button state are handled by AsyncUIErrorHandler.
+
         # Import here to avoid circular imports
         from ui.dialogs.data_extraction_results_dialog import DataExtractionResultsDialog
-        
+
         # Show results in a dialog
         dialog = DataExtractionResultsDialog(self.app)
         dialog.show_results(extracted_data, extraction_type, source, output_format, metadata)
-        
+
         # Update status
         counts = metadata.get('counts', {})
         total_count = counts.get('total', 0)
-        
+
         status_msg = f"Data extraction completed: {total_count} items extracted"
         if extraction_type != 'comprehensive':
             specific_count = counts.get(extraction_type, 0)
             status_msg = f"Extracted {specific_count} {extraction_type.replace('_', ' ')}"
-        
+
         self.app.status_manager.success(status_msg)
     
     def manage_workflow(self) -> None:
@@ -1028,41 +992,43 @@ class DocumentGenerators:
         clinical_context = result.get("clinical_context", "")
         options = result.get("options", {})
         
-        # Update status and show progress
+        # Get the workflow button and build workflow name for error handler
         workflow_name = workflow_type.replace('_', ' ').title()
-        self.app.status_manager.progress(f"Generating {workflow_name} workflow...")
-        self.app.progress_bar.pack(side=RIGHT, padx=10)
-        self.app.progress_bar.start()
-        
-        # Disable the workflow button during processing
         workflow_button = self.app.ui.components.get('generate_workflow_button')
-        if workflow_button:
-            workflow_button.config(state=DISABLED)
-        
+
+        # Create error handler for this operation
+        error_handler = AsyncUIErrorHandler(
+            self.app,
+            button=workflow_button,
+            progress_bar=self.app.progress_bar,
+            operation_name=f"Generating {workflow_name} workflow"
+        )
+        error_handler.start()
+
         def task() -> None:
             try:
                 # Prepare context including any existing content
                 context_parts = []
-                
+
                 # Add clinical context from dialog
                 if clinical_context:
                     context_parts.append(f"Clinical Details: {clinical_context}")
-                
+
                 # Add patient concern if specified
                 if patient_info.get('primary_concern'):
                     context_parts.append(f"Primary Concern: {patient_info['primary_concern']}")
-                
+
                 # Check for existing SOAP note or transcript
                 soap_note = self.app.soap_text.get("1.0", "end").strip()
                 transcript = self.app.transcript_text.get("1.0", "end").strip()
-                
+
                 if soap_note:
                     context_parts.append(f"SOAP Note Available: Yes")
                 if transcript:
                     context_parts.append(f"Transcript Available: Yes")
-                
+
                 full_context = "\n".join(context_parts) if context_parts else None
-                
+
                 # Create agent task
                 task_data = AgentTask(
                     task_description=f"Create {workflow_name} workflow",
@@ -1075,343 +1041,50 @@ class DocumentGenerators:
                         "options": options
                     }
                 )
-                
+
                 # Execute workflow generation
                 response = agent_manager.execute_agent_task(AgentType.WORKFLOW, task_data)
-                
+
                 if response and response.success:
                     # Schedule UI update on main thread
-                    self.app.after(0, lambda: self._update_workflow_display(
-                        response.result,
-                        workflow_type,
-                        patient_info,
-                        response.metadata
-                    ))
+                    error_handler.complete(
+                        callback=lambda: self._update_workflow_display(
+                            response.result,
+                            workflow_type,
+                            patient_info,
+                            response.metadata
+                        )
+                    )
                 else:
                     error_msg = response.error if response else "Unknown error"
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
-                error_msg = f"Error creating workflow: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget(),
-                    workflow_button.config(state=NORMAL) if workflow_button else None
-                ])
-        
+                error_handler.fail(e)
+
         # Submit task for execution
         self.app.io_executor.submit(task)
     
     def _update_workflow_display(self, workflow_text: str, workflow_type: str,
                                  patient_info: Dict[str, Any], metadata: dict) -> None:
-        """Update UI with workflow results."""
-        # Hide progress
-        self.app.progress_bar.stop()
-        self.app.progress_bar.pack_forget()
-        
-        # Re-enable workflow button
-        workflow_button = self.app.ui.components.get('generate_workflow_button')
-        if workflow_button:
-            workflow_button.config(state=NORMAL)
-        
+        """Update UI with workflow results.
+
+        Note: Progress bar and button state are handled by AsyncUIErrorHandler.
+        """
         # Import here to avoid circular imports
         from ui.dialogs.workflow_results_dialog import WorkflowResultsDialog
-        
+
         # Show results in dialog
         dialog = WorkflowResultsDialog(self.app)
         dialog.show_results(workflow_text, workflow_type, patient_info, metadata)
-        
+
         # Update status
         workflow_name = workflow_type.replace('_', ' ').title()
         total_steps = metadata.get('total_steps', 0)
         duration = metadata.get('estimated_duration', 'Unknown')
-        
+
         status_msg = f"{workflow_name} workflow generated: {total_steps} steps"
         if duration != 'Unknown':
             status_msg += f" (~{duration})"
-        
+
         self.app.status_manager.success(status_msg)
-    
-    def process_batch_recordings(self, recording_ids: List[int], options: Dict[str, Any], 
-                                on_complete: Callable = None, on_progress: Callable = None) -> None:
-        """Process multiple recordings in batch.
-        
-        Args:
-            recording_ids: List of recording IDs to process
-            options: Processing options dictionary containing:
-                - process_soap: Whether to generate SOAP notes
-                - process_referral: Whether to generate referrals
-                - process_letter: Whether to generate letters
-                - priority: Processing priority
-                - skip_existing: Skip if content already exists
-                - continue_on_error: Continue processing on errors
-            on_complete: Callback when batch processing is complete
-            on_progress: Callback for progress updates (message, completed, total)
-        """
-        # Get recordings from database
-        recordings = self.app.db.get_recordings_by_ids(recording_ids)
-        if not recordings:
-            self.app.status_manager.error("No recordings found for batch processing")
-            if on_complete:
-                on_complete()
-            return
-        
-        # Map priority strings to numeric values
-        priority_map = {"low": 3, "normal": 5, "high": 7}
-        numeric_priority = priority_map.get(options.get("priority", "normal"), 5)
-        
-        # Initialize processing queue if not available
-        if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
-            from processing.processing_queue import ProcessingQueue
-            self.app.processing_queue = ProcessingQueue(self.app)
-        
-        # Set up batch callback
-        batch_id = None
-        completed_count = 0
-        total_count = len(recordings)
-        
-        def batch_callback(event: str, bid: str, current: int, total: int, **kwargs):
-            nonlocal batch_id, completed_count
-            batch_id = bid
-            
-            if event == "progress":
-                completed_count = current
-                if on_progress:
-                    msg = f"Processing recordings"
-                    on_progress(msg, current, total)
-            elif event == "completed":
-                # Batch complete
-                if on_complete:
-                    on_complete()
-                    
-                # Show summary
-                failed = kwargs.get("failed", 0)
-                if failed > 0:
-                    self.app.status_manager.warning(
-                        f"Batch processing completed: {current - failed} successful, {failed} failed"
-                    )
-                else:
-                    self.app.status_manager.success(
-                        f"Batch processing completed: {current} recordings processed successfully"
-                    )
-        
-        self.app.processing_queue.set_batch_callback(batch_callback)
-        
-        # Build batch recordings data
-        batch_recordings = []
-        
-        for recording in recordings:
-            rec_id = recording['id']
-            
-            # Check if we should skip based on existing content
-            if options.get("skip_existing", True):
-                skip = False
-                if options.get("process_soap") and recording.get("soap_note"):
-                    skip = True
-                elif options.get("process_referral") and recording.get("referral"):
-                    skip = True
-                elif options.get("process_letter") and recording.get("letter"):
-                    skip = True
-                
-                if skip:
-                    logging.info(f"Skipping recording {rec_id} - already has requested content")
-                    total_count -= 1
-                    continue
-            
-            # Build recording data for processing
-            recording_data = {
-                "recording_id": rec_id,
-                "filename": recording.get("filename", ""),
-                "transcript": recording.get("transcript", ""),
-                "patient_name": recording.get("patient_name", "Unknown"),
-                "process_options": {
-                    "generate_soap": options.get("process_soap", False),
-                    "generate_referral": options.get("process_referral", False),
-                    "generate_letter": options.get("process_letter", False)
-                },
-                "continue_on_error": options.get("continue_on_error", True)
-            }
-            
-            batch_recordings.append(recording_data)
-        
-        if not batch_recordings:
-            self.app.status_manager.info("All selected recordings already have the requested content")
-            if on_complete:
-                on_complete()
-            return
-        
-        # Update progress callback with actual count
-        if on_progress:
-            on_progress("Starting batch processing", 0, len(batch_recordings))
-        
-        # Submit batch to processing queue
-        batch_options = {
-            "priority": numeric_priority,
-            "continue_on_error": options.get("continue_on_error", True)
-        }
-        
-        batch_id = self.app.processing_queue.add_batch_recordings(batch_recordings, batch_options)
-        
-        logging.info(f"Started batch processing with ID {batch_id} for {len(batch_recordings)} recordings")
-    
-    def process_batch_files(self, file_paths: List[str], options: Dict[str, Any],
-                           on_complete: Callable = None, on_progress: Callable = None) -> None:
-        """Process multiple audio files in batch.
-        
-        Args:
-            file_paths: List of audio file paths to process
-            options: Processing options dictionary
-            on_complete: Callback when batch processing is complete
-            on_progress: Callback for progress updates (message, completed, total)
-        """
-        import os
-        
-        # Map priority strings to numeric values
-        priority_map = {"low": 3, "normal": 5, "high": 7}
-        numeric_priority = priority_map.get(options.get("priority", "normal"), 5)
-        
-        # Initialize processing queue if not available
-        if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
-            from processing.processing_queue import ProcessingQueue
-            self.app.processing_queue = ProcessingQueue(self.app)
-        
-        # Validate and prepare files
-        valid_files = []
-        for file_path in file_paths:
-            if os.path.exists(file_path) and os.path.isfile(file_path):
-                valid_files.append(file_path)
-            else:
-                logging.warning(f"Invalid file path: {file_path}")
-        
-        if not valid_files:
-            self.app.status_manager.error("No valid audio files found for batch processing")
-            if on_complete:
-                on_complete()
-            return
-        
-        total_count = len(valid_files)
-        completed_count = 0
-        
-        # Set up batch callback
-        batch_id = f"files_{id(file_paths)}"
-        
-        def process_single_file(file_path: str, index: int):
-            """Process a single audio file."""
-            nonlocal completed_count
-            
-            try:
-                if on_progress:
-                    on_progress(f"Processing {os.path.basename(file_path)}", index, total_count)
-                
-                # Step 1: Transcribe the audio file
-                # Get selected STT provider from settings
-                from settings.settings import SETTINGS
-                from pydub import AudioSegment
-                stt_provider = SETTINGS.get("stt_provider", "groq")
-                
-                # Use the app's existing audio handler which has initialized STT providers
-                audio_handler = self.app.audio_handler
-                
-                # Transcribe the file
-                transcript = None
-                error_msg = None
-                
-                try:
-                    # Load the audio file as AudioSegment
-                    audio_segment = AudioSegment.from_file(file_path)
-                    
-                    # Use the appropriate STT provider (handle case variations)
-                    stt_provider_lower = stt_provider.lower()
-                    if stt_provider_lower == "deepgram":
-                        transcript = audio_handler.deepgram_provider.transcribe(audio_segment)
-                    elif stt_provider_lower == "elevenlabs":
-                        transcript = audio_handler.elevenlabs_provider.transcribe(audio_segment)
-                    elif stt_provider_lower == "groq":
-                        transcript = audio_handler.groq_provider.transcribe(audio_segment)
-                    elif stt_provider_lower in ["local whisper", "whisper"]:
-                        transcript = audio_handler.whisper_provider.transcribe(audio_segment)
-                    else:
-                        error_msg = f"Unknown STT provider: {stt_provider}"
-                        
-                except Exception as e:
-                    error_msg = f"Transcription failed: {str(e)}"
-                    logging.error(f"Failed to transcribe {file_path}: {e}")
-                
-                if error_msg:
-                    if options.get("continue_on_error", True):
-                        if on_progress:
-                            on_progress(f"Failed: {os.path.basename(file_path)} - {error_msg}", 
-                                      index + 1, total_count)
-                        return
-                    else:
-                        raise Exception(error_msg)
-                
-                if not transcript:
-                    if on_progress:
-                        on_progress(f"No transcript for {os.path.basename(file_path)}", 
-                                  index + 1, total_count)
-                    return
-                
-                # Step 2: Save recording to database
-                filename = os.path.basename(file_path)
-                rec_id = self.app.db.add_recording(
-                    filename=filename,
-                    transcript=transcript,
-                    audio_path=file_path
-                )
-                
-                if not rec_id:
-                    raise Exception("Failed to save recording to database")
-                
-                # Step 3: Create recording data for processing
-                recording_data = {
-                    "recording_id": rec_id,
-                    "filename": filename,
-                    "transcript": transcript,
-                    "patient_name": f"Patient from {filename}",
-                    "audio_path": file_path,
-                    "process_options": {
-                        "generate_soap": options.get("process_soap", False),
-                        "generate_referral": options.get("process_referral", False),
-                        "generate_letter": options.get("process_letter", False)
-                    },
-                    "priority": numeric_priority
-                }
-                
-                # Step 4: Add to processing queue
-                task_id = self.app.processing_queue.add_recording(recording_data)
-                
-                completed_count += 1
-                
-                if on_progress:
-                    on_progress(f"Queued: {os.path.basename(file_path)}", 
-                              completed_count, total_count)
-                
-            except Exception as e:
-                logging.error(f"Error processing file {file_path}: {e}")
-                if not options.get("continue_on_error", True):
-                    raise
-                if on_progress:
-                    on_progress(f"Error: {os.path.basename(file_path)} - {str(e)}", 
-                              index + 1, total_count)
-        
-        # Process files sequentially (could be parallelized if needed)
-        try:
-            for i, file_path in enumerate(valid_files):
-                process_single_file(file_path, i)
-            
-            # Notify completion
-            if on_complete:
-                on_complete()
-                
-            self.app.status_manager.success(
-                f"Batch file processing completed: {completed_count} files queued for processing"
-            )
-            
-        except Exception as e:
-            logging.error(f"Batch file processing failed: {e}")
-            if on_complete:
-                on_complete()
-            raise

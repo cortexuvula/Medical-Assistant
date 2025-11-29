@@ -8,46 +8,64 @@ import sqlite3
 import logging
 from datetime import datetime
 from typing import Optional
+from contextlib import contextmanager
 
 
 class QueueDatabaseSchema:
     """Manages database schema updates for processing queue functionality."""
-    
+
     def __init__(self, db_path: str = "database.db"):
         self.db_path = db_path
-        
-    def upgrade_schema(self):
-        """Apply all schema upgrades for processing queue support."""
-        conn = sqlite3.connect(self.db_path)
+
+    @contextmanager
+    def _get_connection(self):
+        """Context manager for database connections.
+
+        Ensures proper connection handling with automatic cleanup.
+        Uses check_same_thread=True for safety since this is a single-use utility.
+
+        Yields:
+            Tuple of (connection, cursor)
+        """
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=30.0,
+            check_same_thread=True  # Safe: schema upgrades run in single thread
+        )
         cursor = conn.cursor()
-        
         try:
-            # Check if upgrades are needed
-            if not self._needs_upgrade(cursor):
-                logging.info("Database schema is up to date")
-                return
-            
-            logging.info("Upgrading database schema for processing queue support...")
-            
-            # Add new columns to recordings table
-            self._add_processing_columns(cursor)
-            
-            # Create processing_queue table
-            self._create_processing_queue_table(cursor)
-            
-            # Create indexes for performance
-            self._create_indexes(cursor)
-            
-            # Commit all changes
-            conn.commit()
-            logging.info("Database schema upgrade completed successfully")
-            
-        except Exception as e:
-            conn.rollback()
-            logging.error(f"Failed to upgrade database schema: {str(e)}")
-            raise
+            yield conn, cursor
         finally:
             conn.close()
+
+    def upgrade_schema(self):
+        """Apply all schema upgrades for processing queue support."""
+        with self._get_connection() as (conn, cursor):
+            try:
+                # Check if upgrades are needed
+                if not self._needs_upgrade(cursor):
+                    logging.info("Database schema is up to date")
+                    return
+
+                logging.info("Upgrading database schema for processing queue support...")
+
+                # Add new columns to recordings table
+                self._add_processing_columns(cursor)
+
+                # Create processing_queue table
+                self._create_processing_queue_table(cursor)
+
+                # Create indexes for performance
+                self._create_indexes(cursor)
+
+                # Commit all changes
+                conn.commit()
+                logging.info("Database schema upgrade completed successfully")
+
+            except Exception as e:
+                conn.rollback()
+                logging.error(f"Failed to upgrade database schema: {str(e)}")
+                raise
     
     def _needs_upgrade(self, cursor) -> bool:
         """Check if schema upgrades are needed."""

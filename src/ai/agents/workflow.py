@@ -614,8 +614,8 @@ Format as a practical, actionable workflow."""
                 months = 6  # Default
                 try:
                     months = int(re.search(r'(\d+)', duration).group(1))
-                except:
-                    pass
+                except (AttributeError, ValueError, TypeError):
+                    pass  # Use default if parsing fails
                 
                 for i in range(1, min(months + 1, 7)):
                     schedule.append({

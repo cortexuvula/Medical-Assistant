@@ -174,17 +174,17 @@ class TranslationDialog:
         try:
             idx = lang_codes.index(self.patient_language)
             self.patient_combo.set(lang_names[idx])
-        except:
+        except (ValueError, IndexError):
             self.patient_combo.set(self.patient_language)
-        
+
         self.patient_combo.bind("<<ComboboxSelected>>", self._on_patient_language_change)
-        
+
         # Arrow indicator
         ttk.Label(lang_frame, text="⟷", font=("", 16)).pack(side=LEFT, padx=20)
-        
+
         # Doctor language selection
         ttk.Label(lang_frame, text="Doctor Language:", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 5))
-        
+
         self.doctor_lang_var = tk.StringVar(value=self.doctor_language)
         self.doctor_combo = ttk.Combobox(
             lang_frame,
@@ -194,12 +194,12 @@ class TranslationDialog:
             width=20  # Increase width to accommodate language names
         )
         self.doctor_combo.pack(side=LEFT)
-        
+
         # Set display value
         try:
             idx = lang_codes.index(self.doctor_language)
             self.doctor_combo.set(lang_names[idx])
-        except:
+        except (ValueError, IndexError):
             self.doctor_combo.set(self.doctor_language)
         
         self.doctor_combo.bind("<<ComboboxSelected>>", self._on_doctor_language_change)

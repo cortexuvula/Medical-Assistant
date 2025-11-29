@@ -4,6 +4,7 @@ Utility to migrate existing settings.json to the new configuration system.
 """
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -11,47 +12,49 @@ from core.config import Config
 from settings.settings_migrator import SettingsMigrator
 from managers.data_folder_manager import data_folder_manager
 
+logger = logging.getLogger(__name__)
+
 
 def migrate_settings():
     """Migrate settings.json to new configuration system."""
-    print("Medical Assistant Settings Migration Tool")
-    print("=" * 40)
-    
+    logger.info("Medical Assistant Settings Migration Tool")
+    logger.info("=" * 40)
+
     # Check if settings.json exists in old location first
     old_settings_file = Path("settings.json")
     settings_file = data_folder_manager.settings_file_path
-    
+
     # Try old location if new location doesn't have it
     if not settings_file.exists() and old_settings_file.exists():
         settings_file = old_settings_file
     elif not settings_file.exists():
-        print("No settings.json file found. Nothing to migrate.")
+        logger.info("No settings.json file found. Nothing to migrate.")
         return
-    
+
     # Load existing settings
     try:
         with open(settings_file, 'r', encoding='utf-8') as f:
             old_settings = json.load(f)
-        print(f"Loaded settings from {settings_file}")
+        logger.info(f"Loaded settings from {settings_file}")
     except Exception as e:
-        print(f"Error loading settings.json: {e}")
+        logger.error(f"Error loading settings.json: {e}")
         return
-    
+
     # Detect environment
     env = os.getenv('MEDICAL_ASSISTANT_ENV', 'production')
-    print(f"Target environment: {env}")
-    
+    logger.info(f"Target environment: {env}")
+
     # Initialize configuration
     config = Config(env)
     migrator = SettingsMigrator()
-    
+
     # Migrate settings
-    print("\nMigrating settings...")
+    logger.info("Migrating settings...")
     migrator.migrate_from_dict(old_settings)
-    
+
     # Save to environment-specific config
     config_file = config._get_config_file()
-    print(f"Saving to {config_file}")
+    logger.info(f"Saving to {config_file}")
     
     try:
         # Load existing env config if it exists
@@ -91,21 +94,21 @@ def migrate_settings():
         # Save differences
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(differences, f, indent=2)
-        
-        print(f"✓ Migration complete! Settings saved to {config_file}")
-        
+
+        logger.info(f"Migration complete! Settings saved to {config_file}")
+
         # Backup old settings
         backup_file = settings_file.with_suffix('.json.backup')
         settings_file.rename(backup_file)
-        print(f"✓ Original settings backed up to {backup_file}")
-        
-        print("\nNext steps:")
-        print("1. Review the migrated configuration in", config_file)
-        print("2. Set up your API keys in a .env file (see .env.example)")
-        print("3. Test the application with the new configuration")
-        
+        logger.info(f"Original settings backed up to {backup_file}")
+
+        logger.info("Next steps:")
+        logger.info(f"1. Review the migrated configuration in {config_file}")
+        logger.info("2. Set up your API keys in a .env file (see .env.example)")
+        logger.info("3. Test the application with the new configuration")
+
     except Exception as e:
-        print(f"Error saving configuration: {e}")
+        logger.error(f"Error saving configuration: {e}")
         return
 
 

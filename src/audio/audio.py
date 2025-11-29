@@ -10,6 +10,12 @@ from pathlib import Path
 from settings.settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
 from core.config import get_config
+from audio.constants import (
+    DEFAULT_SAMPLE_RATE,
+    DEFAULT_SAMPLE_WIDTH,
+    DEFAULT_CHANNELS,
+    SAMPLE_WIDTH_16BIT,
+)
 
 # Try to import audio.audio libraries - they may fail in CI environments
 try:
@@ -74,9 +80,9 @@ class AudioHandler:
         self.fallback_callback = None
         
         # Default audio parameters for recording
-        self.sample_rate = 48000  # Hz - Higher sample rate for better quality
-        self.channels = 1  # Mono
-        self.sample_width = 2  # Bytes (16-bit)
+        self.sample_rate = DEFAULT_SAMPLE_RATE  # Hz - Higher sample rate for better quality
+        self.channels = DEFAULT_CHANNELS  # Mono
+        self.sample_width = DEFAULT_SAMPLE_WIDTH  # Bytes (16-bit)
         self.recording = False
         self.recording_thread = None
         self.recorded_frames = []

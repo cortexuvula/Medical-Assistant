@@ -37,9 +37,9 @@ class TTSManager:
         try:
             pygame.mixer.init()
             self._pygame_available = True
-        except:
+        except (pygame.error, RuntimeError, OSError) as e:
             self._pygame_available = False
-            self.logger.warning("pygame mixer not available, will use pydub for playback")
+            self.logger.warning(f"pygame mixer not available, will use pydub for playback: {e}")
     
     def get_provider(self) -> BaseTTSProvider:
         """Get the current TTS provider instance.

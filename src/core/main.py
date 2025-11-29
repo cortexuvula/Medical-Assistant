@@ -7,15 +7,15 @@ try:
 except ImportError:
     pass  # Not critical if it fails
 
-# Check Python version before importing app
+# Check Python version before importing app (print to stderr - logging not yet configured)
 if sys.version_info < (3, 10):
-    print("Error: This application requires Python 3.10 or higher.")
-    print(f"Your current Python version is {sys.version}")
-    print("\nPlease update your Python version or create a new environment with Python 3.10+.")
-    print("\nSuggested fix: Use conda to create a new environment with Python 3.10:")
-    print("conda create -n medical_dictation python=3.10")
-    print("conda activate medical_dictation")
-    print("pip install -r requirements.txt")
+    sys.stderr.write("Error: This application requires Python 3.10 or higher.\n")
+    sys.stderr.write(f"Your current Python version is {sys.version}\n")
+    sys.stderr.write("\nPlease update your Python version or create a new environment with Python 3.10+.\n")
+    sys.stderr.write("\nSuggested fix: Use conda to create a new environment with Python 3.10:\n")
+    sys.stderr.write("conda create -n medical_dictation python=3.10\n")
+    sys.stderr.write("conda activate medical_dictation\n")
+    sys.stderr.write("pip install -r requirements.txt\n")
     sys.exit(1)
 
 # Import configuration and validate before starting app
@@ -69,18 +69,15 @@ try:
             logger.info(f"Database up to date (version {current_version})")
     except DatabaseError as e:
         logger.error(f"Database initialization failed: {e}")
-        print(f"\nDatabase Error: {e}")
-        print("\nPlease run 'python migrate_database.py' to fix database issues.")
+        logger.error("Please run 'python migrate_database.py' to fix database issues.")
         sys.exit(1)
-    
+
 except ConfigurationError as e:
     logger.error(f"Configuration error: {e}")
-    print(f"\nConfiguration Error: {e}")
-    print("\nPlease check your configuration files in the 'config' directory.")
+    logger.error("Please check your configuration files in the 'config' directory.")
     sys.exit(1)
 except Exception as e:
     logger.error(f"Unexpected error during configuration: {e}", exc_info=True)
-    print(f"\nUnexpected Error: {e}")
     sys.exit(1)
 
 # Import app only if configuration is valid

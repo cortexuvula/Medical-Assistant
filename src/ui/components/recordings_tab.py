@@ -302,7 +302,7 @@ class RecordingsTab:
                         dt_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                         date_str = dt_obj.strftime("%Y-%m-%d")
                         time_str = dt_obj.strftime("%H:%M")
-                    except:
+                    except (ValueError, AttributeError):
                         date_str = timestamp.split()[0] if ' ' in timestamp else timestamp
                         time_str = timestamp.split()[1] if ' ' in timestamp else ""
                 else:

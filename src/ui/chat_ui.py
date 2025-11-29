@@ -494,10 +494,10 @@ class ChatUI:
                                   foreground="#f8f9fa",
                                   bordercolor="#495057")
                     style.configure("Dark.TLabelframe.Label",
-                                  background="#212529", 
+                                  background="#212529",
                                   foreground="#f8f9fa")
-                except:
-                    pass
+                except tk.TclError:
+                    pass  # Style configuration may fail if theme not supported
             else:
                 # Light theme styling
                 self.chat_frame.configure(style="TLabelframe")

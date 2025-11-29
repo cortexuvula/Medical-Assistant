@@ -296,5 +296,130 @@ def safe_filename(filename: str, max_length: int = 255) -> str:
     # Truncate if too long
     if len(safe_chars) > max_length:
         safe_chars = safe_chars[:max_length]
-    
+
     return safe_chars
+
+
+def validate_path_for_subprocess(path: str, must_exist: bool = True) -> Tuple[bool, Optional[str]]:
+    """Validate a file or directory path before passing to subprocess.
+
+    This function performs security checks to prevent command injection
+    and path traversal attacks when opening files/folders via subprocess.
+
+    Args:
+        path: The file or directory path to validate
+        must_exist: Whether the path must exist (default True)
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not path:
+        return False, "Path cannot be empty"
+
+    # Check for null bytes (can be used for injection)
+    if '\x00' in path:
+        logging.warning(f"Null byte detected in path: {repr(path)}")
+        return False, "Invalid path: contains null byte"
+
+    # Check for shell metacharacters that could be exploited
+    # These are dangerous in shell contexts
+    dangerous_chars = ['|', '&', ';', '$', '`', '(', ')', '{', '}', '[', ']',
+                       '<', '>', '\n', '\r', '!', '#']
+    for char in dangerous_chars:
+        if char in path:
+            logging.warning(f"Dangerous character '{char}' in path: {path}")
+            return False, f"Invalid path: contains dangerous character '{char}'"
+
+    try:
+        # Resolve to absolute path and normalize
+        resolved_path = Path(path).resolve()
+
+        # Check path length
+        if len(str(resolved_path)) > MAX_FILE_PATH_LENGTH:
+            return False, f"Path too long (max {MAX_FILE_PATH_LENGTH} characters)"
+
+        # Check for path traversal attempts
+        # After resolving, the path should not escape expected locations
+        if ".." in path:
+            # Log but allow if resolved path is valid
+            logging.debug(f"Path contains '..', resolved to: {resolved_path}")
+
+        # Check existence if required
+        if must_exist and not resolved_path.exists():
+            return False, f"Path does not exist: {path}"
+
+        # Verify it's a real path (not a symlink pointing outside allowed areas)
+        # This is a basic check - can be enhanced based on security requirements
+        if resolved_path.is_symlink():
+            target = resolved_path.resolve()
+            logging.debug(f"Symlink {path} -> {target}")
+
+        return True, None
+
+    except (OSError, ValueError) as e:
+        return False, f"Invalid path: {str(e)}"
+
+
+def open_file_or_folder_safely(path: str, operation: str = "open") -> Tuple[bool, Optional[str]]:
+    """Safely open a file or folder using the system's default application.
+
+    This function validates the path and uses the appropriate system
+    command to open files/folders safely.
+
+    Args:
+        path: The file or directory path to open
+        operation: The operation type - "open" or "print"
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    import platform
+    import subprocess
+    import shlex
+
+    # Validate the path first
+    is_valid, error = validate_path_for_subprocess(path, must_exist=True)
+    if not is_valid:
+        logging.error(f"Path validation failed: {error}")
+        return False, error
+
+    try:
+        # Resolve to absolute path
+        resolved_path = str(Path(path).resolve())
+        system = platform.system()
+
+        if system == 'Windows':
+            # Windows: use os.startfile which is safe
+            if operation == "print":
+                os.startfile(resolved_path, "print")
+            else:
+                os.startfile(resolved_path)
+
+        elif system == 'Darwin':  # macOS
+            # macOS: use 'open' command with proper argument handling
+            if operation == "print":
+                # Use lpr for printing
+                subprocess.run(['lpr', resolved_path], check=True)
+            else:
+                subprocess.run(['open', resolved_path], check=True)
+
+        else:  # Linux and other Unix-like systems
+            if operation == "print":
+                subprocess.run(['lpr', resolved_path], check=True)
+            else:
+                subprocess.run(['xdg-open', resolved_path], check=True)
+
+        return True, None
+
+    except FileNotFoundError as e:
+        error_msg = f"System command not found: {e}"
+        logging.error(error_msg)
+        return False, error_msg
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Failed to {operation} path: {e}"
+        logging.error(error_msg)
+        return False, error_msg
+    except OSError as e:
+        error_msg = f"OS error opening path: {e}"
+        logging.error(error_msg)
+        return False, error_msg

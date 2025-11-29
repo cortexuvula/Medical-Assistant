@@ -7,6 +7,7 @@ to update UI elements during long operations.
 
 import time
 import logging
+import tkinter as tk
 from typing import Callable, Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -203,8 +204,8 @@ def create_progress_callback(status_manager, progress_bar=None) -> Callable[[Pro
             try:
                 # For determinate progress bar
                 progress_bar.config(value=progress.percentage)
-            except:
-                # Fallback for indeterminate progress bar
+            except (tk.TclError, AttributeError):
+                # Fallback for indeterminate progress bar or widget destroyed
                 pass
                 
         # Log progress
