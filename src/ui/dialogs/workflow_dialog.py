@@ -25,8 +25,8 @@ class WorkflowDialog:
         # Create dialog
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Clinical Workflow Options")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 700)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog_width, self.dialog_height = ui_scaler.get_dialog_size(800, 700)
+        self.dialog.geometry(f"{self.dialog_width}x{self.dialog_height}")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
