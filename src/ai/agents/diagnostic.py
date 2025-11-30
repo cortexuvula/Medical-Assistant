@@ -3,11 +3,14 @@ Diagnostic agent for analyzing symptoms and suggesting differential diagnoses.
 """
 
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 import re
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse
+
+if TYPE_CHECKING:
+    from .ai_caller import AICallerProtocol
 
 
 logger = logging.getLogger(__name__)
@@ -51,14 +54,15 @@ Format your response as:
         max_tokens=500
     )
     
-    def __init__(self, config: Optional[AgentConfig] = None):
+    def __init__(self, config: Optional[AgentConfig] = None, ai_caller: Optional['AICallerProtocol'] = None):
         """
         Initialize the diagnostic agent.
-        
+
         Args:
             config: Optional custom configuration. Uses default if not provided.
+            ai_caller: Optional AI caller for dependency injection.
         """
-        super().__init__(config or self.DEFAULT_CONFIG)
+        super().__init__(config or self.DEFAULT_CONFIG, ai_caller=ai_caller)
         
     def execute(self, task: AgentTask) -> AgentResponse:
         """

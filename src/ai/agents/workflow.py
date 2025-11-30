@@ -5,11 +5,14 @@ Workflow agent for managing multi-step clinical processes and protocols.
 import logging
 import json
 import re
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from datetime import datetime
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
+
+if TYPE_CHECKING:
+    from .ai_caller import AICallerProtocol
 
 
 logger = logging.getLogger(__name__)
@@ -68,13 +71,14 @@ Always include:
         max_tokens=500
     )
     
-    def __init__(self, config: Optional[AgentConfig] = None):
+    def __init__(self, config: Optional[AgentConfig] = None, ai_caller: Optional['AICallerProtocol'] = None):
         """Initialize the workflow agent.
-        
+
         Args:
             config: Optional configuration override
+            ai_caller: Optional AI caller for dependency injection.
         """
-        super().__init__(config or self.DEFAULT_CONFIG)
+        super().__init__(config or self.DEFAULT_CONFIG, ai_caller=ai_caller)
         
     def execute(self, task: AgentTask) -> AgentResponse:
         """Execute a workflow coordination task.

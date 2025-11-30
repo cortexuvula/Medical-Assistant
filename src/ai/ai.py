@@ -4,8 +4,12 @@ import logging
 import re
 import requests
 import json
+import httpx
+from typing import List, Dict, Any, Optional
 from openai import OpenAI
+from openai.types.chat import ChatCompletion
 from anthropic import Anthropic
+from anthropic.types import Message as AnthropicMessage
 from ai.prompts import (
     REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
@@ -14,13 +18,18 @@ from ai.prompts import (
 from settings.settings import SETTINGS, _DEFAULT_SETTINGS
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_api_key, sanitize_prompt, validate_model_name
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError
+from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, TimeoutError as AppTimeoutError
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call, rate_limited
+from utils.timeout_config import get_timeout, get_timeout_tuple
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
+    PROVIDER_GROK, PROVIDER_OLLAMA
+)
 
 
-def log_api_call_debug(provider: str, model: str, temperature: float, system_message: str, prompt: str):
+def log_api_call_debug(provider: str, model: str, temperature: float, system_message: str, prompt: str) -> None:
     """Consolidated debug logging for API calls to reduce repetition."""
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         logging.debug(f"\n===== {provider.upper()} API CALL =====")
@@ -37,27 +46,41 @@ def log_api_call_debug(provider: str, model: str, temperature: float, system_mes
     failure_threshold=5,
     recovery_timeout=60
 )
-def _openai_api_call(model: str, messages: list, temperature: float):
-    """Make the actual API call to OpenAI.
-    
+def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: float) -> ChatCompletion:
+    """Make the actual API call to OpenAI with explicit timeout.
+
     Args:
         model: Model name
         messages: List of messages
         temperature: Temperature setting
-        
+
     Returns:
         API response
-        
+
     Raises:
         APIError: On API failures
+        AppTimeoutError: On request timeout
     """
+    timeout_seconds = get_timeout("openai")
+
     try:
-        response = openai.chat.completions.create(
+        # Create a client with explicit timeout
+        # httpx timeout is used by the OpenAI client
+        http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+        client = OpenAI(http_client=http_client)
+
+        response = client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
         )
         return response
+    except httpx.TimeoutException as e:
+        raise AppTimeoutError(
+            f"OpenAI request timed out after {timeout_seconds}s: {e}",
+            timeout_seconds=timeout_seconds,
+            service="openai"
+        )
     except Exception as e:
         error_msg = str(e)
         if "rate limit" in error_msg.lower():
@@ -65,37 +88,45 @@ def _openai_api_call(model: str, messages: list, temperature: float):
         elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
             raise AuthenticationError(f"OpenAI authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower():
-            raise ServiceUnavailableError(f"OpenAI request timeout: {error_msg}")
+            raise AppTimeoutError(
+                f"OpenAI request timeout: {error_msg}",
+                timeout_seconds=timeout_seconds,
+                service="openai"
+            )
         else:
             raise APIError(f"OpenAI API error: {error_msg}")
 
 def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
     # Get security manager
     security_manager = get_security_manager()
-    
+
     # Validate inputs
     is_valid, error = validate_model_name(model, "openai")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return f"[Error: {title}] {message}"
-    
+
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
     system_message = security_manager.sanitize_input(system_message, "prompt")
-    
+
     try:
         logging.info(f"Making OpenAI API call with model: {model}")
-        
+
         # Use consolidated debug logging
         log_api_call_debug("OpenAI", model, temperature, system_message, prompt)
-        
+
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": prompt}
         ]
-        
+
         response = _openai_api_call(model, messages, temperature)
         return response.choices[0].message.content.strip()
+    except AppTimeoutError as e:
+        logging.error(f"OpenAI API timeout with model {model}: {str(e)}")
+        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
         error_code, details = format_api_error("openai", e)
@@ -115,21 +146,24 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     failure_threshold=5,
     recovery_timeout=60
 )
-def _perplexity_api_call(client, model: str, messages: list, temperature: float):
-    """Make the actual API call to Perplexity.
-    
+def _perplexity_api_call(client: OpenAI, model: str, messages: List[Dict[str, str]], temperature: float) -> ChatCompletion:
+    """Make the actual API call to Perplexity with explicit timeout.
+
     Args:
         client: OpenAI client configured for Perplexity
         model: Model name
         messages: List of messages
         temperature: Temperature setting
-        
+
     Returns:
         API response
-        
+
     Raises:
         APIError: On API failures
+        AppTimeoutError: On request timeout
     """
+    timeout_seconds = get_timeout("perplexity")
+
     try:
         response = client.chat.completions.create(
             model=model,
@@ -137,6 +171,12 @@ def _perplexity_api_call(client, model: str, messages: list, temperature: float)
             temperature=temperature,
         )
         return response
+    except httpx.TimeoutException as e:
+        raise AppTimeoutError(
+            f"Perplexity request timed out after {timeout_seconds}s: {e}",
+            timeout_seconds=timeout_seconds,
+            service="perplexity"
+        )
     except Exception as e:
         error_msg = str(e)
         if "rate limit" in error_msg.lower():
@@ -144,42 +184,50 @@ def _perplexity_api_call(client, model: str, messages: list, temperature: float)
         elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
             raise AuthenticationError(f"Perplexity authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower():
-            raise ServiceUnavailableError(f"Perplexity request timeout: {error_msg}")
+            raise AppTimeoutError(
+                f"Perplexity request timeout: {error_msg}",
+                timeout_seconds=timeout_seconds,
+                service="perplexity"
+            )
         else:
             raise APIError(f"Perplexity API error: {error_msg}")
 
 def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
-    
+
     # Get security manager
     security_manager = get_security_manager()
-    
+
     # Get API key from secure storage or environment
     api_key = security_manager.get_api_key("perplexity")
     if not api_key:
         logging.error("Perplexity API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Validate API key format
     is_valid, error = validate_api_key("perplexity", api_key)
     if not is_valid:
         logging.error(f"Invalid Perplexity API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
     system_message = security_manager.sanitize_input(system_message, "prompt")
-    client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-    
+
+    # Create client with explicit timeout
+    timeout_seconds = get_timeout("perplexity")
+    http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+    client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", http_client=http_client)
+
     # Get model from the appropriate settings based on the task
     model_key = get_model_key_for_task(system_message, prompt)
     model = SETTINGS.get(model_key, {}).get("perplexity_model", "sonar-medium-chat")
     logging.info(f"Making Perplexity API call with model: {model}")
-    
+
     # Use consolidated debug logging
     log_api_call_debug("Perplexity", model, temperature, system_message, prompt)
-    
+
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": prompt}
@@ -190,6 +238,10 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         # Remove text between <think> and </think>
         result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
         return result
+    except AppTimeoutError as e:
+        logging.error(f"Perplexity API timeout with model {model}: {str(e)}")
+        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         error_code, details = format_api_error("perplexity", e)
@@ -380,27 +432,30 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
     failure_threshold=5,
     recovery_timeout=60
 )
-def _anthropic_api_call(client: Anthropic, model: str, messages: list, temperature: float, max_tokens: int = 4096):
-    """Make the actual API call to Anthropic.
-    
+def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, str]], temperature: float, max_tokens: int = 4096) -> AnthropicMessage:
+    """Make the actual API call to Anthropic with explicit timeout.
+
     Args:
         client: Anthropic client instance
         model: Model name
         messages: List of messages
         temperature: Temperature setting
         max_tokens: Maximum tokens in response
-        
+
     Returns:
         API response
-        
+
     Raises:
         APIError: On API failures
+        AppTimeoutError: On request timeout
     """
+    timeout_seconds = get_timeout("anthropic")
+
     try:
         # Convert OpenAI-style messages to Anthropic format
         system_message = None
         user_messages = []
-        
+
         for msg in messages:
             if msg["role"] == "system":
                 system_message = msg["content"]
@@ -408,7 +463,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: list, temperatu
                 user_messages.append({"role": "user", "content": msg["content"]})
             elif msg["role"] == "assistant":
                 user_messages.append({"role": "assistant", "content": msg["content"]})
-        
+
         # Create the message with Anthropic's API
         response = client.messages.create(
             model=model,
@@ -418,6 +473,12 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: list, temperatu
             messages=user_messages
         )
         return response
+    except httpx.TimeoutException as e:
+        raise AppTimeoutError(
+            f"Anthropic request timed out after {timeout_seconds}s: {e}",
+            timeout_seconds=timeout_seconds,
+            service="anthropic"
+        )
     except Exception as e:
         error_msg = str(e)
         if "rate_limit" in error_msg.lower():
@@ -425,65 +486,77 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: list, temperatu
         elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
             raise AuthenticationError(f"Anthropic authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower():
-            raise ServiceUnavailableError(f"Anthropic request timeout: {error_msg}")
+            raise AppTimeoutError(
+                f"Anthropic request timeout: {error_msg}",
+                timeout_seconds=timeout_seconds,
+                service="anthropic"
+            )
         else:
             raise APIError(f"Anthropic API error: {error_msg}")
 
 def call_anthropic(model: str, system_message: str, prompt: str, temperature: float) -> str:
-    """Call Anthropic's Claude API.
-    
+    """Call Anthropic's Claude API with explicit timeout.
+
     Args:
         model: Model to use (e.g., claude-3-opus-20240229)
         system_message: System message to guide the AI's response
         prompt: User prompt
         temperature: Temperature parameter (0.0 to 1.0)
-        
+
     Returns:
         AI-generated response as a string
     """
     # Get security manager
     security_manager = get_security_manager()
-    
+
     # Get API key from secure storage or environment
     api_key = security_manager.get_api_key("anthropic")
     if not api_key:
         logging.error("Anthropic API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Validate API key format
     is_valid, error = validate_api_key("anthropic", api_key)
     if not is_valid:
         logging.error(f"Invalid Anthropic API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Validate model name
     is_valid, error = validate_model_name(model, "anthropic")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return f"[Error: {title}] {message}"
-    
+
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
     system_message = security_manager.sanitize_input(system_message, "prompt")
-    
+
     try:
         logging.info(f"Making Anthropic API call with model: {model}")
-        
+
         # Use consolidated debug logging
         log_api_call_debug("Anthropic", model, temperature, system_message, prompt)
-        
-        # Initialize Anthropic client
-        client = Anthropic(api_key=api_key)
-        
+
+        # Initialize Anthropic client with explicit timeout
+        timeout_seconds = get_timeout("anthropic")
+        client = Anthropic(
+            api_key=api_key,
+            timeout=httpx.Timeout(timeout_seconds, connect=10.0)
+        )
+
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": prompt}
         ]
-        
+
         response = _anthropic_api_call(client, model, messages, temperature)
         return response.content[0].text.strip()
+    except AppTimeoutError as e:
+        logging.error(f"Anthropic API timeout with model {model}: {str(e)}")
+        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Anthropic API error with model {model}: {str(e)}")
         error_code, details = format_api_error("anthropic", e)
@@ -495,29 +568,44 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
 def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
+    """Call Grok API with explicit timeout.
+
+    Args:
+        model: Model to use
+        system_message: System message to guide the AI's response
+        prompt: User prompt
+        temperature: Temperature parameter (0.0 to 1.0)
+
+    Returns:
+        AI-generated response as a string
+    """
     api_key = os.getenv("GROK_API_KEY")
     if not api_key:
         logging.error("Grok API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Grok API key not found")
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Validate API key and inputs
     is_valid, error = validate_api_key("grok", api_key)
     if not is_valid:
         logging.error(f"Invalid Grok API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
-    
+
     # Sanitize inputs
     prompt = sanitize_prompt(prompt)
     system_message = sanitize_prompt(system_message)
-    
+
     logging.info(f"Making Grok API call with model: {model}")
-    
+
     # Use consolidated debug logging
     log_api_call_debug("Grok", model, temperature, system_message, prompt)
-    
-    client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+
+    # Create client with explicit timeout
+    timeout_seconds = get_timeout("grok")
+    http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+    client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1", http_client=http_client)
+
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": prompt}
@@ -529,6 +617,10 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
             temperature=temperature,
         )
         return response.choices[0].message.content.strip()
+    except httpx.TimeoutException as e:
+        logging.error(f"Grok API timeout with model {model}: {str(e)}")
+        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {timeout_seconds}s")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
     except Exception as e:
         logging.error(f"Grok API error with model {model}: {str(e)}")
         error_code, details = format_api_error("grok", e)
@@ -789,20 +881,20 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
             temperature = generic_temp
     
     # Handle different providers and get appropriate model
-    if provider == "perplexity":
+    if provider == PROVIDER_PERPLEXITY:
         logging.info(f"Using provider: Perplexity for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_perplexity(system_message, prompt, temperature)
-    elif provider == "grok":
+    elif provider == PROVIDER_GROK:
         actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_grok(actual_model, system_message, prompt, temperature)
-    elif provider == "ollama":
+    elif provider == PROVIDER_OLLAMA:
         logging.info(f"Using provider: Ollama for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)
-    elif provider == "anthropic":
+    elif provider == PROVIDER_ANTHROPIC:
         actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
         logging.info(f"Using provider: Anthropic with model: {actual_model}")
         # Debug logging will happen in the actual API call

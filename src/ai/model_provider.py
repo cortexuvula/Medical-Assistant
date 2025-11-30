@@ -16,6 +16,10 @@ from anthropic import Anthropic
 
 from utils.security import get_security_manager
 from settings.settings import SETTINGS
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
+    PROVIDER_GROK, PROVIDER_OLLAMA
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ class ModelProvider:
     
     # Fallback model lists in case API calls fail
     FALLBACK_MODELS = {
-        "openai": [
+        PROVIDER_OPENAI: [
             "gpt-4-turbo-preview",
             "gpt-4-turbo",
             "gpt-4",
@@ -36,7 +40,7 @@ class ModelProvider:
             "gpt-3.5-turbo",
             "gpt-3.5-turbo-16k"
         ],
-        "anthropic": [
+        PROVIDER_ANTHROPIC: [
             "claude-3-opus-20240229",
             "claude-3-sonnet-20240229",
             "claude-3-haiku-20240307",
@@ -44,7 +48,7 @@ class ModelProvider:
             "claude-2.0",
             "claude-instant-1.2"
         ],
-        "ollama": [
+        PROVIDER_OLLAMA: [
             "llama3",
             "llama2",
             "mistral",
@@ -52,7 +56,7 @@ class ModelProvider:
             "vicuna",
             "orca-mini"
         ],
-        "perplexity": [
+        PROVIDER_PERPLEXITY: [
             "llama-3.1-sonar-large-128k-online",
             "llama-3.1-sonar-large-128k-chat",
             "llama-3.1-sonar-small-128k-online",
@@ -62,7 +66,7 @@ class ModelProvider:
             "sonar-small-online",
             "sonar-small-chat"
         ],
-        "grok": [
+        PROVIDER_GROK: [
             "grok-1",
             "grok-2"
         ]
@@ -133,15 +137,15 @@ class ModelProvider:
             List of model names or None if failed
         """
         try:
-            if provider == "openai":
+            if provider == PROVIDER_OPENAI:
                 return self._fetch_openai_models()
-            elif provider == "anthropic":
+            elif provider == PROVIDER_ANTHROPIC:
                 return self._fetch_anthropic_models()
-            elif provider == "ollama":
+            elif provider == PROVIDER_OLLAMA:
                 return self._fetch_ollama_models()
-            elif provider == "perplexity":
+            elif provider == PROVIDER_PERPLEXITY:
                 return self._fetch_perplexity_models()
-            elif provider == "grok":
+            elif provider == PROVIDER_GROK:
                 return self._fetch_grok_models()
             else:
                 logger.warning(f"Unknown provider: {provider}")
@@ -153,7 +157,7 @@ class ModelProvider:
     def _fetch_openai_models(self) -> Optional[List[str]]:
         """Fetch available models from OpenAI."""
         try:
-            api_key = self._security_manager.get_api_key("openai")
+            api_key = self._security_manager.get_api_key(PROVIDER_OPENAI)
             if not api_key:
                 return None
                 
@@ -178,17 +182,17 @@ class ModelProvider:
     def _fetch_anthropic_models(self) -> Optional[List[str]]:
         """Fetch available models from Anthropic."""
         try:
-            api_key = self._security_manager.get_api_key("anthropic")
+            api_key = self._security_manager.get_api_key(PROVIDER_ANTHROPIC)
             if not api_key:
                 return None
-                
+
             # Anthropic doesn't have a models endpoint yet, but we can make a test call
             # to see which models are available
             client = Anthropic(api_key=api_key)
-            
+
             # For now, return the known models
             # In the future, Anthropic may add a models endpoint
-            return self.FALLBACK_MODELS["anthropic"]
+            return self.FALLBACK_MODELS[PROVIDER_ANTHROPIC]
             
         except Exception as e:
             logger.error(f"Error with Anthropic: {e}")
@@ -216,13 +220,13 @@ class ModelProvider:
     def _fetch_perplexity_models(self) -> Optional[List[str]]:
         """Fetch available models from Perplexity."""
         try:
-            api_key = self._security_manager.get_api_key("perplexity")
+            api_key = self._security_manager.get_api_key(PROVIDER_PERPLEXITY)
             if not api_key:
                 return None
-                
+
             # Perplexity doesn't have a public models endpoint
             # Return the known models
-            return self.FALLBACK_MODELS["perplexity"]
+            return self.FALLBACK_MODELS[PROVIDER_PERPLEXITY]
             
         except Exception as e:
             logger.error(f"Error with Perplexity: {e}")
@@ -231,13 +235,13 @@ class ModelProvider:
     def _fetch_grok_models(self) -> Optional[List[str]]:
         """Fetch available models from Grok."""
         try:
-            api_key = self._security_manager.get_api_key("grok")
+            api_key = self._security_manager.get_api_key(PROVIDER_GROK)
             if not api_key:
                 return None
-                
+
             # Grok API endpoint for models (if available)
             # For now, return known models
-            return self.FALLBACK_MODELS["grok"]
+            return self.FALLBACK_MODELS[PROVIDER_GROK]
             
         except Exception as e:
             logger.error(f"Error with Grok: {e}")

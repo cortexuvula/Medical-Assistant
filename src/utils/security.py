@@ -10,7 +10,7 @@ import hashlib
 import logging
 import secrets
 from pathlib import Path
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple, List
 from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -22,6 +22,12 @@ from collections import defaultdict, deque
 
 from core.config import get_config
 from utils.exceptions import ConfigurationError, APIError
+from utils.constants import (
+    AIProvider, STTProvider, TTSProvider,
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
+    PROVIDER_GROK, PROVIDER_OLLAMA,
+    STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
+)
 
 
 class SecureKeyStorage:
@@ -246,9 +252,9 @@ class SecureKeyStorage:
         key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
         return Fernet(key)
     
-    def store_key(self, provider: str, api_key: str):
+    def store_key(self, provider: str, api_key: str) -> None:
         """Store an encrypted API key.
-        
+
         Args:
             provider: API provider name
             api_key: API key to store
@@ -342,7 +348,7 @@ class SecureKeyStorage:
             self.logger.error(f"Failed to load keys: {e}")
             return {}
     
-    def _save_keys(self, keys: Dict[str, Any]):
+    def _save_keys(self, keys: Dict[str, Any]) -> None:
         """Save encrypted keys to file."""
         try:
             # Set restrictive permissions (owner read/write only)
@@ -359,96 +365,317 @@ class SecureKeyStorage:
 
 
 class RateLimiter:
-    """Rate limiter for API calls."""
-    
-    def __init__(self):
-        """Initialize rate limiter."""
+    """Persistent rate limiter for API calls with sliding window algorithm.
+
+    This implementation provides:
+    - Persistence across application restarts via JSON file storage
+    - Sliding window rate limiting with configurable time windows
+    - Automatic cleanup of expired entries
+    - Thread-safe operations with per-key locking
+    - Graceful degradation if persistence fails
+
+    The sliding window algorithm uses timestamps to track calls within a
+    rolling time window, providing more accurate rate limiting than fixed
+    windows.
+    """
+
+    # File save interval in seconds (avoid excessive disk writes)
+    SAVE_INTERVAL = 30
+
+    # Maximum age of rate limit data to keep (in seconds)
+    MAX_DATA_AGE = 3600  # 1 hour
+
+    def __init__(self, storage_path: Optional[Path] = None):
+        """Initialize rate limiter with persistent storage.
+
+        Args:
+            storage_path: Path to rate limit data file (default: config/.rate_limits.json)
+        """
         self.logger = logging.getLogger(__name__)
-        self._limits = defaultdict(lambda: {"calls": deque(), "lock": Lock()})
-        
-        # Default rate limits per provider (calls per minute)
-        self.default_limits = {
-            "openai": 60,
-            "perplexity": 50,
-            "groq": 30,
-            "deepgram": 100,
-            "elevenlabs": 50,
-            "ollama": 1000  # Local, so higher limit
+        self._global_lock = Lock()
+        self._key_locks: Dict[str, Lock] = defaultdict(Lock)
+        self._last_save_time = 0.0
+
+        # In-memory cache of rate limit data
+        # Format: {key: {"calls": [timestamp, ...], "window_seconds": int}}
+        self._limits: Dict[str, Dict[str, Any]] = {}
+
+        # Set up storage path
+        if storage_path is None:
+            config = get_config()
+            storage_path = Path(config.storage.base_folder) / ".keys" / ".rate_limits.json"
+        self.storage_path = storage_path
+
+        # Default rate limits per provider (calls per time window)
+        # Format: (calls, window_seconds)
+        self.default_limits: Dict[str, Tuple[int, int]] = {
+            PROVIDER_OPENAI: (60, 60),       # 60 calls per minute
+            PROVIDER_PERPLEXITY: (50, 60),   # 50 calls per minute
+            STT_GROQ: (30, 60),              # 30 calls per minute
+            STT_DEEPGRAM: (100, 60),         # 100 calls per minute
+            STT_ELEVENLABS: (50, 60),        # 50 calls per minute
+            PROVIDER_ANTHROPIC: (60, 60),    # 60 calls per minute
+            PROVIDER_GROK: (60, 60),         # 60 calls per minute
+            PROVIDER_OLLAMA: (1000, 60),     # Local, so higher limit
         }
-    
+
+        # Load persisted data on startup
+        self._load_from_disk()
+
+    def _get_key_lock(self, key: str) -> Lock:
+        """Get or create a lock for a specific key.
+
+        Args:
+            key: The rate limit key
+
+        Returns:
+            Lock for the key
+        """
+        with self._global_lock:
+            if key not in self._key_locks:
+                self._key_locks[key] = Lock()
+            return self._key_locks[key]
+
+    def _load_from_disk(self) -> None:
+        """Load rate limit data from disk."""
+        try:
+            if self.storage_path.exists():
+                with open(self.storage_path, 'r') as f:
+                    data = json.load(f)
+
+                now = time.time()
+
+                # Load and validate data
+                for key, limit_data in data.items():
+                    if isinstance(limit_data, dict) and "calls" in limit_data:
+                        # Filter out expired calls
+                        window = limit_data.get("window_seconds", 60)
+                        valid_calls = [
+                            ts for ts in limit_data["calls"]
+                            if now - ts < window
+                        ]
+
+                        # Only keep if there are valid calls
+                        if valid_calls:
+                            self._limits[key] = {
+                                "calls": valid_calls,
+                                "window_seconds": window
+                            }
+
+                self.logger.debug(f"Loaded rate limit data for {len(self._limits)} keys")
+
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Invalid rate limit data file, starting fresh: {e}")
+            self._limits = {}
+        except Exception as e:
+            self.logger.warning(f"Could not load rate limit data: {e}")
+            self._limits = {}
+
+    def _save_to_disk(self, force: bool = False) -> None:
+        """Save rate limit data to disk.
+
+        Args:
+            force: If True, save immediately; otherwise respect SAVE_INTERVAL
+        """
+        now = time.time()
+
+        # Respect save interval unless forced
+        if not force and now - self._last_save_time < self.SAVE_INTERVAL:
+            return
+
+        try:
+            # Ensure directory exists
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Clean up old data before saving
+            self._cleanup_expired_data()
+
+            # Save to disk
+            with self._global_lock:
+                with open(self.storage_path, 'w') as f:
+                    json.dump(self._limits, f)
+
+                # Set file permissions (Unix-like systems)
+                if os.name == 'posix':
+                    os.chmod(self.storage_path, 0o600)
+
+            self._last_save_time = now
+            self.logger.debug(f"Saved rate limit data for {len(self._limits)} keys")
+
+        except Exception as e:
+            self.logger.warning(f"Could not save rate limit data: {e}")
+
+    def _cleanup_expired_data(self) -> None:
+        """Remove expired entries from rate limit data."""
+        now = time.time()
+        keys_to_remove = []
+
+        for key, limit_data in self._limits.items():
+            window = limit_data.get("window_seconds", 60)
+            calls = limit_data.get("calls", [])
+
+            # Filter out expired calls
+            valid_calls = [ts for ts in calls if now - ts < window]
+
+            if valid_calls:
+                limit_data["calls"] = valid_calls
+            else:
+                keys_to_remove.append(key)
+
+        # Remove empty entries
+        for key in keys_to_remove:
+            del self._limits[key]
+
     def check_rate_limit(self, provider: str, identifier: Optional[str] = None) -> Tuple[bool, Optional[float]]:
-        """Check if a request is within rate limits.
-        
+        """Check if a request is within rate limits using sliding window.
+
         Args:
             provider: API provider name
             identifier: Optional identifier for more granular limiting
-            
+
         Returns:
             Tuple of (is_allowed, wait_time_seconds)
         """
         key = f"{provider}:{identifier}" if identifier else provider
-        limit_data = self._limits[key]
-        
-        with limit_data["lock"]:
+        key_lock = self._get_key_lock(key)
+
+        with key_lock:
             now = time.time()
+
+            # Get rate limit configuration for provider
+            limit_config = self.default_limits.get(provider, (60, 60))
+            max_calls, window_seconds = limit_config
+
+            # Initialize limit data if not exists
+            if key not in self._limits:
+                self._limits[key] = {
+                    "calls": [],
+                    "window_seconds": window_seconds
+                }
+
+            limit_data = self._limits[key]
             calls = limit_data["calls"]
-            
-            # Get rate limit for provider
-            rate_limit = self.default_limits.get(provider, 60)
-            
-            # Remove calls older than 1 minute
-            while calls and calls[0] < now - 60:
-                calls.popleft()
-            
+
+            # Sliding window: remove calls outside the current window
+            window_start = now - window_seconds
+            valid_calls = [ts for ts in calls if ts > window_start]
+            limit_data["calls"] = valid_calls
+
             # Check if we're at the limit
-            if len(calls) >= rate_limit:
-                # Calculate wait time
-                oldest_call = calls[0]
-                wait_time = 60 - (now - oldest_call)
-                return False, wait_time
-            
+            if len(valid_calls) >= max_calls:
+                # Calculate wait time until oldest call expires
+                if valid_calls:
+                    oldest_call = min(valid_calls)
+                    wait_time = window_seconds - (now - oldest_call)
+                    if wait_time > 0:
+                        return False, wait_time
+
+                # All calls have expired, reset
+                limit_data["calls"] = []
+
             # Record this call
-            calls.append(now)
+            limit_data["calls"].append(now)
+
+            # Trigger async save
+            self._save_to_disk()
+
             return True, None
-    
-    def set_limit(self, provider: str, calls_per_minute: int):
+
+    def set_limit(self, provider: str, calls_per_window: int, window_seconds: int = 60) -> None:
         """Set custom rate limit for a provider.
-        
+
         Args:
             provider: API provider name
-            calls_per_minute: Maximum calls per minute
+            calls_per_window: Maximum calls per time window
+            window_seconds: Time window in seconds (default: 60)
         """
-        self.default_limits[provider] = calls_per_minute
-        self.logger.info(f"Set rate limit for {provider}: {calls_per_minute} calls/minute")
-    
-    def get_usage_stats(self, provider: str) -> Dict[str, Any]:
+        self.default_limits[provider] = (calls_per_window, window_seconds)
+        self.logger.info(f"Set rate limit for {provider}: {calls_per_window} calls/{window_seconds}s")
+
+    def get_usage_stats(self, provider: str, identifier: Optional[str] = None) -> Dict[str, Any]:
         """Get usage statistics for a provider.
-        
+
         Args:
             provider: API provider name
-            
+            identifier: Optional identifier for more granular stats
+
         Returns:
             Usage statistics
         """
-        limit_data = self._limits[provider]
-        
-        with limit_data["lock"]:
+        key = f"{provider}:{identifier}" if identifier else provider
+        key_lock = self._get_key_lock(key)
+
+        with key_lock:
             now = time.time()
+
+            # Get rate limit configuration
+            limit_config = self.default_limits.get(provider, (60, 60))
+            max_calls, window_seconds = limit_config
+
+            if key not in self._limits:
+                return {
+                    "provider": provider,
+                    "identifier": identifier,
+                    "calls_in_window": 0,
+                    "rate_limit": max_calls,
+                    "window_seconds": window_seconds,
+                    "available": max_calls,
+                    "utilization": 0.0,
+                    "reset_in_seconds": None
+                }
+
+            limit_data = self._limits[key]
             calls = limit_data["calls"]
-            
-            # Remove old calls
-            while calls and calls[0] < now - 60:
-                calls.popleft()
-            
-            rate_limit = self.default_limits.get(provider, 60)
-            
+
+            # Filter to current window
+            window_start = now - window_seconds
+            valid_calls = [ts for ts in calls if ts > window_start]
+
+            # Calculate reset time
+            reset_in = None
+            if valid_calls:
+                oldest_call = min(valid_calls)
+                reset_in = window_seconds - (now - oldest_call)
+                if reset_in < 0:
+                    reset_in = 0
+
             return {
                 "provider": provider,
-                "calls_last_minute": len(calls),
-                "rate_limit": rate_limit,
-                "available": rate_limit - len(calls),
-                "utilization": len(calls) / rate_limit if rate_limit > 0 else 0
+                "identifier": identifier,
+                "calls_in_window": len(valid_calls),
+                "rate_limit": max_calls,
+                "window_seconds": window_seconds,
+                "available": max(0, max_calls - len(valid_calls)),
+                "utilization": len(valid_calls) / max_calls if max_calls > 0 else 0,
+                "reset_in_seconds": reset_in
             }
+
+    def reset_provider(self, provider: str, identifier: Optional[str] = None) -> None:
+        """Reset rate limit data for a provider.
+
+        Args:
+            provider: API provider name
+            identifier: Optional identifier for more granular reset
+        """
+        key = f"{provider}:{identifier}" if identifier else provider
+        key_lock = self._get_key_lock(key)
+
+        with key_lock:
+            if key in self._limits:
+                del self._limits[key]
+                self._save_to_disk(force=True)
+                self.logger.info(f"Reset rate limit data for {key}")
+
+    def reset_all(self) -> None:
+        """Reset all rate limit data."""
+        with self._global_lock:
+            self._limits = {}
+            self._save_to_disk(force=True)
+            self.logger.info("Reset all rate limit data")
+
+    def flush(self) -> None:
+        """Force save current state to disk."""
+        self._save_to_disk(force=True)
 
 
 class SecurityManager:
@@ -478,11 +705,27 @@ class SecurityManager:
         
         # Enhanced validation patterns
         self.api_key_validators = {
-            "openai": self._validate_openai_key,
-            "deepgram": self._validate_deepgram_key,
-            "elevenlabs": self._validate_elevenlabs_key,
-            "groq": self._validate_groq_key,
-            "perplexity": self._validate_perplexity_key,
+            PROVIDER_OPENAI: self._validate_openai_key,
+            STT_DEEPGRAM: self._validate_deepgram_key,
+            STT_ELEVENLABS: self._validate_elevenlabs_key,
+            STT_GROQ: self._validate_groq_key,
+            PROVIDER_PERPLEXITY: self._validate_perplexity_key,
+            PROVIDER_ANTHROPIC: self._validate_anthropic_key,
+            PROVIDER_GROK: self._validate_grok_key,
+        }
+
+        # Configurable API key format rules
+        # Format: (prefix, min_length, max_length, allowed_chars_pattern)
+        # Use None for fields that shouldn't be checked
+        # allowed_chars_pattern: 'alnum' for alphanumeric, 'alnum_dash' for alphanumeric + dash/underscore, or None
+        self.api_key_formats = {
+            PROVIDER_OPENAI: {"prefix": "sk-", "min_length": 20, "max_length": 200, "chars": "alnum_dash"},
+            STT_GROQ: {"prefix": "gsk_", "min_length": 40, "max_length": 100, "chars": "alnum"},
+            STT_DEEPGRAM: {"prefix": None, "min_length": 32, "max_length": 100, "chars": "alnum"},
+            STT_ELEVENLABS: {"prefix": "sk_", "min_length": 30, "max_length": 100, "chars": "alnum"},
+            PROVIDER_PERPLEXITY: {"prefix": "pplx-", "min_length": 40, "max_length": 100, "chars": "alnum_dash"},
+            PROVIDER_ANTHROPIC: {"prefix": "sk-ant-", "min_length": 90, "max_length": 200, "chars": "alnum_dash"},
+            PROVIDER_GROK: {"prefix": "xai-", "min_length": 20, "max_length": 100, "chars": "alnum_dash"},
         }
     
     def store_api_key(self, provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
@@ -549,70 +792,116 @@ class SecurityManager:
         
         return True, None
     
+    def _validate_key_format(self, api_key: str, provider: str) -> Tuple[bool, Optional[str]]:
+        """Generic API key format validation using configurable rules.
+
+        Args:
+            api_key: The API key to validate
+            provider: The provider name (used to look up format rules)
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if provider not in self.api_key_formats:
+            # No specific format rules, accept any reasonable key
+            if len(api_key) < 10:
+                return False, f"{provider} API key is too short"
+            if len(api_key) > 500:
+                return False, f"{provider} API key is too long"
+            return True, None
+
+        rules = self.api_key_formats[provider]
+        provider_name = provider.capitalize()
+
+        # Check prefix if specified
+        prefix = rules.get("prefix")
+        if prefix and not api_key.startswith(prefix):
+            return False, f"{provider_name} API keys should start with '{prefix}'"
+
+        # Check minimum length
+        min_length = rules.get("min_length", 10)
+        if len(api_key) < min_length:
+            return False, f"{provider_name} API key is too short (minimum {min_length} characters)"
+
+        # Check maximum length
+        max_length = rules.get("max_length", 500)
+        if len(api_key) > max_length:
+            return False, f"{provider_name} API key is too long (maximum {max_length} characters)"
+
+        # Check character set if specified
+        chars = rules.get("chars")
+        if chars:
+            # Get the part after prefix (if any) for character validation
+            check_part = api_key[len(prefix):] if prefix else api_key
+
+            if chars == "alnum":
+                if not check_part.isalnum():
+                    return False, f"{provider_name} API key should contain only letters and numbers after the prefix"
+            elif chars == "alnum_dash":
+                # Allow alphanumeric plus dash and underscore
+                import re
+                if not re.match(r'^[a-zA-Z0-9_-]+$', check_part):
+                    return False, f"{provider_name} API key contains invalid characters"
+
+        return True, None
+
     def _validate_openai_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate OpenAI API key format."""
-        if not api_key.startswith("sk-"):
-            return False, "OpenAI API keys should start with 'sk-'"
-        
-        # OpenAI keys can have varying lengths now (sk-proj-*, etc.)
-        if len(api_key) < 20:  # Minimum reasonable length
-            return False, "OpenAI API key is too short"
-        
-        if len(api_key) > 200:  # Maximum reasonable length
-            return False, "OpenAI API key is too long"
-        
-        return True, None
-    
+        return self._validate_key_format(api_key, "openai")
+
     def _validate_groq_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Groq API key format."""
-        if not api_key.startswith("gsk_"):
-            return False, "Groq API keys should start with 'gsk_'"
-        
-        if len(api_key) != 56:  # gsk_ + 52 characters
-            return False, "Invalid Groq API key length"
-        
-        return True, None
-    
+        return self._validate_key_format(api_key, "groq")
+
     def _validate_deepgram_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Deepgram API key format."""
-        # Deepgram keys are typically 40+ character alphanumeric strings
-        if len(api_key) < 32:
-            return False, "Deepgram API key is too short"
-        
-        if len(api_key) > 100:
-            return False, "Deepgram API key is too long"
-        
-        # Allow alphanumeric characters
-        if not api_key.isalnum():
-            return False, "Deepgram API key should contain only letters and numbers"
-        
-        return True, None
-    
+        return self._validate_key_format(api_key, "deepgram")
+
     def _validate_elevenlabs_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate ElevenLabs API key format."""
-        # ElevenLabs keys start with sk_ followed by alphanumeric characters
-        if not api_key.startswith("sk_"):
-            return False, "ElevenLabs API key should start with 'sk_'"
-        
-        if len(api_key) < 30:
-            return False, "ElevenLabs API key is too short"
-        
-        # Check remaining characters are alphanumeric
-        remaining = api_key[3:]  # Skip 'sk_'
-        if not remaining.isalnum():
-            return False, "ElevenLabs API key should only contain letters and numbers after 'sk_'"
-        
-        return True, None
-    
+        return self._validate_key_format(api_key, "elevenlabs")
+
     def _validate_perplexity_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Perplexity API key format."""
-        if not api_key.startswith("pplx-"):
-            return False, "Perplexity API keys should start with 'pplx-'"
-        
-        if len(api_key) != 53:  # pplx- + 48 characters
-            return False, "Invalid Perplexity API key length"
-        
-        return True, None
+        return self._validate_key_format(api_key, "perplexity")
+
+    def _validate_anthropic_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
+        """Validate Anthropic API key format."""
+        return self._validate_key_format(api_key, "anthropic")
+
+    def _validate_grok_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
+        """Validate Grok/xAI API key format."""
+        return self._validate_key_format(api_key, "grok")
+
+    def update_api_key_format(self, provider: str, prefix: Optional[str] = None,
+                               min_length: Optional[int] = None, max_length: Optional[int] = None,
+                               chars: Optional[str] = None) -> None:
+        """Update API key format rules for a provider at runtime.
+
+        This allows adapting to API key format changes without code modifications.
+
+        Args:
+            provider: The provider name
+            prefix: Expected prefix (e.g., 'sk-', 'gsk_'), or None to not check prefix
+            min_length: Minimum key length, or None to keep existing
+            max_length: Maximum key length, or None to keep existing
+            chars: Character set ('alnum', 'alnum_dash'), or None to not validate chars
+        """
+        if provider not in self.api_key_formats:
+            self.api_key_formats[provider] = {}
+
+        rules = self.api_key_formats[provider]
+
+        if prefix is not None:
+            rules["prefix"] = prefix
+        if min_length is not None:
+            rules["min_length"] = min_length
+        if max_length is not None:
+            rules["max_length"] = max_length
+        if chars is not None:
+            rules["chars"] = chars
+
+        self.logger.info(f"Updated API key format rules for {provider}: {rules}")
     
     def check_rate_limit(self, provider: str, identifier: Optional[str] = None) -> Tuple[bool, Optional[float]]:
         """Check if API call is within rate limits.

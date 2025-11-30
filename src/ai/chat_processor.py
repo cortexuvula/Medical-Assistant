@@ -19,6 +19,11 @@ import ai.tools.medical_tools
 # MCP support
 from ai.mcp.mcp_manager import mcp_manager
 from ai.mcp.mcp_tool_wrapper import register_mcp_tools
+# Provider constants
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
+    PROVIDER_GROK, PROVIDER_OLLAMA
+)
 
 
 class ChatProcessor:
@@ -333,7 +338,7 @@ class ChatProcessor:
             provider = SETTINGS.get("ai_provider", "openai").lower()
             system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
             
-            if provider == "openai":
+            if provider == PROVIDER_OPENAI:
                 model = SETTINGS.get("openai", {}).get("model", "gpt-4")
                 response = call_openai(
                     model=model,
@@ -341,7 +346,7 @@ class ChatProcessor:
                     prompt=prompt,
                     temperature=self.temperature
                 )
-            elif provider == "grok":
+            elif provider == PROVIDER_GROK:
                 model = SETTINGS.get("grok", {}).get("model", "grok-beta")
                 response = call_grok(
                     model=model,
@@ -349,7 +354,7 @@ class ChatProcessor:
                     prompt=prompt,
                     temperature=self.temperature
                 )
-            elif provider == "perplexity":
+            elif provider == PROVIDER_PERPLEXITY:
                 response = call_perplexity(
                     system_message=system_message,
                     prompt=prompt,

@@ -34,6 +34,7 @@ class ChatUI:
         self.is_processing = False
         self.is_collapsed = False
         self.collapse_button = None
+        self._collapse_tooltip = None
         
         # Callbacks
         self.on_send_callback = None
@@ -72,7 +73,7 @@ class ChatUI:
             bootstyle="link"
         )
         self.collapse_button.pack(side=tk.LEFT, padx=(0, 5))
-        ToolTip(self.collapse_button, "Collapse/Expand AI Assistant Chat")
+        self._collapse_tooltip = ToolTip(self.collapse_button, "Collapse/Expand AI Assistant Chat")
         
         # Title label
         title_label = ttk.Label(
@@ -220,7 +221,8 @@ class ChatUI:
         if self.is_collapsed:
             self.chat_frame.pack_forget()
             self.collapse_button.config(text="▶")
-            ToolTip(self.collapse_button, "Expand AI Assistant Chat")
+            if self._collapse_tooltip:
+                self._collapse_tooltip.text = "Expand AI Assistant Chat"
         
     def _apply_text_styling(self):
         """Apply theme-aware styling to the text widget"""
@@ -531,12 +533,14 @@ class ChatUI:
             # Hide the chat frame content
             self.chat_frame.pack_forget()
             self.collapse_button.config(text="▶")
-            ToolTip(self.collapse_button, "Expand AI Assistant Chat")
+            if self._collapse_tooltip:
+                self._collapse_tooltip.text = "Expand AI Assistant Chat"
         else:
             # Show the chat frame content
             self.chat_frame.pack(fill=tk.BOTH, expand=False)
             self.collapse_button.config(text="▼")
-            ToolTip(self.collapse_button, "Collapse AI Assistant Chat")
+            if self._collapse_tooltip:
+                self._collapse_tooltip.text = "Collapse AI Assistant Chat"
     
     def expand(self):
         """Expand the chat interface if collapsed"""

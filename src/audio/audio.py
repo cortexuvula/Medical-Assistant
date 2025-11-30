@@ -920,9 +920,8 @@ class AudioHandler:
                 device=device_id,
                 channels=self.channels,
                 callback=audio_callback_sd,
-                blocksize=0, # Let sounddevice choose optimal block size based on buffer
-                dtype='float32' # Use float32 as it's common and allows easy amplitude checks
-                # latency='low' # Optional: can try 'low' latency if needed
+                blocksize=0,
+                dtype='float32'
             )
             stream.start()
             logging.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
@@ -1019,9 +1018,7 @@ class AudioHandler:
                              processed_data = data.astype(np.float32)
                         else:
                              processed_data = data.copy()
-                        
-                        # logging.debug(f"Soundcard SC thread recorded chunk: Shape={processed_data.shape}, Dtype={processed_data.dtype}")
-                        
+
                         if self.callback_function:
                             try:
                                 self.callback_function(processed_data)

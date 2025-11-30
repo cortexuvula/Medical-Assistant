@@ -14,6 +14,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from managers.data_folder_manager import data_folder_manager
+from utils.timeout_config import get_timeout, get_timeout_tuple
 
 # Load environment variables
 # Try loading from root .env first, then fall back to AppData .env
@@ -108,11 +109,13 @@ class RagProcessor:
                 logging.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
                 logging.info(f"Payload: {payload}")
                 
+                # Use centralized timeout configuration
+                timeout = get_timeout_tuple("rag")
                 response = requests.post(
                     self.n8n_webhook_url,
                     headers=headers,
                     json=payload,
-                    timeout=30
+                    timeout=timeout
                 )
                 
                 response.raise_for_status()

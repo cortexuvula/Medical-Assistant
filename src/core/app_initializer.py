@@ -43,6 +43,8 @@ from processing.processing_queue import ProcessingQueue
 from managers.notification_manager import NotificationManager
 from audio.periodic_analysis import PeriodicAnalyzer
 from ui.scaling_utils import ui_scaler
+from core.recording_controller import RecordingController
+from core.ui_state_manager import UIStateManager
 
 
 class AppInitializer:
@@ -262,16 +264,22 @@ class AppInitializer:
         self.app.audio_state_manager = AudioStateManager(
             combine_threshold=self.app.soap_combine_threshold
         )
-        
+
         # Initialize recording manager with audio state manager
         self.app.recording_manager = RecordingManager(
-            self.app.audio_handler, 
+            self.app.audio_handler,
             self.app.status_manager,
             self.app.audio_state_manager
         )
         self.app.recording_manager.on_text_recognized = self.app.handle_recognized_text
         self.app.recording_manager.on_transcription_fallback = self.app.on_transcription_fallback
-        
+
+        # Initialize UI state manager (before recording controller which uses it)
+        self.app.ui_state_manager = UIStateManager(self.app)
+
+        # Initialize recording controller
+        self.app.recording_controller = RecordingController(self.app)
+
         self.app.ai_processor = AIProcessor(openai.api_key)
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
         self.app.db_manager = DatabaseManager()
@@ -285,16 +293,16 @@ class AppInitializer:
         self.app.file_processor = FileProcessor(self.app)
         self.app.chat_processor = ChatProcessor(self.app)
         self.app.rag_processor = RagProcessor(self.app)
-        
+
         # Initialize processing queue
         self.app.processing_queue = ProcessingQueue(self.app)
         self.app.processing_queue.status_callback = self._on_queue_status_update
         self.app.processing_queue.completion_callback = self._on_queue_completion
         self.app.processing_queue.error_callback = self._on_queue_error
-        
+
         # Initialize notification manager
         self.app.notification_manager = NotificationManager(self.app)
-        
+
         # Initialize periodic analyzer
         self.app.periodic_analyzer = None  # Will be created when needed
         

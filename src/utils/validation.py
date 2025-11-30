@@ -6,20 +6,30 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 from utils.error_codes import get_error_message
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY, PROVIDER_GROK,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
+)
 
 # API key patterns for basic validation
+# NOTE: These patterns use flexible length ranges instead of exact lengths to accommodate
+# provider format changes. Only prefix validation is strict; length is validated as a range.
 API_KEY_PATTERNS = {
-    # OpenAI now uses various formats including sk-proj-*, sk-*, etc.
-    "openai": re.compile(r'^sk-[a-zA-Z0-9\-_]{20,}$'),
-    # Deepgram keys can be various formats, often 40+ character alphanumeric
-    "deepgram": re.compile(r'^[a-zA-Z0-9]{32,}$'),
+    # OpenAI uses various formats including sk-proj-*, sk-*, etc.
+    # Minimum 20 chars after prefix, no strict maximum (providers change formats)
+    PROVIDER_OPENAI: re.compile(r'^sk-[a-zA-Z0-9\-_]{20,}$'),
+    # Deepgram keys are alphanumeric, typically 32+ characters
+    STT_DEEPGRAM: re.compile(r'^[a-zA-Z0-9]{32,}$'),
     # ElevenLabs keys start with sk_ followed by alphanumeric characters
-    "elevenlabs": re.compile(r'^sk_[a-zA-Z0-9]{30,}$'),
-    "groq": re.compile(r'^gsk_[a-zA-Z0-9]{52}$'),
-    "perplexity": re.compile(r'^pplx-[a-f0-9]{48}$'),
-    "grok": re.compile(r'^xai-[a-zA-Z0-9]+$'),
-    # Anthropic keys start with sk-ant- followed by alphanumeric characters
-    "anthropic": re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{95,}$'),
+    STT_ELEVENLABS: re.compile(r'^sk_[a-zA-Z0-9]{20,}$'),
+    # Groq keys start with gsk_ - flexible length (was 52 exact, now 40+)
+    STT_GROQ: re.compile(r'^gsk_[a-zA-Z0-9]{40,}$'),
+    # Perplexity keys start with pplx- - flexible length (was 48 exact, now 40+)
+    PROVIDER_PERPLEXITY: re.compile(r'^pplx-[a-zA-Z0-9]{40,}$'),
+    # Grok/xAI keys start with xai-
+    PROVIDER_GROK: re.compile(r'^xai-[a-zA-Z0-9\-_]{10,}$'),
+    # Anthropic keys start with sk-ant- - flexible length (was 95+ exact, now 80+)
+    PROVIDER_ANTHROPIC: re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{80,}$'),
 }
 
 # Maximum lengths for input validation

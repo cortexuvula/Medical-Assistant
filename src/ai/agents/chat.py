@@ -5,13 +5,16 @@ Chat agent with tool-calling capabilities.
 import logging
 import json
 import re
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
 from ..tools import ToolExecutor, ToolResult
 from ..tools.tool_registry import tool_registry
 from ..debug import chat_debugger
+
+if TYPE_CHECKING:
+    from .ai_caller import AICallerProtocol
 
 
 logger = logging.getLogger(__name__)
@@ -78,22 +81,24 @@ Remember: ALWAYS use tools for medical information queries to ensure accuracy an
         available_tools=[]  # Will be populated from registry
     )
     
-    def __init__(self, config: Optional[AgentConfig] = None, 
-                 tool_executor: Optional[ToolExecutor] = None):
+    def __init__(self, config: Optional[AgentConfig] = None,
+                 tool_executor: Optional[ToolExecutor] = None,
+                 ai_caller: Optional['AICallerProtocol'] = None):
         """
         Initialize the chat agent.
-        
+
         Args:
             config: Optional custom configuration
             tool_executor: Optional tool executor instance
+            ai_caller: Optional AI caller for dependency injection.
         """
         # If a config is provided, ensure it has the proper tool-calling system prompt
         if config:
             # Preserve the tool-calling instructions from DEFAULT_CONFIG
             if not config.system_prompt or "tool_call" not in config.system_prompt:
                 config.system_prompt = self.DEFAULT_CONFIG.system_prompt
-        
-        super().__init__(config or self.DEFAULT_CONFIG)
+
+        super().__init__(config or self.DEFAULT_CONFIG, ai_caller=ai_caller)
         
         # Use the global tool registry and executor
         self.tool_registry = tool_registry

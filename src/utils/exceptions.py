@@ -62,6 +62,19 @@ class ServiceUnavailableError(APIError):
         super().__init__(message, status_code=503, **kwargs)
 
 
+class TimeoutError(APIError):
+    """Raised when an API call times out.
+
+    Attributes:
+        timeout_seconds: The timeout value that was exceeded
+        service: The service that timed out (e.g., 'openai', 'anthropic')
+    """
+    def __init__(self, message: str, timeout_seconds: float = None, service: str = None, **kwargs):
+        super().__init__(message, status_code=408, **kwargs)
+        self.timeout_seconds = timeout_seconds
+        self.service = service
+
+
 class ConfigurationError(MedicalAssistantError):
     """Raised when configuration is invalid or missing."""
     pass

@@ -23,6 +23,7 @@ from ai.agents.models import (
     AdvancedConfig, RetryConfig, RetryStrategy, PerformanceMetrics,
     ResponseFormat
 )
+from ai.agents.ai_caller import AICallerProtocol, get_default_ai_caller
 from ai.agents.synopsis import SynopsisAgent
 from ai.agents.diagnostic import DiagnosticAgent
 from ai.agents.medication import MedicationAgent
@@ -75,12 +76,19 @@ class AgentManager:
             cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self):
-        """Initialize the agent manager."""
+    def __init__(self, ai_caller: Optional[AICallerProtocol] = None):
+        """Initialize the agent manager.
+
+        Args:
+            ai_caller: Optional AI caller for dependency injection.
+                      If not provided, uses the default AI caller.
+                      This caller is passed to all created agents.
+        """
         if self._initialized:
             return
-            
+
         self._agents: Dict[AgentType, BaseAgent] = {}
+        self._ai_caller = ai_caller or get_default_ai_caller()
         self._initialized = True
         self._load_agents()
         
@@ -198,9 +206,9 @@ class AgentManager:
             # Import here to avoid circular imports
             from ai.agents.synopsis import SynopsisAgent
             config.system_prompt = SynopsisAgent.DEFAULT_CONFIG.system_prompt
-            
-        # Create agent instance
-        agent = agent_class(config)
+
+        # Create agent instance with injected AI caller
+        agent = agent_class(config, ai_caller=self._ai_caller)
         self._agents[agent_type] = agent
         logger.info(f"Initialized {agent_type.value} agent")
         

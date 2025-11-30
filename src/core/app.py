@@ -643,7 +643,6 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             # Also save audio if available
             audio_data = self.audio_handler.combine_audio_segments(self.audio_segments)
             if audio_data:
-                # audio_path = file_path.replace('.txt', '.mp3')  # Not used after refactoring
                 saved_audio_path = self.file_manager.save_audio_file(audio_data, "Save Audio")
                 if saved_audio_path:
                     self.status_manager.success("Text and audio saved successfully")
@@ -1305,84 +1304,16 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
 
 
     def toggle_soap_recording(self) -> None:
-        """Toggle SOAP recording using RecordingManager."""
-        if not self.recording_manager.is_recording:
-            # Switch focus to the SOAP tab
-            self.notebook.select(1)
-            
-            # Clear all text fields and audio segments before starting a new recording (including context)
-            clear_all_content(self)
-            
-            # Start recording
-            self.status_manager.info("Starting SOAP recording...")
-            
-            # Get selected device
-            selected_device = self.mic_combobox.get()
-            
-            # Set up audio handler for SOAP mode
-            self.audio_handler.soap_mode = True
-            self.audio_handler.silence_threshold = 0.0001  # Much lower for SOAP recording
-            
-            # Start recording with callback
-            if self.recording_manager.start_recording(self.soap_callback):
-                # Only update UI state AFTER recording successfully starts
-                # Use after() to ensure UI update happens on next event loop cycle
-                self.after(0, lambda: self._update_recording_ui_state(recording=True, caller="toggle_start"))
-                self.play_recording_sound(start=True)
-                # Store the stop function for pause/cancel functionality
-                self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                    mic_name=selected_device,
-                    callback=self.soap_callback,
-                    phrase_time_limit=3
-                )
-                self.soap_recording = True
-                logging.info("SOAP recording started successfully - UI updated")
-                
-                # Clear the analysis text area (always clear it when starting a new recording)
-                if 'record_notes_text' in self.ui.components:
-                    self.ui.components['record_notes_text'].delete("1.0", tk.END)
-                    
-                    # Check if Advanced Analysis is enabled
-                    if hasattr(self.ui, 'advanced_analysis_var') and self.ui.advanced_analysis_var.get():
-                        self.ui.components['record_notes_text'].insert("1.0", 
-                            "Advanced Analysis enabled. First analysis will appear after 2 minutes...\n\n")
-                        
-                        # Start periodic analysis
-                        self._start_periodic_analysis()
-            else:
-                self.status_manager.error("Failed to start recording")
-                # Ensure UI stays in idle state if recording failed to start
-                self._update_recording_ui_state(recording=False, caller="toggle_start_failed")
+        """Toggle SOAP recording using RecordingController.
+
+        This method delegates to the RecordingController for centralized recording management.
+        """
+        # Delegate to recording controller if available
+        if hasattr(self, 'recording_controller') and self.recording_controller:
+            self.recording_controller.toggle_recording()
         else:
-            # Stop recording
-            self.status_manager.info("Stopping SOAP recording...")
-            # Temporarily disable the record button during stop process
-            main_record_btn = self.ui.components.get('main_record_button')
-            if main_record_btn:
-                main_record_btn.config(state=tk.DISABLED)
-            
-            # Stop the background listening
-            if self.soap_stop_listening_function:
-                self.soap_stop_listening_function()
-                self.soap_stop_listening_function = None
-            
-            # Stop periodic analysis if running
-            self._stop_periodic_analysis()
-            
-            # Reset audio handler settings
-            self.audio_handler.soap_mode = False
-            self.audio_handler.silence_threshold = 0.001  # Reset to normal
-            
-            # Stop and get recording data
-            recording_data = self.recording_manager.stop_recording()
-            if recording_data:
-                self.play_recording_sound(start=False)
-                self.soap_recording = False
-                self._finalize_soap_recording(recording_data)
-            else:
-                self.status_manager.error("No recording data available")
-                self._update_recording_ui_state(recording=False, caller="toggle_stop_no_data")
-                self.soap_recording = False
+            # Fallback to legacy implementation (should not happen in normal use)
+            self._toggle_soap_recording_legacy()
 
     def _finalize_soap_recording(self, recording_data: dict = None):
         """Complete the SOAP recording process with recording data from RecordingManager."""
@@ -1414,17 +1345,31 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
 
 
     def toggle_soap_pause(self) -> None:
-        """Toggle pause for SOAP recording."""
-        if self.soap_recording:
+        """Toggle pause for SOAP recording.
+
+        This method delegates to the RecordingController for centralized recording management.
+        """
+        # Delegate to recording controller if available
+        if hasattr(self, 'recording_controller') and self.recording_controller:
+            self.recording_controller.toggle_pause()
+        elif self.soap_recording:
+            # Fallback to legacy behavior
             if self.soap_stop_listening_function:
-                # Currently recording, so pause
                 self.pause_soap_recording()
             else:
-                # Currently paused, so resume
                 self.resume_soap_recording()
 
     def pause_soap_recording(self) -> None:
-        """Pause SOAP recording."""
+        """Pause SOAP recording.
+
+        This method delegates to the RecordingController for centralized recording management.
+        """
+        # Delegate to recording controller if available
+        if hasattr(self, 'recording_controller') and self.recording_controller:
+            self.recording_controller.pause()
+            return
+
+        # Legacy implementation (fallback)
         if self.soap_stop_listening_function:
             # Play pause sound (quick beep)
             self.play_recording_sound(start=False)
@@ -1441,7 +1386,16 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             self.update_status("SOAP recording paused. Press Resume to continue.", "info")
 
     def resume_soap_recording(self) -> None:
-        """Resume SOAP recording after pause using the selected microphone."""
+        """Resume SOAP recording after pause using the selected microphone.
+
+        This method delegates to the RecordingController for centralized recording management.
+        """
+        # Delegate to recording controller if available
+        if hasattr(self, 'recording_controller') and self.recording_controller:
+            self.recording_controller.resume()
+            return
+
+        # Legacy implementation (fallback)
         try:
             # Play resume sound
             self.play_recording_sound(start=True)
@@ -1479,16 +1433,25 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.soap_audio_processor.process_soap_callback(audio_data)
                 
     def cancel_soap_recording(self) -> None:
-        """Cancel the current SOAP note recording without processing."""
+        """Cancel the current SOAP note recording without processing.
+
+        This method delegates to the RecordingController for centralized recording management.
+        """
+        # Delegate to recording controller if available
+        if hasattr(self, 'recording_controller') and self.recording_controller:
+            self.recording_controller.cancel()
+            return
+
+        # Legacy implementation (fallback)
         if not self.soap_recording:
             return
-            
+
         # Show confirmation dialog before canceling
         # Force focus to ensure keyboard shortcuts work
         self.focus_force()
         self.update()
-        
-        if not messagebox.askyesno("Cancel Recording", 
+
+        if not messagebox.askyesno("Cancel Recording",
                                   "Are you sure you want to cancel the current recording?\n\nAll recorded audio will be discarded.",
                                   icon="warning",
                                   parent=self):
@@ -1833,16 +1796,21 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     
     def _update_recording_ui_state(self, recording: bool, paused: bool = False, caller: str = "unknown"):
         """Update recording UI state for workflow UI.
-        
+
+        This method delegates to the UIStateManager for centralized state management.
+
         Args:
             recording: Whether recording is active
             paused: Whether recording is paused
             caller: Identifier for debugging which code called this method
         """
         logging.info(f"_update_recording_ui_state called by {caller}: recording={recording}, paused={paused}")
-        
-        # Update workflow UI
-        if hasattr(self.ui, 'set_recording_state'):
+
+        # Delegate to UI state manager if available
+        if hasattr(self, 'ui_state_manager') and self.ui_state_manager:
+            self.ui_state_manager.set_recording_state(recording, paused, caller)
+        elif hasattr(self.ui, 'set_recording_state'):
+            # Fallback to direct UI call
             self.ui.set_recording_state(recording, paused)
     
     def _show_generation_suggestions(self):

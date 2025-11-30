@@ -5,11 +5,14 @@ Data extraction agent for extracting structured clinical data from unstructured 
 import logging
 import re
 import json
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from datetime import datetime
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
+
+if TYPE_CHECKING:
+    from .ai_caller import AICallerProtocol
 
 
 logger = logging.getLogger(__name__)
@@ -69,14 +72,15 @@ Provide extracted data in the following structure:
         max_tokens=500  # Increased for comprehensive extraction
     )
     
-    def __init__(self, config: Optional[AgentConfig] = None):
+    def __init__(self, config: Optional[AgentConfig] = None, ai_caller: Optional['AICallerProtocol'] = None):
         """
         Initialize the data extraction agent.
-        
+
         Args:
             config: Optional custom configuration. Uses default if not provided.
+            ai_caller: Optional AI caller for dependency injection.
         """
-        super().__init__(config or self.DEFAULT_CONFIG)
+        super().__init__(config or self.DEFAULT_CONFIG, ai_caller=ai_caller)
         
     def execute(self, task: AgentTask) -> AgentResponse:
         """
