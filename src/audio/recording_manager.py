@@ -18,15 +18,19 @@ import os
 from audio.audio import AudioHandler
 from audio.audio_state_manager import AudioStateManager, RecordingState
 from ui.status_manager import StatusManager
+from utils.exceptions import DeviceDisconnectedError, AudioError
 
 
 class RecordingManager:
     """Manages SOAP recording functionality."""
-    
-    def __init__(self, audio_handler: AudioHandler, status_manager: StatusManager, 
+
+    # Device health check interval in seconds
+    DEVICE_CHECK_INTERVAL = 5.0
+
+    def __init__(self, audio_handler: AudioHandler, status_manager: StatusManager,
                  audio_state_manager: AudioStateManager):
         """Initialize the recording manager.
-        
+
         Args:
             audio_handler: AudioHandler instance for audio processing
             status_manager: StatusManager instance for status updates
@@ -35,14 +39,21 @@ class RecordingManager:
         self.audio_handler = audio_handler
         self.status_manager = status_manager
         self.audio_state_manager = audio_state_manager
-        
+
         # Recording thread
         self.recording_thread = None
-        
+
+        # Device monitoring
+        self._current_device_name: Optional[str] = None
+        self._last_device_check = 0.0
+        self._device_error_count = 0
+        self._max_device_errors = 3  # Consecutive errors before declaring device lost
+
         # Callbacks
         self.on_recording_complete: Optional[Callable] = None
         self.on_text_recognized: Optional[Callable] = None
         self.on_transcription_fallback: Optional[Callable] = None
+        self.on_device_disconnected: Optional[Callable[[str], None]] = None
         
     def start_recording(self, callback: Callable[[np.ndarray], None]) -> bool:
         """Start SOAP recording.
@@ -209,19 +220,150 @@ class RecordingManager:
                 'audio_data': audio_data
             }
     
+    def _check_device_health(self) -> bool:
+        """Check if the recording device is still available.
+
+        Returns:
+            True if device is healthy, False if disconnected
+
+        Raises:
+            DeviceDisconnectedError: If device has been lost after max retries
+        """
+        current_time = time.time()
+
+        # Only check periodically to avoid performance impact
+        if current_time - self._last_device_check < self.DEVICE_CHECK_INTERVAL:
+            return True
+
+        self._last_device_check = current_time
+
+        try:
+            # Check if the listening device still exists
+            listening_device = getattr(self.audio_handler, 'listening_device', None)
+
+            if listening_device is None:
+                # No specific device selected, using default - check if any device is available
+                available_devices = self._get_available_devices()
+                if not available_devices:
+                    self._device_error_count += 1
+                    logging.warning(f"No audio devices available (error {self._device_error_count}/{self._max_device_errors})")
+                else:
+                    self._device_error_count = 0  # Reset on success
+                    return True
+            else:
+                # Check if the specific device still exists
+                device_name = self._current_device_name or str(listening_device)
+                available_devices = self._get_available_devices()
+
+                device_found = any(
+                    device_name.lower() in str(dev).lower()
+                    for dev in available_devices
+                )
+
+                if device_found:
+                    self._device_error_count = 0  # Reset on success
+                    return True
+                else:
+                    self._device_error_count += 1
+                    logging.warning(f"Device '{device_name}' not found (error {self._device_error_count}/{self._max_device_errors})")
+
+            # Check if we've exceeded max errors
+            if self._device_error_count >= self._max_device_errors:
+                device_name = self._current_device_name or "Unknown device"
+                raise DeviceDisconnectedError(
+                    f"Audio device '{device_name}' appears to be disconnected",
+                    device_name=device_name
+                )
+
+            return self._device_error_count == 0
+
+        except DeviceDisconnectedError:
+            raise
+        except Exception as e:
+            logging.error(f"Error checking device health: {e}")
+            self._device_error_count += 1
+            return self._device_error_count < self._max_device_errors
+
+    def _get_available_devices(self) -> List[Any]:
+        """Get list of available audio input devices.
+
+        Returns:
+            List of available devices
+        """
+        try:
+            # Try soundcard first
+            try:
+                import soundcard
+                return list(soundcard.all_microphones())
+            except (ImportError, Exception):
+                pass
+
+            # Try sounddevice
+            try:
+                import sounddevice as sd
+                devices = sd.query_devices()
+                return [d for d in devices if d.get('max_input_channels', 0) > 0]
+            except (ImportError, Exception):
+                pass
+
+            return []
+        except Exception as e:
+            logging.error(f"Error getting available devices: {e}")
+            return []
+
+    def _handle_device_disconnection(self, error: DeviceDisconnectedError) -> None:
+        """Handle device disconnection gracefully.
+
+        Args:
+            error: The DeviceDisconnectedError that was raised
+        """
+        logging.error(f"Device disconnected: {error}")
+
+        # Pause recording to preserve data
+        try:
+            self.audio_state_manager.pause_recording()
+        except RuntimeError:
+            pass
+
+        # Notify via callback if registered
+        if self.on_device_disconnected:
+            try:
+                self.on_device_disconnected(error.device_name or "Unknown")
+            except Exception as e:
+                logging.error(f"Error in device disconnection callback: {e}")
+
+        # Update status
+        if self.status_manager:
+            self.status_manager.error(
+                f"Audio device disconnected: {error.device_name or 'Unknown'}. "
+                "Recording paused. Please reconnect the device or select a new one."
+            )
+
     def _recording_loop(self, callback: Callable[[np.ndarray], None]) -> None:
         """Recording loop thread function.
-        
+
         Args:
             callback: Function to call with audio data
         """
         while self.audio_state_manager.get_state() in [RecordingState.RECORDING, RecordingState.PAUSED]:
-            if self.audio_state_manager.is_recording():
-                # Get audio data (implement based on your audio capture method)
-                # This is a placeholder - actual implementation depends on audio source
-                time.sleep(0.1)  # Prevent busy loop
-            else:
-                time.sleep(0.1)  # Check less frequently when paused
+            try:
+                # Check device health periodically
+                if self.audio_state_manager.is_recording():
+                    try:
+                        self._check_device_health()
+                    except DeviceDisconnectedError as e:
+                        self._handle_device_disconnection(e)
+                        break  # Exit recording loop
+
+                    # Get audio data (implement based on your audio capture method)
+                    # This is a placeholder - actual implementation depends on audio source
+                    time.sleep(0.1)  # Prevent busy loop
+                else:
+                    time.sleep(0.1)  # Check less frequently when paused
+
+            except Exception as e:
+                logging.error(f"Error in recording loop: {e}")
+                time.sleep(0.1)  # Prevent tight error loop
     
     
     @property

@@ -15,80 +15,150 @@ from pydub import AudioSegment
 
 
 class PeriodicAnalyzer:
-    """Manages periodic analysis of audio during recording."""
-    
+    """Manages periodic analysis of audio during recording.
+
+    Thread Safety:
+        This class uses threading.Event for clean shutdown coordination.
+        The timer thread is daemon to prevent blocking application exit.
+    """
+
     def __init__(self, interval_seconds: int = 120):
         """Initialize the periodic analyzer.
-        
+
         Args:
             interval_seconds: Interval between analyses in seconds (default: 120 = 2 minutes)
         """
         self.interval_seconds = interval_seconds
-        self.timer: Optional[threading.Timer] = None
-        self.is_running = False
-        self.start_time: Optional[float] = None
-        self.analysis_count = 0
-        self.callback: Optional[Callable] = None
-        
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+
+        # Protected by _lock
+        self._timer: Optional[threading.Timer] = None
+        self._is_running = False
+        self._start_time: Optional[float] = None
+        self._analysis_count = 0
+        self._callback: Optional[Callable] = None
+        self._callback_in_progress = False
+
+    @property
+    def is_running(self) -> bool:
+        """Thread-safe check if analyzer is running."""
+        with self._lock:
+            return self._is_running
+
+    @property
+    def analysis_count(self) -> int:
+        """Thread-safe access to analysis count."""
+        with self._lock:
+            return self._analysis_count
+
     def start(self, callback: Callable):
         """Start periodic analysis.
-        
+
         Args:
             callback: Function to call for each analysis
         """
-        if self.is_running:
-            logging.warning("Periodic analyzer is already running")
-            return
-            
-        self.is_running = True
-        self.start_time = time.time()
-        self.analysis_count = 0
-        self.callback = callback
-        
+        with self._lock:
+            if self._is_running:
+                logging.warning("Periodic analyzer is already running")
+                return
+
+            self._is_running = True
+            self._stop_event.clear()
+            self._start_time = time.time()
+            self._analysis_count = 0
+            self._callback = callback
+
         # Schedule first analysis after interval
         self._schedule_next_analysis()
         logging.info(f"Started periodic analysis with {self.interval_seconds}s interval")
-        
-    def stop(self):
-        """Stop periodic analysis."""
-        self.is_running = False
-        
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-            
-        logging.info(f"Stopped periodic analysis after {self.analysis_count} analyses")
-        
+
+    def stop(self, wait_for_callback: bool = True, timeout: float = 5.0):
+        """Stop periodic analysis gracefully.
+
+        Args:
+            wait_for_callback: If True, wait for any in-progress callback to complete
+            timeout: Maximum time to wait for callback completion
+        """
+        with self._lock:
+            if not self._is_running:
+                return
+
+            self._is_running = False
+            self._stop_event.set()
+
+            # Cancel pending timer
+            if self._timer:
+                self._timer.cancel()
+                timer = self._timer
+                self._timer = None
+            else:
+                timer = None
+
+            analysis_count = self._analysis_count
+            callback_in_progress = self._callback_in_progress
+
+        # Wait for timer thread to finish if it was running
+        if timer and timer.is_alive():
+            timer.join(timeout=2.0)
+
+        # Wait for callback to complete if requested
+        if wait_for_callback and callback_in_progress:
+            start_wait = time.time()
+            while self._callback_in_progress and (time.time() - start_wait) < timeout:
+                time.sleep(0.1)
+            if self._callback_in_progress:
+                logging.warning("Callback did not complete within timeout")
+
+        logging.info(f"Stopped periodic analysis after {analysis_count} analyses")
+
     def _schedule_next_analysis(self):
         """Schedule the next analysis."""
-        if not self.is_running:
-            return
-            
-        self.timer = threading.Timer(self.interval_seconds, self._perform_analysis)
-        self.timer.daemon = True  # Make timer thread daemon so it doesn't prevent shutdown
-        self.timer.start()
-        
+        with self._lock:
+            if not self._is_running:
+                return
+
+            self._timer = threading.Timer(self.interval_seconds, self._perform_analysis)
+            self._timer.daemon = True  # Make timer thread daemon so it doesn't prevent shutdown
+            self._timer.name = f"PeriodicAnalysis-{self._analysis_count + 1}"
+            self._timer.start()
+
     def _perform_analysis(self):
         """Perform the periodic analysis."""
-        if not self.is_running or not self.callback:
+        # Check if we should run (outside lock first for quick exit)
+        if self._stop_event.is_set():
             return
-            
+
+        callback = None
+        elapsed_time = 0.0
+        analysis_num = 0
+
+        with self._lock:
+            if not self._is_running or not self._callback:
+                return
+
+            self._callback_in_progress = True
+            self._analysis_count += 1
+            analysis_num = self._analysis_count
+            elapsed_time = time.time() - self._start_time if self._start_time else 0.0
+            callback = self._callback
+
         try:
-            self.analysis_count += 1
-            elapsed_time = time.time() - self.start_time
-            
-            logging.info(f"Performing periodic analysis #{self.analysis_count} at {elapsed_time:.1f}s")
-            
-            # Call the callback function
-            self.callback(self.analysis_count, elapsed_time)
-            
-            # Schedule next analysis
-            self._schedule_next_analysis()
-            
+            logging.info(f"Performing periodic analysis #{analysis_num} at {elapsed_time:.1f}s")
+
+            # Call the callback function (outside lock to prevent blocking)
+            if callback:
+                callback(analysis_num, elapsed_time)
+
         except Exception as e:
-            logging.error(f"Error in periodic analysis: {e}")
-            # Continue scheduling even if there's an error
-            self._schedule_next_analysis()
+            logging.error(f"Error in periodic analysis callback: {e}", exc_info=True)
+        finally:
+            with self._lock:
+                self._callback_in_progress = False
+
+            # Schedule next analysis (only if still running)
+            if not self._stop_event.is_set():
+                self._schedule_next_analysis()
 
 
 class AudioSegmentExtractor:

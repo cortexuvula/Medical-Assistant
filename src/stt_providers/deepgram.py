@@ -20,10 +20,20 @@ from utils.security_decorators import secure_api_call
 
 class DeepgramProvider(BaseSTTProvider):
     """Implementation of the Deepgram STT provider."""
-    
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider identifier."""
+        return "deepgram"
+
+    @property
+    def supports_diarization(self) -> bool:
+        """Deepgram supports speaker diarization."""
+        return True
+
     def __init__(self, api_key: str = "", language: str = "en-US"):
         """Initialize the Deepgram provider.
-        
+
         Args:
             api_key: Deepgram API key
             language: Language code for speech recognition

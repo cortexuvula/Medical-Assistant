@@ -7,7 +7,7 @@ import tkinter as tk
 import tkinter.messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from typing import Dict, Callable, Optional, List
+from typing import Dict, Callable, Optional, List, Protocol, runtime_checkable, Any
 import logging
 import threading
 import os
@@ -17,28 +17,75 @@ from ui.scaling_utils import ui_scaler
 from settings.settings import SETTINGS
 
 
+@runtime_checkable
+class RecordingsDataProvider(Protocol):
+    """Protocol defining the interface for recordings data access.
+
+    This protocol decouples the RecordingsTab UI from the database layer,
+    allowing for easier testing and potential swapping of data sources.
+    """
+
+    def get_all_recordings(self) -> List[Dict[str, Any]]:
+        """Get all recordings from the data source."""
+        ...
+
+    def get_recording(self, recording_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific recording by ID."""
+        ...
+
+    def delete_recording(self, recording_id: int) -> bool:
+        """Delete a recording by ID."""
+        ...
+
+    def clear_all_recordings(self) -> bool:
+        """Clear all recordings from the data source."""
+        ...
+
+
 class RecordingsTab:
     """Manages the Recordings workflow tab UI components."""
-    
-    def __init__(self, parent_ui):
+
+    def __init__(self, parent_ui, data_provider: Optional[RecordingsDataProvider] = None):
         """Initialize the RecordingsTab component.
-        
+
         Args:
             parent_ui: Reference to the parent WorkflowUI instance
+            data_provider: Optional data provider for recordings. If None,
+                          falls back to parent.db for backwards compatibility.
         """
         self.parent_ui = parent_ui
         self.parent = parent_ui.parent
         self.components = parent_ui.components
-        
+
+        # Data provider - use injected provider or fall back to parent.db
+        self._data_provider = data_provider
+
         # Recording tree components
         self.recordings_tree = None
         self.recordings_search_var = None
         self.recording_count_label = None
         self.recordings_context_menu = None
-        
+
         # Batch processing state
         self.batch_progress_dialog = None
         self.batch_failed_count = 0
+
+    @property
+    def data_provider(self) -> RecordingsDataProvider:
+        """Get the data provider, falling back to parent.db if not set.
+
+        This property enables gradual migration from tight coupling to
+        dependency injection without breaking existing code.
+        """
+        if self._data_provider is not None:
+            return self._data_provider
+        # Backwards compatibility: use parent.db
+        return self.parent.db
+
+    @data_provider.setter
+    def data_provider(self, provider: RecordingsDataProvider) -> None:
+        """Set the data provider."""
+        self._data_provider = provider
         
     def create_recordings_tab(self, command_map: Dict[str, Callable]) -> ttk.Frame:
         """Create the Recordings workflow tab.
@@ -263,7 +310,7 @@ class RecordingsTab:
         def task():
             try:
                 # Get recent recordings from database
-                recordings = self.parent.db.get_all_recordings()
+                recordings = self.data_provider.get_all_recordings()
                 # Update UI on main thread - check if parent still exists
                 if self.parent and hasattr(self.parent, 'after'):
                     try:
@@ -398,11 +445,11 @@ class RecordingsTab:
         
         try:
             # Get full recording data
-            recording = self.parent.db.get_recording(rec_id)
+            recording = self.data_provider.get_recording(rec_id)
             if not recording:
                 tk.messagebox.showerror("Error", "Recording not found in database.")
                 return
-            
+
             # Clear existing content
             from utils.cleanup_utils import clear_all_content
             clear_all_content(self.parent)
@@ -464,7 +511,7 @@ class RecordingsTab:
             
             try:
                 # Delete from database
-                self.parent.db.delete_recording(rec_id)
+                self.data_provider.delete_recording(rec_id)
                 
                 # Remove from tree
                 self.recordings_tree.delete(item)
@@ -500,11 +547,11 @@ class RecordingsTab:
         
         try:
             # Get full recording data
-            recording = self.parent.db.get_recording(rec_id)
+            recording = self.data_provider.get_recording(rec_id)
             if not recording:
                 tk.messagebox.showerror("Error", "Recording not found in database.")
                 return
-            
+
             # Ask for export format
             from tkinter import filedialog
             file_path = filedialog.asksaveasfilename(
@@ -579,7 +626,7 @@ class RecordingsTab:
         
         try:
             # Clear all recordings from database
-            success = self.parent.db.clear_all_recordings()
+            success = self.data_provider.clear_all_recordings()
             
             if success:
                 # Clear the tree view
@@ -634,7 +681,7 @@ class RecordingsTab:
             # Check processing status (it's in the values)
             try:
                 # Get the recording to check status
-                recording = self.parent.db.get_recording(rec_id)
+                recording = self.data_provider.get_recording(rec_id)
                 if recording and recording.get('processing_status') == 'failed':
                     failed_recording_ids.append(rec_id)
                 else:
@@ -877,7 +924,7 @@ class RecordingsTab:
                 has_failed = False
                 for selected in self.recordings_tree.selection():
                     rec_id = int(self.recordings_tree.item(selected, 'text'))
-                    recording = self.parent.db.get_recording(rec_id)
+                    recording = self.data_provider.get_recording(rec_id)
                     if recording and recording.get('processing_status') == 'failed':
                         has_failed = True
                         break

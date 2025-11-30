@@ -289,3 +289,76 @@ def get_fallback_anthropic_models() -> List[str]:
         "claude-2.0",                  # Legacy model
         "claude-instant-1.2"           # Fast, lightweight model
     ]
+
+
+def get_gemini_models() -> List[str]:
+    """Fetch available models from Google Gemini API."""
+    # Check cache first
+    cache_key = "gemini_models"
+    if cache_key in _model_cache:
+        cached_time, cached_models = _model_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logging.info("Using cached Gemini models")
+            return cached_models
+
+    try:
+        import google.generativeai as genai
+        from utils.security import get_security_manager
+
+        security_manager = get_security_manager()
+        api_key = security_manager.get_api_key("gemini")
+
+        if not api_key:
+            api_key = os.getenv("GEMINI_API_KEY")
+
+        if api_key:
+            logging.info("Attempting to fetch Gemini models from API")
+            genai.configure(api_key=api_key)
+
+            # Fetch models list from API
+            models = []
+            for model in genai.list_models():
+                # Filter for models that support generateContent
+                if "generateContent" in model.supported_generation_methods:
+                    # Extract just the model name (remove 'models/' prefix)
+                    model_name = model.name.replace("models/", "")
+                    models.append(model_name)
+
+            if models:
+                logging.info(f"Successfully fetched {len(models)} Gemini models from API")
+                # Sort models (gemini-2.0 first, then 1.5, then others)
+                models.sort(key=lambda x: (
+                    0 if "2.0" in x else
+                    1 if "1.5-pro" in x else
+                    2 if "1.5-flash" in x else
+                    3 if "1.5" in x else
+                    4
+                ))
+                # Cache the results
+                _model_cache[cache_key] = (time.time(), models)
+                return models
+            else:
+                logging.warning("No models found in API response, using fallback list")
+                return get_fallback_gemini_models()
+        else:
+            logging.info("No Gemini API key available, using fallback list")
+            return get_fallback_gemini_models()
+
+    except ImportError:
+        logging.warning("google-generativeai library not installed, using fallback list")
+        return get_fallback_gemini_models()
+    except Exception as e:
+        logging.error(f"Error fetching Gemini models from API: {e}")
+        return get_fallback_gemini_models()
+
+
+def get_fallback_gemini_models() -> List[str]:
+    """Return a fallback list of Google Gemini models."""
+    logging.info("Using fallback list of Gemini models")
+    return [
+        "gemini-2.0-flash-exp",        # Latest experimental flash model
+        "gemini-1.5-pro",              # Most capable Gemini 1.5 model
+        "gemini-1.5-flash",            # Fast and efficient
+        "gemini-1.5-flash-8b",         # Smaller, faster variant
+        "gemini-pro"                   # Original Gemini Pro
+    ]

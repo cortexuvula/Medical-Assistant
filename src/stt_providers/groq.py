@@ -19,16 +19,70 @@ from utils.security import get_security_manager
 
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""
-    
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider identifier."""
+        return "groq"
+
+    @property
+    def supports_diarization(self) -> bool:
+        """Groq does not support speaker diarization."""
+        return False
+
     def __init__(self, api_key: str = "", language: str = "en-US"):
         """Initialize the GROQ provider.
-        
+
         Args:
             api_key: GROQ API key
             language: Language code for speech recognition
         """
         super().__init__(api_key, language)
-    
+
+    @secure_api_call("groq")
+    @resilient_api_call(
+        max_retries=3,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        failure_threshold=5,
+        recovery_timeout=60
+    )
+    def _make_api_call(self, client, audio_file, language: str, timeout: int):
+        """Make the actual API call to GROQ with retry logic.
+
+        Args:
+            client: OpenAI client configured for GROQ
+            audio_file: Open file handle for audio
+            language: Language code
+            timeout: Request timeout
+
+        Returns:
+            API response
+
+        Raises:
+            APIError: On API failures
+            RateLimitError: On rate limit exceeded
+            ServiceUnavailableError: On service unavailable
+        """
+        try:
+            response = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-large-v3-turbo",
+                language=language,
+                timeout=timeout
+            )
+            return response
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "rate limit" in error_msg or "429" in error_msg:
+                raise RateLimitError(f"GROQ rate limit exceeded: {e}")
+            elif "timeout" in error_msg:
+                raise ServiceUnavailableError(f"GROQ request timeout: {e}")
+            elif "503" in error_msg or "unavailable" in error_msg:
+                raise ServiceUnavailableError(f"GROQ service unavailable: {e}")
+            else:
+                raise APIError(f"GROQ API error: {e}")
+
     def transcribe(self, segment: AudioSegment) -> str:
         """Transcribe audio using GROQ API.
         
@@ -81,13 +135,17 @@ class GroqProvider(BaseSTTProvider):
             
             # Open and read the audio file
             with open(temp_file, "rb") as audio_file:
-                # Make API call with timeout
-                response = client.audio.transcriptions.create(
-                    file=audio_file,
-                    model="whisper-large-v3-turbo",  # GROQ's Whisper model (updated name)
-                    language=self.language.split('-')[0],  # Use language code without region
-                    timeout=timeout_seconds
-                )
+                # Make API call with retry logic
+                try:
+                    response = self._make_api_call(
+                        client,
+                        audio_file,
+                        self.language.split('-')[0],  # Use language code without region
+                        timeout_seconds
+                    )
+                except (APIError, RateLimitError, ServiceUnavailableError) as e:
+                    self.logger.error(f"GROQ API call failed after retries: {e}")
+                    raise TranscriptionError(f"GROQ transcription failed: {e}")
             
             # Process response
             if hasattr(response, 'text'):

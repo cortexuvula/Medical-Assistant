@@ -17,7 +17,7 @@ from ai.prompts import (
 )
 from settings.settings import SETTINGS, _DEFAULT_SETTINGS
 from utils.error_codes import get_error_message, format_api_error
-from utils.validation import validate_api_key, sanitize_prompt, validate_model_name
+from utils.validation import validate_api_key, sanitize_prompt, validate_model_name, sanitize_for_logging
 from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, TimeoutError as AppTimeoutError
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
@@ -25,17 +25,28 @@ from utils.security_decorators import secure_api_call, rate_limited
 from utils.timeout_config import get_timeout, get_timeout_tuple
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA
+    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
+import google.generativeai as genai
 
 
 def log_api_call_debug(provider: str, model: str, temperature: float, system_message: str, prompt: str) -> None:
-    """Consolidated debug logging for API calls to reduce repetition."""
+    """Consolidated debug logging for API calls with sensitive data sanitization.
+
+    All logged content is sanitized to prevent accidental exposure of:
+    - API keys
+    - Authorization tokens
+    - PII (emails, phone numbers, SSNs)
+    """
     if logging.getLogger().isEnabledFor(logging.DEBUG):
+        # Sanitize all content before logging
+        safe_system = sanitize_for_logging(system_message, max_length=100)
+        safe_prompt = sanitize_for_logging(prompt, max_length=100)
+
         logging.debug(f"\n===== {provider.upper()} API CALL =====")
         logging.debug(f"Model: {model}, Temperature: {temperature}")
-        logging.debug(f"System: {system_message[:100]}..." if len(system_message) > 100 else f"System: {system_message}")
-        logging.debug(f"Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"Prompt: {prompt}")
+        logging.debug(f"System: {safe_system}")
+        logging.debug(f"Prompt: {safe_prompt}")
         logging.debug("="*40)
 
 @secure_api_call("openai")
@@ -627,6 +638,130 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
         title, message = get_error_message(error_code, details, model)
         return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
 
+@secure_api_call("gemini")
+@resilient_api_call(
+    max_retries=3,
+    initial_delay=1.0,
+    backoff_factor=2.0,
+    failure_threshold=5,
+    recovery_timeout=60
+)
+def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generation_config: dict) -> str:
+    """Make the actual API call to Google Gemini with resilience.
+
+    Args:
+        model: Configured GenerativeModel instance
+        prompt_content: Combined system + user prompt content
+        generation_config: Generation configuration including temperature
+
+    Returns:
+        Generated text response
+
+    Raises:
+        APIError: On API failures
+        AppTimeoutError: On request timeout
+    """
+    timeout_seconds = get_timeout("gemini")
+
+    try:
+        response = model.generate_content(
+            prompt_content,
+            generation_config=genai.GenerationConfig(**generation_config),
+            request_options={"timeout": timeout_seconds}
+        )
+        return response.text
+    except Exception as e:
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "rate" in error_msg.lower():
+            raise RateLimitError(f"Gemini rate limit exceeded: {error_msg}")
+        elif "api key" in error_msg.lower() or "invalid" in error_msg.lower() or "permission" in error_msg.lower():
+            raise AuthenticationError(f"Gemini authentication failed: {error_msg}")
+        elif "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
+            raise AppTimeoutError(
+                f"Gemini request timeout: {error_msg}",
+                timeout_seconds=timeout_seconds,
+                service="gemini"
+            )
+        else:
+            raise APIError(f"Gemini API error: {error_msg}")
+
+
+def call_gemini(model_name: str, system_message: str, prompt: str, temperature: float) -> str:
+    """Call Google Gemini API.
+
+    Args:
+        model_name: Model to use (e.g., gemini-1.5-flash, gemini-1.5-pro)
+        system_message: System message to guide the AI's response
+        prompt: User prompt
+        temperature: Temperature parameter (0.0 to 1.0)
+
+    Returns:
+        AI-generated response as a string
+    """
+    # Get security manager
+    security_manager = get_security_manager()
+
+    # Get API key from secure storage or environment
+    api_key = security_manager.get_api_key("gemini")
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        logging.error("Gemini API key not provided")
+        title, message = get_error_message("API_KEY_MISSING", "Gemini API key not found")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+
+    # Validate API key format
+    is_valid, error = validate_api_key("gemini", api_key)
+    if not is_valid:
+        logging.error(f"Invalid Gemini API key: {error}")
+        title, message = get_error_message("API_KEY_INVALID", error)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+
+    # Enhanced sanitization
+    prompt = security_manager.sanitize_input(prompt, "prompt")
+    system_message = security_manager.sanitize_input(system_message, "prompt")
+
+    try:
+        logging.info(f"Making Gemini API call with model: {model_name}")
+
+        # Use consolidated debug logging
+        log_api_call_debug("Gemini", model_name, temperature, system_message, prompt)
+
+        # Configure the Gemini API with the API key
+        genai.configure(api_key=api_key)
+
+        # Create the model with system instruction
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_message
+        )
+
+        # Configure generation parameters
+        generation_config = {
+            "temperature": temperature,
+            "max_output_tokens": 4096,
+        }
+
+        # Make the API call
+        response_text = _gemini_api_call(model, prompt, generation_config)
+        return response_text.strip()
+
+    except AppTimeoutError as e:
+        logging.error(f"Gemini API timeout with model {model_name}: {str(e)}")
+        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    except (APIError, ServiceUnavailableError) as e:
+        logging.error(f"Gemini API error with model {model_name}: {str(e)}")
+        error_code, details = format_api_error("gemini", e)
+        title, message = get_error_message(error_code, details, model_name)
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+    except Exception as e:
+        logging.error(f"Unexpected error calling Gemini: {str(e)}")
+        title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
+        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+
+
 def adjust_text_with_openai(text: str) -> str:
     model = SETTINGS["refine_text"]["model"]  # Use actual settings, not defaults
     
@@ -899,6 +1034,11 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
         logging.info(f"Using provider: Anthropic with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_anthropic(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_GEMINI:
+        actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
+        logging.info(f"Using provider: Gemini with model: {actual_model}")
+        # Debug logging will happen in the actual API call
+        return call_gemini(actual_model, system_message, prompt, temperature)
     else:  # OpenAI is the default
         actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")

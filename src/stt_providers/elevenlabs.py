@@ -13,19 +13,83 @@ from pydub import AudioSegment
 
 from .base import BaseSTTProvider
 from settings.settings import SETTINGS
+from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from utils.resilience import resilient_api_call
+from utils.security_decorators import secure_api_call
 
 class ElevenLabsProvider(BaseSTTProvider):
     """Implementation of the ElevenLabs STT provider."""
-    
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider identifier."""
+        return "elevenlabs"
+
+    @property
+    def supports_diarization(self) -> bool:
+        """ElevenLabs supports speaker diarization."""
+        return True
+
     def __init__(self, api_key: str = "", language: str = "en-US"):
         """Initialize the ElevenLabs provider.
-        
+
         Args:
             api_key: ElevenLabs API key
             language: Language code for speech recognition
         """
         super().__init__(api_key, language)
-    
+
+    @secure_api_call("elevenlabs")
+    @resilient_api_call(
+        max_retries=3,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        failure_threshold=5,
+        recovery_timeout=60
+    )
+    def _make_api_call(self, url: str, headers: dict, files: dict, data: dict, timeout: int):
+        """Make the actual API call to ElevenLabs with retry logic.
+
+        Args:
+            url: API endpoint URL
+            headers: Request headers
+            files: Files to upload
+            data: Request data
+            timeout: Request timeout
+
+        Returns:
+            API response
+
+        Raises:
+            APIError: On API failures
+            RateLimitError: On rate limit exceeded
+            ServiceUnavailableError: On service unavailable
+        """
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=timeout
+            )
+            # Check for HTTP errors
+            if response.status_code == 429:
+                raise RateLimitError(f"ElevenLabs rate limit exceeded: {response.text}")
+            elif response.status_code >= 500:
+                raise ServiceUnavailableError(f"ElevenLabs service error {response.status_code}: {response.text}")
+            elif response.status_code >= 400:
+                raise APIError(f"ElevenLabs API error {response.status_code}: {response.text}")
+            return response
+        except requests.exceptions.Timeout:
+            raise ServiceUnavailableError("ElevenLabs request timeout")
+        except requests.exceptions.ConnectionError as e:
+            raise ServiceUnavailableError(f"ElevenLabs connection error: {e}")
+        except (RateLimitError, ServiceUnavailableError, APIError):
+            raise
+        except Exception as e:
+            raise APIError(f"ElevenLabs API error: {e}")
+
     def transcribe(self, segment: AudioSegment) -> str:
         """Transcribe audio using ElevenLabs API.
         
@@ -109,20 +173,24 @@ class ElevenLabsProvider(BaseSTTProvider):
                 'file': ('audio.wav', file_obj, 'audio/wav')
             }
             
-            # Make the request
-            response = requests.post(
-                url, 
-                headers=headers,
-                files=files,
-                data=data,
-                timeout=timeout_seconds
-            )
-            
-            # First, make sure we close the file object before trying to delete
-            if file_obj:
-                file_obj.close()
-                file_obj = None
-        
+            # Make the request with retry logic
+            try:
+                response = self._make_api_call(
+                    url,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=timeout_seconds
+                )
+            except (APIError, RateLimitError, ServiceUnavailableError) as e:
+                self.logger.error(f"ElevenLabs API call failed after retries: {e}")
+                raise TranscriptionError(f"ElevenLabs transcription failed: {e}")
+            finally:
+                # First, make sure we close the file object before trying to delete
+                if file_obj:
+                    file_obj.close()
+                    file_obj = None
+
             # Process response
             if response.status_code == 200:
                 result = response.json()

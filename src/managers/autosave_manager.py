@@ -14,18 +14,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 import hashlib
+from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
+import io
 
 
 class AutoSaveManager:
-    """Manages automatic saving of application data."""
-    
-    def __init__(self, 
+    """Manages automatic saving of application data.
+
+    Thread Safety:
+        This class is designed to be thread-safe. The data_providers dict
+        is protected by _providers_lock, and the save state is protected
+        by _state_lock. Both can be held simultaneously but must be acquired
+        in the order: _providers_lock first, then _state_lock.
+    """
+
+    def __init__(self,
                  save_directory: Optional[Path] = None,
                  interval_seconds: int = 300,  # 5 minutes default
                  max_backups: int = 3):
         """
         Initialize the auto-save manager.
-        
+
         Args:
             save_directory: Directory to store auto-save files
             interval_seconds: Time between auto-saves in seconds
@@ -37,133 +47,225 @@ class AutoSaveManager:
             self.save_directory = data_folder_manager.app_data_folder / "autosave"
         else:
             self.save_directory = Path(save_directory)
-            
+
         self.save_directory.mkdir(parents=True, exist_ok=True)
-        
+
         self.interval_seconds = interval_seconds
         self.max_backups = max_backups
-        self.is_running = False
-        self.save_thread = None
-        self.last_save_time = None
-        self.data_providers = {}
-        self.last_data_hash = None
-        
-        # Callbacks
-        self.on_save_start = None
-        self.on_save_complete = None
-        self.on_save_error = None
-        
+
+        # Thread synchronization - use RLock to allow recursive acquisition
+        self._providers_lock = threading.RLock()  # Protects data_providers dict
+        self._state_lock = threading.RLock()  # Protects save state
+        self._stop_event = threading.Event()  # For clean shutdown
+
+        # Protected by _state_lock
+        self._is_running = False
+        self.save_thread: Optional[threading.Thread] = None
+        self.last_save_time: Optional[datetime] = None
+        self.last_data_hash: Optional[str] = None
+
+        # Protected by _providers_lock
+        self._data_providers: Dict[str, Callable[[], Dict[str, Any]]] = {}
+
+        # Callbacks (set from main thread, called from background thread)
+        self.on_save_start: Optional[Callable] = None
+        self.on_save_complete: Optional[Callable] = None
+        self.on_save_error: Optional[Callable[[Exception], None]] = None
+
         logging.info(f"AutoSaveManager initialized with {interval_seconds}s interval")
+
+    @property
+    def is_running(self) -> bool:
+        """Thread-safe check if autosave is running."""
+        with self._state_lock:
+            return self._is_running
+
+    @is_running.setter
+    def is_running(self, value: bool):
+        """Thread-safe setter for running state."""
+        with self._state_lock:
+            self._is_running = value
+
+    @property
+    def data_providers(self) -> Dict[str, Callable[[], Dict[str, Any]]]:
+        """Thread-safe access to data providers (returns a copy)."""
+        with self._providers_lock:
+            return dict(self._data_providers)
     
     def register_data_provider(self, name: str, provider: Callable[[], Dict[str, Any]]):
         """
         Register a data provider function.
-        
+
+        Thread-safe: Can be called from any thread.
+
         Args:
             name: Name of the data provider
             provider: Function that returns data to save
         """
-        self.data_providers[name] = provider
+        with self._providers_lock:
+            self._data_providers[name] = provider
         logging.debug(f"Registered data provider: {name}")
-    
+
+    def unregister_data_provider(self, name: str) -> bool:
+        """
+        Unregister a data provider function.
+
+        Thread-safe: Can be called from any thread.
+
+        Args:
+            name: Name of the data provider to remove
+
+        Returns:
+            True if provider was removed, False if not found
+        """
+        with self._providers_lock:
+            if name in self._data_providers:
+                del self._data_providers[name]
+                logging.debug(f"Unregistered data provider: {name}")
+                return True
+            return False
+
     def start(self):
         """Start the auto-save timer."""
-        if self.is_running:
-            logging.warning("AutoSave is already running")
-            return
-            
-        self.is_running = True
-        self.save_thread = threading.Thread(target=self._save_loop, daemon=True)
-        self.save_thread.start()
+        with self._state_lock:
+            if self._is_running:
+                logging.warning("AutoSave is already running")
+                return
+
+            self._is_running = True
+            self._stop_event.clear()
+            self.save_thread = threading.Thread(target=self._save_loop, daemon=True, name="AutoSaveThread")
+            self.save_thread.start()
         logging.info("AutoSave started")
-    
+
     def stop(self):
-        """Stop the auto-save timer."""
-        self.is_running = False
-        if self.save_thread:
+        """Stop the auto-save timer gracefully."""
+        with self._state_lock:
+            if not self._is_running:
+                return
+            self._is_running = False
+            self._stop_event.set()  # Signal thread to wake up and exit
+
+        # Wait outside lock to avoid deadlock
+        if self.save_thread and self.save_thread.is_alive():
             self.save_thread.join(timeout=5)
+            if self.save_thread.is_alive():
+                logging.warning("AutoSave thread did not terminate cleanly")
+
         logging.info("AutoSave stopped")
-    
+
     def _save_loop(self):
         """Main auto-save loop running in background thread."""
-        while self.is_running:
+        while not self._stop_event.is_set():
             try:
-                # Wait for the interval
-                time.sleep(self.interval_seconds)
-                
-                if self.is_running:  # Check again after sleep
+                # Wait for the interval or until stop is signaled
+                # Using Event.wait() instead of time.sleep() allows faster shutdown
+                if self._stop_event.wait(timeout=self.interval_seconds):
+                    # Stop event was set, exit loop
+                    break
+
+                if self.is_running:  # Check again after wait
                     self.perform_save()
-                    
+
             except Exception as e:
-                logging.error(f"Error in auto-save loop: {e}")
+                logging.error(f"Error in auto-save loop: {e}", exc_info=True)
                 if self.on_save_error:
-                    self.on_save_error(e)
+                    try:
+                        self.on_save_error(e)
+                    except Exception as callback_error:
+                        logging.error(f"Error in save error callback: {callback_error}")
     
     def perform_save(self, force: bool = False) -> bool:
         """
         Perform an auto-save.
-        
+
+        Thread-safe: Can be called from any thread.
+
         Args:
             force: Force save even if data hasn't changed
-            
+
         Returns:
             True if save was performed, False if skipped
         """
         try:
-            # Collect data from all providers
+            # Collect data from all providers (thread-safe copy)
             save_data = {
                 "timestamp": datetime.now().isoformat(),
                 "version": "1.0",
                 "data": {}
             }
-            
-            for name, provider in self.data_providers.items():
+
+            # Get a thread-safe snapshot of providers
+            with self._providers_lock:
+                providers_snapshot = dict(self._data_providers)
+
+            # Call providers outside lock to avoid holding lock during callbacks
+            for name, provider in providers_snapshot.items():
                 try:
                     save_data["data"][name] = provider()
                 except Exception as e:
                     logging.error(f"Error getting data from provider {name}: {e}")
                     save_data["data"][name] = None
-            
+
             # Calculate hash to detect changes
-            data_str = json.dumps(save_data["data"], sort_keys=True)
+            data_str = json.dumps(save_data["data"], sort_keys=True, default=str)
             current_hash = hashlib.md5(data_str.encode()).hexdigest()
-            
-            # Skip save if data hasn't changed (unless forced)
-            if not force and current_hash == self.last_data_hash:
-                logging.debug("No changes detected, skipping auto-save")
-                return False
-            
-            # Notify save start
+
+            # Check last hash (thread-safe)
+            with self._state_lock:
+                if not force and current_hash == self.last_data_hash:
+                    logging.debug("No changes detected, skipping auto-save")
+                    return False
+
+            # Notify save start (outside lock)
             if self.on_save_start:
-                self.on_save_start()
-            
+                try:
+                    self.on_save_start()
+                except Exception as e:
+                    logging.error(f"Error in save start callback: {e}")
+
             # Rotate existing backups
             self._rotate_backups()
-            
-            # Save to file
+
+            # Save to file using buffered I/O for better performance
+            # First serialize to memory buffer, then write in one operation
             save_path = self.save_directory / "autosave_current.json"
             temp_path = save_path.with_suffix(".tmp")
-            
-            with open(temp_path, 'w', encoding='utf-8') as f:
-                json.dump(save_data, f, indent=2)
-            
+
+            # Serialize JSON to memory first (reduces file handle time)
+            json_bytes = json.dumps(save_data, indent=2, default=str).encode('utf-8')
+
+            # Write using a single buffered operation
+            with open(temp_path, 'wb', buffering=65536) as f:  # 64KB buffer
+                f.write(json_bytes)
+                f.flush()
+                os.fsync(f.fileno())  # Ensure data is on disk before rename
+
             # Atomic rename
             temp_path.replace(save_path)
-            
-            self.last_save_time = datetime.now()
-            self.last_data_hash = current_hash
-            
-            # Notify save complete
+
+            # Update state (thread-safe)
+            with self._state_lock:
+                self.last_save_time = datetime.now()
+                self.last_data_hash = current_hash
+
+            # Notify save complete (outside lock)
             if self.on_save_complete:
-                self.on_save_complete()
-            
+                try:
+                    self.on_save_complete()
+                except Exception as e:
+                    logging.error(f"Error in save complete callback: {e}")
+
             logging.info("Auto-save completed successfully")
             return True
-            
+
         except Exception as e:
-            logging.error(f"Failed to perform auto-save: {e}")
+            logging.error(f"Failed to perform auto-save: {e}", exc_info=True)
             if self.on_save_error:
-                self.on_save_error(e)
+                try:
+                    self.on_save_error(e)
+                except Exception as callback_error:
+                    logging.error(f"Error in save error callback: {callback_error}")
             return False
     
     def _rotate_backups(self):
@@ -278,7 +380,8 @@ class AutoSaveDataProvider:
                     "content": widget.get("1.0", "end-1c"),
                     "cursor_position": widget.index("insert")
                 }
-            except Exception:
+            except (tk.TclError, AttributeError, RuntimeError):
+                # Widget may be destroyed or not initialized
                 return {"name": name, "content": "", "cursor_position": "1.0"}
         
         return provider

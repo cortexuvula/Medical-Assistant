@@ -115,7 +115,7 @@ class DatabaseManager:
             return None
 
     def get_recordings(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
-        """Get recordings from database.
+        """Get recordings from database with efficient pagination.
 
         Args:
             limit: Maximum number of recordings to retrieve
@@ -125,15 +125,28 @@ class DatabaseManager:
             List of recording dictionaries
         """
         try:
-            # Use the Database class method which returns dictionaries
-            recordings = self._db.get_all_recordings()
-
-            # Apply offset and limit
-            return recordings[offset:offset + limit]
+            # Use SQL LIMIT/OFFSET for efficient pagination instead of
+            # fetching all and slicing in Python
+            return self._db.get_recordings_paginated(limit=limit, offset=offset)
 
         except Exception as e:
             logging.error(f"Failed to get recordings: {e}")
             return []
+
+    def get_recordings_count(self) -> int:
+        """Get total count of recordings for pagination.
+
+        Returns:
+            Total number of recordings
+        """
+        try:
+            with self._db.connection() as (conn, cursor):
+                cursor.execute("SELECT COUNT(*) FROM recordings")
+                result = cursor.fetchone()
+                return result[0] if result else 0
+        except Exception as e:
+            logging.error(f"Failed to get recordings count: {e}")
+            return 0
 
     def get_recording_by_id(self, recording_id: int) -> Optional[Dict[str, Any]]:
         """Get specific recording by ID.
@@ -230,29 +243,35 @@ class DatabaseManager:
             return []
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get database statistics.
+        """Get database statistics using a single efficient query.
 
         Returns:
             Dictionary with statistics
         """
         try:
             with self._db.connection() as (conn, cursor):
-                # Total recordings
-                cursor.execute("SELECT COUNT(*) FROM recordings")
-                total_recordings = cursor.fetchone()[0]
+                # Use a single query with aggregations for better performance
+                # This reduces 4 round trips to 1
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as total_recordings,
+                        COALESCE(SUM(duration), 0) as total_duration,
+                        COUNT(CASE WHEN soap_note != '' AND soap_note IS NOT NULL THEN 1 END) as soap_count,
+                        MAX(timestamp) as latest_date
+                    FROM recordings
+                """)
+                result = cursor.fetchone()
 
-                # Total duration
-                cursor.execute("SELECT SUM(duration) FROM recordings")
-                result = cursor.fetchone()[0]
-                total_duration = result if result else 0
-
-                # Recordings with SOAP notes
-                cursor.execute("SELECT COUNT(*) FROM recordings WHERE soap_note != '' AND soap_note IS NOT NULL")
-                soap_count = cursor.fetchone()[0]
-
-                # Latest recording date
-                cursor.execute("SELECT MAX(timestamp) FROM recordings")
-                latest_date = cursor.fetchone()[0]
+                if result:
+                    total_recordings = result[0] or 0
+                    total_duration = result[1] or 0
+                    soap_count = result[2] or 0
+                    latest_date = result[3]
+                else:
+                    total_recordings = 0
+                    total_duration = 0
+                    soap_count = 0
+                    latest_date = None
 
                 return {
                     "total_recordings": total_recordings,

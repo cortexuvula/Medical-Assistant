@@ -12,16 +12,44 @@ from .base import BaseSTTProvider
 
 class WhisperProvider(BaseSTTProvider):
     """Implementation of the local Whisper STT provider."""
-    
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider identifier."""
+        return "whisper"
+
+    @property
+    def requires_api_key(self) -> bool:
+        """Whisper runs locally and does not require an API key."""
+        return False
+
+    @property
+    def supports_diarization(self) -> bool:
+        """Local Whisper does not support speaker diarization."""
+        return False
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if Whisper is available on this system."""
+        return self.is_available
+
     def __init__(self, api_key: str = "", language: str = "en-US"):
         """Initialize the Whisper provider.
-        
+
         Args:
             api_key: Not used for local Whisper
             language: Language code for speech recognition
         """
         super().__init__(api_key, language)
         self.is_available = self._check_whisper_available()
+
+    def test_connection(self) -> bool:
+        """Test if Whisper is available.
+
+        Returns:
+            True if Whisper can be imported and used
+        """
+        return self.is_available
     
     def _check_whisper_available(self) -> bool:
         """Check if Whisper is available on the system.

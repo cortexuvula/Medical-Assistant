@@ -66,8 +66,10 @@ def main() -> None:
     # Configure exception handler to log uncaught exceptions
     def handle_exception(exc_type, exc_value, exc_traceback):
         try:
-            # Try to log the error
-            logging.error(f"Uncaught exception: type: {exc_type}")
+            # Try to log the error with full traceback
+            import traceback
+            tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            logging.error(f"Uncaught exception: type: {exc_type}\n{''.join(tb_lines)}")
         except (OSError, IOError):
             # If logging fails, write to stderr as fallback
             sys.stderr.write(f"Error: {exc_type.__name__}: {exc_value}\n")
@@ -281,8 +283,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         
         ttk.Label(provider_frame, text="AI:").pack(side=LEFT, padx=(10, 5))
         self.provider_combobox = ttk.Combobox(
-            provider_frame, 
-            values=["OpenAI", "Grok", "Perplexity", "Anthropic"],
+            provider_frame,
+            values=["OpenAI", "Grok", "Perplexity", "Anthropic", "Gemini"],
             state="readonly",
             width=12
         )
@@ -406,7 +408,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Initialize provider dropdown selections."""
         # Set AI provider
         ai_provider = SETTINGS.get("ai_provider", "openai")
-        provider_map = {"openai": 0, "grok": 1, "perplexity": 2}
+        provider_map = {"openai": 0, "grok": 1, "perplexity": 2, "anthropic": 3, "gemini": 4}
         if ai_provider in provider_map:
             self.provider_combobox.current(provider_map[ai_provider])
         
@@ -1233,8 +1235,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
                     self.mic_combobox.current(0)
                     self.update_status("No microphones detected", "warning")
                     
-            except Exception:
-                logging.error("Error refreshing microphones", exc_info=True)
+            except (OSError, RuntimeError, tk.TclError) as e:
+                logging.error(f"Error refreshing microphones: {e}", exc_info=True)
                 self.update_status("Error detecting microphones", "error")
             finally:
                 # Reset animation state
@@ -1504,7 +1506,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             widget = self.get_active_text_widget()
             widget.edit_undo()
             self.update_status("Undo performed.")
-        except Exception:
+        except tk.TclError:
+            # No undo action available
             self.update_status("Nothing to undo.")
 
     def redo_text(self) -> None:
@@ -1512,7 +1515,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             widget = self.get_active_text_widget()
             widget.edit_redo()
             self.update_status("Redo performed.")
-        except Exception:
+        except tk.TclError:
+            # No redo action available
             self.update_status("Nothing to redo.")
 
     def on_closing(self) -> None:
@@ -1688,8 +1692,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         from settings.settings import SETTINGS, save_settings  # Import locally if preferred
         
         selected_index = self.provider_combobox.current()
-        providers = ["openai", "grok", "perplexity", "anthropic"]
-        provider_display = ["OpenAI", "Grok", "Perplexity", "Anthropic"]
+        providers = ["openai", "grok", "perplexity", "anthropic", "gemini"]
+        provider_display = ["OpenAI", "Grok", "Perplexity", "Anthropic", "Gemini"]
         
         if 0 <= selected_index < len(providers):
             selected_provider = providers[selected_index]

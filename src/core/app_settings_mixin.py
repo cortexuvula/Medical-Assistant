@@ -32,7 +32,8 @@ class AppSettingsMixin:
             save_callback=self.save_refine_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["refine_text"].get("gemini_model", "gemini-1.5-flash"))
         )
 
     def show_improve_settings_dialog(self) -> None:
@@ -54,7 +55,8 @@ class AppSettingsMixin:
             save_callback=self.save_improve_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-3-sonnet-20240229"))
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["improve_text"].get("gemini_model", "gemini-1.5-flash"))
         )
 
     def show_soap_settings_dialog(self) -> None:
@@ -78,7 +80,8 @@ class AppSettingsMixin:
             save_callback=self.save_soap_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229"))
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash"))
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -102,7 +105,8 @@ class AppSettingsMixin:
             save_callback=self.save_referral_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229"))
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["referral"].get("gemini_model", "gemini-1.5-flash"))
         )
 
     def show_advanced_analysis_settings_dialog(self) -> None:
@@ -126,7 +130,8 @@ class AppSettingsMixin:
             save_callback=self.save_advanced_analysis_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229"))
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash"))
         )
 
     def show_temperature_settings(self) -> None:
@@ -170,7 +175,7 @@ class AppSettingsMixin:
 
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                              grok_model: str, ollama_model: str, system_prompt: str,
-                             anthropic_model: str) -> None:
+                             anthropic_model: str, gemini_model: str = "") -> None:
         """Save refine text settings."""
         from settings.settings import save_settings, SETTINGS
         SETTINGS["refine_text"] = {
@@ -180,14 +185,15 @@ class AppSettingsMixin:
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
             "ollama_model": ollama_model,
-            "anthropic_model": anthropic_model
+            "anthropic_model": anthropic_model,
+            "gemini_model": gemini_model
         }
         save_settings(SETTINGS)
         self.status_manager.success("Refine text settings saved successfully")
 
     def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                               grok_model: str, ollama_model: str, system_prompt: str,
-                              anthropic_model: str) -> None:
+                              anthropic_model: str, gemini_model: str = "") -> None:
         """Save improve text settings."""
         from settings.settings import save_settings, SETTINGS
         SETTINGS["improve_text"] = {
@@ -197,14 +203,15 @@ class AppSettingsMixin:
             "perplexity_model": perplexity_model,
             "grok_model": grok_model,
             "ollama_model": ollama_model,
-            "anthropic_model": anthropic_model
+            "anthropic_model": anthropic_model,
+            "gemini_model": gemini_model
         }
         save_settings(SETTINGS)
         self.status_manager.success("Improve text settings saved successfully")
 
     def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                            grok_model: str, ollama_model: str, system_prompt: str,
-                           anthropic_model: str) -> None:
+                           anthropic_model: str, gemini_model: str = "") -> None:
         """Save SOAP note settings."""
         from settings.settings import save_settings, SETTINGS
         # Preserve existing temperature settings
@@ -215,12 +222,13 @@ class AppSettingsMixin:
         SETTINGS["soap_note"]["grok_model"] = grok_model
         SETTINGS["soap_note"]["ollama_model"] = ollama_model
         SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
+        SETTINGS["soap_note"]["gemini_model"] = gemini_model
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 
     def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                                grok_model: str, ollama_model: str, system_prompt: str,
-                               anthropic_model: str) -> None:
+                               anthropic_model: str, gemini_model: str = "") -> None:
         """Save referral settings."""
         from settings.settings import save_settings, SETTINGS
         # Preserve existing temperature settings
@@ -231,12 +239,13 @@ class AppSettingsMixin:
         SETTINGS["referral"]["grok_model"] = grok_model
         SETTINGS["referral"]["ollama_model"] = ollama_model
         SETTINGS["referral"]["anthropic_model"] = anthropic_model
+        SETTINGS["referral"]["gemini_model"] = gemini_model
         save_settings(SETTINGS)
         self.status_manager.success("Referral settings saved successfully")
 
     def save_advanced_analysis_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                                         grok_model: str, ollama_model: str, system_prompt: str,
-                                        anthropic_model: str) -> None:
+                                        anthropic_model: str, gemini_model: str = "") -> None:
         """Save advanced analysis settings."""
         from settings.settings import save_settings, SETTINGS
         # Preserve existing temperature settings
@@ -247,5 +256,6 @@ class AppSettingsMixin:
         SETTINGS["advanced_analysis"]["grok_model"] = grok_model
         SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
         SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
+        SETTINGS["advanced_analysis"]["gemini_model"] = gemini_model
         save_settings(SETTINGS)
         self.status_manager.success("Advanced analysis settings saved successfully")

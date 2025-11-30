@@ -97,6 +97,7 @@ class AIProvider(BaseProvider):
     PERPLEXITY = "perplexity"
     GROK = "grok"
     OLLAMA = "ollama"
+    GEMINI = "gemini"
 
     @classmethod
     def get_display_name(cls, provider: 'AIProvider') -> str:
@@ -114,6 +115,7 @@ class AIProvider(BaseProvider):
             cls.PERPLEXITY: "Perplexity",
             cls.GROK: "Grok (X.AI)",
             cls.OLLAMA: "Ollama (Local)",
+            cls.GEMINI: "Google Gemini",
         }
         return display_names.get(provider, provider.value.title())
 
@@ -221,6 +223,7 @@ PROVIDER_ANTHROPIC = AIProvider.ANTHROPIC.value
 PROVIDER_PERPLEXITY = AIProvider.PERPLEXITY.value
 PROVIDER_GROK = AIProvider.GROK.value
 PROVIDER_OLLAMA = AIProvider.OLLAMA.value
+PROVIDER_GEMINI = AIProvider.GEMINI.value
 
 # STT Providers
 STT_DEEPGRAM = STTProvider.DEEPGRAM.value
@@ -274,3 +277,155 @@ def get_tts_provider_choices() -> List[tuple]:
         List of (value, display_name) tuples
     """
     return [(p.value, TTSProvider.get_display_name(p)) for p in TTSProvider]
+
+
+# =============================================================================
+# Error Message Templates
+# =============================================================================
+# Standardized error messages for consistent user feedback
+
+class ErrorMessages:
+    """Standardized error message templates.
+
+    Usage:
+        from utils.constants import ErrorMessages
+
+        # Use directly
+        raise ValueError(ErrorMessages.API_KEY_MISSING.format(provider="OpenAI"))
+
+        # Or via helper method
+        raise ValueError(ErrorMessages.format_api_error("OpenAI", "rate limit"))
+    """
+
+    # API Errors
+    API_KEY_MISSING = "API key not configured for {provider}"
+    API_KEY_INVALID = "Invalid API key for {provider}"
+    API_RATE_LIMITED = "{provider} API rate limit exceeded. Please try again later."
+    API_SERVICE_UNAVAILABLE = "{provider} service is temporarily unavailable"
+    API_TIMEOUT = "{provider} request timed out after {timeout}s"
+    API_AUTHENTICATION_FAILED = "Authentication failed for {provider}"
+
+    # Database Errors
+    DB_CONNECTION_FAILED = "Failed to connect to database: {error}"
+    DB_QUERY_FAILED = "Database query failed: {error}"
+    DB_RECORD_NOT_FOUND = "Record with ID {id} not found"
+    DB_SAVE_FAILED = "Failed to save {item_type}: {error}"
+    DB_DELETE_FAILED = "Failed to delete {item_type}: {error}"
+
+    # File Errors
+    FILE_NOT_FOUND = "File not found: {path}"
+    FILE_READ_FAILED = "Failed to read file: {error}"
+    FILE_WRITE_FAILED = "Failed to write file: {error}"
+    FILE_DELETE_FAILED = "Failed to delete file: {error}"
+    FILE_PERMISSION_DENIED = "Permission denied: {path}"
+
+    # Audio Errors
+    AUDIO_DEVICE_NOT_FOUND = "Audio device not found: {device}"
+    AUDIO_DEVICE_DISCONNECTED = "Audio device disconnected during recording"
+    AUDIO_RECORDING_FAILED = "Recording failed: {error}"
+    AUDIO_TRANSCRIPTION_FAILED = "Transcription failed: {error}"
+
+    # Processing Errors
+    PROCESSING_FAILED = "Processing failed: {error}"
+    PROCESSING_TIMEOUT = "Processing timed out after {timeout}s"
+    PROCESSING_CANCELLED = "Processing was cancelled"
+
+    # Validation Errors
+    VALIDATION_REQUIRED = "{field} is required"
+    VALIDATION_INVALID = "Invalid {field}: {reason}"
+    VALIDATION_TOO_LONG = "{field} exceeds maximum length of {max_length}"
+    VALIDATION_TOO_SHORT = "{field} must be at least {min_length} characters"
+
+    # Generic Errors
+    OPERATION_FAILED = "Operation failed: {error}"
+    UNEXPECTED_ERROR = "An unexpected error occurred: {error}"
+    NOT_CONFIGURED = "{component} is not configured"
+    NOT_AVAILABLE = "{feature} is not available"
+
+    @classmethod
+    def format_api_error(cls, provider: str, error: str) -> str:
+        """Format an API error message."""
+        return f"{provider} API error: {error}"
+
+    @classmethod
+    def format_db_error(cls, operation: str, error: str) -> str:
+        """Format a database error message."""
+        return f"Database {operation} failed: {error}"
+
+    @classmethod
+    def format_file_error(cls, operation: str, path: str, error: str) -> str:
+        """Format a file operation error message."""
+        return f"Failed to {operation} file '{path}': {error}"
+
+
+# =============================================================================
+# Application Configuration Constants
+# =============================================================================
+# Default values for application configuration
+
+class AppConfig:
+    """Application configuration constants.
+
+    These replace magic numbers scattered throughout the codebase.
+    """
+
+    # Timeouts (seconds)
+    DEFAULT_API_TIMEOUT = 30
+    DEFAULT_TRANSCRIPTION_TIMEOUT = 60
+    DEFAULT_AI_GENERATION_TIMEOUT = 120
+    DEFAULT_CONNECTION_TIMEOUT = 10
+
+    # Retry Configuration
+    DEFAULT_MAX_RETRIES = 3
+    DEFAULT_RETRY_DELAY = 1.0
+    DEFAULT_RETRY_BACKOFF = 2.0
+
+    # Cache Configuration
+    CACHE_TTL_SECONDS = 3600  # 1 hour
+    CACHE_MAX_SIZE = 100
+
+    # Auto-save Configuration
+    AUTOSAVE_INTERVAL_SECONDS = 300  # 5 minutes
+    AUTOSAVE_MAX_BACKUPS = 3
+
+    # UI Configuration
+    UI_STATUS_MESSAGE_DURATION_MS = 5000
+    UI_ANIMATION_INTERVAL_MS = 100
+    UI_DEBOUNCE_DELAY_MS = 300
+
+    # Audio Configuration
+    AUDIO_SAMPLE_RATE = 16000
+    AUDIO_CHANNELS = 1
+    AUDIO_CHUNK_SIZE = 1024
+
+    # Processing Queue
+    QUEUE_MAX_CONCURRENT_TASKS = 3
+    QUEUE_RETRY_DELAY_SECONDS = 5
+    QUEUE_MAX_RETRY_ATTEMPTS = 3
+
+    # Database
+    DB_CONNECTION_POOL_SIZE = 5
+    DB_CONNECTION_TIMEOUT = 30
+
+    # Buffer sizes
+    FILE_BUFFER_SIZE = 65536  # 64KB
+
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+# Boolean flags for enabling/disabling features
+
+class FeatureFlags:
+    """Feature flags for conditional functionality.
+
+    These can be overridden via environment variables or settings.
+    """
+
+    ENABLE_DIARIZATION = True
+    ENABLE_PERIODIC_ANALYSIS = True
+    ENABLE_AUTOSAVE = True
+    ENABLE_QUICK_CONTINUE_MODE = True
+    ENABLE_BATCH_PROCESSING = True
+    ENABLE_RAG_TAB = True
+    ENABLE_CHAT_TAB = True

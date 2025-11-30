@@ -20,7 +20,7 @@ from ai.agents import AgentTask, AgentType
 from ui.dialogs.diagnostic_dialog import DiagnosticAnalysisDialog
 from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
 from utils.progress_tracker import DocumentGenerationProgress, create_progress_callback
-from utils.error_handling import AsyncUIErrorHandler
+from utils.error_handling import AsyncUIErrorHandler, ErrorContext
 from processing.batch_processor import BatchProcessor
 
 
@@ -436,10 +436,31 @@ class DocumentGenerators:
                     )
                 else:
                     error_msg = response.error if response else "Unknown error"
-                    raise Exception(error_msg)
+                    # Capture detailed error context
+                    ctx = ErrorContext.capture(
+                        operation="Diagnostic analysis",
+                        error_message=error_msg,
+                        error_code="DIAGNOSTIC_FAILED",
+                        input_summary=f"Source: {source_name}, Input length: {len(clinical_findings) if clinical_findings else 'N/A'}",
+                        agent_type="DIAGNOSTIC",
+                        response_metadata=response.metadata if response else None
+                    )
+                    ctx.log()
+                    raise Exception(ctx.user_message)
 
             except Exception as e:
-                error_handler.fail(e)
+                # Capture error context if not already captured
+                if not isinstance(e.args[0], str) or "failed:" not in str(e):
+                    ctx = ErrorContext.capture(
+                        operation="Diagnostic analysis",
+                        exception=e,
+                        error_code="DIAGNOSTIC_ERROR",
+                        input_summary=f"Source: {source_name}"
+                    )
+                    ctx.log()
+                    error_handler.fail(ctx.user_message)
+                else:
+                    error_handler.fail(e)
 
         # Submit task for execution
         self.app.io_executor.submit(task)
@@ -634,14 +655,35 @@ class DocumentGenerators:
                     )
                 else:
                     error_msg = response.error if response else "Unknown error"
-                    raise Exception(error_msg)
+                    # Capture detailed error context
+                    ctx = ErrorContext.capture(
+                        operation="Medication analysis",
+                        error_message=error_msg,
+                        error_code="MEDICATION_FAILED",
+                        input_summary=f"Source: {source_name}, Type: {analysis_type}, Input length: {len(content)}",
+                        agent_type="MEDICATION",
+                        analysis_type=analysis_type
+                    )
+                    ctx.log()
+                    raise Exception(ctx.user_message)
 
             except Exception as e:
-                error_handler.fail(e)
+                # Capture error context if not already captured
+                if not isinstance(e.args[0], str) or "failed:" not in str(e):
+                    ctx = ErrorContext.capture(
+                        operation="Medication analysis",
+                        exception=e,
+                        error_code="MEDICATION_ERROR",
+                        input_summary=f"Source: {source_name}, Type: {analysis_type}"
+                    )
+                    ctx.log()
+                    error_handler.fail(ctx.user_message)
+                else:
+                    error_handler.fail(e)
 
         # Submit task for execution
         self.app.io_executor.submit(task)
-    
+
     def _update_medication_display(self, analysis: dict, analysis_type: str, source: str, metadata: dict) -> None:
         """Update UI with medication analysis results.
 

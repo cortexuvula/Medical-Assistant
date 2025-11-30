@@ -1,6 +1,6 @@
 """
 RAG Processor for Medical Assistant
-Handles RAG queries via N8N webhook
+Handles RAG queries via N8N webhook with security validation
 """
 
 import logging
@@ -9,8 +9,10 @@ import requests
 import json
 import os
 import uuid
-from typing import Optional, Callable
+import re
+from typing import Optional, Callable, Tuple
 from datetime import datetime
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from managers.data_folder_manager import data_folder_manager
@@ -27,26 +29,126 @@ else:
 
 
 class RagProcessor:
-    """Processes RAG queries via N8N webhook"""
-    
+    """Processes RAG queries via N8N webhook with security validation"""
+
+    # Allowed URL schemes for webhook
+    ALLOWED_SCHEMES = {'https', 'http'}
+
+    # Maximum allowed response length (prevent memory exhaustion)
+    MAX_RESPONSE_LENGTH = 100000  # 100KB
+
+    # Maximum line length to prevent UI freeze
+    MAX_LINE_LENGTH = 5000
+
+    # Dangerous patterns to remove from responses
+    DANGEROUS_PATTERNS = [
+        # Script tags and event handlers (in case content is ever rendered in HTML context)
+        (re.compile(r'<script[^>]*>.*?</script>', re.IGNORECASE | re.DOTALL), ''),
+        (re.compile(r'<[^>]+on\w+\s*=', re.IGNORECASE), '<'),
+        # HTML tags that could be problematic
+        (re.compile(r'<iframe[^>]*>.*?</iframe>', re.IGNORECASE | re.DOTALL), ''),
+        (re.compile(r'<object[^>]*>.*?</object>', re.IGNORECASE | re.DOTALL), ''),
+        (re.compile(r'<embed[^>]*>', re.IGNORECASE), ''),
+        # Control characters (except newline, tab, carriage return)
+        (re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]'), ''),
+        # ANSI escape sequences
+        (re.compile(r'\x1b\[[0-9;]*[a-zA-Z]'), ''),
+        # Null bytes
+        (re.compile(r'\x00'), ''),
+    ]
+
+    # Blocked private IP ranges (SSRF protection)
+    BLOCKED_IP_PATTERNS = [
+        r'^127\.',                    # Localhost
+        r'^10\.',                     # Private class A
+        r'^172\.(1[6-9]|2[0-9]|3[01])\.', # Private class B
+        r'^192\.168\.',               # Private class C
+        r'^169\.254\.',               # Link-local
+        r'^0\.',                      # Invalid
+        r'^localhost$',               # Localhost hostname
+        r'^::1$',                     # IPv6 localhost
+        r'^fd[0-9a-f]{2}:',           # IPv6 private
+    ]
+
     def __init__(self, app):
         """
         Initialize the RAG processor.
-        
+
         Args:
             app: Reference to the main application
         """
         self.app = app
         self.is_processing = False
-        
+
         # Get N8N webhook configuration from environment
-        self.n8n_webhook_url = os.getenv("N8N_URL")
+        raw_url = os.getenv("N8N_URL")
         self.n8n_auth_header = os.getenv("N8N_AUTHORIZATION_SECRET")
-        
-        if not self.n8n_webhook_url:
+
+        # Validate and sanitize the webhook URL
+        self.n8n_webhook_url = None
+        if raw_url:
+            is_valid, validated_url, error = self._validate_webhook_url(raw_url)
+            if is_valid:
+                self.n8n_webhook_url = validated_url
+            else:
+                logging.error(f"Invalid N8N_URL: {error}")
+        else:
             logging.warning("N8N_URL not found in environment variables")
+
         if not self.n8n_auth_header:
             logging.warning("N8N_AUTHORIZATION_SECRET not found in environment variables")
+
+    def _validate_webhook_url(self, url: str) -> Tuple[bool, Optional[str], Optional[str]]:
+        """Validate webhook URL for security.
+
+        Performs SSRF protection by blocking private IP ranges and
+        validating URL format.
+
+        Args:
+            url: The URL to validate
+
+        Returns:
+            Tuple of (is_valid, sanitized_url, error_message)
+        """
+        if not url:
+            return False, None, "URL is empty"
+
+        url = url.strip()
+
+        try:
+            parsed = urlparse(url)
+
+            # Check scheme
+            if parsed.scheme.lower() not in self.ALLOWED_SCHEMES:
+                return False, None, f"Invalid scheme: {parsed.scheme}. Must be http or https"
+
+            # Check if hostname exists
+            if not parsed.hostname:
+                return False, None, "URL has no hostname"
+
+            hostname = parsed.hostname.lower()
+
+            # Check against blocked patterns (SSRF protection)
+            for pattern in self.BLOCKED_IP_PATTERNS:
+                if re.match(pattern, hostname, re.IGNORECASE):
+                    return False, None, f"Blocked hostname: {hostname} (private/local address)"
+
+            # Validate port if specified
+            if parsed.port:
+                if parsed.port < 1 or parsed.port > 65535:
+                    return False, None, f"Invalid port: {parsed.port}"
+
+            # Reconstruct URL to ensure it's properly formatted
+            # This also removes any extraneous components
+            sanitized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            if parsed.query:
+                sanitized += f"?{parsed.query}"
+
+            logging.debug(f"Validated webhook URL: {sanitized}")
+            return True, sanitized, None
+
+        except Exception as e:
+            return False, None, f"URL parsing error: {str(e)}"
             
     def process_message(self, user_message: str, callback: Optional[Callable] = None):
         """
@@ -215,51 +317,117 @@ class RagProcessor:
         # Update UI in main thread
         self.app.after(0, update_ui)
         
-    def _render_markdown(self, markdown_text: str):
-        """Render markdown text with basic formatting in the text widget."""
-        import re
-        
-        lines = markdown_text.split('\n')
-        
+    def _sanitize_response(self, text: str) -> str:
+        """Sanitize API response to prevent injection attacks.
+
+        Args:
+            text: Raw response text from API
+
+        Returns:
+            Sanitized text safe for display
+        """
+        if not text:
+            return ""
+
+        # Truncate excessively long responses
+        if len(text) > self.MAX_RESPONSE_LENGTH:
+            text = text[:self.MAX_RESPONSE_LENGTH] + "\n\n[Response truncated due to length]"
+            logging.warning(f"Response truncated from {len(text)} to {self.MAX_RESPONSE_LENGTH} chars")
+
+        # Apply dangerous pattern removal
+        for pattern, replacement in self.DANGEROUS_PATTERNS:
+            text = pattern.sub(replacement, text)
+
+        # Truncate excessively long lines to prevent UI freeze
+        lines = text.split('\n')
+        sanitized_lines = []
         for line in lines:
-            # Headers
-            if line.startswith('### '):
-                self.app.rag_text.insert("end", line[4:] + "\n", "h3")
-            elif line.startswith('## '):
-                self.app.rag_text.insert("end", line[3:] + "\n", "h2")
-            elif line.startswith('# '):
-                self.app.rag_text.insert("end", line[2:] + "\n", "h1")
-            
-            # Bold text
+            if len(line) > self.MAX_LINE_LENGTH:
+                line = line[:self.MAX_LINE_LENGTH] + "... [line truncated]"
+            sanitized_lines.append(line)
+
+        return '\n'.join(sanitized_lines)
+
+    # Pre-compiled regex patterns for markdown rendering (class-level for efficiency)
+    _BOLD_PATTERN = re.compile(r'\*\*(.*?)\*\*')
+    _NUMBERED_LIST_PATTERN = re.compile(r'^\s*\d+\.\s')
+
+    def _render_markdown(self, markdown_text: str):
+        """Render markdown text with basic formatting in the text widget.
+
+        Optimizations:
+        - Pre-compiled regex patterns at class level
+        - Batch inserts where possible
+        - Early detection of plain text lines
+        """
+        # Sanitize input before rendering
+        markdown_text = self._sanitize_response(markdown_text)
+
+        lines = markdown_text.split('\n')
+        text_widget = self.app.rag_text  # Local reference for faster access
+
+        # Batch plain text lines for fewer insert calls
+        plain_buffer = []
+
+        def flush_plain_buffer():
+            """Flush accumulated plain text."""
+            nonlocal plain_buffer
+            if plain_buffer:
+                text_widget.insert("end", '\n'.join(plain_buffer) + "\n", "message")
+                plain_buffer = []
+
+        for line in lines:
+            # Headers - check in order of likelihood (h2/h3 more common than h1)
+            if line.startswith('#'):
+                flush_plain_buffer()
+                if line.startswith('### '):
+                    text_widget.insert("end", line[4:] + "\n", "h3")
+                elif line.startswith('## '):
+                    text_widget.insert("end", line[3:] + "\n", "h2")
+                elif line.startswith('# '):
+                    text_widget.insert("end", line[2:] + "\n", "h1")
+                else:
+                    plain_buffer.append(line)
+
+            # Bold text - check for ** before doing regex
             elif '**' in line:
-                parts = re.split(r'\*\*(.*?)\*\*', line)
+                flush_plain_buffer()
+                parts = self._BOLD_PATTERN.split(line)
                 for i, part in enumerate(parts):
-                    if i % 2 == 0:
-                        self.app.rag_text.insert("end", part)
-                    else:
-                        self.app.rag_text.insert("end", part, "bold")
-                self.app.rag_text.insert("end", "\n")
-            
+                    if part:  # Skip empty strings
+                        if i % 2 == 0:
+                            text_widget.insert("end", part)
+                        else:
+                            text_widget.insert("end", part, "bold")
+                text_widget.insert("end", "\n")
+
             # Bullet points
-            elif line.strip().startswith('- ') or line.strip().startswith('* '):
-                indent = len(line) - len(line.lstrip())
-                bullet_text = line.strip()[2:]
-                self.app.rag_text.insert("end", " " * indent + "• " + bullet_text + "\n", "bullet")
-            
+            elif line.lstrip().startswith(('- ', '* ')):
+                flush_plain_buffer()
+                stripped = line.lstrip()
+                indent = len(line) - len(stripped)
+                bullet_text = stripped[2:]
+                text_widget.insert("end", " " * indent + "• " + bullet_text + "\n", "bullet")
+
             # Numbered lists
-            elif re.match(r'^\s*\d+\.\s', line):
-                self.app.rag_text.insert("end", line + "\n", "numbered")
-            
+            elif self._NUMBERED_LIST_PATTERN.match(line):
+                flush_plain_buffer()
+                text_widget.insert("end", line + "\n", "numbered")
+
             # Code blocks (simple)
-            elif line.strip().startswith('```'):
-                self.app.rag_text.insert("end", line + "\n", "code")
-            
-            # Regular text
+            elif line.lstrip().startswith('```'):
+                flush_plain_buffer()
+                text_widget.insert("end", line + "\n", "code")
+
+            # Regular text - accumulate for batch insert
             else:
-                self.app.rag_text.insert("end", line + "\n", "message")
-        
+                plain_buffer.append(line)
+
+        # Flush any remaining plain text
+        flush_plain_buffer()
+
         # Add an extra newline at the end
-        self.app.rag_text.insert("end", "\n")
+        text_widget.insert("end", "\n")
         
         # Configure markdown tags
         self.app.rag_text.tag_config("h1", font=("Arial", 16, "bold"), spacing3=5)

@@ -146,6 +146,7 @@ class SecureKeyStorage:
             return
 
         self.logger.info("Migrating API keys to new salt format...")
+        failed_providers = []  # Track providers that fail migration
 
         try:
             # Create cipher with legacy salt for decryption
@@ -174,8 +175,10 @@ class SecureKeyStorage:
 
                     self.logger.info(f"Migrated key for {provider}")
 
-                except Exception as e:
+                except (ValueError, TypeError, KeyError) as e:
                     self.logger.warning(f"Failed to migrate key for {provider}: {e}")
+                    # Track failed migrations for user notification
+                    failed_providers.append(provider)
                     # Keep the old format - will fail on decrypt but preserves data
                     migrated_keys[provider] = data
 
@@ -183,10 +186,26 @@ class SecureKeyStorage:
             self._save_keys(migrated_keys)
             self.logger.info("Key migration completed successfully")
 
-        except Exception as e:
-            self.logger.error(f"Key migration failed: {e}")
-            # Don't raise - allow app to continue with potentially broken keys
-            # User can re-enter keys if needed
+            # Notify user about failed migrations
+            if failed_providers:
+                self._migration_failures = failed_providers
+                self.logger.warning(
+                    f"Key migration incomplete. The following providers need re-configuration: "
+                    f"{', '.join(failed_providers)}. Please re-enter API keys in Settings."
+                )
+
+        except (IOError, OSError, json.JSONDecodeError) as e:
+            self.logger.error(f"Key migration failed due to file error: {e}")
+            self._migration_failures = ["all"]
+            # Don't raise - allow app to continue, but track failure for UI notification
+
+    def get_migration_failures(self) -> List[str]:
+        """Get list of providers that failed migration.
+
+        Returns:
+            List of provider names that failed migration, or empty list if none
+        """
+        return getattr(self, '_migration_failures', [])
 
     def _update_metadata_version(self, keys: Dict[str, Any]):
         """Update metadata version without full migration.
@@ -198,37 +217,124 @@ class SecureKeyStorage:
         self._save_keys(keys)
     
     def _get_machine_id(self) -> str:
-        """Get a unique machine identifier for key derivation."""
-        # Combine multiple sources for uniqueness
+        """Get a unique machine identifier for key derivation.
+
+        Uses multiple sources to create a stable, unique identifier:
+        1. Machine-specific hardware identifiers
+        2. Filesystem UUIDs (more stable than usernames)
+        3. Fallback to user-related identifiers
+
+        Returns:
+            SHA-256 hash of combined identifiers
+        """
         sources = []
-        
-        # Username
-        sources.append(os.getenv("USER", "default"))
-        
-        # Home directory
-        sources.append(str(Path.home()))
-        
-        # Platform-specific ID
+
+        # Try platform-specific stable identifiers first
         try:
             if os.name == 'posix':
-                # Try to get MAC address on Unix-like systems
-                import uuid
-                sources.append(str(uuid.getnode()))
+                # Linux: Try machine-id first (most stable)
+                machine_id_paths = [
+                    '/etc/machine-id',
+                    '/var/lib/dbus/machine-id',
+                ]
+                for path in machine_id_paths:
+                    try:
+                        with open(path, 'r') as f:
+                            machine_id = f.read().strip()
+                            if machine_id:
+                                sources.append(f"machine_id:{machine_id}")
+                                break
+                    except (IOError, OSError):
+                        continue
+
+                # Also try filesystem UUID of root partition
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ['findmnt', '-n', '-o', 'UUID', '/'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        sources.append(f"fs_uuid:{result.stdout.strip()}")
+                except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    pass
+
+                # MAC address as additional entropy (may change with VM/container)
+                try:
+                    import uuid
+                    mac = uuid.getnode()
+                    # Check if it's a valid MAC (not a random fallback)
+                    if mac and (mac >> 40) != 0:
+                        sources.append(f"mac:{mac}")
+                except (OSError, ValueError, AttributeError):
+                    # MAC address retrieval failed
+                    pass
+
             elif os.name == 'nt':
-                # Windows machine GUID
+                # Windows: Use multiple stable identifiers
                 import subprocess
-                result = subprocess.run(
-                    ['wmic', 'csproduct', 'get', 'UUID'],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    sources.append(result.stdout.strip())
-        except (OSError, subprocess.SubprocessError, ImportError):
-            pass  # Continue with other sources if machine ID retrieval fails
-        
-        # Combine sources
-        combined = "|".join(sources)
+
+                # Try machine GUID from registry (most stable)
+                try:
+                    result = subprocess.run(
+                        ['reg', 'query',
+                         'HKLM\\SOFTWARE\\Microsoft\\Cryptography',
+                         '/v', 'MachineGuid'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        # Parse the output to get the GUID
+                        for line in result.stdout.split('\n'):
+                            if 'MachineGuid' in line:
+                                parts = line.strip().split()
+                                if len(parts) >= 3:
+                                    sources.append(f"win_guid:{parts[-1]}")
+                                    break
+                except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    pass
+
+                # Fallback to product UUID via WMIC
+                try:
+                    result = subprocess.run(
+                        ['wmic', 'csproduct', 'get', 'UUID'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        lines = [l.strip() for l in result.stdout.split('\n') if l.strip() and l.strip() != 'UUID']
+                        if lines:
+                            sources.append(f"product_uuid:{lines[0]}")
+                except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    pass
+
+        except Exception as e:
+            self.logger.warning(f"Error getting platform-specific machine ID: {e}")
+
+        # Fallback identifiers (less stable but always available)
+        if not sources:
+            self.logger.warning("Using fallback machine identification - encryption keys may not survive reinstall")
+
+            # Username (less stable)
+            username = os.getenv("USER") or os.getenv("USERNAME") or "default"
+            sources.append(f"user:{username}")
+
+            # Home directory path
+            sources.append(f"home:{str(Path.home())}")
+
+            # Python executable path (helps distinguish environments)
+            import sys
+            sources.append(f"python:{sys.executable}")
+
+        # Add a constant application identifier for additional uniqueness
+        sources.append("app:medical_assistant_v2")
+
+        # Combine all sources and hash
+        combined = "|".join(sorted(sources))
         return hashlib.sha256(combined.encode()).hexdigest()
     
     def _create_cipher(self, password: str, salt: bytes) -> Fernet:
@@ -506,7 +612,7 @@ class RateLimiter:
             self.logger.warning(f"Could not save rate limit data: {e}")
 
     def _cleanup_expired_data(self) -> None:
-        """Remove expired entries from rate limit data."""
+        """Remove expired entries from rate limit data and stale locks."""
         now = time.time()
         keys_to_remove = []
 
@@ -525,6 +631,40 @@ class RateLimiter:
         # Remove empty entries
         for key in keys_to_remove:
             del self._limits[key]
+
+        # Clean up stale locks (locks for keys that no longer have data)
+        self._cleanup_stale_locks(keys_to_remove)
+
+    def _cleanup_stale_locks(self, removed_keys: List[str]) -> None:
+        """Remove locks for keys that have been removed from rate limit data.
+
+        Args:
+            removed_keys: List of keys that were removed from rate limit data
+        """
+        with self._global_lock:
+            for key in removed_keys:
+                if key in self._key_locks:
+                    # Only remove if the lock is not currently held
+                    lock = self._key_locks[key]
+                    if lock.acquire(blocking=False):
+                        lock.release()
+                        del self._key_locks[key]
+
+            # Also remove locks for keys not in _limits (memory leak prevention)
+            # Limit the number of locks we keep to prevent unbounded growth
+            MAX_LOCKS = 100
+            if len(self._key_locks) > MAX_LOCKS:
+                # Keep only locks for keys that have active rate limit data
+                active_keys = set(self._limits.keys())
+                stale_lock_keys = [
+                    k for k in self._key_locks.keys()
+                    if k not in active_keys
+                ]
+                for key in stale_lock_keys[:len(self._key_locks) - MAX_LOCKS]:
+                    lock = self._key_locks[key]
+                    if lock.acquire(blocking=False):
+                        lock.release()
+                        del self._key_locks[key]
 
     def check_rate_limit(self, provider: str, identifier: Optional[str] = None) -> Tuple[bool, Optional[float]]:
         """Check if a request is within rate limits using sliding window.

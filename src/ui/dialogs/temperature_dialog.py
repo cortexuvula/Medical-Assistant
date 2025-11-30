@@ -17,7 +17,7 @@ def show_temperature_settings_dialog(parent):
     dialog = tk.Toplevel(parent)
     dialog.title("Temperature Settings")
     dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+    dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.minsize(700, 500)
     
     # Make it modal
@@ -36,7 +36,7 @@ def show_temperature_settings_dialog(parent):
     provider_frames = {}
     sliders = []  # Move sliders list outside the loop
     
-    for provider in ["openai", "grok", "perplexity", "ollama", "anthropic"]:
+    for provider in ["openai", "grok", "perplexity", "ollama", "anthropic", "gemini"]:
         provider_display = provider.capitalize()
         provider_frames[provider] = ttk.Frame(notebook, padding=10)
         notebook.add(provider_frames[provider], text=provider_display)

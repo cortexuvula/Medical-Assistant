@@ -24,7 +24,7 @@ from typing import Optional, Callable, Dict, Any, Protocol, runtime_checkable
 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA
+    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,7 @@ class DefaultAICaller(BaseAICaller):
         self._call_perplexity = None
         self._call_grok = None
         self._call_ollama = None
+        self._call_gemini = None
         self._initialized = False
 
     def _ensure_initialized(self) -> None:
@@ -150,7 +151,8 @@ class DefaultAICaller(BaseAICaller):
             call_anthropic,
             call_perplexity,
             call_grok,
-            call_ollama
+            call_ollama,
+            call_gemini
         )
 
         self._call_ai = call_ai
@@ -159,6 +161,7 @@ class DefaultAICaller(BaseAICaller):
         self._call_perplexity = call_perplexity
         self._call_grok = call_grok
         self._call_ollama = call_ollama
+        self._call_gemini = call_gemini
         self._initialized = True
 
     def call(
@@ -222,6 +225,8 @@ class DefaultAICaller(BaseAICaller):
             return self._call_grok(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_OLLAMA:
             return self._call_ollama(system_message, prompt, temperature)
+        elif provider_lower == PROVIDER_GEMINI:
+            return self._call_gemini(model, system_message, prompt, temperature)
         else:
             # Fallback to generic call_ai
             logger.warning(f"Unknown provider '{provider}', falling back to default routing")

@@ -112,12 +112,14 @@ Format your response as:
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.0,  # Default temperature for refine_text
         "openai_temperature": 0.0,  # OpenAI-specific temperature
         "grok_temperature": 0.0,    # Grok-specific temperature
         "perplexity_temperature": 0.0, # Perplexity-specific temperature
         "ollama_temperature": 0.0,   # Ollama-specific temperature
-        "anthropic_temperature": 0.0  # Anthropic-specific temperature
+        "anthropic_temperature": 0.0,  # Anthropic-specific temperature
+        "gemini_temperature": 0.0  # Gemini-specific temperature
     },
     "improve_text": {
         "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
@@ -126,12 +128,14 @@ Format your response as:
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for improve_text
         "openai_temperature": 0.7,  # OpenAI-specific temperature
         "grok_temperature": 0.7,    # Grok-specific temperature
         "perplexity_temperature": 0.7, # Perplexity-specific temperature
         "ollama_temperature": 0.7,   # Ollama-specific temperature
-        "anthropic_temperature": 0.7  # Anthropic-specific temperature
+        "anthropic_temperature": 0.7,  # Anthropic-specific temperature
+        "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "soap_note": {
         "system_message": """You are a supportive general family practice physician tasked with analyzing transcripts from patient consultations with yourself.   
@@ -217,12 +221,14 @@ Follow up:
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for SOAP notes)
         "temperature": 0.7,  # Default temperature for soap_note
         "openai_temperature": 0.7,  # OpenAI-specific temperature
         "grok_temperature": 0.7,    # Grok-specific temperature
         "perplexity_temperature": 0.7, # Perplexity-specific temperature
         "ollama_temperature": 0.7,   # Ollama-specific temperature
-        "anthropic_temperature": 0.7  # Anthropic-specific temperature
+        "anthropic_temperature": 0.7,  # Anthropic-specific temperature
+        "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
@@ -231,12 +237,14 @@ Follow up:
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for referral
         "openai_temperature": 0.7,  # OpenAI-specific temperature
         "grok_temperature": 0.7,    # Grok-specific temperature
         "perplexity_temperature": 0.7, # Perplexity-specific temperature
         "ollama_temperature": 0.7,   # Ollama-specific temperature
-        "anthropic_temperature": 0.7  # Anthropic-specific temperature
+        "anthropic_temperature": 0.7,  # Anthropic-specific temperature
+        "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "advanced_analysis": {
         "prompt": "Transcript:",
@@ -249,12 +257,14 @@ Follow up:
         "perplexity_model": "sonar-reasoning-pro",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for advanced analysis)
         "temperature": 0.3,  # Default temperature for advanced analysis
         "openai_temperature": 0.3,  # OpenAI-specific temperature
         "grok_temperature": 0.3,    # Grok-specific temperature
         "perplexity_temperature": 0.3, # Perplexity-specific temperature
         "ollama_temperature": 0.3,   # Ollama-specific temperature
-        "anthropic_temperature": 0.3  # Anthropic-specific temperature
+        "anthropic_temperature": 0.3,  # Anthropic-specific temperature
+        "gemini_temperature": 0.3  # Gemini-specific temperature
     },
     "elevenlabs": {
         "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model
@@ -422,8 +432,15 @@ def load_settings() -> dict:
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 loaded_settings = json.load(f)
+                # Debug: Log what we're loading
+                synopsis_provider = loaded_settings.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
+                logging.info(f"Loading settings from file, synopsis provider: {synopsis_provider}")
                 # Merge with defaults to ensure all keys exist
-                return merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
+                merged = merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
+                # Debug: Log after merge
+                merged_provider = merged.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
+                logging.info(f"After merge, synopsis provider: {merged_provider}")
+                return merged
         except Exception as e:
             logging.error("Error loading settings", exc_info=True)
     return _DEFAULT_SETTINGS.copy()

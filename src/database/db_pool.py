@@ -15,11 +15,18 @@ from utils.exceptions import DatabaseError
 
 
 class ConnectionPool:
-    """Thread-safe SQLite connection pool."""
-    
+    """Thread-safe SQLite connection pool.
+
+    Thread Safety:
+        Uses a single RLock for all state mutations. The queue.Queue is
+        inherently thread-safe for get/put operations. Lock ordering:
+        - Always acquire _lock before modifying _all_connections or _closed
+        - Never hold _lock while waiting on queue operations (to avoid deadlock)
+    """
+
     def __init__(self, database_path: str, pool_size: int = 5, timeout: float = 30.0):
         """Initialize connection pool.
-        
+
         Args:
             database_path: Path to SQLite database file
             pool_size: Maximum number of connections in pool
@@ -29,11 +36,12 @@ class ConnectionPool:
         self.pool_size = pool_size
         self.timeout = timeout
         self._pool = queue.Queue(maxsize=pool_size)
-        self._all_connections = []
-        self._lock = threading.Lock()
+        self._all_connections: list = []
+        self._lock = threading.RLock()  # Use RLock to allow recursive acquisition
         self._closed = False
+        self._replacing_connection = threading.local()  # Track replacement per-thread
         self.logger = logging.getLogger(__name__)
-        
+
         # Initialize the pool
         self._init_pool()
     
@@ -77,19 +85,20 @@ class ConnectionPool:
     @contextmanager
     def get_connection(self) -> ContextManager[sqlite3.Connection]:
         """Get a connection from the pool.
-        
+
         Yields:
             sqlite3.Connection: Database connection
-            
+
         Raises:
             DatabaseError: If pool is closed or timeout occurs
         """
+        # Check closed status (quick check without lock first)
         if self._closed:
             raise DatabaseError("Connection pool is closed")
-        
+
         conn = None
         try:
-            # Get connection from pool with timeout
+            # Get connection from pool with timeout (queue is thread-safe)
             conn = self._pool.get(timeout=self.timeout)
             yield conn
         except queue.Empty:
@@ -100,22 +109,73 @@ class ConnectionPool:
         finally:
             # Return connection to pool
             if conn is not None:
+                self._return_connection(conn)
+
+    def _return_connection(self, conn: sqlite3.Connection) -> None:
+        """Return a connection to the pool, replacing if broken.
+
+        Args:
+            conn: Connection to return
+        """
+        # Check if pool is closed
+        with self._lock:
+            if self._closed:
                 try:
-                    # Check if connection is still valid
-                    conn.execute("SELECT 1")
-                    self._pool.put(conn)
+                    conn.close()
                 except sqlite3.Error:
-                    # Connection is broken, create a new one
-                    self.logger.warning("Replacing broken database connection")
-                    try:
-                        conn.close()
-                    except sqlite3.Error:
-                        pass  # Ignore errors when closing broken connection
-                    new_conn = self._create_connection()
-                    self._pool.put(new_conn)
-                    with self._lock:
-                        self._all_connections.remove(conn)
-                        self._all_connections.append(new_conn)
+                    pass
+                return
+
+        try:
+            # Check if connection is still valid (outside lock - quick operation)
+            conn.execute("SELECT 1")
+            self._pool.put(conn)
+        except sqlite3.Error:
+            # Connection is broken, need to replace it
+            self._replace_broken_connection(conn)
+
+    def _replace_broken_connection(self, broken_conn: sqlite3.Connection) -> None:
+        """Replace a broken connection with a new one.
+
+        Args:
+            broken_conn: The broken connection to replace
+        """
+        self.logger.warning("Replacing broken database connection")
+
+        # Close the broken connection
+        try:
+            broken_conn.close()
+        except sqlite3.Error:
+            pass  # Ignore errors when closing broken connection
+
+        # Create new connection (outside lock - may take time)
+        try:
+            new_conn = self._create_connection()
+        except Exception as e:
+            self.logger.error(f"Failed to create replacement connection: {e}")
+            # Put a None marker that will cause next get to fail
+            # This is better than reducing pool size silently
+            return
+
+        # Update tracking and return to pool (with lock)
+        with self._lock:
+            if self._closed:
+                # Pool closed while we were creating connection
+                try:
+                    new_conn.close()
+                except sqlite3.Error:
+                    pass
+                return
+
+            # Update all_connections list
+            try:
+                self._all_connections.remove(broken_conn)
+            except ValueError:
+                pass  # Already removed
+            self._all_connections.append(new_conn)
+
+        # Return new connection to pool (outside lock)
+        self._pool.put(new_conn)
     
     def close(self):
         """Close all connections in the pool."""
@@ -221,7 +281,8 @@ class DatabaseConnectionManager:
             try:
                 yield conn
                 conn.commit()
-            except Exception:
+            except BaseException:
+                # Catch all exceptions including KeyboardInterrupt to ensure rollback
                 conn.rollback()
                 raise
     

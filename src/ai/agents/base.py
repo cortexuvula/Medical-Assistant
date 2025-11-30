@@ -155,6 +155,7 @@ class BaseAgent(ABC):
             # Use the injected AI caller - it handles provider routing
             if hasattr(self.config, 'provider') and self.config.provider:
                 # Use provider-specific call
+                logger.info(f"Agent {self.config.name} calling provider={self.config.provider}, model={model}")
                 response = self._ai_caller.call_with_provider(
                     provider=self.config.provider,
                     model=model,
@@ -164,6 +165,7 @@ class BaseAgent(ABC):
                 )
             else:
                 # Use default routing
+                logger.info(f"Agent {self.config.name} using default routing with model={model}")
                 response = self._ai_caller.call(
                     model=model,
                     system_message=sanitized_system_message,

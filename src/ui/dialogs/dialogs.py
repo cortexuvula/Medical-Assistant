@@ -37,6 +37,8 @@ from ui.dialogs.model_providers import (
     get_fallback_perplexity_models,
     get_anthropic_models,
     get_fallback_anthropic_models,
+    get_gemini_models,
+    get_fallback_gemini_models,
     _model_cache,
     _cache_ttl,
 )
@@ -173,10 +175,11 @@ def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_pr
     
     return prompt_text, system_prompt_text
 
-def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity: str, 
-                      current_grok: str, current_ollama: str, current_anthropic: str) -> Dict[str, tk.StringVar]:
+def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity: str,
+                      current_grok: str, current_ollama: str, current_anthropic: str,
+                      current_gemini: str = "") -> Dict[str, tk.StringVar]:
     """Create the models tab content.
-    
+
     Args:
         parent: Parent frame for the tab
         current_model: Current OpenAI model
@@ -184,43 +187,50 @@ def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity
         current_grok: Current Grok model
         current_ollama: Current Ollama model
         current_anthropic: Current Anthropic model
-        
+        current_gemini: Current Gemini model
+
     Returns:
         Dictionary of model StringVars
     """
     model_vars = {}
-    
+
     # OpenAI Model
     ttk.Label(parent, text="OpenAI Model:").grid(row=0, column=0, sticky="nw", pady=(10, 5))
     openai_model_var = tk.StringVar(value=current_model)
     model_vars['openai'] = openai_model_var
     create_model_selector(parent, parent, openai_model_var, "OpenAI", get_openai_models, row=0)
-    
+
     # Perplexity Model
     ttk.Label(parent, text="Perplexity Model:").grid(row=1, column=0, sticky="nw", pady=(5, 5))
     perplexity_model_var = tk.StringVar(value=current_perplexity)
     model_vars['perplexity'] = perplexity_model_var
     create_model_selector(parent, parent, perplexity_model_var, "Perplexity", get_perplexity_models, row=1)
-    
+
     # Grok Model
     ttk.Label(parent, text="Grok Model:").grid(row=2, column=0, sticky="nw", pady=(5, 5))
     grok_model_var = tk.StringVar(value=current_grok)
     model_vars['grok'] = grok_model_var
     grok_entry = ttk.Entry(parent, textvariable=grok_model_var, width=50)
     grok_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=(5, 5))
-    
+
     # Ollama Model
     ttk.Label(parent, text="Ollama Model:").grid(row=3, column=0, sticky="nw", pady=(5, 5))
     ollama_model_var = tk.StringVar(value=current_ollama)
     model_vars['ollama'] = ollama_model_var
     create_model_selector(parent, parent, ollama_model_var, "Ollama", get_ollama_models, row=3)
-    
+
     # Anthropic Model
-    ttk.Label(parent, text="Anthropic Model:").grid(row=4, column=0, sticky="nw", pady=(5, 10))
+    ttk.Label(parent, text="Anthropic Model:").grid(row=4, column=0, sticky="nw", pady=(5, 5))
     anthropic_model_var = tk.StringVar(value=current_anthropic)
     model_vars['anthropic'] = anthropic_model_var
     create_model_selector(parent, parent, anthropic_model_var, "Anthropic", get_anthropic_models, row=4)
-    
+
+    # Gemini Model
+    ttk.Label(parent, text="Gemini Model:").grid(row=5, column=0, sticky="nw", pady=(5, 10))
+    gemini_model_var = tk.StringVar(value=current_gemini)
+    model_vars['gemini'] = gemini_model_var
+    create_model_selector(parent, parent, gemini_model_var, "Gemini", get_gemini_models, row=5)
+
     return model_vars
 
 def _create_temperature_tab(parent: ttk.Frame, current_temp: float, default_temp: float) -> Tuple[tk.Scale, tk.StringVar]:
@@ -269,12 +279,12 @@ def _create_temperature_tab(parent: ttk.Frame, current_temp: float, default_temp
     
     return temp_scale, temp_value_var
 
-def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict, 
+def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
-                         save_callback: callable, current_ollama: str = "", current_system_prompt: str = "", 
-                         current_anthropic: str = "") -> None:
+                         save_callback: callable, current_ollama: str = "", current_system_prompt: str = "",
+                         current_anthropic: str = "", current_gemini: str = "") -> None:
     """Show settings dialog for configuring prompt and model.
-    
+
     Args:
         parent: Parent window
         title: Dialog title
@@ -288,6 +298,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         current_ollama: Current Ollama model
         current_system_prompt: Current system prompt text
         current_anthropic: Current Anthropic model
+        current_gemini: Current Gemini model
     """
     # Create dialog
     dialog = tk.Toplevel(parent)
@@ -320,7 +331,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     
     # Populate tabs
     prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
-    model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama, current_anthropic)
+    model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama, current_anthropic, current_gemini)
     
     # Get temperature from config
     current_temp = config.get("temperature", default.get("temperature", 0.7))
@@ -367,6 +378,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         model_vars['grok'].set(config.get("grok_model", default.get("grok_model", "grok-1")))
         model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
         model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-3-sonnet-20240229")))
+        model_vars['gemini'].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
         
         # Reset temperature
         temp_scale.set(default_temp)
@@ -379,7 +391,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     def save_fields():
         # Add temperature to config
         config["temperature"] = temp_scale.get()
-        
+
         save_callback(
             prompt_text.get("1.0", tk.END).strip(),
             model_vars['openai'].get().strip(),
@@ -387,7 +399,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             model_vars['grok'].get().strip(),
             model_vars['ollama'].get().strip(),
             system_prompt_text.get("1.0", tk.END).strip(),
-            model_vars['anthropic'].get().strip()
+            model_vars['anthropic'].get().strip(),
+            model_vars['gemini'].get().strip()
         )
         dialog.destroy()
     
@@ -412,7 +425,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     Returns:
         dict: Updated API keys or None if cancelled
     """
-    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x1000")
+    dialog = create_toplevel_dialog(parent, "Update API Keys", "900x1100")
     result = {"keys": None}  # Store result in mutable object
     
     # Increase main frame padding for more spacing around all content
@@ -426,15 +439,19 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     ttk.Label(header_frame, text="API Key Configuration", 
              font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 15))
 
-    # Get current API keys from environment
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    deepgram_key = os.getenv("DEEPGRAM_API_KEY", "")
-    grok_key = os.getenv("GROK_API_KEY", "")
-    perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
-    elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")  # NEW: Get ElevenLabs key
+    # Get current API keys from secure storage first, then fall back to environment
+    from utils.security import get_security_manager
+    security_mgr = get_security_manager()
+
+    openai_key = security_mgr.get_api_key("openai") or os.getenv("OPENAI_API_KEY", "")
+    deepgram_key = security_mgr.get_api_key("deepgram") or os.getenv("DEEPGRAM_API_KEY", "")
+    grok_key = security_mgr.get_api_key("grok") or os.getenv("GROK_API_KEY", "")
+    perplexity_key = security_mgr.get_api_key("perplexity") or os.getenv("PERPLEXITY_API_KEY", "")
+    elevenlabs_key = security_mgr.get_api_key("elevenlabs") or os.getenv("ELEVENLABS_API_KEY", "")
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")  # Default Ollama URL
-    groq_key = os.getenv("GROQ_API_KEY", "")  # NEW: Get GROQ key
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")  # NEW: Get Anthropic key
+    groq_key = security_mgr.get_api_key("groq") or os.getenv("GROQ_API_KEY", "")
+    anthropic_key = security_mgr.get_api_key("anthropic") or os.getenv("ANTHROPIC_API_KEY", "")
+    gemini_key = security_mgr.get_api_key("gemini") or os.getenv("GEMINI_API_KEY", "")
     
     # Create entry fields with password masking - add more vertical spacing
     row_offset = 1  # Start at row 1 since header is at row 0
@@ -462,7 +479,13 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     anthropic_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     anthropic_entry.insert(0, anthropic_key)
     row_offset += 1
-    
+
+    ttk.Label(frame, text="Google Gemini API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
+    gemini_entry = ttk.Entry(frame, width=50, show="•")
+    gemini_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
+    gemini_entry.insert(0, gemini_key)
+    row_offset += 1
+
     ttk.Label(frame, text="Ollama API URL:").grid(row=row_offset, column=0, sticky="w", pady=15)
     ollama_entry = ttk.Entry(frame, width=50)
     ollama_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
@@ -526,10 +549,11 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     create_toggle_button(frame, grok_entry, row=2)
     create_toggle_button(frame, perplexity_entry, row=3)
     create_toggle_button(frame, anthropic_entry, row=4)
+    create_toggle_button(frame, gemini_entry, row=5)
     # Ollama URL doesn't need a show/hide button as it's not a key
-    
+
     # Calculate eye button positions for STT API keys based on deepgram's row
-    deepgram_row = 9  # Based on the row_offset after separator and STT label (updated for Anthropic)
+    deepgram_row = 10  # Based on the row_offset after separator and STT label (updated for Gemini)
     create_toggle_button(frame, deepgram_entry, row=deepgram_row)
     create_toggle_button(frame, elevenlabs_entry, row=deepgram_row+1)
     create_toggle_button(frame, groq_entry, row=deepgram_row+2)
@@ -547,10 +571,11 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
         new_deepgram = deepgram_entry.get().strip()
         new_grok = grok_entry.get().strip()
         new_perplexity = perplexity_entry.get().strip()
-        new_elevenlabs = elevenlabs_entry.get().strip()  # NEW: Get ElevenLabs key
-        new_ollama_url = ollama_entry.get().strip()  # Get Ollama URL
-        new_groq = groq_entry.get().strip()  # NEW: Get GROQ key
-        new_anthropic = anthropic_entry.get().strip()  # NEW: Get Anthropic key
+        new_elevenlabs = elevenlabs_entry.get().strip()
+        new_ollama_url = ollama_entry.get().strip()
+        new_groq = groq_entry.get().strip()
+        new_anthropic = anthropic_entry.get().strip()
+        new_gemini = gemini_entry.get().strip()
         
         from utils.validation import validate_api_key
         
@@ -591,14 +616,19 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             is_valid, error = validate_api_key("anthropic", new_anthropic)
             if not is_valid:
                 validation_errors.append(f"Anthropic: {error}")
-        
+
+        if new_gemini:
+            is_valid, error = validate_api_key("gemini", new_gemini)
+            if not is_valid:
+                validation_errors.append(f"Gemini: {error}")
+
         if validation_errors:
             error_var.set("Validation errors:\n" + "\n".join(validation_errors))
             return
         
-        # Check if at least one LLM provider (OpenAI, Grok, Perplexity, Anthropic, or Ollama) is provided
-        if not (new_openai or new_grok or new_perplexity or new_anthropic or new_ollama_url):
-            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Grok, Perplexity, Anthropic, or Ollama).")
+        # Check if at least one LLM provider is provided
+        if not (new_openai or new_grok or new_perplexity or new_anthropic or new_gemini or new_ollama_url):
+            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Grok, Perplexity, Anthropic, Gemini, or Ollama).")
             return
             
         # Check if at least one STT provider (Groq, Deepgram, or ElevenLabs) is provided
@@ -650,9 +680,12 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 elif "OLLAMA_API_URL=" in line:
                     updated_lines.append(f"OLLAMA_API_URL={new_ollama_url}")
                     keys_updated.add("OLLAMA_API_URL")
-                elif "ANTHROPIC_API_KEY=" in line:  # NEW: Update Anthropic key
+                elif "ANTHROPIC_API_KEY=" in line:
                     updated_lines.append(f"ANTHROPIC_API_KEY={new_anthropic}")
                     keys_updated.add("ANTHROPIC_API_KEY")
+                elif "GEMINI_API_KEY=" in line:
+                    updated_lines.append(f"GEMINI_API_KEY={new_gemini}")
+                    keys_updated.add("GEMINI_API_KEY")
                 else:
                     updated_lines.append(line)
             
@@ -673,7 +706,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 updated_lines.append(f"GROQ_API_KEY={new_groq}")
             if "ANTHROPIC_API_KEY" not in keys_updated and new_anthropic:
                 updated_lines.append(f"ANTHROPIC_API_KEY={new_anthropic}")
-            
+            if "GEMINI_API_KEY" not in keys_updated and new_gemini:
+                updated_lines.append(f"GEMINI_API_KEY={new_gemini}")
+
             # Make sure we have the RECOGNITION_LANGUAGE line
             if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
                 updated_lines.append("RECOGNITION_LANGUAGE=en-US")
@@ -681,7 +716,29 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             # Write back to file
             with open(env_path, "w") as f:
                 f.write("\n".join(updated_lines))
-            
+
+            # Store keys securely using encryption
+            from utils.security import get_security_manager
+            security_mgr = get_security_manager()
+
+            # Store each key securely (this is the primary storage method)
+            keys_to_store = {
+                'openai': new_openai,
+                'deepgram': new_deepgram,
+                'grok': new_grok,
+                'perplexity': new_perplexity,
+                'elevenlabs': new_elevenlabs,
+                'groq': new_groq,
+                'anthropic': new_anthropic,
+                'gemini': new_gemini,
+            }
+
+            for provider, key in keys_to_store.items():
+                if key:
+                    success, error = security_mgr.store_api_key(provider, key)
+                    if not success:
+                        logging.warning(f"Failed to store {provider} key securely: {error}")
+
             # Update environment variables in memory
             if new_openai:
                 os.environ["OPENAI_API_KEY"] = new_openai
@@ -701,7 +758,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 os.environ["GROQ_API_KEY"] = new_groq
             if new_anthropic:
                 os.environ["ANTHROPIC_API_KEY"] = new_anthropic
-            
+            if new_gemini:
+                os.environ["GEMINI_API_KEY"] = new_gemini
+
             # Store results before showing message
             result["keys"] = {
                 "openai": new_openai,
@@ -711,7 +770,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 "elevenlabs": new_elevenlabs,
                 "ollama_url": new_ollama_url,
                 "groq": new_groq,
-                "anthropic": new_anthropic
+                "anthropic": new_anthropic,
+                "gemini": new_gemini
             }
             
             # Success message and close dialog

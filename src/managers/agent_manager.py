@@ -210,7 +210,7 @@ class AgentManager:
         # Create agent instance with injected AI caller
         agent = agent_class(config, ai_caller=self._ai_caller)
         self._agents[agent_type] = agent
-        logger.info(f"Initialized {agent_type.value} agent")
+        logger.info(f"Initialized {agent_type.value} agent with provider={config.provider}, model={config.model}")
         
     def get_agent(self, agent_type: AgentType) -> Optional[BaseAgent]:
         """Get an agent instance by type.
@@ -544,6 +544,11 @@ class AgentManager:
     def reload_agents(self):
         """Reload agents from current settings."""
         logger.info("Reloading agents from settings")
+        # Reload settings from file to get latest changes
+        global SETTINGS
+        from settings.settings import load_settings
+        SETTINGS.clear()
+        SETTINGS.update(load_settings())
         self._agents.clear()
         self._load_agents()
         

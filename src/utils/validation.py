@@ -8,7 +8,7 @@ from typing import Optional, Tuple, List
 from utils.error_codes import get_error_message
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY, PROVIDER_GROK,
-    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
+    PROVIDER_GEMINI, STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
 )
 
 # API key patterns for basic validation
@@ -30,12 +30,34 @@ API_KEY_PATTERNS = {
     PROVIDER_GROK: re.compile(r'^xai-[a-zA-Z0-9\-_]{10,}$'),
     # Anthropic keys start with sk-ant- - flexible length (was 95+ exact, now 80+)
     PROVIDER_ANTHROPIC: re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{80,}$'),
+    # Google Gemini keys start with AIza - typically 39 characters total
+    PROVIDER_GEMINI: re.compile(r'^AIza[a-zA-Z0-9\-_]{30,}$'),
 }
 
 # Maximum lengths for input validation
 MAX_PROMPT_LENGTH = 10000  # Maximum characters for user prompts
 MAX_FILE_PATH_LENGTH = 260  # Windows MAX_PATH limitation
 MAX_API_KEY_LENGTH = 200  # Reasonable maximum for API keys
+
+# Patterns for sensitive data that should be redacted from logs
+SENSITIVE_PATTERNS = [
+    # API keys
+    (re.compile(r'sk-[a-zA-Z0-9\-_]{10,}'), '[OPENAI_KEY_REDACTED]'),
+    (re.compile(r'sk-ant-[a-zA-Z0-9\-_]{10,}'), '[ANTHROPIC_KEY_REDACTED]'),
+    (re.compile(r'sk_[a-zA-Z0-9]{10,}'), '[ELEVENLABS_KEY_REDACTED]'),
+    (re.compile(r'gsk_[a-zA-Z0-9]{10,}'), '[GROQ_KEY_REDACTED]'),
+    (re.compile(r'pplx-[a-zA-Z0-9]{10,}'), '[PERPLEXITY_KEY_REDACTED]'),
+    (re.compile(r'xai-[a-zA-Z0-9\-_]{10,}'), '[GROK_KEY_REDACTED]'),
+    # Authorization headers
+    (re.compile(r'Bearer\s+[a-zA-Z0-9\-_\.]+', re.IGNORECASE), 'Bearer [TOKEN_REDACTED]'),
+    (re.compile(r'Authorization:\s*[^\n]+', re.IGNORECASE), 'Authorization: [REDACTED]'),
+    # Email addresses (potential PII)
+    (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'), '[EMAIL_REDACTED]'),
+    # Phone numbers (potential PII) - basic patterns
+    (re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'), '[PHONE_REDACTED]'),
+    # SSN patterns (potential PII)
+    (re.compile(r'\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b'), '[SSN_REDACTED]'),
+]
 
 # Dangerous patterns to sanitize from prompts
 DANGEROUS_PATTERNS = [
@@ -87,6 +109,32 @@ def validate_api_key(provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
         return False, "Please replace the placeholder with your actual API key"
     
     return True, None
+
+
+def sanitize_for_logging(text: str, max_length: int = 500) -> str:
+    """Sanitize text for safe logging by removing sensitive data.
+
+    Args:
+        text: The text to sanitize
+        max_length: Maximum length of output (default 500)
+
+    Returns:
+        Sanitized text safe for logging
+    """
+    if not text:
+        return ""
+
+    # Apply all sensitive patterns
+    sanitized = text
+    for pattern, replacement in SENSITIVE_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
+
+    # Truncate if too long
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length] + "...[TRUNCATED]"
+
+    return sanitized
+
 
 def sanitize_prompt(prompt: str) -> str:
     """Sanitize user prompt before sending to API.

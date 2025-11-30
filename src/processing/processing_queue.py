@@ -18,6 +18,26 @@ import traceback
 
 from database.database import Database
 from settings.settings import SETTINGS
+from utils.error_handling import ErrorContext
+
+
+def _thread_exception_hook(args):
+    """Global exception hook for thread exceptions.
+
+    This captures unhandled exceptions in threads that would otherwise be silent.
+    """
+    logging.error(
+        f"Unhandled exception in thread '{args.thread.name}': "
+        f"{args.exc_type.__name__}: {args.exc_value}",
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback)
+    )
+
+
+# Install global thread exception hook
+import threading
+if hasattr(threading, 'excepthook'):
+    # Python 3.8+
+    threading.excepthook = _thread_exception_hook
 
 
 class ProcessingQueue:
@@ -163,7 +183,14 @@ class ProcessingQueue:
             try:
                 self.batch_callback("started", batch_id, 0, len(recordings))
             except Exception as e:
-                logging.error(f"Error in batch callback: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Batch start callback notification",
+                    exception=e,
+                    error_code="CALLBACK_BATCH_START_ERROR",
+                    batch_id=batch_id,
+                    recording_count=len(recordings)
+                )
+                ctx.log()
         
         return batch_id
     
@@ -491,23 +518,47 @@ class ProcessingQueue:
             try:
                 self.status_callback(task_id, status, queue_size)
             except Exception as e:
-                logging.error(f"Error in status callback: {str(e)}")
-    
+                ctx = ErrorContext.capture(
+                    operation="Status callback notification",
+                    exception=e,
+                    error_code="CALLBACK_STATUS_ERROR",
+                    task_id=task_id,
+                    status=status,
+                    queue_size=queue_size
+                )
+                ctx.log()
+
     def _notify_completion(self, task_id: str, recording_data: Dict, result: Dict):
         """Notify completion callback."""
         if self.completion_callback:
             try:
                 self.completion_callback(task_id, recording_data, result)
             except Exception as e:
-                logging.error(f"Error in completion callback: {str(e)}")
-    
+                ctx = ErrorContext.capture(
+                    operation="Completion callback notification",
+                    exception=e,
+                    error_code="CALLBACK_COMPLETION_ERROR",
+                    task_id=task_id,
+                    recording_id=recording_data.get("recording_id"),
+                    result_keys=list(result.keys()) if isinstance(result, dict) else None
+                )
+                ctx.log()
+
     def _notify_error(self, task_id: str, recording_data: Dict, error_msg: str):
         """Notify error callback."""
         if self.error_callback:
             try:
                 self.error_callback(task_id, recording_data, error_msg)
             except Exception as e:
-                logging.error(f"Error in error callback: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Error callback notification",
+                    exception=e,
+                    error_code="CALLBACK_ERROR_ERROR",
+                    task_id=task_id,
+                    recording_id=recording_data.get("recording_id"),
+                    original_error=error_msg
+                )
+                ctx.log()
     
     def get_status(self) -> Dict[str, Any]:
         """Get current queue status and statistics."""
@@ -583,22 +634,41 @@ class ProcessingQueue:
             try:
                 self.batch_callback("progress", batch_id, completed + failed, total)
             except Exception as e:
-                logging.error(f"Error in batch callback: {str(e)}")
-        
+                ctx = ErrorContext.capture(
+                    operation="Batch progress callback notification",
+                    exception=e,
+                    error_code="CALLBACK_BATCH_PROGRESS_ERROR",
+                    batch_id=batch_id,
+                    completed=completed,
+                    failed=failed,
+                    total=total
+                )
+                ctx.log()
+
         # Check if batch is complete
         if completed + failed >= total:
             batch["completed_at"] = datetime.now()
-            
+
             # Calculate duration
             duration = (batch["completed_at"] - batch["started_at"]).total_seconds()
             batch["duration"] = duration
-            
+
             # Notify completion
             if self.batch_callback:
                 try:
                     self.batch_callback("completed", batch_id, completed, total, failed=failed)
                 except Exception as e:
-                    logging.error(f"Error in batch callback: {str(e)}")
+                    ctx = ErrorContext.capture(
+                        operation="Batch completion callback notification",
+                        exception=e,
+                        error_code="CALLBACK_BATCH_COMPLETE_ERROR",
+                        batch_id=batch_id,
+                        completed=completed,
+                        failed=failed,
+                        total=total,
+                        duration=duration
+                    )
+                    ctx.log()
             
             logging.info(f"Batch {batch_id} completed: {completed} successful, {failed} failed, {duration:.2f}s")
     

@@ -116,8 +116,9 @@ class Database:
         """
         try:
             self._cleanup_all_connections()
-        except Exception:
-            # Suppress exceptions during garbage collection
+        except (sqlite3.Error, OSError, RuntimeError):
+            # Suppress database/OS errors during garbage collection
+            # These are expected if the interpreter is shutting down
             pass
 
     def __enter__(self):
@@ -233,7 +234,9 @@ class Database:
         cursor = self._get_cursor()
         try:
             yield conn, cursor
-        except Exception:
+        except BaseException:
+            # Catch all exceptions including KeyboardInterrupt to ensure rollback
+            # Re-raise after rollback to preserve original exception
             conn.rollback()
             raise
         else:
@@ -253,7 +256,8 @@ class Database:
         try:
             yield conn, cursor
             conn.commit()
-        except Exception:
+        except BaseException:
+            # Catch all exceptions including KeyboardInterrupt to ensure rollback
             conn.rollback()
             raise
 
@@ -518,7 +522,44 @@ class Database:
             recordings = cursor.fetchall()
 
             return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
-    
+
+    def get_recordings_paginated(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "timestamp",
+        descending: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get recordings with efficient SQL-level pagination.
+
+        This is more efficient than get_all_recordings() for large datasets
+        as it only fetches the required rows from the database.
+
+        Args:
+            limit: Maximum number of recordings to return
+            offset: Number of recordings to skip
+            order_by: Column to order by (must be a valid column name)
+            descending: If True, order descending (newest first)
+
+        Returns:
+            List of recording dictionaries
+        """
+        # Validate order_by column to prevent SQL injection
+        valid_columns = {"id", "timestamp", "filename", "duration"}
+        if order_by not in valid_columns:
+            order_by = "timestamp"  # Default to safe value
+
+        order_direction = "DESC" if descending else "ASC"
+
+        # Use parameterized query for limit/offset (safe from injection)
+        query = f"SELECT * FROM recordings ORDER BY {order_by} {order_direction} LIMIT ? OFFSET ?"
+
+        with self.connection() as (conn, cursor):
+            cursor.execute(query, (limit, offset))
+            recordings = cursor.fetchall()
+
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+
     def get_recordings_by_ids(self, recording_ids: List[int]) -> List[Dict[str, Any]]:
         """Get multiple recordings by their IDs.
 

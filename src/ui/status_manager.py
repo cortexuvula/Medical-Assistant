@@ -100,7 +100,8 @@ class StatusManager:
             if timer_id:
                 try:
                     self.parent.after_cancel(timer_id)
-                except Exception:
+                except (tk.TclError, ValueError, RuntimeError):
+                    # Timer may already be cancelled or widget destroyed
                     pass
         self.status_timers = []
     

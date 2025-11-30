@@ -96,7 +96,8 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
         "ollama": ["llama3", "mistral", "codellama"],
         "perplexity": ["sonar-medium-chat", "sonar-small-chat"],
-        "grok": ["grok-1"]
+        "grok": ["grok-1", "grok-2"],
+        "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"]
     }
     
     def __init__(self, parent):
@@ -119,8 +120,8 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         """Show the agent settings dialog."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Agent Settings")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog_width, self.dialog_height = ui_scaler.get_dialog_size(900, 700)
+        self.dialog.geometry(f"{self.dialog_width}x{self.dialog_height}")
         self.dialog.minsize(800, 600)
         
         # Make it modal
@@ -199,9 +200,9 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         
         # AI Provider selection
         ttk.Label(tab_frame, text="AI Provider:").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
-        
-        # Get current provider from settings or default to openai
-        current_provider = self.settings.get("ai_provider", "openai")
+
+        # Get current provider from agent config, then fall back to global ai_provider
+        current_provider = current_config.get("provider", self.settings.get("ai_provider", "openai"))
         provider_var = tk.StringVar(value=current_provider)
         self.widgets[agent_key]["provider"] = provider_var
         
