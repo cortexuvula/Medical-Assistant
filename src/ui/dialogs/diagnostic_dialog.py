@@ -45,8 +45,8 @@ class DiagnosticAnalysisDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Diagnostic Analysis Options")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 700)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 700)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.minsize(750, 650)  # Set minimum size
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
