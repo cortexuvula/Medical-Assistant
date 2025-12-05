@@ -50,7 +50,18 @@ a = Analysis(
         'ttkbootstrap',
         'speech_recognition',
         'pydub',
+        # Deepgram SDK v3 modules
         'deepgram',
+        'deepgram.clients',
+        'deepgram.clients.prerecorded',
+        'deepgram.clients.prerecorded.v1',
+        'deepgram.clients.prerecorded.v1.client',
+        'deepgram.clients.prerecorded.v1.options',
+        'deepgram.clients.listen',
+        'deepgram.clients.listen.v1',
+        'deepgram.clients.listen.v1.rest',
+        'deepgram.options',
+        'deepgram.client',
         'openai',
         'pyaudio',
         'soundcard',
@@ -66,7 +77,7 @@ a = Analysis(
         'PIL._imagingtk',
         'PIL.ImageTk',
     ],
-    hookspath=['.'],  # Look for hooks in current directory
+    hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
     runtime_hooks=['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux' else (['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
     excludes=[],
