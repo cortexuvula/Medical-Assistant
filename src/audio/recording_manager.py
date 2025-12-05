@@ -25,7 +25,7 @@ class RecordingManager:
     """Manages SOAP recording functionality."""
 
     # Device health check interval in seconds
-    DEVICE_CHECK_INTERVAL = 5.0
+    DEVICE_CHECK_INTERVAL = 10.0  # Increased from 5.0 to reduce false positives
 
     def __init__(self, audio_handler: AudioHandler, status_manager: StatusManager,
                  audio_state_manager: AudioStateManager):
@@ -47,7 +47,7 @@ class RecordingManager:
         self._current_device_name: Optional[str] = None
         self._last_device_check = 0.0
         self._device_error_count = 0
-        self._max_device_errors = 3  # Consecutive errors before declaring device lost
+        self._max_device_errors = 5  # Increased from 3 for more tolerance with virtual audio devices
 
         # Callbacks
         self.on_recording_complete: Optional[Callable] = None
@@ -238,7 +238,13 @@ class RecordingManager:
         self._last_device_check = current_time
 
         try:
-            # Check if the listening device still exists
+            # FIRST: Check if the audio stream is still active and receiving data
+            # This is more reliable than device enumeration for virtual audio devices
+            if self._is_stream_active():
+                self._device_error_count = 0  # Reset on success
+                return True
+
+            # SECOND: Check if the listening device still exists via enumeration
             listening_device = getattr(self.audio_handler, 'listening_device', None)
 
             if listening_device is None:
@@ -253,14 +259,8 @@ class RecordingManager:
             else:
                 # Check if the specific device still exists
                 device_name = self._current_device_name or str(listening_device)
-                available_devices = self._get_available_devices()
 
-                device_found = any(
-                    device_name.lower() in str(dev).lower()
-                    for dev in available_devices
-                )
-
-                if device_found:
+                if self._find_device_by_name(device_name):
                     self._device_error_count = 0  # Reset on success
                     return True
                 else:
@@ -283,6 +283,93 @@ class RecordingManager:
             logging.error(f"Error checking device health: {e}")
             self._device_error_count += 1
             return self._device_error_count < self._max_device_errors
+
+    def _is_stream_active(self) -> bool:
+        """Check if the audio stream is still active and receiving data.
+
+        Returns:
+            True if stream is active, False otherwise
+        """
+        try:
+            # Check if audio handler has active streams
+            active_streams = getattr(self.audio_handler, '_active_streams', {})
+
+            for purpose, stream_info in active_streams.items():
+                stream = stream_info.get('stream')
+                if stream:
+                    # For sounddevice streams, check if active
+                    if hasattr(stream, 'active') and stream.active:
+                        return True
+                    # For streams without active property, check if not stopped
+                    if hasattr(stream, 'stopped') and not stream.stopped:
+                        return True
+
+            # Also check if we've received audio data recently
+            # The audio state manager tracks this
+            if self.audio_state_manager:
+                state = self.audio_state_manager.get_state()
+                if state == RecordingState.RECORDING:
+                    # Check if audio data is being accumulated
+                    chunk_count = len(self.audio_state_manager._audio_chunks)
+                    if chunk_count > 0:
+                        return True
+
+            return False
+        except Exception as e:
+            logging.debug(f"Error checking stream active status: {e}")
+            return False
+
+    def _find_device_by_name(self, device_name: str) -> bool:
+        """Find a device using multiple matching strategies.
+
+        Args:
+            device_name: The device name to search for
+
+        Returns:
+            True if device found, False otherwise
+        """
+        available_devices = self._get_available_devices()
+        if not available_devices:
+            return False
+
+        # Clean up device name - remove "(Device X)" suffix for better matching
+        clean_name = device_name
+        if '(Device ' in clean_name:
+            clean_name = clean_name.split('(Device ')[0].strip()
+
+        # Strategy 1: Exact match (case-insensitive)
+        for dev in available_devices:
+            dev_str = str(dev).lower()
+            if device_name.lower() == dev_str:
+                return True
+
+        # Strategy 2: Clean name contained in device string
+        for dev in available_devices:
+            dev_str = str(dev).lower()
+            if clean_name.lower() in dev_str:
+                return True
+
+        # Strategy 3: Device string contained in our name (for truncated names)
+        for dev in available_devices:
+            dev_str = str(dev).lower()
+            # Extract just the device name part without extra info
+            if '(' in dev_str:
+                dev_base = dev_str.split('(')[0].strip()
+            else:
+                dev_base = dev_str
+
+            if dev_base and dev_base in device_name.lower():
+                return True
+
+        # Strategy 4: Check for common prefix (handles truncation)
+        for dev in available_devices:
+            dev_str = str(dev).lower()
+            # If first 15 chars match, consider it the same device
+            if len(clean_name) >= 15 and len(dev_str) >= 15:
+                if clean_name.lower()[:15] == dev_str[:15]:
+                    return True
+
+        return False
 
     def _get_available_devices(self) -> List[Any]:
         """Get list of available audio input devices.
