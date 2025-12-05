@@ -16,13 +16,29 @@ if sys.platform == 'win32':
     if hasattr(asyncio, '_windows_utils'):
         asyncio._windows_utils = asyncio.windows_utils
 
-# Fix for ttkbootstrap LabelFrame/Labelframe compatibility
-# Some versions of ttkbootstrap use Labelframe (lowercase 'f') instead of LabelFrame
+# Fix for ttkbootstrap widget name compatibility
+# Some versions of ttkbootstrap use different casing (e.g., Labelframe vs LabelFrame)
+# This creates aliases for all common widget name variations
 try:
     import ttkbootstrap as ttk
-    if not hasattr(ttk, 'LabelFrame') and hasattr(ttk, 'Labelframe'):
-        ttk.LabelFrame = ttk.Labelframe
-    elif not hasattr(ttk, 'Labelframe') and hasattr(ttk, 'LabelFrame'):
-        ttk.Labelframe = ttk.LabelFrame
+
+    # Widget name mappings: (CamelCase, lowercase_variant)
+    widget_aliases = [
+        ('LabelFrame', 'Labelframe'),
+        ('PanedWindow', 'Panedwindow'),
+        ('Checkbutton', 'Checkbutton'),  # Usually consistent but check anyway
+        ('Radiobutton', 'Radiobutton'),
+        ('Spinbox', 'Spinbox'),
+        ('Scrollbar', 'Scrollbar'),
+    ]
+
+    for camel_case, lower_case in widget_aliases:
+        # If CamelCase doesn't exist but lowercase does, create alias
+        if not hasattr(ttk, camel_case) and hasattr(ttk, lower_case):
+            setattr(ttk, camel_case, getattr(ttk, lower_case))
+        # If lowercase doesn't exist but CamelCase does, create alias
+        elif not hasattr(ttk, lower_case) and hasattr(ttk, camel_case):
+            setattr(ttk, lower_case, getattr(ttk, camel_case))
+
 except ImportError:
     pass
