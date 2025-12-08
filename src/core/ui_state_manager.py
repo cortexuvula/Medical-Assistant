@@ -96,6 +96,9 @@ class UIStateManager:
         self._update_mic_selector(recording)
         self._update_provider_selectors(recording)
 
+        # Update record tab UI (timer, pulse animation, etc.)
+        self._update_record_tab_state(recording, paused)
+
     def _update_record_button(self, recording: bool, paused: bool) -> None:
         """Update the main record button state."""
         main_record_btn = self.app.ui.components.get('main_record_button')
@@ -167,6 +170,20 @@ class UIStateManager:
                 self.app.provider_combobox.config(state=DISABLED if recording else "readonly")
         except tk.TclError as e:
             logger.warning(f"Error updating provider selectors: {e}")
+
+    def _update_record_tab_state(self, recording: bool, paused: bool) -> None:
+        """Update record tab UI elements (timer, pulse animation, etc.).
+
+        Args:
+            recording: Whether recording is active
+            paused: Whether recording is paused
+        """
+        try:
+            # Delegate to workflow UI's record tab for timer and visual updates
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'set_recording_state'):
+                self.app.ui.set_recording_state(recording, paused)
+        except tk.TclError as e:
+            logger.warning(f"Error updating record tab state: {e}")
 
     def _apply_button_style(self, button: tk.Widget, state: str) -> None:
         """Apply visual style to a button based on state.
