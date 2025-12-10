@@ -17,6 +17,7 @@ import os
 
 from audio.audio import AudioHandler
 from audio.audio_state_manager import AudioStateManager, RecordingState
+from audio.constants import SAMPLE_RATE_48K, DEFAULT_SAMPLE_WIDTH, DEFAULT_CHANNELS
 from ui.status_manager import StatusManager
 from utils.exceptions import DeviceDisconnectedError, AudioError
 
@@ -168,9 +169,9 @@ class RecordingManager:
             audio_data: Audio data as numpy array
         """
         # Get audio format from handler
-        sample_rate = getattr(self.audio_handler, 'sample_rate', 48000)
-        sample_width = getattr(self.audio_handler, 'sample_width', 2)
-        channels = getattr(self.audio_handler, 'channels', 1)
+        sample_rate = getattr(self.audio_handler, 'sample_rate', SAMPLE_RATE_48K)
+        sample_width = getattr(self.audio_handler, 'sample_width', DEFAULT_SAMPLE_WIDTH)
+        channels = getattr(self.audio_handler, 'channels', DEFAULT_CHANNELS)
         
         # Add to state manager
         self.audio_state_manager.add_segment(

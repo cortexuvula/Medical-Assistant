@@ -15,6 +15,7 @@ from audio.constants import (
     DEFAULT_SAMPLE_WIDTH,
     DEFAULT_CHANNELS,
     SAMPLE_WIDTH_16BIT,
+    SAMPLE_RATE_48K,
 )
 
 # Try to import audio.audio libraries - they may fail in CI environments
@@ -751,8 +752,8 @@ class AudioHandler:
 
         self.channels = channels
         # Use 48000 Hz for better quality, falling back to device default if not supported
-        device_default = int(device_info.get('default_samplerate', 48000))
-        self.sample_rate = 48000 if device_default >= 48000 else device_default
+        device_default = int(device_info.get('default_samplerate', SAMPLE_RATE_48K))
+        self.sample_rate = SAMPLE_RATE_48K if device_default >= SAMPLE_RATE_48K else device_default
         
         return channels, self.sample_rate
 

@@ -14,6 +14,12 @@ from datetime import datetime
 import numpy as np
 from pydub import AudioSegment
 
+from audio.constants import (
+    MAX_AUDIO_MEMORY_MB,
+    MAX_RECORDING_DURATION_MINUTES,
+    SEGMENT_COMBINE_THRESHOLD,
+)
+
 
 class RecordingState(Enum):
     """Recording state enumeration."""
@@ -31,10 +37,10 @@ class AudioStateManager:
     thread-safe operations for adding, combining, and retrieving audio data.
     """
     
-    def __init__(self, combine_threshold: int = 100):
+    def __init__(self, combine_threshold: int = SEGMENT_COMBINE_THRESHOLD):
         """
         Initialize the AudioStateManager.
-        
+
         Args:
             combine_threshold: Number of segments before automatic combination
         """
@@ -43,18 +49,25 @@ class AudioStateManager:
         self._combined_chunks: List[AudioSegment] = []
         self._recording_state = RecordingState.IDLE
         self._combine_threshold = combine_threshold
-        
+
         # Recording metadata
         self._start_time: Optional[datetime] = None
         self._pause_start_time: Optional[datetime] = None
         self._total_pause_duration: float = 0.0
-        
+
         # Audio format parameters (set during first segment)
         self._sample_rate: Optional[int] = None
         self._sample_width: Optional[int] = None
         self._channels: Optional[int] = None
-        
-        logging.info(f"AudioStateManager initialized with combine_threshold={combine_threshold}")
+
+        # Memory tracking
+        self._estimated_memory_bytes: int = 0
+        self._memory_warning_issued: bool = False
+        self._max_memory_bytes: int = MAX_AUDIO_MEMORY_MB * 1024 * 1024
+        self._max_duration_seconds: float = MAX_RECORDING_DURATION_MINUTES * 60
+
+        logging.info(f"AudioStateManager initialized with combine_threshold={combine_threshold}, "
+                    f"max_memory={MAX_AUDIO_MEMORY_MB}MB, max_duration={MAX_RECORDING_DURATION_MINUTES}min")
     
     def start_recording(self) -> None:
         """Start a new recording session."""
@@ -113,41 +126,64 @@ class AudioStateManager:
             
             logging.info("Recording stopped")
     
-    def add_segment(self, audio_data: np.ndarray, sample_rate: int = 16000, 
-                   sample_width: int = 2, channels: int = 1) -> None:
+    def add_segment(self, audio_data: np.ndarray, sample_rate: int = 16000,
+                   sample_width: int = 2, channels: int = 1) -> bool:
         """
         Add an audio segment to the manager.
-        
+
         Args:
             audio_data: Numpy array of audio data
             sample_rate: Sample rate of the audio
             sample_width: Sample width in bytes
             channels: Number of audio channels
+
+        Returns:
+            True if segment was added, False if limits exceeded
         """
         with self._lock:
             if self._recording_state != RecordingState.RECORDING:
                 logging.debug(f"Ignoring audio segment in {self._recording_state} state")
-                return
-            
+                return False
+
             # Store audio format from first segment
             if self._sample_rate is None:
                 self._sample_rate = sample_rate
                 self._sample_width = sample_width
                 self._channels = channels
-            
+
+            # Track memory usage
+            segment_bytes = audio_data.nbytes
+            self._estimated_memory_bytes += segment_bytes
+
+            # Check memory limits and warn if approaching
+            if not self._memory_warning_issued and self._estimated_memory_bytes > self._max_memory_bytes * 0.8:
+                memory_mb = self._estimated_memory_bytes / (1024 * 1024)
+                logging.warning(f"Recording memory usage high: {memory_mb:.1f}MB "
+                              f"(80% of {MAX_AUDIO_MEMORY_MB}MB limit)")
+                self._memory_warning_issued = True
+
+            # Check duration limits
+            if self._start_time:
+                elapsed = (datetime.now() - self._start_time).total_seconds() - self._total_pause_duration
+                if elapsed > self._max_duration_seconds:
+                    logging.error(f"Recording exceeded max duration of {MAX_RECORDING_DURATION_MINUTES} minutes")
+                    return False
+
             # Log incoming segment info
             logging.debug(f"Incoming audio segment: shape={audio_data.shape}, "
                         f"dtype={audio_data.dtype}, ndim={audio_data.ndim}")
-            
+
             # Add segment to list
             self._segments.append(audio_data.copy())  # Copy to prevent external modifications
-            
+
             # Check if we should combine segments
             if len(self._segments) >= self._combine_threshold:
                 self._combine_segments()
-            
+
             logging.debug(f"Added audio segment: total_segments={len(self._segments)}, "
-                        f"combined_chunks={len(self._combined_chunks)}")
+                        f"combined_chunks={len(self._combined_chunks)}, "
+                        f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
+            return True
     
     def _combine_segments(self) -> None:
         """Combine pending segments into a larger chunk. Must be called within lock."""
@@ -302,11 +338,14 @@ class AudioStateManager:
         self._sample_rate = None
         self._sample_width = None
         self._channels = None
+        # Reset memory tracking
+        self._estimated_memory_bytes = 0
+        self._memory_warning_issued = False
     
     def get_segment_stats(self) -> Tuple[int, int, int]:
         """
         Get statistics about stored segments.
-        
+
         Returns:
             Tuple of (pending_segments, combined_chunks, total_segments)
         """
@@ -316,3 +355,22 @@ class AudioStateManager:
             # Estimate segments in chunks
             total = pending + (chunks * self._combine_threshold)
             return (pending, chunks, total)
+
+    def get_memory_stats(self) -> dict:
+        """
+        Get memory usage statistics.
+
+        Returns:
+            Dictionary with memory stats in MB and percentage
+        """
+        with self._lock:
+            used_mb = self._estimated_memory_bytes / (1024 * 1024)
+            max_mb = self._max_memory_bytes / (1024 * 1024)
+            percentage = (self._estimated_memory_bytes / self._max_memory_bytes) * 100 if self._max_memory_bytes > 0 else 0
+
+            return {
+                'used_mb': round(used_mb, 2),
+                'max_mb': round(max_mb, 2),
+                'percentage': round(percentage, 1),
+                'warning_issued': self._memory_warning_issued
+            }

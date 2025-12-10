@@ -68,3 +68,13 @@ DEFAULT_MAX_TOKENS = 4096
 # Validation limits
 MAX_PROMPT_LENGTH = 10000
 MAX_INPUT_LENGTH = 100000
+
+# Audio memory limits
+MAX_RECORDING_DURATION_MINUTES = 120  # 2 hours max recording
+MAX_AUDIO_MEMORY_MB = 500  # Max memory for audio segments before warning
+SEGMENT_COMBINE_THRESHOLD = 100  # Combine segments after this count
+
+# Estimated audio memory calculation:
+# 48kHz * 2 bytes * 1 channel = 96KB per second
+# 1 minute = ~5.76 MB, 60 minutes = ~346 MB
+BYTES_PER_SECOND_48K_MONO = 96000
