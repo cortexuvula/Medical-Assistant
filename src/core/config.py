@@ -458,31 +458,39 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
         """Get API key for a provider from environment variables."""
         key_mapping = {
             "openai": "OPENAI_API_KEY",
+            "grok": "GROK_API_KEY",
             "perplexity": "PERPLEXITY_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "gemini": "GEMINI_API_KEY",
             "groq": "GROQ_API_KEY",
             "deepgram": "DEEPGRAM_API_KEY",
             "elevenlabs": "ELEVENLABS_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY"
         }
-        
+
         env_var = key_mapping.get(provider.lower())
         if not env_var:
             return None
-        
+
         return os.getenv(env_var)
     
     def validate_api_keys(self) -> Dict[str, bool]:
         """Validate all configured API keys."""
         results = {}
-        
-        for provider in ["openai", "perplexity", "groq", "deepgram", "elevenlabs", "anthropic"]:
+
+        # AI providers and STT providers
+        all_providers = [
+            "openai", "grok", "perplexity", "anthropic", "gemini",  # AI
+            "groq", "deepgram", "elevenlabs"  # STT
+        ]
+
+        for provider in all_providers:
             api_key = self.get_api_key(provider)
             if api_key:
                 is_valid, _ = validate_api_key(provider, api_key)
                 results[provider] = is_valid
             else:
                 results[provider] = False
-        
+
         return results
 
 
