@@ -321,9 +321,10 @@ class NotificationManager:
             if recording.get('letter'):
                 self.app.letter_text.insert("1.0", recording['letter'])
             
-            # Switch to SOAP tab if it has content
+            # Switch to SOAP tab if it has content and give focus
             if recording.get('soap_note'):
                 self.app.notebook.select(1)
+                self.app.soap_text.focus_set()
             
             # Update current recording ID
             self.app.current_recording_id = recording_id

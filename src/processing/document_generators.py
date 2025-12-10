@@ -112,6 +112,7 @@ class DocumentGenerators:
                 def update_ui_and_save():
                     self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text)
                     self.app.notebook.select(1)  # Switch to SOAP tab
+                    self.app.soap_text.focus_set()  # Give focus to SOAP text widget
 
                     # Check if we have an existing recording from file upload
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:

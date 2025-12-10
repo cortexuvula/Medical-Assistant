@@ -280,21 +280,25 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         # Provider selection
         provider_frame = ttk.Frame(top_bar)
         provider_frame.pack(side=LEFT)
-        
+
+        # Get available providers (those with API keys configured)
+        self._available_ai_providers, self._ai_display_names = self._get_available_ai_providers()
+        self._available_stt_providers, self._stt_display_names = self._get_available_stt_providers()
+
         ttk.Label(provider_frame, text="AI:").pack(side=LEFT, padx=(10, 5))
         self.provider_combobox = ttk.Combobox(
             provider_frame,
-            values=["OpenAI", "Grok", "Perplexity", "Anthropic", "Gemini"],
+            values=self._ai_display_names,
             state="readonly",
             width=12
         )
         self.provider_combobox.pack(side=LEFT)
         self.provider_combobox.bind("<<ComboboxSelected>>", self._on_provider_change)
-        
+
         ttk.Label(provider_frame, text="STT:").pack(side=LEFT, padx=(10, 5))
         self.stt_combobox = ttk.Combobox(
             provider_frame,
-            values=["GROQ", "ElevenLabs", "Deepgram"],
+            values=self._stt_display_names,
             state="readonly",
             width=12
         )
@@ -404,19 +408,101 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.load_button = self.buttons["load"]
         self.save_button = self.buttons["save"]
     
+    def _get_available_ai_providers(self):
+        """Get list of AI providers that have API keys configured.
+
+        Returns:
+            tuple: (list of provider keys, list of display names)
+        """
+        from utils.security import get_security_manager
+        security_mgr = get_security_manager()
+
+        # All possible AI providers with their display names
+        all_providers = [
+            ("openai", "OpenAI"),
+            ("grok", "Grok"),
+            ("perplexity", "Perplexity"),
+            ("anthropic", "Anthropic"),
+            ("gemini", "Gemini"),
+        ]
+
+        available = []
+        display_names = []
+
+        for provider_key, display_name in all_providers:
+            api_key = security_mgr.get_api_key(provider_key)
+            if api_key:
+                available.append(provider_key)
+                display_names.append(display_name)
+
+        # If no providers have keys, show all (fallback)
+        if not available:
+            logging.warning("No AI providers have API keys configured, showing all options")
+            available = [p[0] for p in all_providers]
+            display_names = [p[1] for p in all_providers]
+
+        return available, display_names
+
+    def _get_available_stt_providers(self):
+        """Get list of STT providers that have API keys configured.
+
+        Returns:
+            tuple: (list of provider keys, list of display names)
+        """
+        from utils.security import get_security_manager
+        security_mgr = get_security_manager()
+
+        # All possible STT providers with their display names
+        all_providers = [
+            ("groq", "GROQ"),
+            ("elevenlabs", "ElevenLabs"),
+            ("deepgram", "Deepgram"),
+        ]
+
+        available = []
+        display_names = []
+
+        for provider_key, display_name in all_providers:
+            api_key = security_mgr.get_api_key(provider_key)
+            if api_key:
+                available.append(provider_key)
+                display_names.append(display_name)
+
+        # If no providers have keys, show all (fallback)
+        if not available:
+            logging.warning("No STT providers have API keys configured, showing all options")
+            available = [p[0] for p in all_providers]
+            display_names = [p[1] for p in all_providers]
+
+        return available, display_names
+
     def _initialize_provider_selections(self):
-        """Initialize provider dropdown selections."""
-        # Set AI provider
+        """Initialize provider dropdown selections based on available providers."""
+        # Set AI provider - find index in available providers list
         ai_provider = SETTINGS.get("ai_provider", "openai")
-        provider_map = {"openai": 0, "grok": 1, "perplexity": 2, "anthropic": 3, "gemini": 4}
-        if ai_provider in provider_map:
-            self.provider_combobox.current(provider_map[ai_provider])
-        
-        # Set STT provider
+        if ai_provider in self._available_ai_providers:
+            index = self._available_ai_providers.index(ai_provider)
+            self.provider_combobox.current(index)
+        elif self._available_ai_providers:
+            # Fall back to first available provider
+            self.provider_combobox.current(0)
+            # Update settings to match
+            SETTINGS["ai_provider"] = self._available_ai_providers[0]
+            from settings.settings import save_settings
+            save_settings(SETTINGS)
+
+        # Set STT provider - find index in available providers list
         stt_provider = SETTINGS.get("stt_provider", "groq")
-        stt_map = {"groq": 0, "elevenlabs": 1, "deepgram": 2}
-        if stt_provider in stt_map:
-            self.stt_combobox.current(stt_map[stt_provider])
+        if stt_provider in self._available_stt_providers:
+            index = self._available_stt_providers.index(stt_provider)
+            self.stt_combobox.current(index)
+        elif self._available_stt_providers:
+            # Fall back to first available provider
+            self.stt_combobox.current(0)
+            # Update settings to match
+            SETTINGS["stt_provider"] = self._available_stt_providers[0]
+            from settings.settings import save_settings
+            save_settings(SETTINGS)
 
     def _initialize_autosave(self):
         """Initialize the auto-save manager."""
@@ -1690,37 +1776,78 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
 
     def _on_provider_change(self, _):
         from settings.settings import SETTINGS, save_settings  # Import locally if preferred
-        
+
         selected_index = self.provider_combobox.current()
-        providers = ["openai", "grok", "perplexity", "anthropic", "gemini"]
-        provider_display = ["OpenAI", "Grok", "Perplexity", "Anthropic", "Gemini"]
-        
-        if 0 <= selected_index < len(providers):
-            selected_provider = providers[selected_index]
+
+        # Use the dynamic available providers list
+        if 0 <= selected_index < len(self._available_ai_providers):
+            selected_provider = self._available_ai_providers[selected_index]
+            display_name = self._ai_display_names[selected_index]
             SETTINGS["ai_provider"] = selected_provider
             save_settings(SETTINGS)
-            self.update_status(f"AI Provider set to {provider_display[selected_index]}")
+            self.update_status(f"AI Provider set to {display_name}")
 
     def _on_stt_change(self, _) -> None:
         """Update STT provider when dropdown selection changes."""
         selected_index = self.stt_combobox.current()
-        if selected_index >= 0:
-            # Map display values to actual provider values
-            stt_providers = ["groq", "elevenlabs", "deepgram"]
-            stt_display = ["GROQ", "ElevenLabs", "Deepgram"]
-            
+
+        # Use the dynamic available providers list
+        if 0 <= selected_index < len(self._available_stt_providers):
+            provider = self._available_stt_providers[selected_index]
+            display_name = self._stt_display_names[selected_index]
+
             # Update settings
-            provider = stt_providers[selected_index]
             from settings.settings import SETTINGS, save_settings
             SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
-            
+
             # Update the audio handler with the new provider
             self.audio_handler.set_stt_provider(provider)
-            
+
             # Update status with the new provider info
             self.status_manager.update_provider_info()
-            self.update_status(f"Speech-to-Text provider set to {stt_display[selected_index]}")
+            self.update_status(f"Speech-to-Text provider set to {display_name}")
+
+    def refresh_provider_dropdowns(self) -> None:
+        """Refresh the provider dropdowns after API keys have been updated.
+
+        This should be called after the API keys dialog is closed to update
+        the available providers in the dropdowns.
+        """
+        # Get current selections
+        current_ai = SETTINGS.get("ai_provider", "openai")
+        current_stt = SETTINGS.get("stt_provider", "groq")
+
+        # Refresh available providers
+        self._available_ai_providers, self._ai_display_names = self._get_available_ai_providers()
+        self._available_stt_providers, self._stt_display_names = self._get_available_stt_providers()
+
+        # Update combobox values
+        self.provider_combobox['values'] = self._ai_display_names
+        self.stt_combobox['values'] = self._stt_display_names
+
+        # Re-select current provider if still available, otherwise select first
+        if current_ai in self._available_ai_providers:
+            index = self._available_ai_providers.index(current_ai)
+            self.provider_combobox.current(index)
+        elif self._available_ai_providers:
+            self.provider_combobox.current(0)
+            SETTINGS["ai_provider"] = self._available_ai_providers[0]
+            from settings.settings import save_settings
+            save_settings(SETTINGS)
+
+        if current_stt in self._available_stt_providers:
+            index = self._available_stt_providers.index(current_stt)
+            self.stt_combobox.current(index)
+        elif self._available_stt_providers:
+            self.stt_combobox.current(0)
+            SETTINGS["stt_provider"] = self._available_stt_providers[0]
+            from settings.settings import save_settings
+            save_settings(SETTINGS)
+            # Update audio handler
+            self.audio_handler.set_stt_provider(self._available_stt_providers[0])
+
+        logging.info(f"Provider dropdowns refreshed. AI: {self._ai_display_names}, STT: {self._stt_display_names}")
 
     def _on_microphone_change(self, _) -> None:
         """Save the selected microphone to settings."""

@@ -234,6 +234,10 @@ class MenuManager:
         self.app.audio_handler.elevenlabs_provider.api_key = self.app.audio_handler.elevenlabs_api_key
         self.app.audio_handler.deepgram_provider.api_key = self.app.audio_handler.deepgram_api_key
         self.app.audio_handler.groq_provider.api_key = self.app.audio_handler.groq_api_key
+
+        # Refresh provider dropdowns to show only providers with API keys
+        if hasattr(self.app, 'refresh_provider_dropdowns'):
+            self.app.refresh_provider_dropdowns()
     
     def update_menu_theme(self) -> None:
         """Update menu styling when theme changes."""

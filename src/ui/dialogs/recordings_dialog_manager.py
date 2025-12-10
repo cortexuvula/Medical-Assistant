@@ -355,6 +355,7 @@ class RecordingsDialogManager:
             self.app.soap_text.insert("1.0", soap_note)
             if not transcript:
                 self.app.notebook.select(1)  # Switch to SOAP tab if no transcript
+                self.app.soap_text.focus_set()  # Give focus to SOAP text widget
         
         # Update status
         self.status_manager.success(f"Loaded recording from {created_at}")

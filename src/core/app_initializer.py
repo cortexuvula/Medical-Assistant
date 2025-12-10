@@ -422,9 +422,10 @@ class AppInitializer:
                 self.app.soap_text.insert("1.0", soap_note)
                 self.app.soap_text.edit_separator()  # Add to undo history
                 logging.info(f"Updated SOAP tab with results from recording {recording_id}")
-                
-                # Switch to SOAP tab to show the results
+
+                # Switch to SOAP tab to show the results and give focus
                 self.app.notebook.select(1)
+                self.app.soap_text.focus_set()
             
             # Update current recording ID
             self.app.current_recording_id = recording_id

@@ -463,6 +463,7 @@ class RecordingsTab:
                 self.parent.soap_text.insert("1.0", recording['soap_note'])
                 if not recording.get('transcript'):
                     self.parent.notebook.select(1)  # Switch to SOAP tab
+                    self.parent.soap_text.focus_set()  # Give focus to SOAP text widget
             
             if recording.get('referral'):
                 self.parent.referral_text.insert("1.0", recording['referral'])
