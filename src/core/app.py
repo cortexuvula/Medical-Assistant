@@ -409,12 +409,68 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.save_button = self.buttons["save"]
     
     def _get_available_ai_providers(self):
-        """Get available AI providers. Delegates to ProviderConfigController."""
-        return self.provider_config_controller.get_available_ai_providers()
+        """Get list of AI providers that have API keys configured.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to ProviderConfigController.
+        """
+        from utils.security import get_security_manager
+        security_mgr = get_security_manager()
+
+        all_providers = [
+            ("openai", "OpenAI"),
+            ("grok", "Grok"),
+            ("perplexity", "Perplexity"),
+            ("anthropic", "Anthropic"),
+            ("gemini", "Gemini"),
+        ]
+
+        available = []
+        display_names = []
+
+        for provider_key, display_name in all_providers:
+            api_key = security_mgr.get_api_key(provider_key)
+            if api_key:
+                available.append(provider_key)
+                display_names.append(display_name)
+
+        if not available:
+            logging.warning("No AI providers have API keys configured, showing all options")
+            available = [p[0] for p in all_providers]
+            display_names = [p[1] for p in all_providers]
+
+        return available, display_names
 
     def _get_available_stt_providers(self):
-        """Get available STT providers. Delegates to ProviderConfigController."""
-        return self.provider_config_controller.get_available_stt_providers()
+        """Get list of STT providers that have API keys configured.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to ProviderConfigController.
+        """
+        from utils.security import get_security_manager
+        security_mgr = get_security_manager()
+
+        all_providers = [
+            ("groq", "GROQ"),
+            ("elevenlabs", "ElevenLabs"),
+            ("deepgram", "Deepgram"),
+        ]
+
+        available = []
+        display_names = []
+
+        for provider_key, display_name in all_providers:
+            api_key = security_mgr.get_api_key(provider_key)
+            if api_key:
+                available.append(provider_key)
+                display_names.append(display_name)
+
+        if not available:
+            logging.warning("No STT providers have API keys configured, showing all options")
+            available = [p[0] for p in all_providers]
+            display_names = [p[1] for p in all_providers]
+
+        return available, display_names
 
     def _initialize_provider_selections(self):
         """Initialize provider selections. Delegates to ProviderConfigController."""
