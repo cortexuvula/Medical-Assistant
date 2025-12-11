@@ -212,28 +212,35 @@ class ConnectionPool:
 
 class DatabaseConnectionManager:
     """Manages database connections with pooling and context managers."""
-    
+
     _instance = None
     _lock = threading.Lock()
-    
+    _initialized = False
+
     def __new__(cls):
-        """Singleton pattern for connection manager."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
+        """Singleton pattern for connection manager.
+
+        Uses lock-first approach to avoid potential race conditions in
+        double-checked locking pattern. The lock acquisition overhead
+        is acceptable since this is only called during initialization.
+        """
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+            return cls._instance
     
     def __init__(self):
         """Initialize connection manager."""
-        if hasattr(self, '_initialized'):
-            return
-        
-        self._initialized = True
-        self.config = get_config()
-        self.logger = logging.getLogger(__name__)
-        self._pool = None
-        self._init_pool()
+        # Use class-level lock to ensure thread-safe initialization
+        with DatabaseConnectionManager._lock:
+            if DatabaseConnectionManager._initialized:
+                return
+
+            DatabaseConnectionManager._initialized = True
+            self.config = get_config()
+            self.logger = logging.getLogger(__name__)
+            self._pool = None
+            self._init_pool()
     
     def _init_pool(self):
         """Initialize the connection pool."""

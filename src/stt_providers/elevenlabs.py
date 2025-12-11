@@ -164,32 +164,26 @@ class ElevenLabsProvider(BaseSTTProvider):
             logging.debug("===============================\n")
             
             self.logger.info(f"ElevenLabs request data: {data}")
-            
-            # Open file in a way that ensures proper closing
-            file_obj = open(temp_file, 'rb')
-            
-            # Create file tuple for request with the file object
-            files = {
-                'file': ('audio.wav', file_obj, 'audio/wav')
-            }
-            
-            # Make the request with retry logic
-            try:
-                response = self._make_api_call(
-                    url,
-                    headers=headers,
-                    files=files,
-                    data=data,
-                    timeout=timeout_seconds
-                )
-            except (APIError, RateLimitError, ServiceUnavailableError) as e:
-                self.logger.error(f"ElevenLabs API call failed after retries: {e}")
-                raise TranscriptionError(f"ElevenLabs transcription failed: {e}")
-            finally:
-                # First, make sure we close the file object before trying to delete
-                if file_obj:
-                    file_obj.close()
-                    file_obj = None
+
+            # Use context manager to ensure file is always closed properly
+            with open(temp_file, 'rb') as file_obj:
+                # Create file tuple for request with the file object
+                files = {
+                    'file': ('audio.wav', file_obj, 'audio/wav')
+                }
+
+                # Make the request with retry logic
+                try:
+                    response = self._make_api_call(
+                        url,
+                        headers=headers,
+                        files=files,
+                        data=data,
+                        timeout=timeout_seconds
+                    )
+                except (APIError, RateLimitError, ServiceUnavailableError) as e:
+                    self.logger.error(f"ElevenLabs API call failed after retries: {e}")
+                    raise TranscriptionError(f"ElevenLabs transcription failed: {e}")
 
             # Process response
             if response.status_code == 200:
@@ -289,21 +283,15 @@ class ElevenLabsProvider(BaseSTTProvider):
         except Exception as e:
             error_msg = f"Error with ElevenLabs transcription: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            
+
             # Print exception details to terminal
             logging.debug("\n===== ELEVENLABS EXCEPTION =====")
             logging.debug(f"Error: {str(e)}")
             logging.debug(f"Traceback: {traceback.format_exc()}")
             logging.debug("================================\n")
-                
+
         finally:
-            # Make sure file handle is closed
-            if file_obj and not file_obj.closed:
-                try:
-                    file_obj.close()
-                except Exception as e:
-                    self.logger.warning(f"Error closing file handle: {str(e)}")
-            
+            # File handle is automatically closed by context manager
             # Try to clean up temp file
             if temp_file and os.path.exists(temp_file):
                 try:

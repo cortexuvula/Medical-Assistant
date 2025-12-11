@@ -642,6 +642,7 @@ class RateLimiter:
             removed_keys: List of keys that were removed from rate limit data
         """
         with self._global_lock:
+            # Remove locks for explicitly removed keys
             for key in removed_keys:
                 if key in self._key_locks:
                     # Only remove if the lock is not currently held
@@ -650,21 +651,36 @@ class RateLimiter:
                         lock.release()
                         del self._key_locks[key]
 
-            # Also remove locks for keys not in _limits (memory leak prevention)
-            # Limit the number of locks we keep to prevent unbounded growth
-            MAX_LOCKS = 100
-            if len(self._key_locks) > MAX_LOCKS:
-                # Keep only locks for keys that have active rate limit data
-                active_keys = set(self._limits.keys())
-                stale_lock_keys = [
-                    k for k in self._key_locks.keys()
-                    if k not in active_keys
-                ]
-                for key in stale_lock_keys[:len(self._key_locks) - MAX_LOCKS]:
+            # Aggressively clean up all locks for inactive keys to prevent memory leak
+            # Run this cleanup every time, not just when over threshold
+            active_keys = set(self._limits.keys())
+            stale_lock_keys = [
+                k for k in list(self._key_locks.keys())
+                if k not in active_keys
+            ]
+
+            for key in stale_lock_keys:
+                if key in self._key_locks:
                     lock = self._key_locks[key]
                     if lock.acquire(blocking=False):
                         lock.release()
                         del self._key_locks[key]
+
+            # Safety limit: if we still have too many locks, force cleanup
+            MAX_LOCKS = 50
+            if len(self._key_locks) > MAX_LOCKS:
+                # Remove oldest locks (those not matching provider defaults)
+                provider_keys = set(self.default_limits.keys())
+                removable = [
+                    k for k in list(self._key_locks.keys())
+                    if k not in provider_keys
+                ]
+                for key in removable[:len(self._key_locks) - MAX_LOCKS]:
+                    if key in self._key_locks:
+                        lock = self._key_locks[key]
+                        if lock.acquire(blocking=False):
+                            lock.release()
+                            del self._key_locks[key]
 
     def check_rate_limit(self, provider: str, identifier: Optional[str] = None) -> Tuple[bool, Optional[float]]:
         """Check if a request is within rate limits using sliding window.

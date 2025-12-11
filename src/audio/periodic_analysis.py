@@ -18,8 +18,9 @@ class PeriodicAnalyzer:
     """Manages periodic analysis of audio during recording.
 
     Thread Safety:
-        This class uses threading.Event for clean shutdown coordination.
-        The timer thread is daemon to prevent blocking application exit.
+        This class uses threading.Event for clean shutdown coordination
+        and callback completion signaling. The timer thread is daemon
+        to prevent blocking application exit.
     """
 
     def __init__(self, interval_seconds: int = 120):
@@ -31,6 +32,8 @@ class PeriodicAnalyzer:
         self.interval_seconds = interval_seconds
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._callback_complete = threading.Event()  # Signals when callback finishes
+        self._callback_complete.set()  # Initially set (no callback running)
 
         # Protected by _lock
         self._timer: Optional[threading.Timer] = None
@@ -38,7 +41,6 @@ class PeriodicAnalyzer:
         self._start_time: Optional[float] = None
         self._analysis_count = 0
         self._callback: Optional[Callable] = None
-        self._callback_in_progress = False
 
     @property
     def is_running(self) -> bool:
@@ -96,18 +98,14 @@ class PeriodicAnalyzer:
                 timer = None
 
             analysis_count = self._analysis_count
-            callback_in_progress = self._callback_in_progress
 
         # Wait for timer thread to finish if it was running
         if timer and timer.is_alive():
             timer.join(timeout=2.0)
 
-        # Wait for callback to complete if requested
-        if wait_for_callback and callback_in_progress:
-            start_wait = time.time()
-            while self._callback_in_progress and (time.time() - start_wait) < timeout:
-                time.sleep(0.1)
-            if self._callback_in_progress:
+        # Wait for callback to complete using Event (thread-safe, no busy-wait)
+        if wait_for_callback:
+            if not self._callback_complete.wait(timeout=timeout):
                 logging.warning("Callback did not complete within timeout")
 
         logging.info(f"Stopped periodic analysis after {analysis_count} analyses")
@@ -133,11 +131,14 @@ class PeriodicAnalyzer:
         elapsed_time = 0.0
         analysis_num = 0
 
+        # Signal that callback is starting
+        self._callback_complete.clear()
+
         with self._lock:
             if not self._is_running or not self._callback:
+                self._callback_complete.set()
                 return
 
-            self._callback_in_progress = True
             self._analysis_count += 1
             analysis_num = self._analysis_count
             elapsed_time = time.time() - self._start_time if self._start_time else 0.0
@@ -153,8 +154,8 @@ class PeriodicAnalyzer:
         except Exception as e:
             logging.error(f"Error in periodic analysis callback: {e}", exc_info=True)
         finally:
-            with self._lock:
-                self._callback_in_progress = False
+            # Signal that callback is complete
+            self._callback_complete.set()
 
             # Schedule next analysis (only if still running)
             if not self._stop_event.is_set():
