@@ -45,6 +45,7 @@ from audio.periodic_analysis import PeriodicAnalyzer
 from ui.scaling_utils import ui_scaler
 from core.recording_controller import RecordingController
 from core.ui_state_manager import UIStateManager
+from core.text_processing_controller import TextProcessingController
 
 
 class AppInitializer:
@@ -279,6 +280,9 @@ class AppInitializer:
 
         # Initialize recording controller
         self.app.recording_controller = RecordingController(self.app)
+
+        # Initialize text processing controller
+        self.app.text_processing_controller = TextProcessingController(self.app)
 
         self.app.ai_processor = AIProcessor(openai.api_key)
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))

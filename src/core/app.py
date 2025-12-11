@@ -1001,46 +1001,24 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         return sections
 
     def copy_text(self) -> None:
-        active_widget = self.get_active_text_widget()
-        self.clipboard_clear()
-        self.clipboard_append(active_widget.get("1.0", tk.END))
-        self.update_status("Text copied to clipboard.")
+        """Copy text to clipboard. Delegates to TextProcessingController."""
+        self.text_processing_controller.copy_text()
 
     def clear_text(self) -> None:
-        if messagebox.askyesno("Clear Text", "Clear the text?"):
-            self.transcript_text.delete("1.0", tk.END)
-            self.text_chunks.clear()
-            self.audio_segments.clear()
+        """Clear transcript text. Delegates to TextProcessingController."""
+        self.text_processing_controller.clear_text()
 
     def append_text(self, text: str) -> None:
-        current = self.transcript_text.get("1.0", "end-1c")
-        if (self.capitalize_next or not current or current[-1] in ".!?") and text:
-            text = text[0].upper() + text[1:]
-            self.capitalize_next = False
-        self.transcript_text.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
-        self.text_chunks.append(f"chunk_{len(self.text_chunks)}")
-        self.transcript_text.see(tk.END)
+        """Append text to transcript. Delegates to TextProcessingController."""
+        self.text_processing_controller.append_text(text)
 
     def scratch_that(self) -> None:
-        if not self.text_chunks:
-            self.update_status("Nothing to scratch.")
-            return
-        tag = self.text_chunks.pop()
-        ranges = self.transcript_text.tag_ranges(tag)
-        if ranges:
-            self.transcript_text.delete(ranges[0], ranges[1])
-            self.transcript_text.tag_delete(tag)
-            self.update_status("Last added text removed.")
-        else:
-            self.update_status("No tagged text found.")
+        """Remove last text chunk. Delegates to TextProcessingController."""
+        self.text_processing_controller.scratch_that()
 
     def delete_last_word(self) -> None:
-        current = self.transcript_text.get("1.0", "end-1c")
-        if current:
-            words = current.split()
-            self.transcript_text.delete("1.0", tk.END)
-            self.transcript_text.insert(tk.END, " ".join(words[:-1]))
-            self.transcript_text.see(tk.END)
+        """Delete last word. Delegates to TextProcessingController."""
+        self.text_processing_controller.delete_last_word()
 
     def update_status(self, message: str, status_type="info") -> None:
         self.status_manager.update_status(message, status_type)
@@ -1084,171 +1062,28 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             self.append_text_to_widget(text, active_widget)
 
     def _process_text_with_ai(self, api_func: Callable[[str], str], success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
-        text = target_widget.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showwarning("Process Text", "There is no text to process.")
-            return
-        self.status_manager.progress("Processing text...")
-        button.config(state=DISABLED)
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        
-        def task() -> None:
-            try:
-                # Use IO executor for the AI API call (I/O-bound operation)
-                result_future = self.io_executor.submit(api_func, text)
-                # Get result with timeout to prevent hanging
-                result = result_future.result(timeout=60) # Add timeout to prevent hanging
-                
-                # Schedule UI update on the main thread
-                self.after(0, lambda: self._update_text_area(result, success_message, button, target_widget))
-            except concurrent.futures.TimeoutError as e:
-                self.after(0, lambda: [
-                    self.status_manager.error(e, context=f"processing {processor_type}"),
-                    button.config(state=NORMAL),
-                    self.progress_bar.stop(),
-                    self.progress_bar.pack_forget()
-                ])
-            except Exception as e:
-                logging.error(f"Error processing text: {str(e)}", exc_info=True)
-                self.after(0, lambda: [
-                    self.status_manager.error(e, context=f"processing {processor_type}"),
-                    button.config(state=NORMAL),
-                    self.progress_bar.stop(),
-                    self.progress_bar.pack_forget()
-                ])
-
-        # Use I/O executor for the task since it involves UI coordination
-        self.executor.submit(task)
+        """Process text with AI. Delegates to TextProcessingController."""
+        self.text_processing_controller.process_text_with_ai(api_func, success_message, button, target_widget)
 
     def _update_text_area(self, new_text: str, success_message: str, button: ttk.Button, target_widget: tk.Widget) -> None:
-        target_widget.edit_separator()
-        target_widget.delete("1.0", tk.END)
-        target_widget.insert(tk.END, new_text)
-        target_widget.edit_separator()
-        
-        # Update database if we have a current recording and this is one of the main content areas
-        if self.current_recording_id is not None:
-            try:
-                # Determine which field to update based on the target widget
-                field_name = None
-                if target_widget == self.soap_text:
-                    field_name = 'soap_note'
-                elif target_widget == self.referral_text:
-                    field_name = 'referral'
-                elif target_widget == self.letter_text:
-                    field_name = 'letter'
-                elif target_widget == self.transcript_text:
-                    field_name = 'transcript'
-                elif target_widget == self.chat_text:
-                    field_name = 'chat'
-                
-                # Update database if we identified a field to update
-                if field_name:
-                    # Create kwargs dictionary with just the field to update
-                    update_kwargs = {field_name: new_text}
-                    
-                    # Update the database
-                    if self.db.update_recording(self.current_recording_id, **update_kwargs):
-                        logging.info(f"Updated recording ID {self.current_recording_id} with new {field_name}")
-                        # Add database update confirmation to success message
-                        success_message = f"{success_message} and saved to database"
-                    else:
-                        logging.warning(f"Failed to update recording ID {self.current_recording_id} with {field_name}")
-            except Exception as e:
-                logging.error(f"Error updating database: {str(e)}", exc_info=True)
-        
-        self.status_manager.success(success_message)
-        button.config(state=NORMAL)
-        self.status_manager.show_progress(False)
-        
-        # Trigger document generated event for auto-save
-        self.event_generate("<<DocumentGenerated>>", when="tail")
+        """Update text area with new content. Delegates to TextProcessingController."""
+        self.text_processing_controller._update_text_area(new_text, success_message, button, target_widget)
 
     def get_active_text_widget(self) -> tk.Widget:
-        # Get the currently selected tab index
-        selected_tab = self.notebook.index('current')
-        
-        # Return the appropriate text widget based on the selected tab
-        if selected_tab == 0:  # Transcript tab
-            return self.transcript_text
-        elif selected_tab == 1:  # SOAP Note tab
-            return self.soap_text
-        elif selected_tab == 2:  # Referral tab
-            return self.referral_text
-        elif selected_tab == 3:  # Letter tab
-            return self.letter_text
-        else:
-            # Default to transcript text if for some reason we can't determine the active tab
-            return self.transcript_text
-
+        """Get the currently active text widget. Delegates to TextProcessingController."""
+        return self.text_processing_controller.get_active_text_widget()
 
     def refine_text(self) -> None:
-        """Refine text using AI processor."""
-        active_widget = self.get_active_text_widget()
-        text = active_widget.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showwarning("Empty Text", "Please add text before refining.")
-            return
-        
-        # Show progress
-        self.status_manager.progress("Refining text...")
-        self.refine_button.config(state=DISABLED)
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        
-        def task():
-            # Use AI processor
-            result = self.ai_processor.refine_text(text)
-            
-            # Update UI on main thread
-            self.after(0, lambda: self._handle_ai_result(result, "refine", active_widget))
-        
-        # Run in background
-        self.io_executor.submit(task)
+        """Refine text using AI processor. Delegates to TextProcessingController."""
+        self.text_processing_controller.refine_text()
 
     def improve_text(self) -> None:
-        """Improve text using AI processor."""
-        active_widget = self.get_active_text_widget()
-        text = active_widget.get("1.0", tk.END).strip()
-        if not text:
-            messagebox.showwarning("Empty Text", "Please add text before improving.")
-            return
-        
-        # Show progress
-        self.status_manager.progress("Improving text...")
-        self.improve_button.config(state=DISABLED)
-        self.progress_bar.pack(side=RIGHT, padx=10)
-        self.progress_bar.start()
-        
-        def task():
-            # Use AI processor
-            result = self.ai_processor.improve_text(text)
-            
-            # Update UI on main thread
-            self.after(0, lambda: self._handle_ai_result(result, "improve", active_widget))
-        
-        # Run in background
-        self.io_executor.submit(task)
+        """Improve text using AI processor. Delegates to TextProcessingController."""
+        self.text_processing_controller.improve_text()
 
     def _handle_ai_result(self, result: dict, operation: str, widget: tk.Widget):
-        """Handle AI processing result."""
-        self.progress_bar.stop()
-        self.progress_bar.pack_forget()
-        
-        if result["success"]:
-            # Update text widget
-            widget.delete("1.0", tk.END)
-            widget.insert("1.0", result["text"])
-            self.status_manager.success(f"Text {operation}d successfully")
-        else:
-            self.status_manager.error(f"Failed to {operation} text: {result['error']}")
-        
-        # Re-enable button
-        if operation == "refine":
-            self.refine_button.config(state=NORMAL)
-        elif operation == "improve":
-            self.improve_button.config(state=NORMAL)
+        """Handle AI processing result. Delegates to TextProcessingController."""
+        self.text_processing_controller._handle_ai_result(result, operation, widget)
 
     def create_soap_note(self) -> None:
         """Create a SOAP note using DocumentGenerators."""
@@ -1588,22 +1423,12 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.status_manager.warning("SOAP note recording cancelled.")
 
     def undo_text(self) -> None:
-        try:
-            widget = self.get_active_text_widget()
-            widget.edit_undo()
-            self.update_status("Undo performed.")
-        except tk.TclError:
-            # No undo action available
-            self.update_status("Nothing to undo.")
+        """Undo text operation. Delegates to TextProcessingController."""
+        self.text_processing_controller.undo_text()
 
     def redo_text(self) -> None:
-        try:
-            widget = self.get_active_text_widget()
-            widget.edit_redo()
-            self.update_status("Redo performed.")
-        except tk.TclError:
-            # No redo action available
-            self.update_status("Nothing to redo.")
+        """Redo text operation. Delegates to TextProcessingController."""
+        self.text_processing_controller.redo_text()
 
     def on_closing(self) -> None:
         """Clean up resources and save settings before closing the application."""
@@ -1976,12 +1801,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.file_processor.load_audio_file()
 
     def append_text_to_widget(self, text: str, widget: tk.Widget) -> None:
-        current = widget.get("1.0", "end-1c")
-        if self.capitalize_next and text:
-            text = text[0].upper() + text[1:]
-            self.capitalize_next = False
-        widget.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
-        widget.see(tk.END)
+        """Append text to a widget. Delegates to TextProcessingController."""
+        self.text_processing_controller.append_text_to_widget(text, widget)
         
     def show_recordings_dialog(self) -> None:
         """Show a dialog with all recordings from the database"""
