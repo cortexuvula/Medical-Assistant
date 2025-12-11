@@ -473,24 +473,159 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         return available, display_names
 
     def _initialize_provider_selections(self):
-        """Initialize provider selections. Delegates to ProviderConfigController."""
-        self.provider_config_controller.initialize_provider_selections()
+        """Initialize provider dropdown selections based on available providers.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to ProviderConfigController.
+        """
+        from settings.settings import save_settings
+
+        # Set AI provider - find index in available providers list
+        ai_provider = SETTINGS.get("ai_provider", "openai")
+        if ai_provider in self._available_ai_providers:
+            index = self._available_ai_providers.index(ai_provider)
+            self.provider_combobox.current(index)
+        elif self._available_ai_providers:
+            # Fall back to first available provider
+            self.provider_combobox.current(0)
+            # Update settings to match
+            SETTINGS["ai_provider"] = self._available_ai_providers[0]
+            save_settings(SETTINGS)
+
+        # Set STT provider - find index in available providers list
+        stt_provider = SETTINGS.get("stt_provider", "groq")
+        if stt_provider in self._available_stt_providers:
+            index = self._available_stt_providers.index(stt_provider)
+            self.stt_combobox.current(index)
+        elif self._available_stt_providers:
+            # Fall back to first available provider
+            self.stt_combobox.current(0)
+            # Update settings to match
+            SETTINGS["stt_provider"] = self._available_stt_providers[0]
+            save_settings(SETTINGS)
 
     def _initialize_autosave(self) -> None:
-        """Initialize auto-save functionality. Delegates to AutoSaveController."""
-        self.autosave_controller.initialize_autosave()
+        """Initialize the auto-save manager.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to AutoSaveController.
+        """
+        from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
+
+        # Create auto-save manager
+        autosave_interval = SETTINGS.get("autosave_interval", 300)  # 5 minutes default
+        self.autosave_manager = AutoSaveManager(interval_seconds=autosave_interval)
+
+        # Register data providers
+        self.autosave_manager.register_data_provider(
+            "transcript",
+            AutoSaveDataProvider.create_text_widget_provider(self.transcript_text, "Transcript")
+        )
+        self.autosave_manager.register_data_provider(
+            "soap_note",
+            AutoSaveDataProvider.create_text_widget_provider(self.soap_text, "SOAP Note")
+        )
+        self.autosave_manager.register_data_provider(
+            "referral",
+            AutoSaveDataProvider.create_text_widget_provider(self.referral_text, "Referral")
+        )
+        self.autosave_manager.register_data_provider(
+            "letter",
+            AutoSaveDataProvider.create_text_widget_provider(self.letter_text, "Letter")
+        )
+        self.autosave_manager.register_data_provider(
+            "context",
+            AutoSaveDataProvider.create_text_widget_provider(self.context_text, "Context")
+        )
+        self.autosave_manager.register_data_provider(
+            "chat",
+            AutoSaveDataProvider.create_text_widget_provider(self.chat_text, "Chat")
+        )
+        self.autosave_manager.register_data_provider(
+            "recording_state",
+            AutoSaveDataProvider.create_recording_state_provider(self)
+        )
+
+        # Set up callbacks (deferred until status_manager is available)
+        def setup_autosave_callbacks():
+            if hasattr(self, 'status_manager') and self.status_manager:
+                self.autosave_manager.on_save_start = lambda: self.status_manager.info("Auto-saving...")
+                self.autosave_manager.on_save_complete = lambda: self.status_manager.success("Auto-save complete")
+                self.autosave_manager.on_save_error = lambda e: self.status_manager.error(f"Auto-save failed: {e}")
+            else:
+                # Try again after a short delay
+                self.after(100, setup_autosave_callbacks)
+
+        # Delay callback setup until status_manager is ready
+        self.after(100, setup_autosave_callbacks)
+
+        # Check for existing auto-save and offer to restore
+        self._check_and_restore_autosave()
+
+        # Start auto-save if enabled
+        if SETTINGS.get("autosave_enabled", True):
+            self.autosave_manager.start()
+
+        # Save on significant events
+        self.bind("<<DocumentGenerated>>", lambda e: self.autosave_manager.perform_save())
+        self.bind("<<RecordingComplete>>", lambda e: self.autosave_manager.perform_save())
 
     def _check_and_restore_autosave(self) -> None:
-        """Check for existing auto-save. Delegates to AutoSaveController."""
-        self.autosave_controller.check_and_restore_autosave()
+        """Check for existing auto-save and make it available for manual restoration.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to AutoSaveController.
+        """
+        if not self.autosave_manager.has_unsaved_data():
+            self.has_available_autosave = False
+            return
+
+        # Load latest auto-save
+        saved_data = self.autosave_manager.load_latest()
+        if not saved_data or "data" not in saved_data:
+            self.has_available_autosave = False
+            return
+
+        # Check if data is recent (within last 24 hours)
+        try:
+            saved_time = datetime.fromisoformat(saved_data["timestamp"])
+            age_hours = (datetime.now() - saved_time).total_seconds() / 3600
+
+            if age_hours > 24:
+                # Too old, clear it
+                self.autosave_manager.clear_saves()
+                self.has_available_autosave = False
+                return
+        except (ValueError, TypeError, KeyError) as e:
+            logging.debug(f"Error checking autosave age: {e}")
+            self.has_available_autosave = False
+            return
+
+        # Store the availability of auto-save data
+        self.has_available_autosave = True
+        self.last_autosave_timestamp = saved_data["timestamp"]
+
+        # Update UI to show restore button if available
+        self._update_restore_button_visibility()
+
+    def _update_restore_button_visibility(self) -> None:
+        """Update the visibility of the restore button based on auto-save availability.
+
+        Note: This method is called during create_widgets before controllers exist,
+        so it cannot delegate to AutoSaveController.
+        """
+        if hasattr(self, 'restore_btn'):
+            if self.has_available_autosave:
+                self.restore_btn.pack(side=LEFT, padx=(10, 0))
+                # Update tooltip with timestamp
+                if hasattr(self, 'last_autosave_timestamp'):
+                    ToolTip(self.restore_btn, f"Restore from auto-save ({self.last_autosave_timestamp})")
+            else:
+                self.restore_btn.pack_forget()
 
     def _restore_from_autosave(self, data: Dict[str, Any]) -> None:
         """Restore from auto-save data. Delegates to AutoSaveController."""
         self.autosave_controller.restore_from_autosave(data)
-
-    def _update_restore_button_visibility(self) -> None:
-        """Update restore button visibility. Delegates to AutoSaveController."""
-        self.autosave_controller.update_restore_button_visibility()
 
     def restore_autosave(self) -> None:
         """Manually restore from auto-save. Delegates to AutoSaveController."""
