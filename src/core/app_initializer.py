@@ -46,6 +46,7 @@ from ui.scaling_utils import ui_scaler
 from core.recording_controller import RecordingController
 from core.ui_state_manager import UIStateManager
 from core.text_processing_controller import TextProcessingController
+from core.document_export_controller import DocumentExportController
 
 
 class AppInitializer:
@@ -283,6 +284,9 @@ class AppInitializer:
 
         # Initialize text processing controller
         self.app.text_processing_controller = TextProcessingController(self.app)
+
+        # Initialize document export controller
+        self.app.document_export_controller = DocumentExportController(self.app)
 
         self.app.ai_processor = AIProcessor(openai.api_key)
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
