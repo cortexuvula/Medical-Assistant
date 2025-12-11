@@ -420,211 +420,33 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Initialize provider selections. Delegates to ProviderConfigController."""
         self.provider_config_controller.initialize_provider_selections()
 
-    def _initialize_autosave(self):
-        """Initialize the auto-save manager."""
-        # Create auto-save manager
-        autosave_interval = SETTINGS.get("autosave_interval", 300)  # 5 minutes default
-        self.autosave_manager = AutoSaveManager(interval_seconds=autosave_interval)
-        
-        # Register data providers
-        self.autosave_manager.register_data_provider(
-            "transcript",
-            AutoSaveDataProvider.create_text_widget_provider(self.transcript_text, "Transcript")
-        )
-        self.autosave_manager.register_data_provider(
-            "soap_note",
-            AutoSaveDataProvider.create_text_widget_provider(self.soap_text, "SOAP Note")
-        )
-        self.autosave_manager.register_data_provider(
-            "referral",
-            AutoSaveDataProvider.create_text_widget_provider(self.referral_text, "Referral")
-        )
-        self.autosave_manager.register_data_provider(
-            "letter",
-            AutoSaveDataProvider.create_text_widget_provider(self.letter_text, "Letter")
-        )
-        self.autosave_manager.register_data_provider(
-            "context",
-            AutoSaveDataProvider.create_text_widget_provider(self.context_text, "Context")
-        )
-        self.autosave_manager.register_data_provider(
-            "chat",
-            AutoSaveDataProvider.create_text_widget_provider(self.chat_text, "Chat")
-        )
-        self.autosave_manager.register_data_provider(
-            "recording_state",
-            AutoSaveDataProvider.create_recording_state_provider(self)
-        )
-        
-        # Set up callbacks (deferred until status_manager is available)
-        def setup_autosave_callbacks():
-            if hasattr(self, 'status_manager') and self.status_manager:
-                self.autosave_manager.on_save_start = lambda: self.status_manager.info("Auto-saving...")
-                self.autosave_manager.on_save_complete = lambda: self.status_manager.success("Auto-save complete")
-                self.autosave_manager.on_save_error = lambda e: self.status_manager.error(f"Auto-save failed: {e}")
-            else:
-                # Try again after a short delay
-                self.after(100, setup_autosave_callbacks)
-        
-        # Delay callback setup until status_manager is ready
-        self.after(100, setup_autosave_callbacks)
-        
-        # Check for existing auto-save and offer to restore
-        self._check_and_restore_autosave()
-        
-        # Start auto-save if enabled
-        if SETTINGS.get("autosave_enabled", True):
-            self.autosave_manager.start()
-            
-        # Save on significant events
-        self.bind("<<DocumentGenerated>>", lambda e: self.autosave_manager.perform_save())
-        self.bind("<<RecordingComplete>>", lambda e: self.autosave_manager.perform_save())
+    def _initialize_autosave(self) -> None:
+        """Initialize auto-save functionality. Delegates to AutoSaveController."""
+        self.autosave_controller.initialize_autosave()
 
-    def _check_and_restore_autosave(self):
-        """Check for existing auto-save and make it available for manual restoration."""
-        if not self.autosave_manager.has_unsaved_data():
-            self.has_available_autosave = False
-            return
-            
-        # Load latest auto-save
-        saved_data = self.autosave_manager.load_latest()
-        if not saved_data or "data" not in saved_data:
-            self.has_available_autosave = False
-            return
-            
-        # Check if data is recent (within last 24 hours)
-        try:
-            saved_time = datetime.fromisoformat(saved_data["timestamp"])
-            age_hours = (datetime.now() - saved_time).total_seconds() / 3600
+    def _check_and_restore_autosave(self) -> None:
+        """Check for existing auto-save. Delegates to AutoSaveController."""
+        self.autosave_controller.check_and_restore_autosave()
 
-            if age_hours > 24:
-                # Too old, clear it
-                self.autosave_manager.clear_saves()
-                self.has_available_autosave = False
-                return
-        except (ValueError, TypeError, KeyError) as e:
-            logging.debug(f"Error checking autosave age: {e}")
-            self.has_available_autosave = False
-            return
-            
-        # Store the availability of auto-save data
-        self.has_available_autosave = True
-        self.last_autosave_timestamp = saved_data["timestamp"]
-        
-        # Update UI to show restore button if available
-        self._update_restore_button_visibility()
-    
-    def _restore_from_autosave(self, data: Dict[str, Any]):
-        """Restore application state from auto-save data."""
-        try:
-            # Restore text content
-            for field, widget in [
-                ("transcript", self.transcript_text),
-                ("soap_note", self.soap_text),
-                ("referral", self.referral_text),
-                ("letter", self.letter_text),
-                ("context", self.context_text),
-                ("chat", self.chat_text)
-            ]:
-                if field in data and data[field] and "content" in data[field]:
-                    widget.delete("1.0", "end")
-                    widget.insert("1.0", data[field]["content"])
-            
-            # Restore recording state if applicable
-            if "recording_state" in data and data["recording_state"]:
-                state = data["recording_state"]
-                self.current_recording_id = state.get("current_recording_id")
-            
-            if hasattr(self, 'status_manager') and self.status_manager:
-                self.status_manager.success("Auto-save restored successfully")
-            else:
-                logging.info("Auto-save restored successfully")
-            
-        except Exception as e:
-            logging.error(f"Failed to restore from auto-save: {e}")
-            if hasattr(self, 'status_manager') and self.status_manager:
-                self.status_manager.error("Failed to restore auto-save")
-            else:
-                logging.error("Failed to restore auto-save")
-    
-    def _update_restore_button_visibility(self):
-        """Update the visibility of the restore button based on auto-save availability."""
-        if hasattr(self, 'restore_btn'):
-            if self.has_available_autosave:
-                self.restore_btn.pack(side=LEFT, padx=(10, 0))
-                # Update tooltip with timestamp
-                if hasattr(self, 'last_autosave_timestamp'):
-                    ToolTip(self.restore_btn, f"Restore from auto-save ({self.last_autosave_timestamp})")
-            else:
-                self.restore_btn.pack_forget()
-    
-    def restore_autosave(self):
-        """Manually restore from auto-save when button is clicked."""
-        if not hasattr(self, 'has_available_autosave') or not self.has_available_autosave:
-            self.status_manager.warning("No auto-save data available")
-            return
-            
-        # Load latest auto-save
-        saved_data = self.autosave_manager.load_latest()
-        if not saved_data or "data" not in saved_data:
-            self.status_manager.error("Failed to load auto-save data")
-            self.has_available_autosave = False
-            self._update_restore_button_visibility()
-            return
-            
-        # Confirm restoration
-        result = messagebox.askyesno(
-            "Restore Auto-Save",
-            f"Restore your work from {saved_data['timestamp']}?\n\n"
-            "This will replace all current content.",
-            parent=self
-        )
-        
-        if result:
-            self._restore_from_autosave(saved_data["data"])
-            # Clear auto-saves after successful restoration
-            self.autosave_manager.clear_saves()
-            self.has_available_autosave = False
-            self._update_restore_button_visibility()
-            self.status_manager.success("Auto-save restored successfully")
+    def _restore_from_autosave(self, data: Dict[str, Any]) -> None:
+        """Restore from auto-save data. Delegates to AutoSaveController."""
+        self.autosave_controller.restore_from_autosave(data)
+
+    def _update_restore_button_visibility(self) -> None:
+        """Update restore button visibility. Delegates to AutoSaveController."""
+        self.autosave_controller.update_restore_button_visibility()
+
+    def restore_autosave(self) -> None:
+        """Manually restore from auto-save. Delegates to AutoSaveController."""
+        self.autosave_controller.restore_autosave()
 
     def bind_shortcuts(self) -> None:
-        # Basic shortcuts
-        self.bind("<Control-n>", lambda _: self.new_session())
-        self.bind("<Control-s>", lambda _: self.save_text())
-        self.bind("<Control-c>", lambda _: self.copy_text())
-        self.bind("<Control-l>", lambda _: self.load_audio_file())
-        self.bind("<Control-z>", lambda _: self.undo_text())
-        self.bind("<Control-y>", lambda _: self.redo_text())
-        self.bind("<Alt-t>", lambda _: self.toggle_theme())
-        self.bind("<F1>", lambda _: self.show_shortcuts())
-        self.bind("<Control-e>", lambda _: self.export_as_pdf())
-        self.bind("<Control-p>", lambda _: self.print_document())
-        self.bind("<Control-slash>", lambda _: self._focus_chat_input())
-        
-        # Recording shortcuts - use bind_all for global access
-        self.bind_all("<F5>", lambda _: self.toggle_soap_recording())
-        self.bind_all("<Control-Shift-S>", lambda _: self.toggle_soap_recording())
-        self.bind_all("<Key-space>", lambda _: self._handle_space_key())
-        self.bind_all("<Escape>", lambda _: self.cancel_soap_recording())
-        
-        # Set focus to main window to ensure shortcuts work
-        self.focus_set()
+        """Bind keyboard shortcuts. Delegates to KeyboardShortcutsController."""
+        self.keyboard_shortcuts_controller.bind_shortcuts()
 
     def _handle_space_key(self) -> None:
-        """Handle space key press - only trigger pause/resume if currently recording."""
-        # Only handle space key for recording pause/resume if we're actually recording
-        if hasattr(self, 'soap_recording') and self.soap_recording:
-            # Check if focus is not on a text widget to avoid interfering with typing
-            focused_widget = self.focus_get()
-            if focused_widget and hasattr(focused_widget, 'winfo_class'):
-                widget_class = focused_widget.winfo_class()
-                # Don't trigger pause if user is typing in a text widget
-                if widget_class in ['Text', 'Entry', 'Combobox']:
-                    return
-            
-            # Safe to trigger pause/resume
-            self.toggle_soap_pause()
+        """Handle space key for pause/resume. Delegates to KeyboardShortcutsController."""
+        self.keyboard_shortcuts_controller.handle_space_key()
 
     # Settings dialog methods are provided by AppSettingsMixin
 
@@ -743,140 +565,12 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.document_generators.create_soap_note()
 
     def refresh_microphones(self) -> None:
-        """Refresh the list of available microphones with simple animation."""
-        # Find the refresh button
-        refresh_btn = self.ui.components.get('refresh_btn')
-        
-        # If animation is already in progress, return
-        if hasattr(self, '_refreshing') and self._refreshing:
-            return
-            
-        # Mark as refreshing
-        self._refreshing = True
-        
-        # Disable the button during refresh
-        if refresh_btn:
-            refresh_btn.config(state=tk.DISABLED)
-            
-        # Set wait cursor (use watch which is cross-platform)
-        try:
-            self.config(cursor="watch")
-        except tk.TclError:
-            # Some platforms may not support cursor changes
-            pass
-        
-        # Define the animation frames
-        animation_chars = ["⟳", "⟲", "↻", "↺", "⟳"]
-        
-        def animate_refresh(frame=0):
-            """Simple animation function to rotate the refresh button text."""
-            if frame < len(animation_chars) * 2:  # Repeat animation twice
-                if refresh_btn:
-                    refresh_btn.config(text=animation_chars[frame % len(animation_chars)])
-                self.after(100, lambda: animate_refresh(frame + 1))
-            else:
-                # Animation complete, perform actual refresh
-                logging.debug("Microphone refresh animation complete, starting refresh")
-                do_refresh()
-                
-        def do_refresh():
-            """Perform the actual microphone refresh."""
-            try:
-                # Get available microphones using common method
-                from utils.utils import get_valid_microphones
-                from settings.settings import SETTINGS, save_settings
-                
-                mic_names = get_valid_microphones()
-                
-                # Clear existing items
-                self.mic_combobox['values'] = []
-                
-                # Add device names to dropdown
-                if mic_names:
-                    self.mic_combobox['values'] = mic_names
-                    
-                    # Try to select previously saved microphone or select first one
-                    saved_mic = SETTINGS.get("selected_microphone", "")
-                    if saved_mic and saved_mic in mic_names:
-                        self.mic_combobox.set(saved_mic)
-                    else:
-                        # Select first device and save it
-                        self.mic_combobox.current(0)
-                        SETTINGS["selected_microphone"] = self.mic_combobox.get()
-                        save_settings(SETTINGS)
-                else:
-                    self.mic_combobox['values'] = ["No microphones found"]
-                    self.mic_combobox.current(0)
-                    self.update_status("No microphones detected", "warning")
-                    
-            except (OSError, RuntimeError, tk.TclError) as e:
-                logging.error(f"Error refreshing microphones: {e}", exc_info=True)
-                self.update_status("Error detecting microphones", "error")
-            finally:
-                # Reset animation state
-                self._refreshing = False
-                logging.debug("Resetting microphone refresh state and cursor")
-                
-                # Reset button state and cursor
-                if refresh_btn:
-                    refresh_btn.config(text="⟳", state=tk.NORMAL)
-                
-                # Reset cursor - try multiple approaches
-                cursor_reset = False
-                try:
-                    self.config(cursor="")
-                    cursor_reset = True
-                    logging.debug("Cursor reset to default successfully")
-                except Exception as e:
-                    logging.debug(f"Failed to reset cursor to default: {e}")
-                    try:
-                        self.config(cursor="arrow")
-                        cursor_reset = True
-                        logging.debug("Cursor reset to arrow successfully")
-                    except Exception as e2:
-                        logging.debug(f"Failed to reset cursor to arrow: {e2}")
-                        try:
-                            self.config(cursor="left_ptr")
-                            cursor_reset = True
-                            logging.debug("Cursor reset to left_ptr successfully")
-                        except Exception as e3:
-                            logging.debug(f"Failed to reset cursor to left_ptr: {e3}")
-                
-                if not cursor_reset:
-                    logging.warning("Could not reset cursor after microphone refresh")
+        """Refresh microphone list. Delegates to MicrophoneController."""
+        self.microphone_controller.refresh_microphones()
 
-                # Force cursor update by updating the window
-                try:
-                    self.update_idletasks()
-                except tk.TclError:
-                    pass  # Window may be closing
-        
-        # Start the animation
-        animate_refresh()
-        
-        # Add a fallback cursor reset in case something goes wrong
-        self.after(3000, self._reset_cursor_fallback)
-    
-    def _reset_cursor_fallback(self):
-        """Fallback method to reset cursor if it gets stuck."""
-        try:
-            if hasattr(self, '_refreshing') and self._refreshing:
-                logging.warning("Cursor reset fallback triggered - microphone refresh may have failed")
-                self._refreshing = False
-                # Try to reset cursor
-                try:
-                    self.config(cursor="")
-                except tk.TclError:
-                    try:
-                        self.config(cursor="arrow")
-                    except tk.TclError:
-                        pass  # Cursor change not supported
-                # Re-enable refresh button
-                refresh_btn = self.ui.components.get('refresh_btn')
-                if refresh_btn:
-                    refresh_btn.config(text="⟳", state=tk.NORMAL)
-        except Exception as e:
-            logging.error(f"Error in cursor reset fallback: {e}")
+    def _reset_cursor_fallback(self) -> None:
+        """Fallback cursor reset. Delegates to MicrophoneController."""
+        self.microphone_controller.reset_cursor_fallback()
 
 
     def toggle_soap_recording(self) -> None:
@@ -1084,102 +778,12 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.text_processing_controller.redo_text()
 
     def on_closing(self) -> None:
-        """Clean up resources and save settings before closing the application."""
-        # Save window dimensions before closing
-        self.save_window_dimensions()
-        
-        try:
-            # Explicitly stop the background listener if it's running (e.g., SOAP recording)
-            if hasattr(self, 'soap_stop_listening_function') and self.soap_stop_listening_function:
-                logging.info("Stopping SOAP recording before exit...")
-                try:
-                    self.soap_stop_listening_function(True)
-                    self.soap_stop_listening_function = None  # Prevent double calls
-                    # Give the audio thread a moment to release resources
-                    time.sleep(0.2)
-                except Exception as e:
-                    logging.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
-                    
-            # Stop periodic analysis if running
-            if hasattr(self, 'periodic_analyzer') and self.periodic_analyzer:
-                logging.info("Stopping periodic analyzer...")
-                try:
-                    self._stop_periodic_analysis()
-                except Exception as e:
-                    logging.error(f"Error stopping periodic analyzer: {str(e)}", exc_info=True)
-                    
-            # Stop any active listening in the audio handler
-            if hasattr(self, 'audio_handler'):
-                logging.info("Ensuring audio handler is properly closed...")
-                try:
-                    self.audio_handler.cleanup_resources()
-                except Exception as e:
-                    logging.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
-            
-            # Shutdown processing queue if it exists
-            if hasattr(self, 'processing_queue') and self.processing_queue:
-                logging.info("Shutting down processing queue...")
-                try:
-                    self.processing_queue.shutdown(wait=True)
-                except Exception as e:
-                    logging.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
-            
-            # Cleanup notification manager if it exists
-            if hasattr(self, 'notification_manager') and self.notification_manager:
-                logging.info("Cleaning up notification manager...")
-                try:
-                    self.notification_manager.cleanup()
-                except Exception as e:
-                    logging.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
-            
-            # Shutdown MCP servers
-            from ai.mcp.mcp_manager import mcp_manager
-            logging.info("Shutting down MCP servers...")
-            try:
-                mcp_manager.stop_all()
-            except Exception as e:
-                logging.error(f"Error shutting down MCP servers: {str(e)}", exc_info=True)
-            
-            # Shutdown all executor pools properly - wait for tasks to complete
-            logging.info("Shutting down executor pools...")
-            for executor_name in ['io_executor', 'cpu_executor', 'executor']:
-                if hasattr(self, executor_name) and getattr(self, executor_name) is not None:
-                    try:
-                        executor = getattr(self, executor_name)
-                        logging.info(f"Shutting down {executor_name}")
-                        # Use wait=True to ensure all tasks complete before closing
-                        executor.shutdown(wait=True, cancel_futures=True)
-                    except TypeError:
-                        # Handle older Python versions without cancel_futures parameter
-                        executor.shutdown(wait=True)
-                    except Exception as e:
-                        logging.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
-                        
-            # Final logging message before closing
-            logging.info("Application shutdown complete")
-            
-        except Exception as e:
-            logging.error(f"Error during application cleanup: {str(e)}", exc_info=True)
-        
-        # Destroy the window
-        self.destroy()
+        """Clean up resources before closing. Delegates to WindowStateController."""
+        self.window_state_controller.on_closing()
 
-    def on_tab_changed(self, _) -> None:
-        current = self.notebook.index(self.notebook.select())
-        if current == 0:
-            self.active_text_widget = self.transcript_text
-        elif current == 1:
-            self.active_text_widget = self.soap_text
-        elif current == 2:
-            self.active_text_widget = self.referral_text
-        elif current == 3:
-            self.active_text_widget = self.letter_text
-        elif current == 4:
-            self.active_text_widget = self.chat_text
-        elif current == 5:
-            self.active_text_widget = self.context_text
-        else:
-            self.active_text_widget = self.transcript_text
+    def on_tab_changed(self, event=None) -> None:
+        """Handle tab changes. Delegates to WindowStateController."""
+        self.window_state_controller.on_tab_changed(event)
             
         # Update chat UI context indicator
         if hasattr(self, 'chat_ui') and self.chat_ui:
@@ -1363,126 +967,32 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         return  # Exit early - everything handled by manager
         
     def view_logs(self) -> None:
-        """Open the logs directory in file explorer or view log contents"""
-        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-        log_file = os.path.join(log_dir, "medical_dictation.log")
-        
-        if not os.path.exists(log_dir):
-            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
-            return
-            
-        # Log that logs are being viewed
-        logging.info("User accessed logs directory")
+        """View logs via popup menu. Delegates to LogsViewerController."""
+        self.logs_viewer_controller.view_logs()
 
-        # Create a dropdown menu for log actions
-        log_menu = tk.Menu(self, tearoff=0)
-        log_menu.add_command(label="Open Logs Folder", command=lambda: self._open_logs_folder(log_dir))
-        log_menu.add_command(label="View Log Contents", command=lambda: self._show_log_contents(log_file))
-        
-        # Get the position of the mouse
-        try:
-            x = self.winfo_pointerx()
-            y = self.winfo_pointery()
-            log_menu.tk_popup(x, y)
-        finally:
-            # Make sure to release the grab
-            log_menu.grab_release()
-    
-    def _show_log_contents(self, log_file):
-        """Show the contents of the log file in a new window"""
-        try:
-            if os.path.exists(log_file):
-                # Create a new top-level window
-                log_window = tk.Toplevel(self)
-                log_window.title("Log Contents")
-                log_window.geometry("800x600")
-                
-                # Create text widget with scrollbar
-                frame = ttk.Frame(log_window)
-                frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                
-                text_widget = tk.Text(frame, wrap=tk.WORD)
-                scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=text_widget.yview)
-                text_widget.configure(yscrollcommand=scrollbar.set)
-                
-                text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-                
-                # Read and display log contents
-                with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    text_widget.insert('1.0', content)
-                    text_widget.config(state=tk.DISABLED)  # Make read-only
-                
-                # Add close button
-                close_btn = ttk.Button(log_window, text="Close", command=log_window.destroy)
-                close_btn.pack(pady=5)
-            else:
-                messagebox.showwarning("File Not Found", "Log file not found.")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to open log file: {str(e)}")
-    
-    def _open_logs_folder(self, log_dir):
-        """Open the logs directory using file explorer"""
-        try:
-            from utils.validation import open_file_or_folder_safely
-            success, error = open_file_or_folder_safely(log_dir, operation="open")
-            if not success:
-                messagebox.showerror("Error", f"Could not open logs directory: {error}")
-                logging.error(f"Error opening logs directory: {error}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
-            logging.error(f"Error opening logs directory: {str(e)}")
-    
-    def _open_logs_folder_menu(self):
-        """Wrapper method for menu to open logs folder"""
-        from managers.data_folder_manager import data_folder_manager
-        log_dir = str(data_folder_manager.logs_folder)
-        if not os.path.exists(log_dir):
-            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
-            return
-        logging.info("User accessed logs directory from menu")
-        self._open_logs_folder(log_dir)
-    
-    def _show_log_contents_menu(self):
-        """Wrapper method for menu to show log contents"""
-        from managers.data_folder_manager import data_folder_manager
-        log_dir = str(data_folder_manager.logs_folder)
-        log_file = os.path.join(log_dir, "medical_dictation.log")
-        if not os.path.exists(log_dir):
-            messagebox.showinfo("Logs", "The logs directory does not exist yet. It will be created when logs are generated.")
-            return
-        logging.info("User viewed log contents from menu")
-        self._show_log_contents(log_file)
+    def _show_log_contents(self, log_file: str) -> None:
+        """Show log contents in a window. Delegates to LogsViewerController."""
+        self.logs_viewer_controller.show_log_contents(log_file)
 
-    def on_window_configure(self, event):
-        """
-        Handle window configuration events.
-        Only save dimensions when the window size actually changes and after resizing stops.
-        """
-        # Skip if this is not the main window configure event or if size hasn't changed
-        if event.widget != self or (self.last_width == self.winfo_width() and self.last_height == self.winfo_height()):
-            return
-            
-        # Update last known dimensions
-        self.last_width = self.winfo_width()
-        self.last_height = self.winfo_height()
-        
-        # Cancel previous timer if it exists
-        if self.resize_timer is not None:
-            self.after_cancel(self.resize_timer)
-            
-        # Set a new timer to save settings after resizing stops (500ms delay)
-        self.resize_timer = self.after(500, self.save_window_dimensions)
-    
-    def save_window_dimensions(self):
-        """Save the current window dimensions to settings."""
-        from settings.settings import SETTINGS, save_settings
-        SETTINGS["window_width"] = self.last_width
-        SETTINGS["window_height"] = self.last_height
-        save_settings(SETTINGS)
-        # No status message needed for this automatic action
-        self.resize_timer = None  # Clear the timer reference
+    def _open_logs_folder(self, log_dir: str) -> None:
+        """Open logs folder in file explorer. Delegates to LogsViewerController."""
+        self.logs_viewer_controller.open_logs_folder(log_dir)
+
+    def _open_logs_folder_menu(self) -> None:
+        """Menu wrapper for opening logs folder. Delegates to LogsViewerController."""
+        self.logs_viewer_controller.open_logs_folder_menu()
+
+    def _show_log_contents_menu(self) -> None:
+        """Menu wrapper for showing log contents. Delegates to LogsViewerController."""
+        self.logs_viewer_controller.show_log_contents_menu()
+
+    def on_window_configure(self, event) -> None:
+        """Handle window configure events. Delegates to WindowStateController."""
+        self.window_state_controller.on_window_configure(event)
+
+    def save_window_dimensions(self) -> None:
+        """Save window dimensions. Delegates to WindowStateController."""
+        self.window_state_controller.save_window_dimensions()
 
     # Chat-related methods are provided by AppChatMixin
 
@@ -1491,133 +1001,25 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         # Sound disabled - just log the event
         logging.debug(f"Recording {'started' if start else 'stopped'}")
     
-    def _queue_recording_for_processing(self, recording_data: dict):
-        """Queue recording for background processing."""
-        try:
-            # Get patient name - try to extract from context or use default
-            context_text = self.context_text.get("1.0", tk.END).strip()
-            patient_name = self._extract_patient_name(context_text) or "Patient"
-            
-            # Save to database with 'pending' status
-            recording_id = self.db.add_recording(
-                filename=f"queued_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
-                processing_status='pending',
-                patient_name=patient_name
-            )
-            
-            # Get audio data from recording_data if available, otherwise use chunks
-            audio_to_process = None
-            if recording_data and recording_data.get('audio'):
-                audio_to_process = recording_data['audio']
-            elif self.combined_soap_chunks:
-                audio_to_process = self.combined_soap_chunks
-            else:
-                raise ValueError("No audio data available for processing")
-            
-            # Prepare task data
-            task_data = {
-                'recording_id': recording_id,
-                'audio_data': audio_to_process,
-                'patient_name': patient_name,
-                'context': context_text,
-                'process_options': {
-                    'generate_soap': True,
-                    'generate_referral': False,
-                    'generate_letter': False
-                }
-            }
-            
-            # Add to processing queue
-            task_id = self.processing_queue.add_recording(task_data)
-            
-            # Update status
-            self.status_manager.info(f"Recording for {patient_name} added to queue")
-            
-            logging.info(f"Queued recording {recording_id} as task {task_id}")
-            
-        except Exception as e:
-            logging.error(f"Failed to queue recording: {str(e)}", exc_info=True)
-            self.status_manager.error("Failed to queue recording for processing")
-            # Fall back to immediate processing
-            self.process_soap_recording()
-    
-    def _reset_ui_for_next_patient(self):
-        """Reset UI for next patient recording."""
-        # DON'T clear content here - preserve context and previous recording data
-        # Content will only be cleared when starting a new recording
-        
-        # Reset recording state
-        self.soap_recording = False
-        
-        # Reset UI buttons
-        self._update_recording_ui_state(recording=False, caller="reset_for_next")
-        
-        # Focus on transcript tab
-        self.notebook.select(0)
-        
-        # Update status
-        self.status_manager.success("Ready for next patient")
-    
+    def _queue_recording_for_processing(self, recording_data: dict) -> None:
+        """Queue recording for processing. Delegates to QueueProcessingController."""
+        self.queue_processing_controller.queue_recording_for_processing(recording_data)
+
+    def _reset_ui_for_next_patient(self) -> None:
+        """Reset UI for next patient. Delegates to QueueProcessingController."""
+        self.queue_processing_controller.reset_ui_for_next_patient()
+
     def _extract_patient_name(self, context_text: str) -> Optional[str]:
-        """Try to extract patient name from context."""
-        # Simple extraction - look for "Patient:" or "Name:" in context
-        lines = context_text.split('\n')
-        for line in lines:
-            if line.startswith(('Patient:', 'Name:', 'Patient Name:')):
-                name = line.split(':', 1)[1].strip()
-                if name:
-                    return name
-        return None
-    
-    def toggle_quick_continue_mode(self):
-        """Toggle the quick continue mode setting."""
-        new_value = self.quick_continue_var.get()
-        SETTINGS["quick_continue_mode"] = new_value
-        from settings.settings import save_settings
-        save_settings(SETTINGS)
-        
-        # Update status
-        if new_value:
-            self.status_manager.success("Quick Continue Mode enabled - recordings will process in background")
-        else:
-            self.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
-        
-        logging.info(f"Quick Continue Mode set to: {new_value}")
-    
-    def reprocess_failed_recordings(self, recording_ids: List[int]):
-        """Reprocess failed recordings by re-adding them to the queue.
-        
-        Args:
-            recording_ids: List of recording IDs to reprocess
-        """
-        try:
-            if not hasattr(self, 'processing_queue') or not self.processing_queue:
-                self.status_manager.error("Processing queue not available")
-                return
-            
-            # Reprocess each recording
-            success_count = 0
-            failed_count = 0
-            
-            for rec_id in recording_ids:
-                task_id = self.processing_queue.reprocess_failed_recording(rec_id)
-                if task_id:
-                    success_count += 1
-                    logging.info(f"Recording {rec_id} queued for reprocessing as task {task_id}")
-                else:
-                    failed_count += 1
-                    logging.error(f"Failed to reprocess recording {rec_id}")
-            
-            # Show status
-            if success_count > 0:
-                self.status_manager.success(f"Queued {success_count} recording{'s' if success_count > 1 else ''} for reprocessing")
-            
-            if failed_count > 0:
-                self.status_manager.warning(f"Failed to reprocess {failed_count} recording{'s' if failed_count > 1 else ''}")
-                
-        except Exception as e:
-            logging.error(f"Error reprocessing recordings: {str(e)}", exc_info=True)
-            self.status_manager.error(f"Failed to reprocess recordings: {str(e)}")
+        """Extract patient name from context. Delegates to QueueProcessingController."""
+        return self.queue_processing_controller.extract_patient_name(context_text)
+
+    def toggle_quick_continue_mode(self) -> None:
+        """Toggle quick continue mode. Delegates to QueueProcessingController."""
+        self.queue_processing_controller.toggle_quick_continue_mode()
+
+    def reprocess_failed_recordings(self, recording_ids: List[int]) -> None:
+        """Reprocess failed recordings. Delegates to QueueProcessingController."""
+        self.queue_processing_controller.reprocess_failed_recordings(recording_ids)
     
     def _start_periodic_analysis(self):
         """Start periodic analysis. Delegates to PeriodicAnalysisController."""

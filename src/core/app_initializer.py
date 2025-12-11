@@ -49,6 +49,12 @@ from core.text_processing_controller import TextProcessingController
 from core.document_export_controller import DocumentExportController
 from core.provider_config_controller import ProviderConfigController
 from core.periodic_analysis_controller import PeriodicAnalysisController
+from core.autosave_controller import AutoSaveController
+from core.window_state_controller import WindowStateController
+from core.keyboard_shortcuts_controller import KeyboardShortcutsController
+from core.logs_viewer_controller import LogsViewerController
+from core.microphone_controller import MicrophoneController
+from core.queue_processing_controller import QueueProcessingController
 
 
 class AppInitializer:
@@ -295,6 +301,24 @@ class AppInitializer:
 
         # Initialize periodic analysis controller
         self.app.periodic_analysis_controller = PeriodicAnalysisController(self.app)
+
+        # Initialize autosave controller
+        self.app.autosave_controller = AutoSaveController(self.app)
+
+        # Initialize window state controller
+        self.app.window_state_controller = WindowStateController(self.app)
+
+        # Initialize keyboard shortcuts controller
+        self.app.keyboard_shortcuts_controller = KeyboardShortcutsController(self.app)
+
+        # Initialize logs viewer controller
+        self.app.logs_viewer_controller = LogsViewerController(self.app)
+
+        # Initialize microphone controller
+        self.app.microphone_controller = MicrophoneController(self.app)
+
+        # Initialize queue processing controller
+        self.app.queue_processing_controller = QueueProcessingController(self.app)
 
         self.app.ai_processor = AIProcessor(openai.api_key)
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
