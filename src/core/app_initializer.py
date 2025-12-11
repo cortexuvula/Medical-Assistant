@@ -47,6 +47,7 @@ from core.recording_controller import RecordingController
 from core.ui_state_manager import UIStateManager
 from core.text_processing_controller import TextProcessingController
 from core.document_export_controller import DocumentExportController
+from core.provider_config_controller import ProviderConfigController
 
 
 class AppInitializer:
@@ -287,6 +288,9 @@ class AppInitializer:
 
         # Initialize document export controller
         self.app.document_export_controller = DocumentExportController(self.app)
+
+        # Initialize provider config controller
+        self.app.provider_config_controller = ProviderConfigController(self.app)
 
         self.app.ai_processor = AIProcessor(openai.api_key)
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
