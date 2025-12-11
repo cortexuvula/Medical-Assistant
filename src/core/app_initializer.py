@@ -78,6 +78,7 @@ class AppInitializer:
         self._initialize_database()
         self._create_ui()
         self._initialize_managers()
+        self._finalize_ui()  # Phase 2: UI setup that requires controllers
         self._setup_api_dependent_features()
         self._finalize_setup()
         
@@ -247,12 +248,16 @@ class AppInitializer:
         self.app.db.create_queue_tables()
         
     def _create_ui(self):
-        """Create the user interface components."""
+        """Create the user interface components (Phase 1 - widgets only).
+
+        Note: This creates widgets but does NOT call initialization methods
+        that require controllers. Those are called in _finalize_ui().
+        """
         # Create workflow-oriented UI (only UI mode supported)
         self.app.ui = WorkflowUI(self.app)
         self.app.create_menu()
         self.app.create_widgets()
-        self.app.bind_shortcuts()
+        # Note: bind_shortcuts() moved to _finalize_ui() - needs KeyboardShortcutsController
 
         # Initialize status manager
         self.app.status_manager = StatusManager(
@@ -262,11 +267,26 @@ class AppInitializer:
             self.app.provider_indicator,
             self.app.progress_bar
         )
-        
+
         # Set queue status label if available
         queue_label = self.app.ui.components.get('queue_status_label')
         if queue_label:
             self.app.status_manager.set_queue_status_label(queue_label)
+
+    def _finalize_ui(self):
+        """Complete UI setup after controllers are initialized (Phase 2).
+
+        This method is called after _initialize_managers() so that
+        these methods can safely delegate to their controllers.
+        """
+        # Initialize provider selections (delegates to ProviderConfigController)
+        self.app._initialize_provider_selections()
+
+        # Initialize autosave (delegates to AutoSaveController)
+        self.app._initialize_autosave()
+
+        # Bind keyboard shortcuts (delegates to KeyboardShortcutsController)
+        self.app.bind_shortcuts()
         
     def _initialize_managers(self):
         """Initialize all the manager classes."""
