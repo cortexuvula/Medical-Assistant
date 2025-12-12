@@ -834,24 +834,26 @@ class ProcessingQueue:
             logging.error(f"Error generating referral: {str(e)}")
             return None
     
-    def _generate_letter(self, content: str) -> Optional[str]:
+    def _generate_letter(self, content: str, recipient_type: str = "other", specs: str = "") -> Optional[str]:
         """Generate letter from content.
-        
+
         Args:
             content: The source content (SOAP note or transcript)
-            
+            recipient_type: Type of recipient (insurance, employer, specialist, etc.)
+            specs: Additional specifications for the letter
+
         Returns:
             Generated letter or None if failed
         """
         try:
             from ai.ai import create_letter_with_ai
             from settings.settings import SETTINGS
-            
+
             provider = SETTINGS.get("ai_provider", "openai")
             model = SETTINGS.get(f"{provider}_model", "gpt-4")
-            
-            # Generate letter
-            letter = create_letter_with_ai(content)
+
+            # Generate letter with recipient type and specs
+            letter = create_letter_with_ai(content, recipient_type, specs)
             return letter
         except Exception as e:
             logging.error(f"Error generating letter: {str(e)}")

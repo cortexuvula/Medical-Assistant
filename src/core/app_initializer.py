@@ -382,16 +382,22 @@ class AppInitializer:
         self.app.status_timer = None
     
     def _on_queue_status_update(self, task_id: str, status: str, queue_size: int):
-        """Handle queue status updates."""
+        """Handle queue status updates.
+
+        Note: This callback is called from background threads, so all UI updates
+        must be scheduled on the main thread using app.after().
+        """
         logging.debug(f"Queue status update: task={task_id}, status={status}, size={queue_size}")
-        
-        # Update queue status display
+
+        # Get stats synchronously (thread-safe operation)
         stats = self.app.processing_queue.get_status()
-        self.app.status_manager.update_queue_status(
+
+        # Schedule UI update on main thread (Tkinter is not thread-safe)
+        self.app.after(0, lambda: self.app.status_manager.update_queue_status(
             active=stats["active_tasks"],
             completed=stats["completed_tasks"],
             failed=stats["failed_tasks"]
-        )
+        ))
     
     def _on_queue_completion(self, task_id: str, recording_data: dict, result: dict):
         """Handle queue processing completion."""
@@ -428,20 +434,20 @@ class AppInitializer:
                 processing_time=result.get('processing_time', 0)
             )
         
-        # Update queue status
-        self.app.status_manager.increment_queue_completed()
-    
+        # Update queue status - MUST be scheduled on main thread (Tkinter not thread-safe)
+        self.app.after(0, self.app.status_manager.increment_queue_completed)
+
     def _on_queue_error(self, task_id: str, recording_data: dict, error_msg: str):
         """Handle queue processing errors."""
         logging.error(f"Processing failed for task {task_id}: {error_msg}")
-        
+
         # Update database
         self.app.db.update_recording(
             recording_data['recording_id'],
             processing_status='failed',
             error_message=error_msg
         )
-        
+
         # Show notification
         self.app.notification_manager.show_error(
             patient_name=recording_data.get('patient_name', 'Unknown'),
@@ -449,9 +455,9 @@ class AppInitializer:
             recording_id=recording_data['recording_id'],
             task_id=task_id
         )
-        
-        # Update queue status
-        self.app.status_manager.increment_queue_failed()
+
+        # Update queue status - MUST be scheduled on main thread (Tkinter not thread-safe)
+        self.app.after(0, self.app.status_manager.increment_queue_failed)
     
     def _update_ui_with_results(self, recording_id: int, transcript: str, soap_note: str, patient_name: str):
         """Update UI tabs with processed results from background queue.
