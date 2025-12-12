@@ -31,8 +31,8 @@ class BatchProcessingDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Options")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 700)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 700)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.minsize(600, 650)
         
