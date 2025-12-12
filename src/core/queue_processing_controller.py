@@ -47,21 +47,16 @@ class QueueProcessingController:
             recording_data: Dictionary containing audio and metadata
         """
         try:
-            logging.info("DEBUG: queue_recording_for_processing started")
             # Get patient name - try to extract from context or use default
-            logging.info("DEBUG: Getting context text")
             context_text = self.app.context_text.get("1.0", tk.END).strip()
-            logging.info("DEBUG: Extracting patient name")
             patient_name = self.extract_patient_name(context_text) or "Patient"
 
-            logging.info("DEBUG: Adding recording to database")
             # Save to database with 'pending' status
             recording_id = self.app.db.add_recording(
                 filename=f"queued_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
                 processing_status='pending',
                 patient_name=patient_name
             )
-            logging.info(f"DEBUG: Database add_recording returned ID: {recording_id}")
 
             # Get audio data from recording_data if available, otherwise use chunks
             audio_to_process = None
@@ -73,7 +68,6 @@ class QueueProcessingController:
                 raise ValueError("No audio data available for processing")
 
             # Prepare task data
-            logging.info("DEBUG: Preparing task data")
             task_data = {
                 'recording_id': recording_id,
                 'audio_data': audio_to_process,
@@ -87,14 +81,10 @@ class QueueProcessingController:
             }
 
             # Add to processing queue
-            logging.info("DEBUG: About to call processing_queue.add_recording")
             task_id = self.app.processing_queue.add_recording(task_data)
-            logging.info(f"DEBUG: processing_queue.add_recording returned task_id: {task_id}")
 
             # Update status
-            logging.info("DEBUG: About to call status_manager.info")
             self.app.status_manager.info(f"Recording for {patient_name} added to queue")
-            logging.info("DEBUG: status_manager.info completed")
 
             logging.info(f"Queued recording {recording_id} as task {task_id}")
 
