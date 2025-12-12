@@ -46,20 +46,27 @@ class AudioData:
         return self.frame_data
 
 class AudioHandler:
-    """Class to handle all audio-related functionality including recording, transcription, and file operations."""
-    
+    """Class to handle all audio-related functionality including recording, transcription, and file operations.
+
+    Resource Management:
+        Audio streams are tracked both at class level (for global cleanup) and
+        instance level (for per-instance cleanup). This ensures proper resource
+        release even when instances are garbage collected.
+    """
+
     # Get configuration
     _config = get_config()
-    
+
     # Default audio chunk duration in seconds
     DEFAULT_PHRASE_TIME_LIMIT = _config.transcription.chunk_duration_seconds
-    
-    # Track active listening sessions for proper cleanup
+
+    # Track active listening sessions for proper cleanup (class level)
     _active_streams = {}  # Class variable to track all active streams by purpose
-    
+    _streams_lock = threading.Lock()  # Lock for thread-safe stream management
+
     def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
-        
+
         Args:
             elevenlabs_api_key: API key for ElevenLabs
             deepgram_api_key: API key for Deepgram
@@ -70,16 +77,16 @@ class AudioHandler:
         self.deepgram_api_key = deepgram_api_key
         self.groq_api_key = groq_api_key
         self.recognition_language = recognition_language
-        
+
         # Initialize STT providers
         self.elevenlabs_provider = ElevenLabsProvider(elevenlabs_api_key, recognition_language)
         self.deepgram_provider = DeepgramProvider(deepgram_api_key, recognition_language)
         self.groq_provider = GroqProvider(groq_api_key, recognition_language)
         self.whisper_provider = WhisperProvider("", recognition_language)
-        
+
         # Initialize fallback callback to None
         self.fallback_callback = None
-        
+
         # Default audio parameters for recording
         self.sample_rate = DEFAULT_SAMPLE_RATE  # Hz - Higher sample rate for better quality
         self.channels = DEFAULT_CHANNELS  # Mono
@@ -89,16 +96,19 @@ class AudioHandler:
         self.recorded_frames = []
         self.callback_function = None
         self.listening_device = None
-        
+
         # Silence detection threshold - can be adjusted dynamically
         self.silence_threshold = 0.001
-        
+
         # Special SOAP mode flag
         self.soap_mode = False
-        
+
         # Cache for prefix audio to avoid repeated file loading
         self._prefix_audio_cache = None
         self._prefix_audio_checked = False
+
+        # Track streams owned by this instance for proper cleanup
+        self._instance_streams: set = set()  # Set of stream purposes owned by this instance
         
     @property
     def whisper_available(self) -> bool:
@@ -166,41 +176,63 @@ class AudioHandler:
         self.fallback_callback = callback
         
     def cleanup_resources(self) -> None:
-        """Cleanup all audio resources before the application closes.
-        
-        This method ensures all audio streams are properly closed and resources
-        are released to prevent issues on application restart.
+        """Cleanup all audio resources owned by this instance.
+
+        This method ensures all audio streams owned by this instance are properly
+        closed and resources are released to prevent issues on application restart.
+
+        Thread-safe: Uses class-level lock to prevent race conditions.
         """
         logging.debug("AudioHandler: Cleaning up audio resources...")
-        
-        # Clean up any active streams from the class list
+
         streams_closed = 0
-        stream_purposes = list(AudioHandler._active_streams.keys())
-        for purpose in stream_purposes:
-            try:
-                stream_info = AudioHandler._active_streams.pop(purpose, None)
-                if stream_info and 'stream' in stream_info:
-                    stream = stream_info['stream']
-                    stream.stop()
-                    stream.close()
-                    streams_closed += 1
-                    # Give it a tiny bit of time to fully release resources
-                    time.sleep(0.1)
-            except Exception as e:
-                logging.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}", exc_info=True)
-        
-        # Terminate sounddevice streams if any are active
+
+        with AudioHandler._streams_lock:
+            # Clean up streams owned by THIS instance
+            for purpose in list(self._instance_streams):
+                try:
+                    stream_info = AudioHandler._active_streams.pop(purpose, None)
+                    if stream_info and 'stream' in stream_info:
+                        stream = stream_info['stream']
+                        try:
+                            stream.stop()
+                            stream.close()
+                            streams_closed += 1
+                        except Exception as e:
+                            logging.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}")
+                except Exception as e:
+                    logging.error(f"AudioHandler: Error cleaning up stream {purpose}: {str(e)}", exc_info=True)
+
+            # Clear instance stream tracking
+            self._instance_streams.clear()
+
+        # Terminate sounddevice streams if any are active (outside lock to avoid deadlock)
         try:
-            sd.stop()
+            if SOUNDDEVICE_AVAILABLE:
+                sd.stop()
         except Exception as e:
             logging.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
-            
+
         # Reset any internal state variables that might persist
         self.soap_mode = False
-        
+        self.listening_device = None
+        self.callback_function = None
+
         # Single summary log
         if streams_closed > 0:
             logging.info(f"AudioHandler: Cleanup complete, {streams_closed} stream(s) closed")
+
+    def __del__(self):
+        """Ensure cleanup on garbage collection.
+
+        This is a safety net - explicit cleanup_resources() is preferred.
+        """
+        try:
+            # Only cleanup if we have streams to clean
+            if hasattr(self, '_instance_streams') and self._instance_streams:
+                self.cleanup_resources()
+        except Exception:
+            pass  # Don't raise in __del__
     
     def reset_prefix_audio_cache(self) -> None:
         """Reset the prefix audio cache to force reloading.
@@ -577,18 +609,21 @@ class AudioHandler:
         # Log the actual phrase time limit being used
         logging.info(f"Starting background listening with phrase_time_limit: {phrase_time_limit} seconds")
         
-        # Check if a stream with this purpose already exists
-        if stream_purpose in self._active_streams:
-            logging.warning(f"Stream with purpose '{stream_purpose}' already exists. Stopping existing stream.")
-            # Get the existing stream info
-            existing_info = self._active_streams.get(stream_purpose)
-            if existing_info and 'stream' in existing_info:
-                try:
-                    existing_info['stream'].stop()
-                    existing_info['stream'].close()
-                except Exception as e:
-                    logging.error(f"Error stopping existing stream: {e}")
-            self._active_streams.pop(stream_purpose, None)
+        # Check if a stream with this purpose already exists (thread-safe)
+        with AudioHandler._streams_lock:
+            if stream_purpose in AudioHandler._active_streams:
+                logging.warning(f"Stream with purpose '{stream_purpose}' already exists. Stopping existing stream.")
+                # Get the existing stream info
+                existing_info = AudioHandler._active_streams.get(stream_purpose)
+                if existing_info and 'stream' in existing_info:
+                    try:
+                        existing_info['stream'].stop()
+                        existing_info['stream'].close()
+                    except Exception as e:
+                        logging.error(f"Error stopping existing stream: {e}")
+                AudioHandler._active_streams.pop(stream_purpose, None)
+                # Also remove from instance tracking if present
+                self._instance_streams.discard(stream_purpose)
         
         try:
             logging.info(f"Attempting to start background listening for device: {mic_name}")
@@ -759,22 +794,25 @@ class AudioHandler:
 
     def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default") -> Callable:
         """Create the stop function for the audio stream.
-        
+
         Args:
             stream: The sounddevice InputStream.
             flush_callback: Optional callback to flush any remaining audio data.
             stream_purpose: Purpose identifier for this stream
-            
+
         Returns:
             Function to stop the stream.
         """
+        # Capture reference to self for use in closure
+        handler_instance = self
+
         def stop_stream(wait_for_stop: bool = False) -> None:
             if stream:
                 try:
                     # First, flush any accumulated audio if callback provided
                     if flush_callback:
                         flush_callback()
-                    
+
                     stream.stop()
                     stream.close()
                     logging.info("sounddevice InputStream stopped and closed")
@@ -782,13 +820,16 @@ class AudioHandler:
                     logging.error(f"Error stopping sounddevice stream: {e}", exc_info=True)
                 finally:
                     # Clear references
-                    self.listening_device = None
-                    self.callback_function = None
-                    
-                    # Remove from active streams by purpose
-                    if stream_purpose in self._active_streams:
-                        self._active_streams.pop(stream_purpose, None)
-        
+                    handler_instance.listening_device = None
+                    handler_instance.callback_function = None
+
+                    # Remove from active streams by purpose (thread-safe)
+                    with AudioHandler._streams_lock:
+                        if stream_purpose in AudioHandler._active_streams:
+                            AudioHandler._active_streams.pop(stream_purpose, None)
+                        # Remove from instance tracking
+                        handler_instance._instance_streams.discard(stream_purpose)
+
         return stop_stream
 
     def _create_audio_callback(self, phrase_time_limit: int) -> Tuple[Callable, Callable]:
@@ -927,16 +968,19 @@ class AudioHandler:
             stream.start()
             logging.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
 
-            # Add to active streams with purpose
-            self._active_streams[stream_purpose] = {
-                'stream': stream,
-                'device': device_name,
-                'callback': callback
-            }
-            
+            # Add to active streams with purpose (thread-safe)
+            with AudioHandler._streams_lock:
+                AudioHandler._active_streams[stream_purpose] = {
+                    'stream': stream,
+                    'device': device_name,
+                    'callback': callback
+                }
+                # Track that this instance owns this stream
+                self._instance_streams.add(stream_purpose)
+
             # Create stop function with flush callback
             stop_function = self._create_stop_function(stream, flush_callback, stream_purpose)
-            
+
             return stop_function # Return the specific closer for this stream
 
         except sd.PortAudioError as pae:

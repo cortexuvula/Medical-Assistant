@@ -6,6 +6,7 @@ import sqlite3
 import queue
 import threading
 import logging
+import time
 from typing import Optional, ContextManager, Any
 from contextlib import contextmanager
 from pathlib import Path
@@ -22,7 +23,16 @@ class ConnectionPool:
         inherently thread-safe for get/put operations. Lock ordering:
         - Always acquire _lock before modifying _all_connections or _closed
         - Never hold _lock while waiting on queue operations (to avoid deadlock)
+
+    Shutdown Safety:
+        The close() method uses timeouts to prevent indefinite waiting if
+        connections are stuck. Health checks use short timeouts to avoid
+        blocking shutdown.
     """
+
+    # Constants for shutdown behavior
+    CLOSE_TIMEOUT = 10.0  # Maximum time to wait for pool close
+    HEALTH_CHECK_TIMEOUT = 1.0  # Timeout for connection health check
 
     def __init__(self, database_path: str, pool_size: int = 5, timeout: float = 30.0):
         """Initialize connection pool.
@@ -114,25 +124,51 @@ class ConnectionPool:
     def _return_connection(self, conn: sqlite3.Connection) -> None:
         """Return a connection to the pool, replacing if broken.
 
+        Uses timeout on health check to prevent blocking during shutdown.
+
         Args:
             conn: Connection to return
         """
-        # Check if pool is closed
+        # Check if pool is closed (capture state under lock)
         with self._lock:
-            if self._closed:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    pass
-                return
+            is_closed = self._closed
+
+        if is_closed:
+            self._safe_close_connection(conn)
+            return
 
         try:
-            # Check if connection is still valid (outside lock - quick operation)
-            conn.execute("SELECT 1")
-            self._pool.put(conn)
+            # Check if connection is still valid with timeout protection
+            # Use a short timeout to avoid blocking shutdown
+            old_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+            conn.execute(f"PRAGMA busy_timeout = {int(self.HEALTH_CHECK_TIMEOUT * 1000)}")
+            try:
+                conn.execute("SELECT 1")
+                # Restore original timeout
+                conn.execute(f"PRAGMA busy_timeout = {old_timeout}")
+                # Return to pool with timeout to avoid blocking
+                try:
+                    self._pool.put(conn, timeout=5.0)
+                except queue.Full:
+                    self.logger.warning("Pool full when returning connection, closing it")
+                    self._safe_close_connection(conn)
+            except sqlite3.OperationalError:
+                # Database busy or locked - treat as broken
+                self._replace_broken_connection(conn)
         except sqlite3.Error:
             # Connection is broken, need to replace it
             self._replace_broken_connection(conn)
+
+    def _safe_close_connection(self, conn: sqlite3.Connection) -> None:
+        """Safely close a connection, ignoring errors.
+
+        Args:
+            conn: Connection to close
+        """
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass  # Ignore errors when closing
 
     def _replace_broken_connection(self, broken_conn: sqlite3.Connection) -> None:
         """Replace a broken connection with a new one.
@@ -178,28 +214,45 @@ class ConnectionPool:
         self._pool.put(new_conn)
     
     def close(self):
-        """Close all connections in the pool."""
+        """Close all connections in the pool.
+
+        Uses timeout to prevent indefinite waiting if connections are stuck.
+        Connections that can't be retrieved within the timeout are still
+        tracked in _all_connections and will be force-closed.
+        """
         with self._lock:
             if self._closed:
                 return
-            
+
             self._closed = True
-            
-            # Close all connections
+
+        # Drain pool with timeout to prevent indefinite waiting
+        deadline = time.time() + self.CLOSE_TIMEOUT
+        connections_drained = 0
+
+        while time.time() < deadline:
+            try:
+                conn = self._pool.get_nowait()
+                self._safe_close_connection(conn)
+                connections_drained += 1
+            except queue.Empty:
+                break
+
+        # Force close any remaining connections (those still in use or stuck)
+        with self._lock:
             for conn in self._all_connections:
                 try:
-                    conn.close()
-                except Exception as e:
-                    self.logger.error(f"Error closing connection: {e}")
-            
+                    # Use interrupt to cancel any running queries
+                    conn.interrupt()
+                except (sqlite3.Error, AttributeError):
+                    pass  # interrupt() may not be available in older sqlite3
+                self._safe_close_connection(conn)
+
+            remaining = len(self._all_connections) - connections_drained
+            if remaining > 0:
+                self.logger.warning(f"Force-closed {remaining} connection(s) during shutdown")
+
             self._all_connections.clear()
-            
-            # Clear the queue
-            while not self._pool.empty():
-                try:
-                    self._pool.get_nowait()
-                except queue.Empty:
-                    break
     
     def __enter__(self):
         """Context manager entry."""

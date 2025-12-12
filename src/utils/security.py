@@ -479,6 +479,7 @@ class RateLimiter:
     - Automatic cleanup of expired entries
     - Thread-safe operations with per-key locking
     - Graceful degradation if persistence fails
+    - Memory-bounded lock management with time-based expiry
 
     The sliding window algorithm uses timestamps to track calls within a
     rolling time window, providing more accurate rate limiting than fixed
@@ -491,6 +492,11 @@ class RateLimiter:
     # Maximum age of rate limit data to keep (in seconds)
     MAX_DATA_AGE = 3600  # 1 hour
 
+    # Lock management constants
+    MAX_LOCKS = 100  # Maximum number of locks to keep
+    LOCK_EXPIRY_SECONDS = 3600  # Remove locks unused for 1 hour
+    LOCK_CLEANUP_INTERVAL = 300  # Run cleanup every 5 minutes
+
     def __init__(self, storage_path: Optional[Path] = None):
         """Initialize rate limiter with persistent storage.
 
@@ -499,8 +505,11 @@ class RateLimiter:
         """
         self.logger = logging.getLogger(__name__)
         self._global_lock = Lock()
-        self._key_locks: Dict[str, Lock] = defaultdict(Lock)
+        # Changed from defaultdict to regular dict with timestamps
+        # Format: {key: (Lock, last_access_time)}
+        self._key_locks: Dict[str, Tuple[Lock, float]] = {}
         self._last_save_time = 0.0
+        self._last_lock_cleanup = 0.0
 
         # In-memory cache of rate limit data
         # Format: {key: {"calls": [timestamp, ...], "window_seconds": int}}
@@ -531,16 +540,75 @@ class RateLimiter:
     def _get_key_lock(self, key: str) -> Lock:
         """Get or create a lock for a specific key.
 
+        Thread-safe method that manages lock lifecycle with time-based expiry.
+
         Args:
             key: The rate limit key
 
         Returns:
             Lock for the key
         """
+        now = time.time()
+
         with self._global_lock:
-            if key not in self._key_locks:
-                self._key_locks[key] = Lock()
-            return self._key_locks[key]
+            # Run periodic lock cleanup
+            if now - self._last_lock_cleanup > self.LOCK_CLEANUP_INTERVAL:
+                self._cleanup_expired_locks(now)
+                self._last_lock_cleanup = now
+
+            if key in self._key_locks:
+                # Update last access time
+                lock, _ = self._key_locks[key]
+                self._key_locks[key] = (lock, now)
+                return lock
+            else:
+                # Create new lock
+                lock = Lock()
+                self._key_locks[key] = (lock, now)
+                return lock
+
+    def _cleanup_expired_locks(self, now: float) -> None:
+        """Remove locks that haven't been used recently.
+
+        Must be called with _global_lock held.
+
+        Args:
+            now: Current timestamp
+        """
+        # Find locks that have expired (not used for LOCK_EXPIRY_SECONDS)
+        expired_keys = []
+        for key, (lock, last_access) in list(self._key_locks.items()):
+            if now - last_access > self.LOCK_EXPIRY_SECONDS:
+                # Only remove if the lock is not currently held
+                if lock.acquire(blocking=False):
+                    lock.release()
+                    expired_keys.append(key)
+
+        # Remove expired locks
+        for key in expired_keys:
+            del self._key_locks[key]
+
+        if expired_keys:
+            self.logger.debug(f"Cleaned up {len(expired_keys)} expired locks")
+
+        # Safety limit: if still over MAX_LOCKS, remove oldest
+        if len(self._key_locks) > self.MAX_LOCKS:
+            # Sort by last access time and remove oldest
+            provider_keys = set(self.default_limits.keys())
+            sorted_locks = sorted(
+                [(k, v[1]) for k, v in self._key_locks.items() if k not in provider_keys],
+                key=lambda x: x[1]  # Sort by last access time
+            )
+            # Remove oldest locks until under limit
+            remove_count = len(self._key_locks) - self.MAX_LOCKS
+            for key, _ in sorted_locks[:remove_count]:
+                if key in self._key_locks:
+                    lock, _ = self._key_locks[key]
+                    if lock.acquire(blocking=False):
+                        lock.release()
+                        del self._key_locks[key]
+
+            self.logger.debug(f"Removed {remove_count} locks to stay under MAX_LOCKS")
 
     def _load_from_disk(self) -> None:
         """Load rate limit data from disk."""
@@ -638,6 +706,9 @@ class RateLimiter:
     def _cleanup_stale_locks(self, removed_keys: List[str]) -> None:
         """Remove locks for keys that have been removed from rate limit data.
 
+        This is called during data cleanup to remove locks for keys that
+        no longer have rate limit data.
+
         Args:
             removed_keys: List of keys that were removed from rate limit data
         """
@@ -646,13 +717,12 @@ class RateLimiter:
             for key in removed_keys:
                 if key in self._key_locks:
                     # Only remove if the lock is not currently held
-                    lock = self._key_locks[key]
+                    lock, _ = self._key_locks[key]
                     if lock.acquire(blocking=False):
                         lock.release()
                         del self._key_locks[key]
 
-            # Aggressively clean up all locks for inactive keys to prevent memory leak
-            # Run this cleanup every time, not just when over threshold
+            # Also clean up locks for keys without active rate limit data
             active_keys = set(self._limits.keys())
             stale_lock_keys = [
                 k for k in list(self._key_locks.keys())
@@ -661,26 +731,12 @@ class RateLimiter:
 
             for key in stale_lock_keys:
                 if key in self._key_locks:
-                    lock = self._key_locks[key]
+                    lock, _ = self._key_locks[key]
                     if lock.acquire(blocking=False):
                         lock.release()
                         del self._key_locks[key]
 
-            # Safety limit: if we still have too many locks, force cleanup
-            MAX_LOCKS = 50
-            if len(self._key_locks) > MAX_LOCKS:
-                # Remove oldest locks (those not matching provider defaults)
-                provider_keys = set(self.default_limits.keys())
-                removable = [
-                    k for k in list(self._key_locks.keys())
-                    if k not in provider_keys
-                ]
-                for key in removable[:len(self._key_locks) - MAX_LOCKS]:
-                    if key in self._key_locks:
-                        lock = self._key_locks[key]
-                        if lock.acquire(blocking=False):
-                            lock.release()
-                            del self._key_locks[key]
+            # Note: MAX_LOCKS enforcement is now handled in _cleanup_expired_locks()
 
     def check_rate_limit(self, provider: str, identifier: Optional[str] = None) -> Tuple[bool, Optional[float]]:
         """Check if a request is within rate limits using sliding window.

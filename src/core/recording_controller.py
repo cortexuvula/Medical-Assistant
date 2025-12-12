@@ -9,6 +9,7 @@ improve maintainability and separation of concerns.
 """
 
 import logging
+import threading
 import tkinter as tk
 from tkinter import messagebox
 from typing import Optional, Callable, Any, Dict, TYPE_CHECKING
@@ -31,6 +32,11 @@ class RecordingController:
     - Audio callback handling
     - Periodic analysis during recording
     - Post-recording processing coordination
+
+    Thread Safety:
+        All state changes are protected by _state_lock to prevent race conditions.
+        The recording_manager.is_recording property is the single source of truth
+        for recording state.
     """
 
     def __init__(self, app: 'MedicalDictationApp'):
@@ -40,28 +46,44 @@ class RecordingController:
             app: Reference to the main application instance
         """
         self.app = app
-        self._soap_recording = False
+        self._state_lock = threading.Lock()
         self._soap_stop_listening_function: Optional[Callable] = None
+        # Note: We use recording_manager.is_recording as the single source of truth
+        # _listening_active tracks whether we have an active background listener
 
     @property
     def is_recording(self) -> bool:
-        """Check if SOAP recording is active."""
-        return self._soap_recording
+        """Check if SOAP recording is active.
+
+        Uses recording_manager as the single source of truth.
+        """
+        return self.app.recording_manager.is_recording
 
     @property
     def is_paused(self) -> bool:
-        """Check if recording is paused."""
-        return self._soap_recording and self._soap_stop_listening_function is None
+        """Check if recording is paused.
+
+        Uses recording_manager as the single source of truth.
+        """
+        return self.app.recording_manager.is_paused
 
     def toggle_recording(self) -> None:
-        """Toggle SOAP recording on/off."""
-        if not self.app.recording_manager.is_recording:
-            self._start_recording()
-        else:
-            self._stop_recording()
+        """Toggle SOAP recording on/off.
+
+        Thread-safe: Uses lock to prevent race conditions during state transitions.
+        """
+        with self._state_lock:
+            if not self.app.recording_manager.is_recording:
+                self._start_recording()
+            else:
+                self._stop_recording()
 
     def _start_recording(self) -> None:
-        """Start a new SOAP recording session."""
+        """Start a new SOAP recording session.
+
+        Note: Called within _state_lock context from toggle_recording().
+        Uses recording_manager as single source of truth for state.
+        """
         from utils.cleanup_utils import clear_all_content
 
         # Switch focus to the SOAP tab
@@ -79,7 +101,7 @@ class RecordingController:
         self.app.audio_handler.soap_mode = True
         self.app.audio_handler.silence_threshold = 0.0001
 
-        # Start recording with callback
+        # Start recording with callback - recording_manager handles state
         if self.app.recording_manager.start_recording(self._soap_callback):
             # Update UI state after successful start
             self.app.after(0, lambda: self.app.ui_state_manager.set_recording_state(
@@ -93,7 +115,7 @@ class RecordingController:
                 callback=self._soap_callback,
                 phrase_time_limit=3
             )
-            self._soap_recording = True
+            # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
             logger.info("SOAP recording started successfully")
 
             # Clear and initialize analysis text area
@@ -109,7 +131,11 @@ class RecordingController:
             )
 
     def _stop_recording(self) -> None:
-        """Stop the current SOAP recording."""
+        """Stop the current SOAP recording.
+
+        Note: Called within _state_lock context from toggle_recording().
+        Uses recording_manager as single source of truth for state.
+        """
         self.app.status_manager.info("Stopping SOAP recording...")
 
         # Temporarily disable the record button
@@ -129,18 +155,17 @@ class RecordingController:
         self.app.audio_handler.soap_mode = False
         self.app.audio_handler.silence_threshold = 0.001
 
-        # Stop and get recording data
+        # Stop and get recording data - recording_manager handles state transition
         recording_data = self.app.recording_manager.stop_recording()
         if recording_data:
             self.app.play_recording_sound(start=False)
-            self._soap_recording = False
+            # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
             self._finalize_recording(recording_data)
         else:
             self.app.status_manager.error("No recording data available")
             self.app.ui_state_manager.set_recording_state(
                 recording=False, caller="recording_controller_stop_no_data"
             )
-            self._soap_recording = False
 
     def _finalize_recording(self, recording_data: Dict[str, Any]) -> None:
         """Complete the SOAP recording process.
@@ -173,15 +198,27 @@ class RecordingController:
         self.app.event_generate("<<RecordingComplete>>", when="tail")
 
     def toggle_pause(self) -> None:
-        """Toggle pause state for SOAP recording."""
-        if self._soap_recording:
-            if self._soap_stop_listening_function:
-                self.pause()
-            else:
-                self.resume()
+        """Toggle pause state for SOAP recording.
+
+        Thread-safe: Uses lock to prevent race conditions during state transitions.
+        """
+        with self._state_lock:
+            if self.is_recording:
+                if self._soap_stop_listening_function:
+                    self._pause_internal()
+                else:
+                    self._resume_internal()
 
     def pause(self) -> None:
-        """Pause the current SOAP recording."""
+        """Pause the current SOAP recording.
+
+        Thread-safe wrapper for external calls.
+        """
+        with self._state_lock:
+            self._pause_internal()
+
+    def _pause_internal(self) -> None:
+        """Internal pause implementation (must be called with lock held)."""
         if not self._soap_stop_listening_function:
             return
 
@@ -199,7 +236,15 @@ class RecordingController:
         self.app.update_status("SOAP recording paused. Press Resume to continue.", "info")
 
     def resume(self) -> None:
-        """Resume SOAP recording after pause."""
+        """Resume SOAP recording after pause.
+
+        Thread-safe wrapper for external calls.
+        """
+        with self._state_lock:
+            self._resume_internal()
+
+    def _resume_internal(self) -> None:
+        """Internal resume implementation (must be called with lock held)."""
         try:
             self.app.play_recording_sound(start=True)
             self.app.recording_manager.resume_recording()
@@ -229,8 +274,12 @@ class RecordingController:
             self.app.update_status(f"Error resuming SOAP recording: {str(e)}", "error")
 
     def cancel(self) -> None:
-        """Cancel the current SOAP recording without processing."""
-        if not self._soap_recording:
+        """Cancel the current SOAP recording without processing.
+
+        Thread-safe: Uses lock to prevent race conditions during state transitions.
+        """
+        # Check state before showing dialog (don't hold lock during dialog)
+        if not self.is_recording:
             return
 
         # Show confirmation dialog
@@ -247,10 +296,15 @@ class RecordingController:
             return
 
         self.app.update_status("Cancelling recording...")
-        self._perform_cancellation()
+        with self._state_lock:
+            self._perform_cancellation()
 
     def _perform_cancellation(self) -> None:
-        """Perform the actual recording cancellation."""
+        """Perform the actual recording cancellation.
+
+        Note: Must be called with _state_lock held.
+        Uses recording_manager as single source of truth for state.
+        """
         try:
             # Stop the background listening
             if self._soap_stop_listening_function:
@@ -264,9 +318,9 @@ class RecordingController:
             self.app.audio_handler.soap_mode = False
             self.app.audio_handler.silence_threshold = 0.001
 
-            # Cancel the recording in RecordingManager
+            # Cancel the recording in RecordingManager - handles state transition
             self.app.recording_manager.cancel_recording()
-            self._soap_recording = False
+            # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
 
             # Clear all UI fields
             from utils.cleanup_utils import clear_all_content
@@ -283,7 +337,6 @@ class RecordingController:
             logger.error(f"Error cancelling recording: {e}", exc_info=True)
             self.app.status_manager.error(f"Error cancelling: {str(e)}")
             # Ensure UI is reset even on error
-            self._soap_recording = False
             self.app.ui_state_manager.set_recording_state(
                 recording=False, caller="cancel_error"
             )
@@ -310,11 +363,16 @@ class RecordingController:
                 )
 
     def cleanup(self) -> None:
-        """Clean up resources when the controller is destroyed."""
-        if self._soap_stop_listening_function:
-            try:
-                self._soap_stop_listening_function()
-            except Exception as e:
-                logger.warning(f"Error stopping recording during cleanup: {e}")
-            self._soap_stop_listening_function = None
-        self._soap_recording = False
+        """Clean up resources when the controller is destroyed.
+
+        Thread-safe cleanup of recording resources.
+        """
+        with self._state_lock:
+            if self._soap_stop_listening_function:
+                try:
+                    self._soap_stop_listening_function()
+                except Exception as e:
+                    logger.warning(f"Error stopping recording during cleanup: {e}")
+                self._soap_stop_listening_function = None
+            # Note: No separate _soap_recording flag to clear
+            # recording_manager handles its own state cleanup
