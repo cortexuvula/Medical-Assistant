@@ -52,6 +52,55 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 
+# User-friendly error messages for common API errors
+# Maps exception type patterns to user-friendly messages
+_USER_FRIENDLY_ERRORS = {
+    "AuthenticationError": "API authentication failed. Please check your API key.",
+    "RateLimitError": "API rate limit exceeded. Please wait and try again.",
+    "APIConnectionError": "Could not connect to the AI service. Please check your internet connection.",
+    "Timeout": "The request timed out. Please try again.",
+    "InvalidRequestError": "The request was invalid. Please check your input.",
+    "APIError": "The AI service encountered an error. Please try again.",
+    "ServiceUnavailableError": "The AI service is temporarily unavailable. Please try again later.",
+}
+
+
+def sanitize_error_for_user(error: Exception) -> str:
+    """Convert exception to user-friendly message without exposing sensitive details.
+
+    SECURITY: Prevents leaking internal implementation details, API keys,
+    or server information to users through error messages.
+
+    Args:
+        error: The exception to sanitize
+
+    Returns:
+        A user-friendly error message
+    """
+    error_type = type(error).__name__
+    error_str = str(error).lower()
+
+    # Check for known error types
+    for pattern, friendly_msg in _USER_FRIENDLY_ERRORS.items():
+        if pattern.lower() in error_type.lower():
+            return friendly_msg
+
+    # Check for common error patterns in the message
+    if "timeout" in error_str:
+        return "The request timed out. Please try again."
+    if "connection" in error_str or "connect" in error_str:
+        return "Could not connect to the service. Please check your internet connection."
+    if "rate limit" in error_str or "quota" in error_str:
+        return "Rate limit exceeded. Please wait and try again."
+    if "unauthorized" in error_str or "authentication" in error_str or "api key" in error_str:
+        return "Authentication failed. Please verify your API key is correct."
+    if "invalid" in error_str:
+        return "Invalid request. Please check your input and try again."
+
+    # Generic fallback - don't expose raw error message
+    return "An error occurred while processing your request. Please try again."
+
+
 class ErrorSeverity(Enum):
     """Classification of error severity for handling decisions."""
 

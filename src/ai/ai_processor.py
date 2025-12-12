@@ -27,7 +27,7 @@ from ai.prompts import (
 )
 from managers.agent_manager import agent_manager
 from ai.agents.models import AgentTask, AgentType
-from utils.error_handling import OperationResult, handle_errors, ErrorSeverity
+from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, sanitize_error_for_user
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
     PROVIDER_GROK, PROVIDER_OLLAMA
@@ -87,7 +87,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to refine text: {e}")
-            return OperationResult.failure(str(e), error_code="REFINE_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="REFINE_FAILED", exception=e)
     
     def improve_text(self, text: str, additional_context: str = "") -> OperationResult[Dict[str, str]]:
         """Improve text using AI.
@@ -129,7 +130,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to improve text: {e}")
-            return OperationResult.failure(str(e), error_code="IMPROVE_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="IMPROVE_FAILED", exception=e)
     
     def create_soap_note(self, transcript: str, context: str = "") -> OperationResult[Dict[str, str]]:
         """Create SOAP note from transcript.
@@ -183,7 +185,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to create SOAP note: {e}")
-            return OperationResult.failure(str(e), error_code="SOAP_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="SOAP_FAILED", exception=e)
     
     def create_referral_letter(self, text: str, letter_options: Dict[str, str]) -> OperationResult[Dict[str, str]]:
         """Create referral letter from text.
@@ -240,7 +243,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to create referral letter: {e}")
-            return OperationResult.failure(str(e), error_code="REFERRAL_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="REFERRAL_FAILED", exception=e)
     
     def create_letter(self, text: str, letter_type: str, letter_options: Dict[str, str]) -> OperationResult[Dict[str, str]]:
         """Create a letter from text.
@@ -291,7 +295,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to create {letter_type} letter: {e}")
-            return OperationResult.failure(str(e), error_code="LETTER_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="LETTER_FAILED", exception=e)
     
     def validate_api_key(self) -> bool:
         """Validate the OpenAI API key.
@@ -387,7 +392,8 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to analyze medications: {e}")
-            return OperationResult.failure(str(e), error_code="MEDICATION_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="MEDICATION_FAILED", exception=e)
     
     def extract_medications_from_soap(self, soap_note: str) -> OperationResult[Dict[str, Any]]:
         """Extract medications from a SOAP note.
@@ -508,4 +514,5 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to generate differential diagnosis: {e}")
-            return OperationResult.failure(str(e), error_code="DIAGNOSIS_FAILED", exception=e)
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
+            return OperationResult.failure(sanitize_error_for_user(e), error_code="DIAGNOSIS_FAILED", exception=e)

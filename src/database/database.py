@@ -207,6 +207,20 @@ class Database:
         Returns:
             Configured sqlite3.Connection
         """
+        thread_id = threading.current_thread().ident
+        thread_name = threading.current_thread().name
+
+        # MONITORING: Log connection creation for leak detection
+        current_count = len(self._thread_connections)
+        if current_count > 10:
+            logger.warning(
+                f"High connection count ({current_count}) detected. "
+                f"Creating new connection for thread {thread_id} ({thread_name}). "
+                "This may indicate a connection leak."
+            )
+        else:
+            logger.debug(f"Creating database connection for thread {thread_id} ({thread_name})")
+
         conn = sqlite3.connect(
             self.db_path,
             timeout=30.0,
@@ -216,6 +230,8 @@ class Database:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
         conn.execute("PRAGMA foreign_keys=ON")
+
+        logger.debug(f"Database connection created for thread {thread_id}. Total connections: {current_count + 1}")
         return conn
 
     @contextmanager

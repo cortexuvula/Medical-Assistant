@@ -49,6 +49,9 @@ class ProcessingQueue:
         will not be queued again until it completes or fails.
     """
 
+    # Maximum batch size to prevent resource exhaustion
+    MAX_BATCH_SIZE = 100
+
     def __init__(self, app=None, max_workers: int = None):
         """Initialize the processing queue.
 
@@ -176,17 +179,26 @@ class ProcessingQueue:
     
     def add_batch_recordings(self, recordings: List[Dict[str, Any]], batch_options: Dict[str, Any] = None) -> str:
         """Add multiple recordings to the processing queue as a batch.
-        
+
         Args:
             recordings: List of recording data dictionaries
             batch_options: Optional batch-wide options (priority, etc.)
-            
+
         Returns:
             batch_id: Unique identifier for the batch
+
+        Raises:
+            ValueError: If batch size exceeds MAX_BATCH_SIZE
         """
+        # SECURITY: Enforce batch size limit to prevent resource exhaustion
+        if len(recordings) > self.MAX_BATCH_SIZE:
+            error_msg = f"Batch size {len(recordings)} exceeds maximum allowed ({self.MAX_BATCH_SIZE})"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+
         batch_id = str(uuid.uuid4())
         batch_priority = batch_options.get("priority", 5) if batch_options else 5
-        
+
         logging.info(f"Adding batch {batch_id} with {len(recordings)} recordings")
         
         # Initialize batch tracking
@@ -313,13 +325,20 @@ class ProcessingQueue:
                         else:
                             logging.info(f"[Queue] Using configured storage folder: {storage_folder}")
                         
-                        # Create filename with patient name
+                        # Create filename with patient name using secure approach
+                        import tempfile
                         patient_name = recording_data.get('patient_name', 'Patient')
+                        # Sanitize patient name - only allow safe characters
                         safe_patient_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                        # Limit length to prevent path issues
+                        safe_patient_name = safe_patient_name[:50] if safe_patient_name else "Patient"
                         date_formatted = dt.now().strftime("%d-%m-%y")
-                        time_formatted = dt.now().strftime("%H-%M")
-                        audio_path = os.path.join(storage_folder, f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}.mp3")
-                        
+                        time_formatted = dt.now().strftime("%H-%M-%S")
+                        # Add unique suffix to prevent collisions/TOCTOU attacks
+                        unique_suffix = uuid.uuid4().hex[:8]
+                        final_filename = f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}_{unique_suffix}.mp3"
+                        audio_path = os.path.join(storage_folder, final_filename)
+
                         # Save audio using audio handler
                         logging.info(f"[Queue] Attempting to save audio to: {audio_path}")
                         if hasattr(self.app, 'audio_handler'):
@@ -549,14 +568,21 @@ class ProcessingQueue:
         Thread(target=delayed_retry, daemon=True).start()
     
     def _update_avg_processing_time(self, new_time: float):
-        """Update average processing time statistic."""
-        total = self.stats["total_processed"]
-        if total == 1:
-            self.stats["processing_time_avg"] = new_time
-        else:
-            # Running average
-            current_avg = self.stats["processing_time_avg"]
-            self.stats["processing_time_avg"] = ((current_avg * (total - 1)) + new_time) / total
+        """Update average processing time statistic.
+
+        Thread-safe: acquires lock before reading/writing shared stats.
+        """
+        with self.lock:
+            total = self.stats["total_processed"]
+            if total == 0:
+                # Edge case: shouldn't happen but protect against division by zero
+                self.stats["processing_time_avg"] = new_time
+            elif total == 1:
+                self.stats["processing_time_avg"] = new_time
+            else:
+                # Running average
+                current_avg = self.stats["processing_time_avg"]
+                self.stats["processing_time_avg"] = ((current_avg * (total - 1)) + new_time) / total
     
     def _notify_status_update(self, task_id: str, status: str, queue_size: int):
         """Notify status callback of queue status change."""

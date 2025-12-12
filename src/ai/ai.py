@@ -913,53 +913,289 @@ def get_possible_conditions(text: str) -> str:
     # Clean both markdown and citations
     return clean_text(result)
 
-def _build_letter_prompt(text: str, specs: str = "") -> str:
-    """Build the prompt for letter generation.
-    
+def _get_recipient_guidance(recipient_type: str) -> dict:
+    """Get recipient-specific guidance for letter generation.
+
+    Args:
+        recipient_type: Type of letter recipient
+
+    Returns:
+        Dictionary with 'focus', 'exclude', 'tone', and 'format' guidance
+    """
+    guidance = {
+        "insurance": {
+            "focus": [
+                "Medical necessity and justification",
+                "Diagnosis codes and clinical findings supporting the request",
+                "Treatment history and failed alternatives",
+                "Expected outcomes and prognosis",
+                "Specific procedure/medication/service being requested"
+            ],
+            "exclude": [
+                "Unrelated medical conditions not pertinent to the claim",
+                "Personal or social history unless directly relevant",
+                "Detailed examination findings unrelated to the request"
+            ],
+            "tone": "Formal, factual, and medically precise",
+            "format": "Include patient identifiers, policy/claim numbers if known, clear request statement"
+        },
+        "employer": {
+            "focus": [
+                "Fitness for duty assessment",
+                "Work restrictions or accommodations needed",
+                "Expected duration of restrictions",
+                "Specific job duties that can/cannot be performed"
+            ],
+            "exclude": [
+                "Detailed diagnosis information (use general terms)",
+                "Specific medications or treatments",
+                "Unrelated medical conditions",
+                "Sensitive mental health details unless directly relevant to work capacity"
+            ],
+            "tone": "Professional, concise, focused on functional capacity",
+            "format": "Brief, clear statements about work ability without excessive medical detail"
+        },
+        "specialist": {
+            "focus": [
+                "Reason for referral and clinical question",
+                "Relevant history and examination findings",
+                "Current medications relevant to the referral",
+                "Specific concerns or questions for the specialist"
+            ],
+            "exclude": [
+                "Unrelated medical conditions",
+                "Medications not relevant to the referral reason",
+                "Detailed social history unless relevant"
+            ],
+            "tone": "Professional colleague-to-colleague communication",
+            "format": "Standard medical referral format with clear clinical question"
+        },
+        "patient": {
+            "focus": [
+                "Clear explanation of diagnosis in lay terms",
+                "Treatment plan and instructions",
+                "Follow-up requirements",
+                "Warning signs to watch for"
+            ],
+            "exclude": [
+                "Complex medical jargon",
+                "Information that might cause unnecessary anxiety",
+                "Details meant for other healthcare providers"
+            ],
+            "tone": "Warm, clear, educational, reassuring",
+            "format": "Easy to read, use bullet points for instructions, avoid medical abbreviations"
+        },
+        "school": {
+            "focus": [
+                "Attendance or participation limitations",
+                "Accommodations needed for learning",
+                "Duration of restrictions",
+                "Activity limitations (PE, etc.)"
+            ],
+            "exclude": [
+                "Detailed diagnosis information",
+                "Medication names and dosages",
+                "Sensitive health information",
+                "Information beyond what school needs to know"
+            ],
+            "tone": "Professional, brief, focused on educational needs",
+            "format": "Concise statement of limitations and accommodations without medical details"
+        },
+        "legal": {
+            "focus": [
+                "Objective clinical findings",
+                "Causation opinions if requested",
+                "Functional limitations and prognosis",
+                "Timeline of treatment",
+                "Medical records summary"
+            ],
+            "exclude": [
+                "Speculation beyond medical expertise",
+                "Legal conclusions",
+                "Information not supported by medical evidence"
+            ],
+            "tone": "Objective, factual, defensible, precise",
+            "format": "Formal medical-legal format with clear opinions stated as such"
+        },
+        "government": {
+            "focus": [
+                "Functional limitations affecting daily activities",
+                "Duration and permanence of condition",
+                "Treatment history and response",
+                "Objective findings supporting disability claim"
+            ],
+            "exclude": [
+                "Subjective complaints not supported by findings",
+                "Information beyond the specific request",
+                "Speculation about eligibility"
+            ],
+            "tone": "Formal, objective, thorough documentation",
+            "format": "Follow agency-specific requirements if known, detailed functional assessment"
+        },
+        "other": {
+            "focus": ["Information relevant to the stated purpose"],
+            "exclude": ["Unnecessary medical details"],
+            "tone": "Professional and appropriate to context",
+            "format": "Standard professional letter format"
+        }
+    }
+    return guidance.get(recipient_type, guidance["other"])
+
+
+def _build_letter_prompt(text: str, recipient_type: str = "other", specs: str = "") -> str:
+    """Build the prompt for letter generation with recipient-specific guidance.
+
     Args:
         text: Content to base the letter on
-        specs: Special instructions for letter formatting/content
-        
+        recipient_type: Type of recipient (insurance, employer, specialist, etc.)
+        specs: Additional special instructions for letter formatting/content
+
     Returns:
         Complete prompt for AI
     """
-    prompt = f"Create a professional letter based on the following text content:\n\n{text}\n\n"
-    if specs.strip():
-        prompt += f"Special instructions: {specs}\n\n"
-    
-    prompt += "Format the letter properly with date, recipient, greeting, body, closing, and signature."
-    return prompt
+    guidance = _get_recipient_guidance(recipient_type)
 
-def _get_letter_system_message() -> str:
-    """Get the system message for letter generation.
-    
+    # Recipient type display names
+    recipient_names = {
+        "insurance": "an Insurance Company",
+        "employer": "an Employer/Workplace",
+        "specialist": "a Specialist Colleague",
+        "patient": "the Patient",
+        "school": "a School/Educational Institution",
+        "legal": "Legal Counsel/Attorney",
+        "government": "a Government Agency",
+        "other": "the specified recipient"
+    }
+    recipient_display = recipient_names.get(recipient_type, "the recipient")
+
+    prompt_parts = []
+
+    prompt_parts.append(f"Create a professional medical letter addressed to {recipient_display}.")
+    prompt_parts.append("")
+
+    # Critical filtering instructions
+    prompt_parts.append("**CRITICAL INSTRUCTION - CONTENT FOCUS:**")
+    prompt_parts.append(f"This letter is specifically for {recipient_display}.")
+    prompt_parts.append("")
+
+    prompt_parts.append("INCLUDE in the letter:")
+    for item in guidance["focus"]:
+        prompt_parts.append(f"- {item}")
+    prompt_parts.append("")
+
+    prompt_parts.append("EXCLUDE from the letter (DO NOT include):")
+    for item in guidance["exclude"]:
+        prompt_parts.append(f"- {item}")
+    prompt_parts.append("")
+
+    prompt_parts.append(f"TONE: {guidance['tone']}")
+    prompt_parts.append(f"FORMAT: {guidance['format']}")
+    prompt_parts.append("")
+
+    if specs.strip():
+        prompt_parts.append(f"ADDITIONAL INSTRUCTIONS: {specs}")
+        prompt_parts.append("")
+
+    prompt_parts.append("Clinical Information (extract ONLY relevant details for this recipient):")
+    prompt_parts.append(text)
+    prompt_parts.append("")
+
+    prompt_parts.append("Generate the letter with proper formatting including date, recipient address, greeting, body, closing, and signature line.")
+
+    return "\n".join(prompt_parts)
+
+
+def _get_letter_system_message(recipient_type: str = "other") -> str:
+    """Get the system message for letter generation based on recipient type.
+
+    Args:
+        recipient_type: Type of recipient
+
     Returns:
         System message for letter AI
     """
-    return ("You are an expert medical professional specializing in writing professional medical letters. "
-            "Create well-formatted correspondence that is clear, concise, and appropriate for medical communication.")
+    base_message = """You are an expert medical professional specializing in writing professional medical letters.
 
-def create_letter_with_ai(text: str, specs: str = "") -> str:
-    """Generate a professional medical letter based on provided text and specifications.
-    
+CRITICAL RULE - RECIPIENT-FOCUSED CONTENT:
+When writing letters, you MUST tailor the content specifically to the recipient type:
+- ONLY include information relevant and appropriate for that recipient
+- EXCLUDE sensitive details that the recipient does not need to know
+- Use appropriate medical terminology (technical for colleagues, lay terms for patients/employers)
+- Follow privacy principles - share minimum necessary information
+
+"""
+
+    recipient_specific = {
+        "insurance": """For INSURANCE letters:
+- Focus on medical necessity and justification
+- Include diagnosis codes and supporting clinical evidence
+- Document failed alternatives and treatment history
+- Be factual and precise - insurers need clear medical justification
+- Do NOT include unrelated conditions or excessive clinical detail""",
+
+        "employer": """For EMPLOYER letters:
+- Focus on functional capacity and work restrictions
+- Use general terms, NOT specific diagnoses (e.g., "medical condition" not "depression")
+- State what the patient CAN and CANNOT do at work
+- Include duration of restrictions
+- Do NOT disclose sensitive diagnoses, medications, or detailed medical information""",
+
+        "specialist": """For SPECIALIST/COLLEAGUE letters:
+- Focus only on conditions relevant to the referral
+- Include pertinent clinical findings and current relevant medications
+- State your specific clinical question
+- Do NOT include unrelated medical conditions or medications""",
+
+        "patient": """For PATIENT letters:
+- Use clear, simple language without medical jargon
+- Explain diagnoses and treatments in understandable terms
+- Include actionable instructions and follow-up plans
+- Be reassuring while conveying important information""",
+
+        "school": """For SCHOOL letters:
+- Focus ONLY on educational impact and accommodations needed
+- Do NOT disclose specific diagnoses or treatments
+- State functional limitations relevant to school activities
+- Keep it brief and focused on what the school needs to know""",
+
+        "legal": """For LEGAL letters:
+- Be objective and factual - opinions must be clearly stated as such
+- Document findings and causation if requested
+- Provide thorough timeline and treatment summary
+- Avoid speculation beyond medical expertise""",
+
+        "government": """For GOVERNMENT/DISABILITY letters:
+- Focus on functional limitations affecting daily activities
+- Document objective findings supporting the claim
+- Include treatment history and response
+- Be thorough but stick to documented medical evidence"""
+    }
+
+    specific = recipient_specific.get(recipient_type, "Tailor content appropriately for the specified recipient.")
+
+    return base_message + specific
+
+
+def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str = "") -> str:
+    """Generate a professional medical letter based on provided text, recipient type, and specifications.
+
     Args:
         text: Content to base the letter on
-        specs: Special instructions for letter formatting/content
-        
+        recipient_type: Type of recipient (insurance, employer, specialist, patient, school, legal, government, other)
+        specs: Additional special instructions for letter formatting/content
+
     Returns:
         Complete formatted letter
     """
-    # Build the prompt
-    prompt = _build_letter_prompt(text, specs)
-    
-    # Get system message
-    system_message = _get_letter_system_message()
-    
-    # Use the currently selected AI provider
-    
+    # Build the prompt with recipient-specific guidance
+    prompt = _build_letter_prompt(text, recipient_type, specs)
+
+    # Get recipient-specific system message
+    system_message = _get_letter_system_message(recipient_type)
+
     # Make the AI call
     result = call_ai("gpt-4o", system_message, prompt, 0.7)
-    
+
     # Clean up any markdown formatting and citations from the result
     return clean_text(result)
 
@@ -976,30 +1212,43 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
     Returns:
         AI-generated response as a string
     """
-    # Save prompt to debug file
-    try:
-        from datetime import datetime
-        from managers.data_folder_manager import data_folder_manager
-        debug_file_path = data_folder_manager.logs_folder / "last_llm_prompt.txt"
-        with open(debug_file_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== LLM PROMPT DEBUG ===\n")
-            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Model: {model}\n")
-            f.write(f"Temperature: {temperature}\n")
-            f.write(f"\n--- SYSTEM MESSAGE ---\n")
-            f.write(system_message)
-            f.write(f"\n\n--- USER PROMPT ---\n")
-            f.write(prompt)
-            f.write(f"\n\n=== END OF PROMPT ===\n")
-        logging.info(f"Saved LLM prompt to: {debug_file_path}")
-    except Exception as e:
-        logging.error(f"Failed to save prompt to debug file: {e}")
+    # Save prompt to debug file (only in debug mode to protect PHI/PII)
+    # SECURITY: This logs medical data - only enable for development debugging
+    from settings.settings import SETTINGS
+    if SETTINGS.get("enable_llm_debug_logging", False):
+        try:
+            from datetime import datetime
+            from managers.data_folder_manager import data_folder_manager
+            from utils.validation import sanitize_for_logging
+
+            debug_file_path = data_folder_manager.logs_folder / "last_llm_prompt.txt"
+            with open(debug_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"=== LLM PROMPT DEBUG ===\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Model: {model}\n")
+                f.write(f"Temperature: {temperature}\n")
+                f.write(f"\n--- SYSTEM MESSAGE (sanitized) ---\n")
+                # Sanitize to remove potential PHI/PII before logging
+                f.write(sanitize_for_logging(system_message, max_length=2000))
+                f.write(f"\n\n--- USER PROMPT (sanitized) ---\n")
+                f.write(sanitize_for_logging(prompt, max_length=2000))
+                f.write(f"\n\n=== END OF PROMPT ===\n")
+            logging.debug(f"Saved sanitized LLM prompt to: {debug_file_path}")
+        except Exception as e:
+            logging.debug(f"Failed to save prompt to debug file: {e}")
     
     # Reload settings from file to ensure we have the latest provider selection
     from settings.settings import load_settings
     current_settings = load_settings()
-    
+
+    # Validate provider against allowed list to prevent arbitrary key access
+    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_PERPLEXITY, PROVIDER_GROK,
+                       PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI}
     provider = current_settings.get("ai_provider", "openai")
+    if provider not in VALID_PROVIDERS:
+        logging.warning(f"Invalid AI provider '{provider}', falling back to OpenAI")
+        provider = PROVIDER_OPENAI
+
     model_key = get_model_key_for_task(system_message, prompt)
     
     # Get provider-specific temperature if available

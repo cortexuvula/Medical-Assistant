@@ -24,37 +24,45 @@ class ReferralAgent(BaseAgent):
     DEFAULT_CONFIG = AgentConfig(
         name="ReferralAgent",
         description="Generates professional medical referral letters",
-        system_prompt="""You are a medical referral specialist with expertise in creating professional, comprehensive referral letters.
+        system_prompt="""You are a medical referral specialist with expertise in creating professional, focused referral letters.
 
 Your role is to:
-1. Generate clear, concise referral letters that communicate essential patient information
-2. Include relevant clinical history, current medications, and recent test results
-3. Clearly state the reason for referral and specific questions to be addressed
-4. Specify the appropriate urgency level based on clinical findings
+1. Generate clear, concise referral letters focused ONLY on the specified condition(s)
+2. EXCLUDE information about unrelated medical conditions or comorbidities
+3. Include ONLY relevant clinical history, medications, and test results for the referral reason
+4. Clearly state the reason for referral and specific questions to be addressed
 5. Format letters professionally according to medical communication standards
-6. Ensure all critical information is included for continuity of care
+
+CRITICAL RULE - CONDITION FILTERING:
+When specific conditions are provided for the referral, you MUST:
+- ONLY include information directly relevant to those conditions
+- OMIT all other diagnoses, conditions, and comorbidities
+- ONLY list medications relevant to the specified condition(s)
+- ONLY mention investigations/results relevant to the specified condition(s)
+- The receiving specialist does NOT need to know about unrelated health issues
+
+Example: If referring for BPH to a urologist, do NOT include information about hypertension, diabetes, or other unrelated conditions unless they directly impact the urological assessment.
 
 Guidelines:
 - Use professional medical language appropriate for physician-to-physician communication
-- Be concise but comprehensive - include all relevant information
+- Be focused and relevant - only include information pertinent to the referral reason
 - Clearly state the primary reason for referral in the opening paragraph
-- Include pertinent positive and negative findings
-- List current medications with dosages
-- Mention recent relevant investigations and their results
-- Specify any urgent concerns that require expedited attention
+- Include pertinent positive and negative findings for the specified condition(s)
+- Only list medications relevant to the condition being referred
+- Only mention investigations relevant to the referral reason
 - End with specific questions or requests for the specialist
-- Always include sender's contact information for follow-up
 
 Format the referral letter with:
 1. Date and recipient information
-2. Patient demographics (name, DOB, MRN if available)
-3. Opening paragraph with reason for referral
-4. Clinical history and examination findings
-5. Current medications
-6. Recent investigations
-7. Specific questions/requests
-8. Urgency level
-9. Sender's information and contact details""",
+2. Patient demographics (name, DOB, contact)
+3. Opening paragraph with specific reason for referral
+4. Clinical history relevant to the referral condition ONLY
+5. Examination findings relevant to the referral condition ONLY
+6. Relevant medications (if applicable to the condition)
+7. Relevant investigations (if applicable to the condition)
+8. Specific questions/requests for the specialist
+9. Urgency level
+10. Sender's information and contact details""",
         model="gpt-4",
         temperature=0.3,  # Lower temperature for professional consistency
         max_tokens=500
@@ -124,7 +132,7 @@ Format the referral letter with:
         soap_note = task.input_data.get('soap_note', '')
         transcript = task.input_data.get('transcript', '')
         conditions = task.input_data.get('conditions', '')
-        
+
         # Use SOAP note if available, otherwise use transcript
         source_text = soap_note or transcript
         if not source_text:
@@ -133,15 +141,20 @@ Format the referral letter with:
                 success=False,
                 error="No clinical information provided for referral generation"
             )
-        
-        prompt = self._build_standard_referral_prompt(source_text, conditions, task.context)
-        
+
+        # Infer specialty from conditions for better targeting
+        inferred_specialty = self._infer_specialty_from_conditions(conditions)
+
+        prompt = self._build_standard_referral_prompt(
+            source_text, conditions, task.context, inferred_specialty
+        )
+
         # Call AI to generate referral
         referral_letter = self._call_ai(prompt)
-        
-        # Extract metadata
+
+        # Extract metadata - prefer inferred specialty, fall back to extracted
         urgency = self._extract_urgency(referral_letter)
-        specialty = self._extract_specialty(referral_letter)
+        specialty = inferred_specialty or self._extract_specialty(referral_letter)
         
         # Create response
         response = AgentResponse(
@@ -316,34 +329,62 @@ Format the referral letter with:
         
         return response
     
-    def _build_standard_referral_prompt(self, source_text: str, conditions: str, context: Optional[str] = None) -> str:
+    def _build_standard_referral_prompt(
+        self,
+        source_text: str,
+        conditions: str,
+        context: Optional[str] = None,
+        specialty: Optional[str] = None
+    ) -> str:
         """Build prompt for standard referral."""
         prompt_parts = []
-        
+
         if context:
             prompt_parts.append(f"Additional Context: {context}\n")
-        
-        prompt_parts.append("Generate a professional referral letter based on the following clinical information.")
-        
+
+        # Include specialty in the opening if inferred
+        if specialty:
+            prompt_parts.append(f"Generate a professional referral letter to a {specialty} specialist based on the following clinical information.")
+        else:
+            prompt_parts.append("Generate a professional referral letter based on the following clinical information.")
+
         if conditions:
-            prompt_parts.append(f"Focus specifically on these conditions: {conditions}")
-        
-        prompt_parts.append(f"\nClinical Information:\n{source_text}\n")
-        
+            # Strong filtering instructions for focused referral
+            prompt_parts.append(f"\n**CRITICAL INSTRUCTION - CONDITION FOCUS:**")
+            prompt_parts.append(f"This referral is ONLY for: {conditions}")
+            if specialty:
+                prompt_parts.append(f"The receiving specialist is a {specialty} specialist.")
+            prompt_parts.append("You MUST:")
+            prompt_parts.append("- ONLY include information directly relevant to the specified condition(s)")
+            prompt_parts.append("- EXCLUDE any other medical conditions, diagnoses, or problems not related to the referral reason")
+            prompt_parts.append("- ONLY include medications relevant to the specified condition(s)")
+            prompt_parts.append("- ONLY include investigations/tests relevant to the specified condition(s)")
+            prompt_parts.append("- DO NOT mention unrelated comorbidities or concurrent diagnoses")
+            prompt_parts.append("- The specialist only needs information pertinent to their evaluation")
+            prompt_parts.append("")
+
+        prompt_parts.append(f"\nClinical Information (extract ONLY relevant details):\n{source_text}\n")
+
         prompt_parts.append("Include in the referral letter:")
         prompt_parts.append("- Current date")
         prompt_parts.append("- Appropriate greeting to specialist colleague")
-        prompt_parts.append("- Patient demographics")
-        prompt_parts.append("- Clear reason for referral")
-        prompt_parts.append("- Relevant clinical history")
-        prompt_parts.append("- Physical examination findings")
-        prompt_parts.append("- Current medications")
-        prompt_parts.append("- Recent investigations and results")
-        prompt_parts.append("- Specific questions or requests")
+        prompt_parts.append("- Patient demographics (name, DOB, contact)")
+        prompt_parts.append("- Clear reason for referral (ONLY the specified condition)")
+        if conditions:
+            prompt_parts.append(f"- Clinical history ONLY related to: {conditions}")
+            prompt_parts.append(f"- Physical examination findings ONLY related to: {conditions}")
+            prompt_parts.append(f"- Medications ONLY if relevant to: {conditions}")
+            prompt_parts.append(f"- Investigations ONLY related to: {conditions}")
+        else:
+            prompt_parts.append("- Relevant clinical history")
+            prompt_parts.append("- Physical examination findings")
+            prompt_parts.append("- Current medications")
+            prompt_parts.append("- Recent investigations and results")
+        prompt_parts.append("- Specific questions or requests for the specialist")
         prompt_parts.append("- Appropriate urgency level")
         prompt_parts.append("- Professional closing with sender information\n")
         prompt_parts.append("Referral Letter:")
-        
+
         return "\n".join(prompt_parts)
     
     def _build_specialist_referral_prompt(
@@ -502,12 +543,98 @@ Format the referral letter with:
             "ophthalmology", "otolaryngology", "urology", "gynecology",
             "radiology", "pathology", "anesthesiology", "emergency"
         ]
-        
+
         text_lower = referral_text.lower()
         for specialty in specialties:
             if specialty in text_lower:
                 return specialty.capitalize()
-        
+
+        return None
+
+    def _infer_specialty_from_conditions(self, conditions: str) -> Optional[str]:
+        """Infer the appropriate specialty based on condition keywords."""
+        if not conditions:
+            return None
+
+        conditions_lower = conditions.lower()
+
+        # Condition to specialty mapping
+        specialty_mappings = {
+            "urology": [
+                "bph", "benign prostatic", "prostate", "urinary", "bladder",
+                "kidney stone", "renal calculi", "hematuria", "incontinence",
+                "erectile", "testicular", "scrotal", "uti", "pyelonephritis"
+            ],
+            "cardiology": [
+                "hypertension", "heart", "cardiac", "arrhythmia", "afib",
+                "atrial fibrillation", "chest pain", "angina", "heart failure",
+                "chf", "coronary", "murmur", "palpitation", "bradycardia",
+                "tachycardia", "valve", "cardiomyopathy"
+            ],
+            "gastroenterology": [
+                "gerd", "reflux", "ibs", "crohn", "colitis", "hepatitis",
+                "cirrhosis", "pancreatitis", "gallbladder", "dysphagia",
+                "gi bleed", "hemorrhoid", "diverticulitis", "celiac"
+            ],
+            "neurology": [
+                "headache", "migraine", "seizure", "epilepsy", "stroke",
+                "parkinson", "tremor", "neuropathy", "multiple sclerosis",
+                "dementia", "alzheimer", "vertigo", "tia"
+            ],
+            "endocrinology": [
+                "diabetes", "thyroid", "hypothyroid", "hyperthyroid",
+                "cushing", "addison", "pituitary", "adrenal", "osteoporosis",
+                "pcos", "hormone"
+            ],
+            "pulmonology": [
+                "asthma", "copd", "pneumonia", "pulmonary", "lung",
+                "bronchitis", "sleep apnea", "osa", "shortness of breath",
+                "dyspnea", "pleural", "interstitial"
+            ],
+            "rheumatology": [
+                "arthritis", "rheumatoid", "lupus", "sle", "gout",
+                "fibromyalgia", "scleroderma", "vasculitis", "sjogren"
+            ],
+            "orthopedics": [
+                "fracture", "joint pain", "knee", "hip replacement",
+                "rotator cuff", "back pain", "spine", "disc", "meniscus",
+                "ligament", "acl", "osteoarthritis"
+            ],
+            "dermatology": [
+                "rash", "eczema", "psoriasis", "skin cancer", "melanoma",
+                "acne", "dermatitis", "skin lesion", "mole"
+            ],
+            "psychiatry": [
+                "depression", "anxiety", "bipolar", "schizophrenia",
+                "ptsd", "ocd", "adhd", "eating disorder", "substance"
+            ],
+            "ophthalmology": [
+                "cataract", "glaucoma", "macular", "diabetic retinopathy",
+                "vision loss", "eye"
+            ],
+            "otolaryngology": [
+                "hearing loss", "tinnitus", "sinusitis", "tonsil",
+                "sleep apnea", "deviated septum", "ear infection"
+            ],
+            "nephrology": [
+                "chronic kidney", "ckd", "renal failure", "dialysis",
+                "proteinuria", "glomerulonephritis"
+            ],
+            "hematology": [
+                "anemia", "bleeding disorder", "leukemia", "lymphoma",
+                "thrombocytopenia", "clotting"
+            ],
+            "oncology": [
+                "cancer", "tumor", "malignancy", "chemotherapy",
+                "radiation therapy", "metastasis"
+            ]
+        }
+
+        for specialty, keywords in specialty_mappings.items():
+            for keyword in keywords:
+                if keyword in conditions_lower:
+                    return specialty.capitalize()
+
         return None
     
     def generate_referral_from_soap(self, soap_note: str, conditions: Optional[str] = None) -> Optional[str]:

@@ -16,6 +16,8 @@ from audio.constants import (
     DEFAULT_CHANNELS,
     SAMPLE_WIDTH_16BIT,
     SAMPLE_RATE_48K,
+    MAX_AUDIO_MEMORY_MB,
+    SEGMENT_COMBINE_THRESHOLD,
 )
 
 # Try to import audio.audio libraries - they may fail in CI environments
@@ -684,13 +686,16 @@ class AudioHandler:
 
     def _resolve_device_index(self, device_name: str) -> Optional[int]:
         """Resolve device name to sounddevice index.
-        
+
         Args:
             device_name: The target device name string.
-            
+
         Returns:
             Device index or None if not found.
         """
+        # SECURITY: Sanitize device name to prevent log injection attacks
+        from utils.validation import sanitize_device_name
+        device_name = sanitize_device_name(device_name)
         logging.debug(f"Resolving sounddevice index for: '{device_name}'")
         devices = sd.query_devices()
         device_id = None
@@ -867,13 +872,27 @@ class AudioHandler:
 
         def audio_callback_sd(indata: np.ndarray, frames: int, _: Any, status: sd.CallbackFlags) -> None:
             nonlocal accumulated_data, accumulated_frames
-            
+
             if status:
                 logging.warning(f"sounddevice status: {status}")
             try:
+                # SECURITY: Check for unbounded memory growth before adding more data
+                # Estimate current buffer size: each chunk is ~frames * 4 bytes (float32)
+                estimated_buffer_mb = (len(accumulated_data) * frames * 4) / (1024 * 1024)
+                if estimated_buffer_mb > MAX_AUDIO_MEMORY_MB:
+                    logging.error(f"Audio buffer exceeded {MAX_AUDIO_MEMORY_MB}MB limit ({estimated_buffer_mb:.1f}MB). Forcing flush to prevent memory exhaustion.")
+                    # Force flush and continue - don't lose audio data
+                    if self.callback_function and accumulated_data:
+                        combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
+                        if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
+                            combined_data = combined_data.flatten()
+                        self.callback_function(combined_data)
+                    accumulated_data = []
+                    accumulated_frames = 0
+
                 # Make a copy to avoid issues with buffer overwriting
                 audio_data_copy = indata.copy()
-                
+
                 # Check for clipping and normalize if needed
                 max_val = np.abs(audio_data_copy).max()
                 if max_val >= 0.99:
@@ -881,7 +900,7 @@ class AudioHandler:
                     audio_data_copy = audio_data_copy * 0.8
                     if len(accumulated_data) <= 3:
                         logging.warning(f"Audio callback {len(accumulated_data) + 1}: CLIPPING DETECTED AND NORMALIZED! Original max={max_val:.6f}")
-                
+
                 # Add to accumulated buffer
                 accumulated_data.append(audio_data_copy)
                 accumulated_frames += frames

@@ -177,6 +177,44 @@ def sanitize_prompt(prompt: str) -> str:
     
     return prompt.strip()
 
+
+# Maximum device name length for validation
+MAX_DEVICE_NAME_LENGTH = 256
+
+
+def sanitize_device_name(device_name: str) -> str:
+    """Sanitize device name for safe use in logging and matching.
+
+    Prevents log injection and ensures device name is safe for comparison.
+
+    Args:
+        device_name: The device name to sanitize
+
+    Returns:
+        Sanitized device name
+    """
+    if not device_name:
+        return ""
+
+    # Truncate to reasonable length
+    if len(device_name) > MAX_DEVICE_NAME_LENGTH:
+        device_name = device_name[:MAX_DEVICE_NAME_LENGTH]
+
+    # Remove control characters and newlines (prevent log injection)
+    device_name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', device_name)
+
+    # Remove any characters that could be used for log injection
+    device_name = device_name.replace('\n', ' ').replace('\r', ' ')
+
+    # Ensure valid UTF-8
+    try:
+        device_name.encode('utf-8')
+    except UnicodeEncodeError:
+        device_name = device_name.encode('utf-8', 'ignore').decode('utf-8')
+
+    return device_name.strip()
+
+
 def validate_file_path(file_path: str, must_exist: bool = False, 
                       must_be_writable: bool = False) -> Tuple[bool, Optional[str]]:
     """Validate a file path for safety and accessibility.

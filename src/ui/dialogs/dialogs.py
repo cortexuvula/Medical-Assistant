@@ -1086,77 +1086,100 @@ ElevenLabs, Deepgram, Groq APIs"""
     parent.wait_window(dialog)
 
 def show_letter_options_dialog(parent: tk.Tk) -> tuple:
-    """Show dialog to get letter source and specifications from user.
-    
+    """Show dialog to get letter source, recipient type, and specifications from user.
+
     Returns:
-        tuple: (source, specifications) where source is 'transcript' or 'soap'
+        tuple: (source, recipient_type, specifications) where source is 'transcript' or 'soap'
     """
-    # Increase dialog size from 600x400 to 700x550 for better fit
-    dialog = create_toplevel_dialog(parent, "Letter Options", "700x700")
-    
+    dialog = create_toplevel_dialog(parent, "Letter Options", "700x750")
+
     # Add a main frame with padding for better spacing
     main_frame = ttk.Frame(dialog, padding=(20, 20, 20, 20))
     main_frame.pack(fill=tk.BOTH, expand=True)
-    
+
+    # Source selection
     ttk.Label(main_frame, text="Select text source for the letter:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
-    
-    # Improve radio button section with a frame
+
     source_frame = ttk.Frame(main_frame)
     source_frame.pack(fill="x", pady=(0, 15), anchor="w")
-    
+
     source_var = tk.StringVar(value="transcript")
     ttk.Radiobutton(source_frame, text="Use text from Transcript tab", variable=source_var, value="transcript").pack(anchor="w", padx=20, pady=5)
     ttk.Radiobutton(source_frame, text="Use text from SOAP tab", variable=source_var, value="soap").pack(anchor="w", padx=20, pady=5)
-    
-    ttk.Label(main_frame, text="Letter specifications:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
-    ttk.Label(main_frame, text="Enter any specific requirements for the letter (tone, style, formality, purpose, etc.)", 
-            wraplength=650, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
-    
-    # Make the text area larger and ensure it fills available width
-    specs_text = scrolledtext.ScrolledText(main_frame, height=8, width=80, font=("Segoe UI", 10))
+
+    # Recipient type selection (NEW)
+    ttk.Label(main_frame, text="Letter recipient type:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
+    ttk.Label(main_frame, text="Select the type of recipient to focus the letter content appropriately",
+              wraplength=650, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
+
+    recipient_frame = ttk.Frame(main_frame)
+    recipient_frame.pack(fill="x", pady=(0, 15), anchor="w")
+
+    # Recipient type options
+    recipient_types = [
+        ("Insurance Company", "insurance"),
+        ("Employer / Workplace", "employer"),
+        ("Specialist / Colleague", "specialist"),
+        ("Patient", "patient"),
+        ("School / Educational Institution", "school"),
+        ("Legal / Attorney", "legal"),
+        ("Government Agency (Disability, etc.)", "government"),
+        ("Other (specify in instructions below)", "other")
+    ]
+
+    recipient_var = tk.StringVar(value="insurance")
+    for label, value in recipient_types:
+        ttk.Radiobutton(recipient_frame, text=label, variable=recipient_var, value=value).pack(anchor="w", padx=20, pady=2)
+
+    # Additional specifications
+    ttk.Label(main_frame, text="Additional instructions (optional):", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))
+    ttk.Label(main_frame, text="Enter any specific requirements (purpose, specific conditions to focus on, tone, etc.)",
+              wraplength=650, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
+
+    specs_text = scrolledtext.ScrolledText(main_frame, height=6, width=80, font=("Segoe UI", 10))
     specs_text.pack(fill="both", expand=True, pady=(0, 20))
-    
-    # Add some example text to help users
-    example_text = "Examples:\n- Formal letter to a specialist for patient referral\n- Patient instruction letter\n- Response to insurance company\n- Follow-up appointment instructions"
-    specs_text.insert("1.0", example_text)
+
+    # Add placeholder text
+    placeholder_text = "Examples:\n- Focus only on back injury for workers comp claim\n- Request prior authorization for MRI\n- Fitness to return to work assessment\n- Medical clearance for surgery"
+    specs_text.insert("1.0", placeholder_text)
     specs_text.tag_add("gray", "1.0", "end")
     specs_text.tag_config("gray", foreground="gray")
-    
-    # Clear example text when user clicks in the field
-    def clear_example(_):
-        if specs_text.get("1.0", "end-1c").strip() == example_text.strip():
+
+    def clear_placeholder(_):
+        if specs_text.get("1.0", "end-1c").strip() == placeholder_text.strip():
             specs_text.delete("1.0", "end")
             specs_text.tag_remove("gray", "1.0", "end")
-        specs_text.unbind("<FocusIn>")  # Only clear once
-    
-    specs_text.bind("<FocusIn>", clear_example)
-    
-    result = [None, None]
-    
+        specs_text.unbind("<FocusIn>")
+
+    specs_text.bind("<FocusIn>", clear_placeholder)
+
+    result = [None, None, None]
+
     def on_submit():
         result[0] = source_var.get()
-        result[1] = specs_text.get("1.0", "end-1c")
-        # If user didn't change example text, provide empty specs
-        if result[1].strip() == example_text.strip():
-            result[1] = ""
+        result[1] = recipient_var.get()
+        result[2] = specs_text.get("1.0", "end-1c")
+        # If user didn't change placeholder text, provide empty specs
+        if result[2].strip() == placeholder_text.strip():
+            result[2] = ""
         dialog.destroy()
-    
+
     def on_cancel():
         dialog.destroy()
-    
-    # Improve button layout
+
+    # Button layout
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill="x", padx=20, pady=(0, 20))
-    
+
     ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=15).pack(side="left", padx=10, pady=10)
     ttk.Button(btn_frame, text="Generate Letter", command=on_submit, bootstyle="success", width=15).pack(side="right", padx=10, pady=10)
-    
+
     # Center the dialog on the screen
     dialog.update_idletasks()
     dialog.geometry("+{}+{}".format(
         (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2),
         (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
     ))
-    
+
     dialog.wait_window()
-    return result[0], result[1]
+    return result[0], result[1], result[2]

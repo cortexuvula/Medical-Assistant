@@ -277,8 +277,8 @@ class DocumentGenerators:
 
     def create_letter(self) -> None:
         """Create a letter from transcript with improved concurrency."""
-        # Get source and specifications
-        source, specs = self.app.show_letter_options_dialog()
+        # Get source, recipient type, and specifications
+        source, recipient_type, specs = self.app.show_letter_options_dialog()
 
         if source is None:  # User cancelled
             return
@@ -295,32 +295,45 @@ class DocumentGenerators:
             messagebox.showwarning("Empty Text", f"The {source_name} tab is empty. Please add content before creating a letter.")
             return
 
+        # Get recipient type display name for status messages
+        recipient_names = {
+            "insurance": "Insurance Company",
+            "employer": "Employer",
+            "specialist": "Specialist",
+            "patient": "Patient",
+            "school": "School",
+            "legal": "Legal/Attorney",
+            "government": "Government Agency",
+            "other": "Other"
+        }
+        recipient_display = recipient_names.get(recipient_type, "recipient")
+
         # Create error handler for this operation
         error_handler = AsyncUIErrorHandler(
             self.app,
             button=self.app.letter_button,
             progress_bar=self.app.progress_bar,
-            operation_name=f"Generating letter from {source_name}"
+            operation_name=f"Generating letter to {recipient_display}"
         )
         error_handler.start()
 
         def task() -> None:
             try:
                 # Use our custom scheduler for status updates
-                self.app.schedule_status_update(3000, f"Still generating letter from {source_name}...", "progress")
+                self.app.schedule_status_update(3000, f"Still generating letter to {recipient_display}...", "progress")
                 self.app.schedule_status_update(10000, f"Processing letter (this may take a moment)...", "progress")
 
                 # Log that we're starting letter generation
-                logging.info(f"Starting letter generation from {source_name} with specs: {specs}")
+                logging.info(f"Starting letter generation from {source_name} to {recipient_type} with specs: {specs}")
 
-                # Use CPU executor for the AI processing which is CPU-intensive
-                future = self.app.io_executor.submit(create_letter_with_ai, text, specs)
+                # Use IO executor for the AI processing
+                future = self.app.io_executor.submit(create_letter_with_ai, text, recipient_type, specs)
 
                 # Get result with a longer timeout to prevent hanging (5 minutes)
                 result = future.result(timeout=300)
 
                 # Log the successful completion
-                logging.info("Successfully generated letter")
+                logging.info(f"Successfully generated letter to {recipient_type}")
 
                 # Check if result contains error message
                 if result.startswith("Error creating letter:"):
@@ -328,10 +341,15 @@ class DocumentGenerators:
 
                 # Schedule UI update on the main thread
                 def update_ui():
-                    self.app._update_text_area(result, f"Letter generated from {source_name}", self.app.letter_button, self.app.letter_text)
+                    self.app._update_text_area(
+                        result,
+                        f"Letter to {recipient_display} generated from {source_name}",
+                        self.app.letter_button,
+                        self.app.letter_text
+                    )
                     self.app.notebook.select(3)  # Show letter in Letter tab (index 3)
 
-                error_handler.complete(callback=update_ui, success_message=f"Letter generated from {source_name}")
+                error_handler.complete(callback=update_ui, success_message=f"Letter to {recipient_display} generated")
 
             except concurrent.futures.TimeoutError:
                 error_handler.fail("Letter creation timed out. Please try again.")
