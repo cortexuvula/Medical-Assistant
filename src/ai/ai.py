@@ -137,17 +137,17 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     except AppTimeoutError as e:
         logging.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
         error_code, details = format_api_error("openai", e)
         title, message = get_error_message(error_code, details, model)
         # Return error message that includes troubleshooting hints
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except Exception as e:
         logging.error(f"Unexpected error calling OpenAI: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
 @secure_api_call("perplexity")
 @resilient_api_call(
@@ -213,14 +213,14 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
     if not api_key:
         logging.error("Perplexity API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Validate API key format
     is_valid, error = validate_api_key("perplexity", api_key)
     if not is_valid:
         logging.error(f"Invalid Perplexity API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -252,17 +252,17 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
     except AppTimeoutError as e:
         logging.error(f"Perplexity API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         error_code, details = format_api_error("perplexity", e)
         title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except Exception as e:
         logging.error(f"Perplexity API error with model {model}: {str(e)}")
         error_code, details = format_api_error("perplexity", e)
         title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
 def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     import requests
@@ -525,14 +525,14 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     if not api_key:
         logging.error("Anthropic API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Validate API key format
     is_valid, error = validate_api_key("anthropic", api_key)
     if not is_valid:
         logging.error(f"Invalid Anthropic API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Validate model name
     is_valid, error = validate_model_name(model, "anthropic")
@@ -567,16 +567,16 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     except AppTimeoutError as e:
         logging.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Anthropic API error with model {model}: {str(e)}")
         error_code, details = format_api_error("anthropic", e)
         title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except Exception as e:
         logging.error(f"Unexpected error calling Anthropic: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
 def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
     """Call Grok API with explicit timeout.
@@ -594,14 +594,14 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
     if not api_key:
         logging.error("Grok API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Grok API key not found")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Validate API key and inputs
     is_valid, error = validate_api_key("grok", api_key)
     if not is_valid:
         logging.error(f"Invalid Grok API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Sanitize inputs
     prompt = sanitize_prompt(prompt)
@@ -631,12 +631,12 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
     except httpx.TimeoutException as e:
         logging.error(f"Grok API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {timeout_seconds}s")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except Exception as e:
         logging.error(f"Grok API error with model {model}: {str(e)}")
         error_code, details = format_api_error("grok", e)
         title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
 @secure_api_call("gemini")
 @resilient_api_call(
@@ -709,14 +709,14 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
     if not api_key:
         logging.error("Gemini API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Gemini API key not found")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Validate API key format
     is_valid, error = validate_api_key("gemini", api_key)
     if not is_valid:
         logging.error(f"Invalid Gemini API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -750,16 +750,16 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
     except AppTimeoutError as e:
         logging.error(f"Gemini API timeout with model {model_name}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Gemini API error with model {model_name}: {str(e)}")
         error_code, details = format_api_error("gemini", e)
         title, message = get_error_message(error_code, details, model_name)
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
     except Exception as e:
         logging.error(f"Unexpected error calling Gemini: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}\n\nOriginal text: {prompt[:100]}..."
+        return f"[Error: {title}] {message}"
 
 
 def adjust_text_with_openai(text: str) -> str:
