@@ -118,8 +118,10 @@ class ProcessingQueue:
             task_id: Unique identifier for tracking this task, or None if duplicate
         """
         recording_id = recording_data.get("recording_id")
-
+        logging.info(f"DEBUG: add_recording called for recording_id={recording_id}")
+        logging.info("DEBUG: About to acquire self.lock")
         with self.lock:
+            logging.info("DEBUG: Lock acquired")
             # Check for duplicate - is this recording already being processed?
             if recording_id is not None and recording_id in self._recording_to_task:
                 existing_task_id = self._recording_to_task[recording_id]
@@ -253,13 +255,16 @@ class ProcessingQueue:
                 
                 # Submit to executor
                 future = self.executor.submit(self._process_recording, task_id, recording_data)
-                
+
                 # Track the future
+                logging.debug("DEBUG _process_queue: About to acquire lock")
                 with self.lock:
+                    logging.debug("DEBUG _process_queue: Lock acquired")
                     if task_id in self.active_tasks:
                         self.active_tasks[task_id]["future"] = future
                         self.active_tasks[task_id]["status"] = "processing"
-                
+                logging.debug("DEBUG _process_queue: Lock released")
+
                 # Mark queue task as done
                 self.queue.task_done()
                 
@@ -453,7 +458,9 @@ class ProcessingQueue:
     
     def _mark_completed(self, task_id: str, recording_data: Dict, result: Dict, processing_time: float):
         """Mark a task as completed successfully."""
+        logging.info("DEBUG _mark_completed: About to acquire lock")
         with self.lock:
+            logging.info("DEBUG _mark_completed: Lock acquired")
             # Update task data
             recording_data["status"] = "completed"
             recording_data["completed_at"] = datetime.now()
@@ -499,7 +506,9 @@ class ProcessingQueue:
     
     def _mark_failed(self, task_id: str, recording_data: Dict, error_msg: str):
         """Mark a task as failed."""
+        logging.info("DEBUG _mark_failed: About to acquire lock")
         with self.lock:
+            logging.info("DEBUG _mark_failed: Lock acquired")
             # Update task data
             recording_data["status"] = "failed"
             recording_data["failed_at"] = datetime.now()
