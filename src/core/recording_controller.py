@@ -156,11 +156,16 @@ class RecordingController:
         self.app.audio_handler.silence_threshold = 0.001
 
         # Stop and get recording data - recording_manager handles state transition
+        logging.info("DEBUG: About to call recording_manager.stop_recording()")
         recording_data = self.app.recording_manager.stop_recording()
+        logging.info(f"DEBUG: stop_recording returned, has data: {recording_data is not None}")
         if recording_data:
+            logging.info("DEBUG: About to call play_recording_sound")
             self.app.play_recording_sound(start=False)
+            logging.info("DEBUG: About to call _finalize_recording")
             # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
             self._finalize_recording(recording_data)
+            logging.info("DEBUG: _finalize_recording completed")
         else:
             self.app.status_manager.error("No recording data available")
             self.app.ui_state_manager.set_recording_state(
@@ -173,6 +178,7 @@ class RecordingController:
         Args:
             recording_data: Recording data from RecordingManager
         """
+        logging.info("DEBUG: _finalize_recording started")
         if not recording_data or not recording_data.get('audio'):
             self.app.status_manager.error("No audio data available")
             self.app.ui_state_manager.set_recording_state(
@@ -180,12 +186,17 @@ class RecordingController:
             )
             return
 
+        logging.info(f"DEBUG: quick_continue_mode = {SETTINGS.get('quick_continue_mode', True)}")
         # Check if quick continue mode is enabled
         if SETTINGS.get("quick_continue_mode", True):
             # Queue for background processing
+            logging.info("DEBUG: About to call _queue_recording_for_processing")
             self.app._queue_recording_for_processing(recording_data)
+            logging.info("DEBUG: _queue_recording_for_processing completed")
             # Reset UI immediately
+            logging.info("DEBUG: About to call _reset_ui_for_next_patient")
             self.app._reset_ui_for_next_patient()
+            logging.info("DEBUG: _reset_ui_for_next_patient completed")
             self.app.status_manager.info("Recording queued • Ready for next patient")
         else:
             # Process immediately
@@ -194,8 +205,10 @@ class RecordingController:
                 recording=False, caller="finalize_delayed"
             ))
 
+        logging.info("DEBUG: About to generate RecordingComplete event")
         # Trigger recording complete event for auto-save
         self.app.event_generate("<<RecordingComplete>>", when="tail")
+        logging.info("DEBUG: _finalize_recording completed")
 
     def toggle_pause(self) -> None:
         """Toggle pause state for SOAP recording.
