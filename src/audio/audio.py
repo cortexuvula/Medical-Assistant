@@ -16,7 +16,6 @@ from audio.constants import (
     DEFAULT_CHANNELS,
     SAMPLE_WIDTH_16BIT,
     SAMPLE_RATE_48K,
-    MAX_AUDIO_MEMORY_MB,
     SEGMENT_COMBINE_THRESHOLD,
 )
 
@@ -876,20 +875,6 @@ class AudioHandler:
             if status:
                 logging.warning(f"sounddevice status: {status}")
             try:
-                # SECURITY: Check for unbounded memory growth before adding more data
-                # Estimate current buffer size: each chunk is ~frames * 4 bytes (float32)
-                estimated_buffer_mb = (len(accumulated_data) * frames * 4) / (1024 * 1024)
-                if estimated_buffer_mb > MAX_AUDIO_MEMORY_MB:
-                    logging.error(f"Audio buffer exceeded {MAX_AUDIO_MEMORY_MB}MB limit ({estimated_buffer_mb:.1f}MB). Forcing flush to prevent memory exhaustion.")
-                    # Force flush and continue - don't lose audio data
-                    if self.callback_function and accumulated_data:
-                        combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
-                        if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
-                            combined_data = combined_data.flatten()
-                        self.callback_function(combined_data)
-                    accumulated_data = []
-                    accumulated_frames = 0
-
                 # Make a copy to avoid issues with buffer overwriting
                 audio_data_copy = indata.copy()
 
