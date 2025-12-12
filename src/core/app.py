@@ -368,6 +368,16 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.active_text_widget = self.transcript_text
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
+        # Track content modifications for background update protection
+        self._content_modified = {
+            'transcript': False,
+            'soap': False,
+            'referral': False,
+            'letter': False
+        }
+        self._current_recording_id: Optional[int] = None
+        self._setup_modification_tracking()
+
         # Store button references for compatibility
         self._store_workflow_button_references()
 
@@ -405,7 +415,95 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.cancel_soap_button = self.buttons["cancel_soap"]
         self.load_button = self.buttons["load"]
         self.save_button = self.buttons["save"]
-    
+
+    def _setup_modification_tracking(self) -> None:
+        """Set up event bindings to track content modifications.
+
+        This allows the app to protect user edits from being overwritten
+        by background queue processing updates.
+        """
+        # Map text widgets to their modification keys
+        widget_map = {
+            self.transcript_text: 'transcript',
+            self.soap_text: 'soap',
+            self.referral_text: 'referral',
+            self.letter_text: 'letter'
+        }
+
+        for widget, key in widget_map.items():
+            # Bind to key press events to detect modifications
+            widget.bind('<Key>', lambda e, k=key: self._on_content_modified(k))
+            # Also bind to mouse button (for paste via right-click)
+            widget.bind('<Button-3>', lambda e, k=key: self._on_content_modified(k))
+            # Bind to Control-V for paste
+            widget.bind('<Control-v>', lambda e, k=key: self._on_content_modified(k))
+            widget.bind('<Control-V>', lambda e, k=key: self._on_content_modified(k))
+
+    def _on_content_modified(self, tab_name: str) -> None:
+        """Called when user modifies content in a tab.
+
+        Args:
+            tab_name: Name of the tab that was modified
+        """
+        self._content_modified[tab_name] = True
+
+    def reset_content_modified(self, tab_name: Optional[str] = None) -> None:
+        """Reset the content modified flag for a tab or all tabs.
+
+        Args:
+            tab_name: Specific tab to reset, or None for all tabs
+        """
+        if tab_name:
+            self._content_modified[tab_name] = False
+        else:
+            for key in self._content_modified:
+                self._content_modified[key] = False
+
+    def is_content_modified(self, tab_name: str) -> bool:
+        """Check if content in a tab has been modified by user.
+
+        Args:
+            tab_name: Name of the tab to check
+
+        Returns:
+            True if content was modified since last reset
+        """
+        return self._content_modified.get(tab_name, False)
+
+    def can_update_tab_from_background(self, tab_name: str, recording_id: int) -> bool:
+        """Check if it's safe to update a tab with background results.
+
+        Args:
+            tab_name: Name of the tab to check
+            recording_id: ID of the recording being loaded
+
+        Returns:
+            True if safe to update (empty or same recording and not modified)
+        """
+        # Get the text widget for this tab
+        widget_map = {
+            'transcript': self.transcript_text,
+            'soap': self.soap_text,
+            'referral': self.referral_text,
+            'letter': self.letter_text
+        }
+
+        widget = widget_map.get(tab_name)
+        if not widget:
+            return False
+
+        # Always safe if tab is empty
+        content = widget.get("1.0", "end-1c").strip()
+        if not content:
+            return True
+
+        # Safe if same recording and not modified
+        if (self._current_recording_id == recording_id and
+            not self._content_modified.get(tab_name, False)):
+            return True
+
+        return False
+
     def _get_available_ai_providers(self):
         """Get list of AI providers that have API keys configured.
 

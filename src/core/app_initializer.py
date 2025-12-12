@@ -454,44 +454,67 @@ class AppInitializer:
         self.app.status_manager.increment_queue_failed()
     
     def _update_ui_with_results(self, recording_id: int, transcript: str, soap_note: str, patient_name: str):
-        """Update UI tabs with processed results from background queue."""
+        """Update UI tabs with processed results from background queue.
+
+        This method checks for user modifications before overwriting content,
+        protecting user edits from being lost to background updates.
+        """
         try:
             # Check if UI should be updated based on settings
             if not SETTINGS.get('auto_update_ui_on_completion', True):
                 return
-                
+
             # Only update if the UI is not currently busy with another recording
             if hasattr(self.app, 'soap_recording') and self.app.soap_recording:
                 logging.info("Skipping UI update - currently recording")
                 return
-            
-            # Check if tabs are empty or user wants to see the latest results
-            transcript_empty = not self.app.transcript_text.get("1.0", "end-1c").strip()
-            soap_empty = not self.app.soap_text.get("1.0", "end-1c").strip()
-            
-            # Update transcript tab if empty
-            if transcript_empty and transcript:
-                self.app.transcript_text.delete("1.0", "end")
-                self.app.transcript_text.insert("1.0", transcript)
-                self.app.transcript_text.edit_separator()  # Add to undo history
-                logging.info(f"Updated transcript tab with results from recording {recording_id}")
-            
-            # Update SOAP tab if empty
-            if soap_empty and soap_note:
-                self.app.soap_text.delete("1.0", "end")
-                self.app.soap_text.insert("1.0", soap_note)
-                self.app.soap_text.edit_separator()  # Add to undo history
-                logging.info(f"Updated SOAP tab with results from recording {recording_id}")
 
-                # Switch to SOAP tab to show the results and give focus
-                self.app.notebook.select(1)
-                self.app.soap_text.focus_set()
-            
+            # Use the app's protection mechanism to check if updates are safe
+            can_update_transcript = self.app.can_update_tab_from_background('transcript', recording_id)
+            can_update_soap = self.app.can_update_tab_from_background('soap', recording_id)
+
+            # Track if we skipped any updates due to user modifications
+            skipped_updates = []
+
+            # Update transcript tab if safe
+            if transcript:
+                if can_update_transcript:
+                    self.app.transcript_text.delete("1.0", "end")
+                    self.app.transcript_text.insert("1.0", transcript)
+                    self.app.transcript_text.edit_separator()  # Add to undo history
+                    self.app.reset_content_modified('transcript')  # Reset modified flag
+                    logging.info(f"Updated transcript tab with results from recording {recording_id}")
+                else:
+                    skipped_updates.append('transcript')
+                    logging.info(f"Skipped transcript update - user has modified content")
+
+            # Update SOAP tab if safe
+            if soap_note:
+                if can_update_soap:
+                    self.app.soap_text.delete("1.0", "end")
+                    self.app.soap_text.insert("1.0", soap_note)
+                    self.app.soap_text.edit_separator()  # Add to undo history
+                    self.app.reset_content_modified('soap')  # Reset modified flag
+                    logging.info(f"Updated SOAP tab with results from recording {recording_id}")
+
+                    # Switch to SOAP tab to show the results and give focus
+                    self.app.notebook.select(1)
+                    self.app.soap_text.focus_set()
+                else:
+                    skipped_updates.append('soap')
+                    logging.info(f"Skipped SOAP update - user has modified content")
+
             # Update current recording ID
-            self.app.current_recording_id = recording_id
-            
-            # Update status
-            self.app.status_manager.info(f"Loaded results for {patient_name}")
-            
+            self.app._current_recording_id = recording_id
+
+            # Update status with info about skipped updates
+            if skipped_updates:
+                self.app.status_manager.info(
+                    f"Results for {patient_name} ready (view in Recordings tab - "
+                    f"skipped {', '.join(skipped_updates)} to preserve your edits)"
+                )
+            else:
+                self.app.status_manager.info(f"Loaded results for {patient_name}")
+
         except Exception as e:
             logging.error(f"Error updating UI with results: {str(e)}", exc_info=True)

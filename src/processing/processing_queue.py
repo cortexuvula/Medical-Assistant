@@ -41,18 +41,24 @@ if hasattr(threading, 'excepthook'):
 
 
 class ProcessingQueue:
-    """Manages background processing of medical recordings."""
-    
+    """Manages background processing of medical recordings.
+
+    Deduplication:
+        The queue tracks active recordings by their recording_id to prevent
+        duplicate processing. A recording that is already pending or processing
+        will not be queued again until it completes or fails.
+    """
+
     def __init__(self, app=None, max_workers: int = None):
         """Initialize the processing queue.
-        
+
         Args:
             app: The main application instance
             max_workers: Maximum number of concurrent processing threads
         """
         self.app = app
         self.max_workers = max_workers or SETTINGS.get("max_background_workers", 2)
-        
+
         # Core components
         self.queue = Queue()
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
@@ -60,35 +66,42 @@ class ProcessingQueue:
         self.completed_tasks: Dict[str, Dict] = {}
         self.failed_tasks: Dict[str, Dict] = {}
         self.batch_tasks: Dict[str, Dict] = {}  # Track batch processing
-        
+
+        # Deduplication: track recording_id -> task_id for active recordings
+        self._recording_to_task: Dict[int, str] = {}
+
         # Thread safety
         self.lock = Lock()
         self.shutdown_event = Event()
-        
+
         # Callbacks
         self.status_callback: Optional[Callable] = None
         self.completion_callback: Optional[Callable] = None
         self.error_callback: Optional[Callable] = None
         self.batch_callback: Optional[Callable] = None  # For batch progress updates
-        
+
         # Statistics
         self.stats = {
             "total_queued": 0,
             "total_processed": 0,
             "total_failed": 0,
             "total_retried": 0,
+            "total_deduplicated": 0,
             "processing_time_avg": 0
         }
-        
+
         # Start the queue processor
         self.processor_thread = Thread(target=self._process_queue, daemon=True)
         self.processor_thread.start()
-        
+
         logging.info(f"ProcessingQueue initialized with {self.max_workers} workers")
     
-    def add_recording(self, recording_data: Dict[str, Any]) -> str:
+    def add_recording(self, recording_data: Dict[str, Any]) -> Optional[str]:
         """Add a recording to the processing queue.
-        
+
+        Implements deduplication: if a recording is already being processed
+        or is pending in the queue, returns None instead of queuing again.
+
         Args:
             recording_data: Dictionary containing:
                 - recording_id: Database ID of the recording
@@ -97,27 +110,47 @@ class ProcessingQueue:
                 - context: Any context information
                 - priority: Processing priority (0-10, default 5)
                 - batch_id: Optional batch identifier
-        
+
         Returns:
-            task_id: Unique identifier for tracking this task
+            task_id: Unique identifier for tracking this task, or None if duplicate
         """
-        task_id = str(uuid.uuid4())
-        
-        # Add timestamp and task ID
-        recording_data["task_id"] = task_id
-        recording_data["queued_at"] = datetime.now()
-        recording_data["priority"] = recording_data.get("priority", 5)
-        recording_data["retry_count"] = 0
-        recording_data["status"] = "queued"
-        
-        # Add to queue
-        self.queue.put((recording_data["priority"], task_id, recording_data))
-        
-        # Track in active tasks
+        recording_id = recording_data.get("recording_id")
+
         with self.lock:
+            # Check for duplicate - is this recording already being processed?
+            if recording_id is not None and recording_id in self._recording_to_task:
+                existing_task_id = self._recording_to_task[recording_id]
+                # Verify the task is still active
+                if existing_task_id in self.active_tasks:
+                    existing_status = self.active_tasks[existing_task_id].get("status", "unknown")
+                    logging.warning(
+                        f"Recording {recording_id} already queued as task {existing_task_id} "
+                        f"(status: {existing_status}). Skipping duplicate."
+                    )
+                    self.stats["total_deduplicated"] += 1
+                    return None
+                else:
+                    # Task completed/failed, remove stale mapping
+                    del self._recording_to_task[recording_id]
+
+            # Generate new task ID
+            task_id = str(uuid.uuid4())
+
+            # Add timestamp and task ID
+            recording_data["task_id"] = task_id
+            recording_data["queued_at"] = datetime.now()
+            recording_data["priority"] = recording_data.get("priority", 5)
+            recording_data["retry_count"] = 0
+            recording_data["status"] = "queued"
+
+            # Track in active tasks
             self.active_tasks[task_id] = recording_data
             self.stats["total_queued"] += 1
-            
+
+            # Track recording_id -> task_id for deduplication
+            if recording_id is not None:
+                self._recording_to_task[recording_id] = task_id
+
             # Track batch if provided
             batch_id = recording_data.get("batch_id")
             if batch_id:
@@ -130,12 +163,15 @@ class ProcessingQueue:
                     }
                 self.batch_tasks[batch_id]["total"] += 1
                 self.batch_tasks[batch_id]["task_ids"].append(task_id)
-        
+
+        # Add to queue (outside lock - queue is thread-safe)
+        self.queue.put((recording_data["priority"], task_id, recording_data))
+
         # Notify status update
         self._notify_status_update(task_id, "queued", len(self.active_tasks))
-        
-        logging.info(f"Recording {recording_data.get('recording_id')} added to queue as task {task_id}")
-        
+
+        logging.info(f"Recording {recording_id} added to queue as task {task_id}")
+
         return task_id
     
     def add_batch_recordings(self, recordings: List[Dict[str, Any]], batch_options: Dict[str, Any] = None) -> str:
@@ -404,15 +440,20 @@ class ProcessingQueue:
             recording_data["completed_at"] = datetime.now()
             recording_data["processing_time"] = processing_time
             recording_data["result"] = result
-            
+
             # Move to completed
             if task_id in self.active_tasks:
                 self.completed_tasks[task_id] = self.active_tasks.pop(task_id)
-            
+
+            # Remove from deduplication tracking
+            recording_id = recording_data.get("recording_id")
+            if recording_id is not None and recording_id in self._recording_to_task:
+                del self._recording_to_task[recording_id]
+
             # Update stats
             self.stats["total_processed"] += 1
             self._update_avg_processing_time(processing_time)
-            
+
             # Update batch tracking if part of a batch
             batch_id = recording_data.get("batch_id")
             if batch_id and batch_id in self.batch_tasks:
@@ -444,14 +485,19 @@ class ProcessingQueue:
             recording_data["status"] = "failed"
             recording_data["failed_at"] = datetime.now()
             recording_data["error_message"] = error_msg
-            
+
             # Move to failed
             if task_id in self.active_tasks:
                 self.failed_tasks[task_id] = self.active_tasks.pop(task_id)
-            
+
+            # Remove from deduplication tracking (allow re-queue after failure)
+            recording_id = recording_data.get("recording_id")
+            if recording_id is not None and recording_id in self._recording_to_task:
+                del self._recording_to_task[recording_id]
+
             # Update stats
             self.stats["total_failed"] += 1
-            
+
             # Update batch tracking if part of a batch
             batch_id = recording_data.get("batch_id")
             if batch_id and batch_id in self.batch_tasks:
@@ -588,10 +634,15 @@ class ProcessingQueue:
         with self.lock:
             if task_id in self.active_tasks:
                 task = self.active_tasks[task_id]
+                recording_id = task.get("recording_id")
+
                 if task["status"] == "queued":
                     # Remove from queue if still queued
                     task["status"] = "cancelled"
                     self.active_tasks.pop(task_id)
+                    # Remove from deduplication tracking
+                    if recording_id is not None and recording_id in self._recording_to_task:
+                        del self._recording_to_task[recording_id]
                     logging.info(f"Task {task_id} cancelled")
                     return True
                 elif "future" in task:
@@ -599,6 +650,9 @@ class ProcessingQueue:
                     future: Future = task["future"]
                     if future.cancel():
                         self.active_tasks.pop(task_id)
+                        # Remove from deduplication tracking
+                        if recording_id is not None and recording_id in self._recording_to_task:
+                            del self._recording_to_task[recording_id]
                         logging.info(f"Task {task_id} cancelled")
                         return True
         return False
