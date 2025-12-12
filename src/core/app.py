@@ -1140,7 +1140,9 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
 
     def on_window_configure(self, event) -> None:
         """Handle window configure events. Delegates to WindowStateController."""
-        self.window_state_controller.on_window_configure(event)
+        # Guard against early calls before controller is initialized
+        if hasattr(self, 'window_state_controller') and self.window_state_controller:
+            self.window_state_controller.on_window_configure(event)
 
     def save_window_dimensions(self) -> None:
         """Save window dimensions. Delegates to WindowStateController."""
