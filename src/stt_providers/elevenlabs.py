@@ -124,13 +124,20 @@ class ElevenLabsProvider(BaseSTTProvider):
             timeout_seconds = max(60, int(file_size_kb / 500) * 60)
             self.logger.info(f"Setting ElevenLabs timeout to {timeout_seconds} seconds for {file_size_kb:.2f} KB file")
             
-            # Prepare data for request
-            data = {
-                'model_id': 'scribe_v1'
-            }
-            
-            # Add diarization parameters
+            # Get settings
             elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+
+            # Prepare data for request - model_id from settings (scribe_v1 or scribe_v1_experimental)
+            data = {
+                'model_id': elevenlabs_settings.get("model_id", "scribe_v1")
+            }
+
+            # Add temperature if set (controls creativity/accuracy tradeoff)
+            temperature = elevenlabs_settings.get("temperature")
+            if temperature is not None:
+                data['temperature'] = temperature
+
+            # Add diarization parameters
             diarize = elevenlabs_settings.get("diarize", True)
             
             if diarize:
@@ -152,7 +159,12 @@ class ElevenLabsProvider(BaseSTTProvider):
                 timestamps_granularity = elevenlabs_settings.get("timestamps_granularity", "word")
                 if timestamps_granularity:
                     data['timestamps_granularity'] = timestamps_granularity
-            
+
+                # Add diarization threshold if set (fine-tune speaker detection)
+                diarization_threshold = elevenlabs_settings.get("diarization_threshold")
+                if diarization_threshold is not None:
+                    data['diarization_threshold'] = diarization_threshold
+
             # Print API call details to terminal
             logging.debug("\n===== ELEVENLABS API CALL =====")
             logging.debug(f"URL: {url}")

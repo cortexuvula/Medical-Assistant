@@ -21,14 +21,14 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
     API_BASE_URL = "https://api.elevenlabs.io/v1"
     
     # Language to model mapping for multilingual support
-    # Latest models as of 2024
-    TURBO_V2_5 = "eleven_turbo_v2_5"  # Newest, fastest model with low latency
-    MULTILINGUAL_V2 = "eleven_multilingual_v2"  # High quality multilingual
-    MONOLINGUAL_V1 = "eleven_monolingual_v1"  # Original English model
-    
-    # Default models for backward compatibility
+    # Latest models as of 2025 - eleven_monolingual_v1 deprecated Dec 15, 2025
+    FLASH_V2_5 = "eleven_flash_v2_5"  # Ultra-low latency, 50% cheaper
+    TURBO_V2_5 = "eleven_turbo_v2_5"  # Fast, good quality
+    MULTILINGUAL_V2 = "eleven_multilingual_v2"  # High quality multilingual (default)
+
+    # Default models
     MULTILINGUAL_MODEL_ID = MULTILINGUAL_V2
-    MONOLINGUAL_MODEL_ID = TURBO_V2_5  # Use Turbo v2.5 as default for English
+    FLASH_MODEL_ID = FLASH_V2_5  # Use Flash v2.5 for fastest/cheapest option
     
     # Supported languages for multilingual model
     SUPPORTED_LANGUAGES = [
@@ -173,7 +173,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             else:
                 # Default based on language
                 if language == "en":
-                    model_id = self.MONOLINGUAL_MODEL_ID
+                    model_id = self.TURBO_V2_5  # Good quality for English
                 else:
                     model_id = self.MULTILINGUAL_MODEL_ID
             

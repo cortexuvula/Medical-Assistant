@@ -39,9 +39,9 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     ttk.Label(frame, text="Model ID:").grid(row=1, column=0, sticky="w", pady=10)
     model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings.get("model_id", "scribe_v1")))
     model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
-    model_combo['values'] = ["scribe_v1", "scribe_v1_base"]  # Updated to supported models only
+    model_combo['values'] = ["scribe_v1", "scribe_v1_experimental"]  # Updated Dec 2025
     model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="The AI model to use for transcription.",
+    ttk.Label(frame, text="scribe_v1: stable, scribe_v1_experimental: improved multi-language, reduced hallucinations",
               wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Language Code
@@ -88,9 +88,29 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     ttk.Label(frame, text="Identify different speakers in the audio.",
               wraplength=400, foreground="gray").grid(row=11, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
+    # Temperature (new in 2025 API)
+    ttk.Label(frame, text="Temperature:").grid(row=12, column=0, sticky="w", pady=10)
+    temp_value = elevenlabs_settings.get("temperature", default_settings.get("temperature", None))
+    temp_str = "" if temp_value is None else str(temp_value)
+    temp_entry = ttk.Entry(frame, width=30)
+    temp_entry.insert(0, temp_str)
+    temp_entry.grid(row=12, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Optional. 0.0=deterministic, 1.0=creative. Leave empty for default.",
+              wraplength=400, foreground="gray").grid(row=13, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Diarization Threshold (new in 2025 API)
+    ttk.Label(frame, text="Diarization Threshold:").grid(row=14, column=0, sticky="w", pady=10)
+    diar_thresh_value = elevenlabs_settings.get("diarization_threshold", default_settings.get("diarization_threshold", None))
+    diar_thresh_str = "" if diar_thresh_value is None else str(diar_thresh_value)
+    diar_thresh_entry = ttk.Entry(frame, width=30)
+    diar_thresh_entry.insert(0, diar_thresh_str)
+    diar_thresh_entry.grid(row=14, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-1.0).",
+              wraplength=400, foreground="gray").grid(row=15, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
     # Create the buttons frame
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=12, column=0, columnspan=2, pady=(20, 0), sticky="e")
+    btn_frame.grid(row=16, column=0, columnspan=2, pady=(20, 0), sticky="e")
 
     # Save handler - renamed to avoid conflict with imported save_settings
     def save_elevenlabs_settings():
@@ -101,6 +121,26 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
             messagebox.showerror("Invalid Input", "Number of speakers must be a valid integer or empty.")
             return
 
+        # Parse temperature (None or float)
+        try:
+            temperature = None if not temp_entry.get().strip() else float(temp_entry.get())
+            if temperature is not None and (temperature < 0.0 or temperature > 1.0):
+                messagebox.showerror("Invalid Input", "Temperature must be between 0.0 and 1.0.")
+                return
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Temperature must be a valid number or empty.")
+            return
+
+        # Parse diarization threshold (None or float)
+        try:
+            diarization_threshold = None if not diar_thresh_entry.get().strip() else float(diar_thresh_entry.get())
+            if diarization_threshold is not None and (diarization_threshold < 0.0 or diarization_threshold > 1.0):
+                messagebox.showerror("Invalid Input", "Diarization threshold must be between 0.0 and 1.0.")
+                return
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Diarization threshold must be a valid number or empty.")
+            return
+
         # Build the new settings
         new_settings = {
             "model_id": model_var.get(),
@@ -108,7 +148,9 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
             "tag_audio_events": tag_events_var.get(),
             "num_speakers": num_speakers,
             "timestamps_granularity": granularity_var.get(),
-            "diarize": diarize_var.get()
+            "diarize": diarize_var.get(),
+            "temperature": temperature,
+            "diarization_threshold": diarization_threshold
         }
 
         # Update the settings
@@ -596,11 +638,11 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     elevenlabs_model_var = tk.StringVar(value=tts_settings.get("elevenlabs_model", default_settings.get("elevenlabs_model", "eleven_turbo_v2_5")))
     model_combo = ttk.Combobox(frame, textvariable=elevenlabs_model_var, width=30, state="readonly")
     model_combo['values'] = [
-        "eleven_turbo_v2_5",  # Newest, fastest
-        "eleven_multilingual_v2",  # High quality multilingual
-        "eleven_monolingual_v1"  # Original English
+        "eleven_turbo_v2_5",  # Fast, good quality
+        "eleven_multilingual_v2",  # High quality multilingual (default)
+        "eleven_flash_v2_5"  # Ultra-low latency, 50% cheaper
     ]
-    model_desc_label = ttk.Label(frame, text="Turbo v2.5 is newest & fastest, Multilingual v2 for non-English",
+    model_desc_label = ttk.Label(frame, text="Flash v2.5: fastest/cheapest, Turbo v2.5: balanced, Multilingual v2: best quality",
                                  wraplength=400, foreground="gray")
 
     # Function to handle provider change

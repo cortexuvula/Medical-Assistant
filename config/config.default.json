@@ -64,7 +64,9 @@
     "tag_audio_events": true,
     "num_speakers": null,
     "timestamps_granularity": "word",
-    "diarize": true
+    "diarize": true,
+    "temperature": null,
+    "diarization_threshold": null
   },
   "ai_tasks": {
     "refine_text": {
