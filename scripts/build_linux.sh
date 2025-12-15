@@ -38,9 +38,11 @@ else
     fi
 fi
 
-# Install dependencies
+# Install dependencies (use Linux-specific requirements to avoid torch/whisper bloat)
 echo "Installing dependencies..."
-pip install --no-cache-dir -r requirements.txt
+echo "Note: Using requirements-linux.txt which excludes local Whisper (torch) to reduce build size."
+echo "Users who need local Whisper can install it separately: pip install openai-whisper"
+pip install --no-cache-dir -r requirements-linux.txt
 
 # Build executable
 echo "Building executable..."

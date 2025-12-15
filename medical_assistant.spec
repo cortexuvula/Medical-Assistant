@@ -34,6 +34,19 @@ if soundcard_spec and soundcard_spec.origin:
         if os.path.exists(h_path):
             soundcard_datas.append((h_path, 'soundcard'))
 
+# Exclude heavy packages on Linux to avoid build size issues
+# Users who need local Whisper on Linux can install torch separately
+linux_excludes = [
+    'torch', 'torchvision', 'torchaudio',
+    'triton',
+    'nvidia', 'nvidia.cuda_runtime', 'nvidia.cudnn', 'nvidia.cublas',
+    'nvidia.cufft', 'nvidia.curand', 'nvidia.cusolver', 'nvidia.cusparse',
+    'nvidia.nccl', 'nvidia.nvtx', 'nvidia.nvjitlink', 'nvidia.cuda_nvrtc',
+    'nvidia.cuda_cupti', 'nvidia.cusparselt', 'nvidia.nvshmem', 'nvidia.cufile',
+    'whisper', 'openai-whisper',
+    'numba', 'llvmlite',
+] if platform.system() == 'Linux' else []
+
 a = Analysis(
     ['main.py'],
     pathex=['src'],  # Add src to path
@@ -80,7 +93,7 @@ a = Analysis(
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
     runtime_hooks=['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux' else (['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
-    excludes=[],
+    excludes=linux_excludes,
     noarchive=False,
     optimize=0,
 )

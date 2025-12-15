@@ -1,0 +1,35 @@
+# Linux-specific requirements (excludes torch/whisper to reduce build size)
+# Local Whisper requires torch which adds 4GB+ to the build
+# Users who need local Whisper on Linux can install: pip install openai-whisper
+
+SpeechRecognition
+deepgram-sdk>=3.0.0,<5.0.0  # v3/v4 API, v5 has breaking changes
+ttkbootstrap
+python-dotenv
+openai>=1.0.0
+anthropic>=0.18.1  # For Anthropic Claude models
+google-generativeai>=0.3.0  # For Google Gemini models
+pyaudio
+requests
+numpy
+groq
+typing-extensions>=4.8.0
+soundcard
+sounddevice
+concurrent-log-handler>=0.9.1 # Use a specific version or latest as appropriate
+pyinstaller>=6.3.0
+cryptography>=45.0.0  # For secure API key storage
+Pillow>=10.0.0  # Required for ttkbootstrap image support
+pydantic>=2.5.0  # For agent system and structured data models
+pyperclip>=1.8.2  # For clipboard operations in diagnostic results
+websockets>=12.0  # For WebSocket server/client implementation
+aiohttp>=3.9.0  # For async HTTP/WebSocket support
+webrtcvad>=2.0.10  # For voice activity detection
+elevenlabs>=2.27.0  # For TTS/STT functionality (v2 SDK, Dec 2025)
+pydub>=0.25.1  # For audio manipulation
+reportlab>=4.0.0  # For PDF generation and export functionality
+deep-translator>=1.11.0  # For multi-provider translation support
+pyttsx3>=2.90  # For offline text-to-speech
+gtts>=2.5.0  # For Google text-to-speech
+pygame>=2.5.0  # For audio playback in TTS
+simpleeval>=0.9.13  # For safe expression evaluation (replaces unsafe eval)
