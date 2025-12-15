@@ -141,7 +141,8 @@ class MenuManager:
         settings_menu.add_command(label="TTS Settings", command=self.app.show_tts_settings)
         settings_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
         settings_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
-        
+        settings_menu.add_command(label="Custom Vocabulary", command=self.app.show_vocabulary_settings)
+
         # Create prompt settings submenu
         self._create_prompt_settings_submenu(settings_menu)
         

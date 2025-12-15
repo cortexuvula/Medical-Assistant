@@ -173,6 +173,13 @@ class AppSettingsMixin:
                 logger.error(f"Error showing basic dialog: {e2}", exc_info=True)
                 self.status_manager.error("Failed to show agent settings dialog")
 
+    def show_vocabulary_settings(self) -> None:
+        """Show dialog to configure custom vocabulary corrections."""
+        from ui.dialogs.vocabulary_dialog import VocabularyDialog
+        dialog = VocabularyDialog(self)
+        if dialog.show():
+            self.status_manager.success("Vocabulary settings saved successfully")
+
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                              grok_model: str, ollama_model: str, system_prompt: str,
                              anthropic_model: str, gemini_model: str = "") -> None:

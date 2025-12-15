@@ -9,6 +9,7 @@ from typing import List, Optional, Callable, Any, Dict, Tuple, Union
 from pathlib import Path
 from settings.settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
+from managers.vocabulary_manager import vocabulary_manager
 from core.config import get_config
 from audio.constants import (
     DEFAULT_SAMPLE_RATE,
@@ -350,7 +351,11 @@ class AudioHandler:
                 if transcript != "":
                     logging.info(f"Transcription successful with fallback provider: {provider}")
                     break
-                    
+
+        # Apply vocabulary corrections to the transcript
+        if transcript:
+            transcript = vocabulary_manager.correct_transcript(transcript)
+
         return transcript or ""  # Return empty string if all providers failed
 
     def _try_transcription_with_provider(self, segment: AudioSegment, provider: str) -> str:

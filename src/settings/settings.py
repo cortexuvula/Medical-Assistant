@@ -407,6 +407,14 @@ Follow up:
             "When did this start?": "clarify",
             "Is there anything else bothering you?": "clarify"
         }
+    },
+    "custom_vocabulary": {
+        "enabled": True,              # Enable vocabulary corrections
+        "default_specialty": "general",  # Default medical specialty
+        "corrections": {
+            # Example entries - users can add their own
+            # Format: "find_text": {"replacement": "...", "category": "...", "specialty": "...", ...}
+        }
     }
 }
 
