@@ -100,8 +100,8 @@ class WhisperProvider(BaseSTTProvider):
             logging.debug(f"Language: {self.language}")
             logging.debug("======================================\n")
             
-            # Load model - use small model for speed
-            model = whisper.load_model("small")
+            # Load model - use turbo model (default since 2025, better accuracy than small)
+            model = whisper.load_model("turbo")
             
             # Perform transcription
             result = model.transcribe(
