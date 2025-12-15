@@ -54,6 +54,7 @@ from ui.dialogs.dialog_utils import (
 from ui.dialogs.audio_settings import (
     show_elevenlabs_settings_dialog,
     show_deepgram_settings_dialog,
+    show_groq_settings_dialog,
     show_translation_settings_dialog,
     show_tts_settings_dialog,
     show_custom_suggestions_dialog,

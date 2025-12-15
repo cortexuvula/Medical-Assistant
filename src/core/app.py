@@ -35,7 +35,7 @@ log_manager = setup_application_logging()
 
 from utils.utils import get_valid_microphones
 from settings.settings import SETTINGS
-from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog
+from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog, show_groq_settings_dialog
 from ui.tooltip import ToolTip
 
 import time
@@ -183,7 +183,21 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             recognition_language=self.recognition_language
         )
         self.status_manager.success("Deepgram settings saved successfully")
-    
+
+    def show_groq_settings(self) -> None:
+        """Show dialog to configure Groq settings."""
+        # Call the dialog function
+        show_groq_settings_dialog(self)
+
+        # Refresh the audio handler with potentially new settings
+        self.audio_handler = AudioHandler(
+            elevenlabs_api_key=self.elevenlabs_api_key,
+            deepgram_api_key=self.deepgram_api_key,
+            groq_api_key=self.groq_api_key,
+            recognition_language=self.recognition_language
+        )
+        self.status_manager.success("Groq settings saved successfully")
+
     def show_translation_settings(self) -> None:
         """Show dialog to configure translation settings."""
         from ui.dialogs.dialogs import show_translation_settings_dialog

@@ -68,6 +68,11 @@
     "temperature": null,
     "diarization_threshold": null
   },
+  "groq": {
+    "model": "whisper-large-v3-turbo",
+    "language": "en",
+    "prompt": ""
+  },
   "ai_tasks": {
     "refine_text": {
       "model": "gpt-3.5-turbo",

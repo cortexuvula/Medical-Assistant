@@ -16,6 +16,7 @@ from utils.resilience import resilient_api_call
 from core.config import get_config
 from utils.security_decorators import secure_api_call
 from utils.security import get_security_manager
+from settings.settings import SETTINGS
 
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""
@@ -47,13 +48,15 @@ class GroqProvider(BaseSTTProvider):
         failure_threshold=5,
         recovery_timeout=60
     )
-    def _make_api_call(self, client, audio_file, language: str, timeout: int):
+    def _make_api_call(self, client, audio_file, language: str, model: str, prompt: str, timeout: int):
         """Make the actual API call to GROQ with retry logic.
 
         Args:
             client: OpenAI client configured for GROQ
             audio_file: Open file handle for audio
             language: Language code
+            model: Whisper model to use
+            prompt: Optional context/spelling hints
             timeout: Request timeout
 
         Returns:
@@ -65,12 +68,18 @@ class GroqProvider(BaseSTTProvider):
             ServiceUnavailableError: On service unavailable
         """
         try:
-            response = client.audio.transcriptions.create(
-                file=audio_file,
-                model="whisper-large-v3-turbo",
-                language=language,
-                timeout=timeout
-            )
+            # Build request kwargs
+            request_kwargs = {
+                "file": audio_file,
+                "model": model,
+                "language": language,
+                "timeout": timeout
+            }
+            # Add prompt if provided (helps with context and spelling)
+            if prompt:
+                request_kwargs["prompt"] = prompt
+
+            response = client.audio.transcriptions.create(**request_kwargs)
             return response
         except Exception as e:
             error_msg = str(e).lower()
@@ -126,13 +135,16 @@ class GroqProvider(BaseSTTProvider):
             # Initialize client with GROQ base URL
             client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
             
-            # Print API call details to terminal
-            logging.debug("\n===== GROQ API CALL =====")
-            logging.debug(f"File: {os.path.basename(temp_file)} (audio/wav)")
-            logging.debug(f"Audio file size: {file_size_kb:.2f} KB")
-            logging.debug(f"Timeout set to: {timeout_seconds} seconds")
-            logging.debug("=========================\n")
-            
+            # Get Groq settings
+            groq_settings = SETTINGS.get("groq", {})
+            model = groq_settings.get("model", "whisper-large-v3-turbo")
+            # Use language from settings if set, otherwise use instance language
+            language = groq_settings.get("language", "") or self.language.split('-')[0]
+            prompt = groq_settings.get("prompt", "")
+
+            # Log API call details
+            self.logger.debug(f"GROQ API call: model={model}, language={language}, file_size={file_size_kb:.2f}KB")
+
             # Open and read the audio file
             with open(temp_file, "rb") as audio_file:
                 # Make API call with retry logic
@@ -140,7 +152,9 @@ class GroqProvider(BaseSTTProvider):
                     response = self._make_api_call(
                         client,
                         audio_file,
-                        self.language.split('-')[0],  # Use language code without region
+                        language,
+                        model,
+                        prompt,
                         timeout_seconds
                     )
                 except (APIError, RateLimitError, ServiceUnavailableError) as e:
@@ -150,14 +164,7 @@ class GroqProvider(BaseSTTProvider):
             # Process response
             if hasattr(response, 'text'):
                 transcript = response.text
-                
-                # Print successful response info to terminal
-                logging.debug("\n===== GROQ API RESPONSE =====")
-                logging.debug(f"Response successfully received")
-                if transcript:
-                    text_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
-                    logging.debug(f"Text preview: {text_preview}")
-                logging.debug("============================\n")
+                self.logger.info(f"GROQ transcription successful: {len(transcript)} characters")
             else:
                 raise TranscriptionError("Unexpected response format from GROQ API")
                 

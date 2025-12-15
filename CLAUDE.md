@@ -163,12 +163,48 @@ The bidirectional translation assistant enables real-time medical translation fo
 
 ### ElevenLabs TTS Provider
 - **Voice Selection**: Dropdown interface in TTS settings dialog
-- **Model Support**: 
-  - Turbo v2.5 (newest, fastest, low latency)
-  - Multilingual v2 (high quality multilingual)
-  - Monolingual v1 (original English model)
+- **Model Support**:
+  - Flash v2.5 (ultra-low latency, 50% cheaper - NEW Dec 2025)
+  - Turbo v2.5 (fast, good quality)
+  - Multilingual v2 (high quality multilingual, default)
 - **Settings**: Voice ID, model, rate stored in `settings.json`
-- **API Integration**: Fetch available voices dynamically
+- **API Integration**: Fetch available voices dynamically using ElevenLabs SDK v2
+
+## STT (Speech-to-Text) Providers
+
+All STT providers inherit from `src/stt_providers/base.BaseSTTProvider` and implement:
+- `transcribe(segment: AudioSegment) -> str` - Transcribe audio segment
+- `test_connection() -> bool` - Test API connectivity
+
+### Deepgram Provider (`src/stt_providers/deepgram.py`)
+- **SDK**: `deepgram-sdk>=3.0.0,<5.0.0`
+- **Model**: `nova-2-medical` (best for medical transcription)
+- **Features**: Smart formatting, diarization, profanity filter, redaction
+- **Settings Dialog**: Settings → Deepgram Settings
+- **Configuration**: `config/config.default.json` → `deepgram` section
+
+### ElevenLabs STT Provider (`src/stt_providers/elevenlabs.py`)
+- **SDK**: `elevenlabs>=2.27.0` (v2 SDK)
+- **Model**: `scribe_v1` (speech-to-text model)
+- **Features**: Audio event tagging, timestamps, diarization
+- **Settings Dialog**: Settings → ElevenLabs Settings
+- **Configuration**: `config/config.default.json` → `elevenlabs` section
+
+### Groq Provider (`src/stt_providers/groq.py`)
+- **API**: OpenAI-compatible endpoint (`https://api.groq.com/openai/v1`)
+- **Models**:
+  - `whisper-large-v3-turbo` (default, fastest, 216x real-time)
+  - `whisper-large-v3` (higher quality, slower)
+  - `distil-whisper-large-v3-en` (English-only, fast)
+- **Features**: Language selection, context prompts
+- **Settings Dialog**: Settings → Groq Settings
+- **Configuration**: `config/config.default.json` → `groq` section
+
+### Whisper Provider (`src/stt_providers/whisper.py`)
+- **Package**: `openai-whisper>=20250625`
+- **Model**: `turbo` (default since 2025, best accuracy for English)
+- **Note**: Runs locally, no API key required
+- **Trade-off**: Higher accuracy but slower than cloud providers
 
 ## Batch Processing Implementation Summary
 

@@ -321,6 +321,91 @@ def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     dialog.protocol("WM_DELETE_WINDOW", on_close)
 
 
+def show_groq_settings_dialog(parent: tk.Tk) -> None:
+    """Show dialog to configure Groq speech-to-text settings."""
+    from settings.settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
+
+    # Get current Groq settings with fallback to defaults
+    groq_settings = SETTINGS.get("groq", {})
+    default_settings = _DEFAULT_SETTINGS.get("groq", {
+        "model": "whisper-large-v3-turbo",
+        "language": "en",
+        "prompt": ""
+    })
+
+    dialog = create_toplevel_dialog(parent, "Groq Settings", "600x450")
+
+    # Create the main frame with padding
+    frame = ttk.Frame(dialog, padding=20)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    # Create form with current settings
+    ttk.Label(frame, text="Groq Speech-to-Text Settings",
+              font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
+
+    # Model selection
+    ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="w", pady=10)
+    model_var = tk.StringVar(value=groq_settings.get("model", default_settings.get("model", "whisper-large-v3-turbo")))
+    model_combo = ttk.Combobox(frame, textvariable=model_var, width=30, state="readonly")
+    model_combo['values'] = [
+        "whisper-large-v3-turbo",   # Fastest, 216x real-time
+        "whisper-large-v3",         # Higher quality
+        "distil-whisper-large-v3-en"  # English-only, fast
+    ]
+    model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="whisper-large-v3-turbo: fastest (216x real-time), whisper-large-v3: higher quality",
+              wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Language
+    ttk.Label(frame, text="Language:").grid(row=3, column=0, sticky="w", pady=10)
+    language_var = tk.StringVar(value=groq_settings.get("language", default_settings.get("language", "en")))
+    language_combo = ttk.Combobox(frame, textvariable=language_var, width=30)
+    language_combo['values'] = [
+        "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru",
+        "ja", "ko", "zh", "ar", "hi", "tr", "vi", "th"
+    ]
+    language_combo.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="ISO-639-1 language code. Setting this improves accuracy and latency.",
+              wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Prompt (context/spelling hints)
+    ttk.Label(frame, text="Prompt:").grid(row=5, column=0, sticky="nw", pady=10)
+    prompt_text = tk.Text(frame, width=35, height=4, wrap=tk.WORD)
+    prompt_text.insert("1.0", groq_settings.get("prompt", default_settings.get("prompt", "")))
+    prompt_text.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
+    ttk.Label(frame, text="Optional context or spelling hints (max 224 tokens). Example: medical terminology, names.",
+              wraplength=400, foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Create the buttons frame
+    btn_frame = ttk.Frame(frame)
+    btn_frame.grid(row=7, column=0, columnspan=2, pady=(20, 0), sticky="e")
+
+    # Save handler
+    def save_groq_settings():
+        # Get prompt text
+        prompt = prompt_text.get("1.0", tk.END).strip()
+
+        # Build the new settings
+        new_settings = {
+            "model": model_var.get(),
+            "language": language_var.get(),
+            "prompt": prompt
+        }
+
+        # Update the settings
+        SETTINGS["groq"] = new_settings
+        save_settings(SETTINGS)
+        messagebox.showinfo("Settings Saved", "Groq settings saved successfully")
+        dialog.destroy()
+
+    # Cancel handler
+    def cancel():
+        dialog.destroy()
+
+    ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Save", command=save_groq_settings, bootstyle="success", width=10).pack(side="left", padx=5)
+
+
 def show_translation_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure translation settings."""
     from settings.settings import SETTINGS, _DEFAULT_SETTINGS, save_settings
