@@ -101,13 +101,21 @@ class TestMigrationSystem:
             pytest.fail(f"Failed to import MigrationManager: {e}")
 
     def test_migration_manager_initializes(self, tmp_path):
-        """Migration manager should initialize with database path."""
+        """Migration manager should initialize correctly."""
         from src.database.db_migrations import MigrationManager
 
-        db_path = tmp_path / "test.db"
-        manager = MigrationManager(str(db_path))
+        # MigrationManager uses get_db_manager() internally, so mock it
+        with patch('src.database.db_migrations.get_db_manager') as mock_get_db:
+            mock_db_manager = MagicMock()
+            mock_get_db.return_value = mock_db_manager
+            # Mock the connection for _init_migrations_table
+            mock_conn = MagicMock()
+            mock_db_manager.get_connection.return_value.__enter__ = MagicMock(return_value=mock_conn)
+            mock_db_manager.get_connection.return_value.__exit__ = MagicMock(return_value=False)
 
-        assert manager is not None
+            manager = MigrationManager()
+
+            assert manager is not None
 
 
 class TestSchemaDefinitions:
