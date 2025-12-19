@@ -37,7 +37,8 @@ class TestOpenAIProvider:
             result = call_openai(
                 model="gpt-4",
                 system_message="You are a helpful assistant",
-                user_prompt="Test prompt"
+                prompt="Test prompt",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -55,7 +56,8 @@ class TestOpenAIProvider:
             result = call_openai(
                 model="gpt-4",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         # Should return error message, not raise exception
@@ -88,7 +90,8 @@ class TestAnthropicProvider:
             result = call_anthropic(
                 model="claude-3-sonnet-20240229",
                 system_message="You are a helpful assistant",
-                user_prompt="Test prompt"
+                prompt="Test prompt",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -106,7 +109,8 @@ class TestAnthropicProvider:
             result = call_anthropic(
                 model="claude-3-sonnet-20240229",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -130,7 +134,8 @@ class TestGrokProvider:
             result = call_grok(
                 model="grok-1",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -151,9 +156,10 @@ class TestGeminiProvider:
             mock_genai.GenerativeModel.return_value = mock_model
 
             result = call_gemini(
-                model="gemini-1.5-pro",
+                model_name="gemini-1.5-pro",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -175,9 +181,9 @@ class TestPerplexityProvider:
             MockOpenAI.return_value = mock_client
 
             result = call_perplexity(
-                model="sonar-medium-chat",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -323,7 +329,8 @@ class TestTimeoutHandling:
             result = call_openai(
                 model="gpt-4",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         assert isinstance(result, str)
@@ -347,7 +354,8 @@ class TestRateLimitHandling:
             result = call_openai(
                 model="gpt-4",
                 system_message="Test",
-                user_prompt="Test"
+                prompt="Test",
+                temperature=0.7
             )
 
         # Should return error message
@@ -418,7 +426,7 @@ class TestAIProviderRegressionSuite:
             result = call_openai(
                 model="gpt-4",
                 system_message="Test",
-                user_prompt="Test",
+                prompt="Test",
                 temperature=0.5
             )
 
