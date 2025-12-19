@@ -10,7 +10,10 @@ import tkinter as tk
 # import ttkbootstrap as ttk
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+# Add src directory to path (matches main.py behavior for internal imports)
+sys.path.insert(0, str(project_root / 'src'))
 
 # Import test utilities after path setup
 try:
