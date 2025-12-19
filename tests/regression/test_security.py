@@ -64,7 +64,7 @@ class TestAPIKeyEncryption:
             assert result is not None  # Returns a tuple
 
     def test_get_api_key_returns_stored(self, tmp_path):
-        """get_api_key should return stored key."""
+        """get_api_key should return stored key from key_storage."""
         from src.utils.security import SecurityManager
 
         with patch('src.utils.security.SecureKeyStorage') as mock_storage, \
@@ -75,6 +75,9 @@ class TestAPIKeyEncryption:
             # Mock the key_storage to return a key
             manager.key_storage = MagicMock()
             manager.key_storage.get_key = MagicMock(return_value="test-api-key")
+            # Mock config.get_api_key to return None so it falls through to key_storage
+            manager.config = MagicMock()
+            manager.config.get_api_key = MagicMock(return_value=None)
 
             result = manager.get_api_key("openai")
             assert result == "test-api-key"
