@@ -9,6 +9,8 @@ import logging
 import tkinter as tk
 import ttkbootstrap as ttk
 from settings.settings import SETTINGS, save_settings
+from ui.ui_constants import Colors, Icons
+from ui.theme_observer import notify_theme_change
 
 
 class ThemeManager:
@@ -73,18 +75,22 @@ class ThemeManager:
         self._update_theme_button(is_dark, new_theme)
         self._update_refresh_buttons(is_dark)
         self._update_chat_ui(is_dark)
-        
+
         # Update menu styling for new theme
         if hasattr(self.app, 'menu_manager') and self.app.menu_manager:
             self.app.menu_manager.update_menu_theme()
-        
+
+        # Broadcast theme change to all registered observers
+        notify_theme_change(is_dark)
+
         # Update shortcut label in status bar to show theme toggle shortcut
         self.app.status_manager.info("Theme toggle shortcut: Alt+T")
         
     def _update_text_widgets(self, is_dark: bool):
         """Update text widgets background and foreground colors based on theme."""
-        text_bg = "#212529" if is_dark else "#ffffff"
-        text_fg = "#f8f9fa" if is_dark else "#212529"
+        colors = Colors.get_theme_colors(is_dark)
+        text_bg = colors["bg"]
+        text_fg = colors["fg"]
         
         # Update all main text widgets with new colors
         text_widgets = [self.app.transcript_text, self.app.soap_text, self.app.referral_text]
@@ -103,7 +109,8 @@ class ThemeManager:
     
     def _update_frames_and_controls(self, is_dark: bool):
         """Update control panel backgrounds and button frames."""
-        control_bg = "#212529" if is_dark else "#f8f9fa"
+        colors = Colors.get_theme_colors(is_dark)
+        control_bg = colors["bg_secondary"]
         
         # Update control panel backgrounds - handle tk vs ttk frames differently
         for frame in self.app.winfo_children():
@@ -118,37 +125,35 @@ class ThemeManager:
         
         # Set specific components that need explicit styling
         if hasattr(self.app, 'control_frame') and isinstance(self.app.control_frame, tk.Frame):
-            background_color = control_bg if is_dark else "#f8f9fa"
-            self.app.control_frame.configure(background=background_color)
+            self.app.control_frame.configure(background=control_bg)
     
     def _update_notebook_style(self, is_dark: bool):
         """Update notebook and general component styling."""
-        control_bg = "#212529" if is_dark else "#f8f9fa"
-        control_fg = "#f8f9fa" if is_dark else "#212529"
-        
+        colors = Colors.get_theme_colors(is_dark)
+
         if is_dark:
             # Dark mode styling
-            self.app.style.configure("Green.TNotebook", background=control_bg)
-            self.app.style.configure("Green.TNotebook.Tab", background="#343a40", foreground=control_fg)
-            self.app.style.configure("TButton", foreground=control_fg)
-            self.app.style.configure("TFrame", background=control_bg)  # Use style system for ttk frames
-            self.app.style.configure("TLabel", foreground=control_fg)
+            self.app.style.configure("Green.TNotebook", background=colors["bg"])
+            self.app.style.configure("Green.TNotebook.Tab", background=colors["bg_secondary"], foreground=colors["fg"])
+            self.app.style.configure("TButton", foreground=colors["fg"])
+            self.app.style.configure("TFrame", background=colors["bg"])
+            self.app.style.configure("TLabel", foreground=colors["fg"])
         else:
             # Light mode styling - reset to defaults
-            self.app.style.configure("Green.TNotebook", background="#ffffff")
-            self.app.style.configure("Green.TNotebook.Tab", background="#e9ecef", foreground="#212529")
-            self.app.style.configure("TButton", foreground="#212529")
-            self.app.style.configure("TFrame", background="#f8f9fa")  # Use style system for ttk frames
-            self.app.style.configure("TLabel", foreground="#212529")
+            self.app.style.configure("Green.TNotebook", background=colors["bg"])
+            self.app.style.configure("Green.TNotebook.Tab", background=colors["bg_tertiary"], foreground=colors["fg"])
+            self.app.style.configure("TButton", foreground=colors["fg"])
+            self.app.style.configure("TFrame", background=colors["bg_secondary"])
+            self.app.style.configure("TLabel", foreground=colors["fg"])
     
     def _update_theme_button(self, is_dark: bool, new_theme: str):
         """Update theme button icon and tooltip if available."""
         if hasattr(self.app, 'theme_btn') and self.app.theme_btn:
             # Log the current state for debugging
             logging.debug(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
-            
+
             # Update icon and text based on new theme
-            icon = "🌙" if not is_dark else "☀️"
+            icon = Icons.MOON if not is_dark else Icons.SUN
             self.app.theme_btn.config(text=f"{icon} Theme")
             
             # Also update bootstyle based on theme for better visibility
@@ -173,23 +178,25 @@ class ThemeManager:
     
     def _update_refresh_buttons(self, is_dark: bool):
         """Configure refresh button style based on theme."""
+        colors = Colors.get_theme_colors(is_dark)
+
         if is_dark:
             # Dark mode - button is already visible against dark background
-            self.app.style.configure("Refresh.TButton", foreground="#f8f9fa")  # Light text on dark background
-            self.app.style.map("Refresh.TButton", 
-                foreground=[("pressed", "#f8f9fa"), ("active", "#f8f9fa")],
-                background=[("pressed", "#0d6efd"), ("active", "#0d6efd")])
-                
+            self.app.style.configure("Refresh.TButton", foreground=colors["fg"])
+            self.app.style.map("Refresh.TButton",
+                foreground=[("pressed", colors["fg"]), ("active", colors["fg"])],
+                background=[("pressed", Colors.PRIMARY), ("active", Colors.PRIMARY)])
+
             # Find and update refresh button if it exists
             for widget in self.app.winfo_children():
                 self._update_refresh_button_bootstyle(widget, "dark")
         else:
             # Light mode - make button text white for visibility
-            self.app.style.configure("Refresh.TButton", foreground="white")  # White text for better visibility
-            self.app.style.map("Refresh.TButton", 
+            self.app.style.configure("Refresh.TButton", foreground="white")
+            self.app.style.map("Refresh.TButton",
                 foreground=[("pressed", "white"), ("active", "white")],
-                background=[("pressed", "#0d6efd"), ("active", "#0d6efd")])
-                
+                background=[("pressed", Colors.PRIMARY), ("active", Colors.PRIMARY)])
+
             # Find and update refresh button if it exists
             for widget in self.app.winfo_children():
                 self._update_refresh_button_bootstyle(widget, "info")

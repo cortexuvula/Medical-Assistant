@@ -6,6 +6,7 @@ Handles the application status bar UI
 import tkinter as tk
 import ttkbootstrap as ttk
 from ui.scaling_utils import ui_scaler
+from ui.ui_constants import Colors, Fonts, Spacing
 from settings.settings import SETTINGS
 
 
@@ -24,49 +25,54 @@ class StatusBar:
         
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.
-        
+
         Returns:
             tuple: (status_frame, status_icon_label, status_label, provider_indicator, progress_bar)
         """
-        status_frame = ttk.Frame(self.parent, padding=(10, 5))
-        
+        status_frame = ttk.Frame(self.parent, padding=Spacing.PADDING_STATUS_BAR)
+
         # Configure for responsive layout
         status_frame.columnconfigure(1, weight=1)  # Status label should expand
-        
+
         # Status icon
-        status_icon_label = ttk.Label(status_frame, text="", font=("Segoe UI", 16), foreground="gray")
-        status_icon_label.pack(side=tk.LEFT, padx=(5, 0))
-        
+        status_icon_label = ttk.Label(
+            status_frame,
+            text="",
+            font=Fonts.get_font(Fonts.SIZE_TITLE),
+            foreground=Colors.STATUS_IDLE
+        )
+        status_icon_label.pack(side=tk.LEFT, padx=(Spacing.SM, 0))
+
         # Status text
         status_label = ttk.Label(
-            status_frame, 
-            text="Status: Idle", 
+            status_frame,
+            text="Status: Idle",
             anchor="w",
-            font=("Segoe UI", ui_scaler.scale_font_size(10))
+            font=Fonts.get_font(Fonts.SIZE_MD, scale_func=ui_scaler.scale_font_size)
         )
-        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(ui_scaler.get_padding(5), 0))
-        
+        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(ui_scaler.get_padding(Spacing.SM), 0))
+
         # Provider indicator
         provider = SETTINGS.get("ai_provider", "openai").capitalize()
         stt_provider = SETTINGS.get("stt_provider", "groq").upper()
         provider_indicator = ttk.Label(
-            status_frame, 
+            status_frame,
             text=f"AI: {provider} | STT: {stt_provider}",
             anchor="e",
-            font=("Segoe UI", 9),
-            foreground="gray"
+            font=Fonts.get_font(Fonts.SIZE_SM),
+            foreground=Colors.STATUS_IDLE
         )
-        provider_indicator.pack(side=tk.LEFT, padx=(0, 10))
-        
+        provider_indicator.pack(side=tk.LEFT, padx=(0, Spacing.MD))
+
         # Queue status indicator
         queue_status_label = ttk.Label(
             status_frame,
             text="",  # Empty initially
             anchor="e",
-            font=("Segoe UI", ui_scaler.scale_font_size(9), "bold"),
-            foreground="gray"
+            font=Fonts.get_font(Fonts.SIZE_SM, Fonts.WEIGHT_BOLD, ui_scaler.scale_font_size),
+            foreground=Colors.STATUS_IDLE
         )
-        queue_status_label.pack(side=tk.LEFT, padx=(0, ui_scaler.get_padding(10)))
+        queue_status_label.pack(side=tk.LEFT, padx=(0, ui_scaler.get_padding(Spacing.MD)))
         
         # Store reference for later use
         self.components['queue_status_label'] = queue_status_label

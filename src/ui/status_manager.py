@@ -2,12 +2,15 @@ import tkinter as tk
 from ttkbootstrap.constants import *
 import logging
 
+from ui.ui_constants import Colors, Fonts, Animation
+
+
 class StatusManager:
     """Manages status updates, progress indicators, and provider information display."""
-    
+
     def __init__(self, parent, status_icon_label, status_label, provider_indicator, progress_bar):
         """Initialize the status manager with UI components.
-        
+
         Args:
             parent: The parent window/widget that will handle after() calls
             status_icon_label: The label showing the status icon/dot
@@ -20,18 +23,18 @@ class StatusManager:
         self.status_label = status_label
         self.provider_indicator = provider_indicator
         self.progress_bar = progress_bar
-        
+
         # Track timers
         self.status_timer = None
         self.status_timers = []
-        
-        # Status colors
+
+        # Status colors from centralized constants
         self.status_colors = {
-            "success": "#28a745",  # Green
-            "info": "#17a2b8",     # Blue
-            "warning": "#ffc107",  # Yellow
-            "error": "#dc3545",    # Red
-            "idle": "gray"         # Gray for idle state
+            "success": Colors.STATUS_SUCCESS,
+            "info": Colors.STATUS_INFO,
+            "warning": Colors.STATUS_WARNING,
+            "error": Colors.STATUS_ERROR,
+            "idle": Colors.STATUS_IDLE,
         }
         
         # Queue status tracking
@@ -62,17 +65,17 @@ class StatusManager:
         
         # Make status message more prominent for important messages
         if status_type in ["error", "warning"]:
-            self.status_label.config(font=("Segoe UI", 10, "bold"))
+            self.status_label.config(font=Fonts.get_font(Fonts.SIZE_MD, Fonts.WEIGHT_BOLD))
         else:
-            self.status_label.config(font=("Segoe UI", 10))
+            self.status_label.config(font=Fonts.get_font(Fonts.SIZE_MD))
         
         # Update provider indicator info
         self.update_provider_info()
         
         # For non-error/progress messages, set a timer to clear status after a delay
         if status_type != "error" and status_type != "progress":
-            # Clear status after 8 seconds unless it's an error or progress indicator
-            self.status_timer = self.parent.after(8000, self.reset_status)
+            # Clear status after delay unless it's an error or progress indicator
+            self.status_timer = self.parent.after(Animation.STATUS_CLEAR_DELAY, self.reset_status)
     
     def update_provider_info(self):
         """Update the provider indicator with current AI and STT providers."""
@@ -86,7 +89,7 @@ class StatusManager:
     
     def reset_status(self):
         """Reset status to idle state after timeout."""
-        self.status_label.config(text="Status: Idle", font=("Segoe UI", 10))
+        self.status_label.config(text="Status: Idle", font=Fonts.get_font(Fonts.SIZE_MD))
         self.status_icon_label.config(foreground=self.status_colors["idle"])
         self.status_timer = None
     
@@ -122,7 +125,7 @@ class StatusManager:
     
     def show_progress(self, show=True):
         """Show or hide the progress bar.
-        
+
         Args:
             show: True to show and start progress bar, False to hide it
         """
@@ -132,6 +135,37 @@ class StatusManager:
         else:
             self.progress_bar.stop()
             self.progress_bar.pack_forget()
+
+    def show_determinate_progress(self, current: int, total: int, message: str = ""):
+        """Show a determinate progress bar with known total.
+
+        Args:
+            current: Current progress value
+            total: Total value (100% when current == total)
+            message: Optional status message to display
+        """
+        if total <= 0:
+            return
+
+        # Switch to determinate mode
+        self.progress_bar.configure(mode="determinate", maximum=total)
+        self.progress_bar["value"] = current
+
+        # Show progress bar if not visible
+        if not self.progress_bar.winfo_ismapped():
+            self.progress_bar.pack(side=RIGHT, padx=10)
+
+        # Update status message with percentage
+        if message:
+            percentage = int((current / total) * 100)
+            self.update_status(f"{message} ({percentage}%)", "progress")
+
+    def reset_progress(self):
+        """Reset progress bar to indeterminate mode and hide it."""
+        self.progress_bar.stop()
+        self.progress_bar.configure(mode="indeterminate")
+        self.progress_bar["value"] = 0
+        self.progress_bar.pack_forget()
     
     # Convenience methods for specific status types
     def info(self, message):

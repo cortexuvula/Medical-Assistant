@@ -1,9 +1,12 @@
 import tkinter as tk
 from typing import Optional
 
-TOOLTIP_DELAY_MS = 500
+from ui.ui_constants import Colors, Fonts, Animation
+
 
 class ToolTip:
+    """Tooltip widget that shows helpful text on hover."""
+
     def __init__(self, widget: tk.Widget, text: str) -> None:
         self.widget = widget
         self.text = text
@@ -13,7 +16,7 @@ class ToolTip:
         self.widget.bind("<Leave>", self.cancel_showtip)
 
     def schedule_showtip(self, event: Optional[tk.Event] = None) -> None:
-        self.after_id = self.widget.after(TOOLTIP_DELAY_MS, self.showtip)
+        self.after_id = self.widget.after(Animation.TOOLTIP_DELAY, self.showtip)
 
     def cancel_showtip(self, event: Optional[tk.Event] = None) -> None:
         if self.after_id:
@@ -33,10 +36,11 @@ class ToolTip:
             tw,
             text=self.text,
             justify='left',
-            background="#ffffe0",
+            background=Colors.TOOLTIP_BG,
+            foreground=Colors.TOOLTIP_FG,
             relief='solid',
             borderwidth=1,
-            font=("tahoma", "8", "normal")
+            font=Fonts.get_font(Fonts.SIZE_XS)
         ).pack(ipadx=1)
 
     def hidetip(self) -> None:

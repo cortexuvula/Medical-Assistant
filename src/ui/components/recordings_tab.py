@@ -14,6 +14,9 @@ import os
 from datetime import datetime
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
+from ui.hover_effects import ButtonHoverEffect, add_hover_to_treeview
+from ui.loading_indicator import PulsingLabel
+from ui.ui_constants import Colors, Fonts, Spacing, Icons
 from settings.settings import SETTINGS
 
 
@@ -125,7 +128,7 @@ class RecordingsTab:
         search_frame = ttk.Frame(controls_frame)
         search_frame.pack(side=LEFT, fill=X, expand=True)
         
-        ttk.Label(search_frame, text="Search:", font=("Segoe UI", 9)).pack(side=LEFT, padx=(0, 5))
+        ttk.Label(search_frame, text="Search:", font=Fonts.get_font(Fonts.SIZE_SM)).pack(side=LEFT, padx=(0, 5))
         self.recordings_search_var = tk.StringVar()
         search_entry = ttk.Entry(search_frame, textvariable=self.recordings_search_var, width=30)
         search_entry.pack(side=LEFT, fill=X, expand=True)
@@ -176,17 +179,20 @@ class RecordingsTab:
         self.recordings_tree.column("referral", width=80, minwidth=60, anchor=tk.CENTER)
         self.recordings_tree.column("letter", width=80, minwidth=60, anchor=tk.CENTER)
         
-        # Configure tags for styling
-        self.recordings_tree.tag_configure("complete", foreground="#27ae60")
-        self.recordings_tree.tag_configure("processing", foreground="#f39c12")
-        self.recordings_tree.tag_configure("partial", foreground="#3498db")
-        self.recordings_tree.tag_configure("failed", foreground="#e74c3c")
-        
+        # Configure tags for styling using centralized colors
+        self.recordings_tree.tag_configure("complete", foreground=Colors.CONTENT_COMPLETE)
+        self.recordings_tree.tag_configure("processing", foreground=Colors.CONTENT_PROCESSING)
+        self.recordings_tree.tag_configure("partial", foreground=Colors.CONTENT_PARTIAL)
+        self.recordings_tree.tag_configure("failed", foreground=Colors.CONTENT_FAILED)
+
         # Configure column-specific styling
-        self.recordings_tree.tag_configure("has_content", foreground="#27ae60")  # Green for checkmarks
-        self.recordings_tree.tag_configure("no_content", foreground="#888888")   # Gray for dashes
-        self.recordings_tree.tag_configure("processing_content", foreground="#f39c12")  # Orange for processing
-        self.recordings_tree.tag_configure("failed_content", foreground="#e74c3c")  # Red for failed
+        self.recordings_tree.tag_configure("has_content", foreground=Colors.CONTENT_COMPLETE)
+        self.recordings_tree.tag_configure("no_content", foreground=Colors.CONTENT_NONE)
+        self.recordings_tree.tag_configure("processing_content", foreground=Colors.CONTENT_PROCESSING)
+        self.recordings_tree.tag_configure("failed_content", foreground=Colors.CONTENT_FAILED)
+
+        # Add hover effects to treeview rows
+        add_hover_to_treeview(self.recordings_tree)
         
         # Action buttons - split into two rows for better layout
         actions_frame = ttk.Frame(recordings_frame)
@@ -196,95 +202,110 @@ class RecordingsTab:
         row1_frame = ttk.Frame(actions_frame)
         row1_frame.pack(fill=X)
         
+        # Consistent button width for row 1
+        BTN_WIDTH_SM = ui_scaler.get_button_width(10)
+
         # Load button
         load_btn = ttk.Button(
             row1_frame,
             text="Load",
             command=self._load_selected_recording,
             bootstyle="primary-outline",
-            width=ui_scaler.get_button_width(10)
+            width=BTN_WIDTH_SM
         )
         load_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(load_btn, "Load selected recording")
-        
+        ButtonHoverEffect(load_btn, hover_bootstyle="primary")
+
         # Delete button
         delete_btn = ttk.Button(
             row1_frame,
             text="Delete",
             command=self._delete_selected_recording,
             bootstyle="danger-outline",
-            width=ui_scaler.get_button_width(10)
+            width=BTN_WIDTH_SM
         )
         delete_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(delete_btn, "Delete selected recording")
-        
+        ButtonHoverEffect(delete_btn, hover_bootstyle="danger")
+
         # Export button
         export_btn = ttk.Button(
             row1_frame,
             text="Export",
             command=self._export_selected_recording,
             bootstyle="info-outline",
-            width=ui_scaler.get_button_width(10)
+            width=BTN_WIDTH_SM
         )
         export_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(export_btn, "Export selected recording")
-        
+        ButtonHoverEffect(export_btn, hover_bootstyle="info")
+
         # Clear All button
         clear_all_btn = ttk.Button(
             row1_frame,
             text="Clear All",
             command=self._clear_all_recordings,
             bootstyle="danger-outline",
-            width=ui_scaler.get_button_width(10)
+            width=BTN_WIDTH_SM
         )
         clear_all_btn.pack(side=LEFT)
         ToolTip(clear_all_btn, "Clear all recordings from database")
+        ButtonHoverEffect(clear_all_btn, hover_bootstyle="danger")
         
         # Recording count label - place in second row
         row2_frame = ttk.Frame(actions_frame)
         row2_frame.pack(fill=X, pady=(5, 0))
         
+        # Consistent button width for row 2
+        BTN_WIDTH_LG = ui_scaler.get_button_width(15)
+
         # Process Selected button (in second row)
         process_btn = ttk.Button(
             row2_frame,
             text="Process Selected",
             command=self._process_selected_recordings,
             bootstyle="success-outline",
-            width=ui_scaler.get_button_width(15)
+            width=BTN_WIDTH_LG
         )
         process_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(process_btn, "Process selected recordings in batch")
+        ButtonHoverEffect(process_btn, hover_bootstyle="success")
         self.components['batch_process_button'] = process_btn
-        
+
         # Batch Process Files button
         batch_files_btn = ttk.Button(
             row2_frame,
             text="Batch Process Files",
             command=self._batch_process_files,
             bootstyle="primary-outline",
-            width=ui_scaler.get_button_width(15)
+            width=BTN_WIDTH_LG
         )
         batch_files_btn.pack(side=LEFT, padx=(0, 5))
         ToolTip(batch_files_btn, "Select audio files to process in batch")
+        ButtonHoverEffect(batch_files_btn, hover_bootstyle="primary")
         self.components['batch_files_button'] = batch_files_btn
-        
+
         # Reprocess Failed button
         reprocess_btn = ttk.Button(
             row2_frame,
             text="Reprocess Failed",
             command=self._reprocess_failed_recordings,
             bootstyle="warning-outline",
-            width=ui_scaler.get_button_width(15)
+            width=BTN_WIDTH_LG
         )
         reprocess_btn.pack(side=LEFT, padx=(0, 10))
         ToolTip(reprocess_btn, "Reprocess selected failed recordings")
+        ButtonHoverEffect(reprocess_btn, hover_bootstyle="warning")
         self.components['reprocess_failed_button'] = reprocess_btn
         
-        self.recording_count_label = ttk.Label(
+        self.recording_count_label = PulsingLabel(
             row2_frame,
             text="0 recordings",
-            font=("Segoe UI", 9),
-            foreground="gray"
+            font=Fonts.get_font(Fonts.SIZE_SM),
+            foreground=Colors.STATUS_IDLE,
+            pulse_color=Colors.STATUS_INFO,
+            normal_color=Colors.CONTENT_NONE
         )
         self.recording_count_label.pack(side=LEFT)
         
@@ -307,6 +328,9 @@ class RecordingsTab:
     
     def _refresh_recordings_list(self):
         """Refresh the recordings list from database."""
+        # Show loading state
+        self._show_loading_state()
+
         def task():
             try:
                 # Get recent recordings from database
@@ -323,20 +347,69 @@ class RecordingsTab:
                 # Check if parent and label still exist before updating
                 if self.parent and hasattr(self.parent, 'after') and hasattr(self, 'recording_count_label'):
                     try:
-                        self.parent.after(0, lambda: self.recording_count_label.config(text="Error loading recordings"))
+                        self.parent.after(0, lambda: self._show_error_state(str(e)))
                     except RuntimeError:
                         # Window might be closing
                         pass
-        
+
         # Run in background thread
         threading.Thread(target=task, daemon=True).start()
-    
-    def _populate_recordings_tree(self, recordings: list):
-        """Populate the recordings tree with data."""
+
+    def _show_loading_state(self):
+        """Show loading state in the recordings tree."""
         # Clear existing items
         for item in self.recordings_tree.get_children():
             self.recordings_tree.delete(item)
-        
+
+        # Update count label to show loading with pulsing animation
+        if self.recording_count_label:
+            self.recording_count_label.config(text="Loading recordings...", foreground=Colors.STATUS_INFO)
+            # Start pulsing animation if supported
+            if hasattr(self.recording_count_label, 'start_pulse'):
+                self.recording_count_label.start_pulse()
+
+    def _show_error_state(self, error_msg: str):
+        """Show error state when loading fails."""
+        # Stop pulsing animation
+        if self.recording_count_label and hasattr(self.recording_count_label, 'stop_pulse'):
+            self.recording_count_label.stop_pulse()
+
+        # Clear existing items
+        for item in self.recordings_tree.get_children():
+            self.recordings_tree.delete(item)
+
+        # Update count label
+        if self.recording_count_label:
+            self.recording_count_label.config(text="Error loading recordings", foreground=Colors.STATUS_ERROR)
+
+    def _show_empty_state(self):
+        """Show empty state with helpful message when no recordings exist."""
+        # Stop pulsing animation
+        if self.recording_count_label and hasattr(self.recording_count_label, 'stop_pulse'):
+            self.recording_count_label.stop_pulse()
+
+        # Update count label with helpful message
+        if self.recording_count_label:
+            self.recording_count_label.config(
+                text="No recordings yet — Start recording in the Record tab!",
+                foreground=Colors.CONTENT_NONE
+            )
+    
+    def _populate_recordings_tree(self, recordings: list):
+        """Populate the recordings tree with data."""
+        # Stop pulsing animation
+        if self.recording_count_label and hasattr(self.recording_count_label, 'stop_pulse'):
+            self.recording_count_label.stop_pulse()
+
+        # Clear existing items
+        for item in self.recordings_tree.get_children():
+            self.recordings_tree.delete(item)
+
+        # Handle empty state
+        if not recordings:
+            self._show_empty_state()
+            return
+
         # Add recordings
         for recording in recordings:
             try:
@@ -403,9 +476,12 @@ class RecordingsTab:
             except Exception as e:
                 logging.error(f"Error adding recording to tree: {e}")
         
-        # Update count
+        # Update count and reset foreground color
         count = len(self.recordings_tree.get_children())
-        self.recording_count_label.config(text=f"{count} recording{'s' if count != 1 else ''}")
+        self.recording_count_label.config(
+            text=f"{count} recording{'s' if count != 1 else ''}",
+            foreground=Colors.STATUS_IDLE
+        )
     
     def _filter_recordings(self):
         """Filter recordings based on search text."""
@@ -828,9 +904,9 @@ class RecordingsTab:
     
     def _update_batch_progress(self, message: str, completed: int, total: int):
         """Update batch processing progress."""
-        # Update status bar
-        self.parent.status_manager.progress(f"{message} ({completed}/{total})")
-        
+        # Update status bar with determinate progress
+        self.parent.status_manager.show_determinate_progress(completed, total, message)
+
         # Update progress dialog
         if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
             # Estimate failed count based on message
@@ -838,13 +914,15 @@ class RecordingsTab:
             if "failed" in message.lower():
                 self.batch_failed_count += 1
                 failed = self.batch_failed_count
-            
+
             self.batch_progress_dialog.update_progress(completed - failed, failed, message)
-            
+
             # Add detailed message
             if completed > 0:
-                self.batch_progress_dialog.add_detail(f"Recording {completed}/{total}: {message}", 
-                                                    "error" if "failed" in message.lower() else "success")
+                self.batch_progress_dialog.add_detail(
+                    f"Recording {completed}/{total}: {message}",
+                    "error" if "failed" in message.lower() else "success"
+                )
     
     def _on_batch_complete(self):
         """Handle batch processing completion."""
@@ -855,13 +933,16 @@ class RecordingsTab:
             process_btn.config(state=tk.NORMAL)
         if batch_files_btn:
             batch_files_btn.config(state=tk.NORMAL)
-        
+
+        # Reset progress bar
+        self.parent.status_manager.reset_progress()
+
         # Refresh recordings list
         self._refresh_recordings_list()
-        
+
         # Show completion message
         self.parent.status_manager.success("Batch processing completed!")
-        
+
         # Close progress dialog if it exists
         if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
             # Dialog will handle its own completion state

@@ -8,6 +8,8 @@ import ttkbootstrap as ttk
 from typing import Dict, Callable
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
+from ui.hover_effects import ButtonHoverEffect
+from ui.ui_constants import Fonts, Spacing, ButtonConfig
 
 
 class GenerateTab:
@@ -66,8 +68,8 @@ class GenerateTab:
         canvas.bind("<Leave>", _unbind_mousewheel)
         
         # Document generation options
-        gen_frame = ttk.LabelFrame(scrollable_frame, text="Generate Documents", padding=15)
-        gen_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        gen_frame = ttk.LabelFrame(scrollable_frame, text="Generate Documents", padding=Spacing.LG)
+        gen_frame.pack(fill=tk.BOTH, expand=True, padx=Spacing.XL, pady=Spacing.XL)
         
         # Create large buttons for each document type
         documents = [
@@ -131,32 +133,38 @@ class GenerateTab:
             # Calculate row and column
             row = i // 2
             col = i % 2
-            
+
             # Create a frame for each document type
             doc_frame = ttk.Frame(center_container)
-            doc_frame.grid(row=row, column=col, sticky="ew", padx=15, pady=8)
-            
-            # Large button with responsive width
+            doc_frame.grid(row=row, column=col, sticky="ew", padx=Spacing.LG, pady=Spacing.MD)
+
+            # Use outline style for hover effect transition
+            bootstyle = f"{doc['bootstyle']}-outline"
+
+            # Large button with consistent width
             btn = ttk.Button(
                 doc_frame,
                 text=doc["text"],
                 command=doc["command"],
-                bootstyle=doc["bootstyle"],
-                width=20,  # Consistent width for all buttons
+                bootstyle=bootstyle,
+                width=ButtonConfig.WIDTH_XL,
                 style="Large.TButton"
             )
-            btn.pack(side=tk.LEFT, padx=(0, 10))
+            btn.pack(side=tk.LEFT, padx=(0, Spacing.MD))
             self.components[f"generate_{doc['name']}_button"] = btn
-            
+
+            # Add hover effect - fills in color on hover
+            ButtonHoverEffect(btn, hover_bootstyle=doc["bootstyle"])
+
             # Description with wrapping
             desc_label = ttk.Label(
                 doc_frame,
                 text=doc["description"],
-                font=("Segoe UI", ui_scaler.scale_font_size(9)),
-                wraplength=ui_scaler.scale_dimension(250)  # Slightly smaller wrap length for 2-column layout
+                font=Fonts.get_font(Fonts.SIZE_SM, scale_func=ui_scaler.scale_font_size),
+                wraplength=ui_scaler.scale_dimension(250)
             )
             desc_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            
+
             ToolTip(btn, doc["description"])
         
         # Configure column weights to ensure equal spacing
@@ -164,7 +172,7 @@ class GenerateTab:
         center_container.columnconfigure(1, weight=1)
         
         # Smart suggestions frame (initially hidden)
-        suggestions_frame = ttk.LabelFrame(scrollable_frame, text="Suggestions", padding=10)
+        suggestions_frame = ttk.LabelFrame(scrollable_frame, text="Suggestions", padding=Spacing.MD)
         self.components['suggestions_frame'] = suggestions_frame
         
         return generate_frame
