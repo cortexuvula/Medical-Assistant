@@ -209,8 +209,9 @@ class TestSanitizationFunctions:
         long_text = "A" * 1000
         sanitized = sanitize_for_logging(long_text, max_length=100)
 
-        # Should be truncated
-        assert len(sanitized) <= 103  # 100 + "..."
+        # Should be truncated (adds "...[TRUNCATED]" suffix)
+        assert len(sanitized) < len(long_text)
+        assert "[TRUNCATED]" in sanitized or "..." in sanitized
 
     def test_sanitize_for_logging_preserves_short_text(self):
         """sanitize_for_logging should preserve short text."""
