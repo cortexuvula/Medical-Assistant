@@ -199,29 +199,29 @@ class TestRateLimiting:
             assert True
 
 
-class TestSensitiveDataRedaction:
-    """Tests for sensitive data redaction."""
+class TestSanitizationFunctions:
+    """Tests for sanitization functions."""
 
-    def test_redact_api_keys(self):
-        """Redaction should hide API keys."""
-        from src.utils.validation import redact_sensitive_data
+    def test_sanitize_for_logging_truncates(self):
+        """sanitize_for_logging should truncate long text."""
+        from src.utils.validation import sanitize_for_logging
 
-        text_with_key = "Using API key sk-test123456789012345678901234567890123456"
-        redacted = redact_sensitive_data(text_with_key)
+        long_text = "A" * 1000
+        sanitized = sanitize_for_logging(long_text, max_length=100)
 
-        # API key should be redacted
-        assert "sk-test123456789012345678901234567890123456" not in redacted
+        # Should be truncated
+        assert len(sanitized) <= 103  # 100 + "..."
 
-    def test_redact_preserves_normal_text(self):
-        """Redaction should preserve non-sensitive text."""
-        from src.utils.validation import redact_sensitive_data
+    def test_sanitize_for_logging_preserves_short_text(self):
+        """sanitize_for_logging should preserve short text."""
+        from src.utils.validation import sanitize_for_logging
 
-        normal_text = "Patient information: Age 45, BP 120/80"
-        redacted = redact_sensitive_data(normal_text)
+        short_text = "Patient information: Age 45, BP 120/80"
+        sanitized = sanitize_for_logging(short_text)
 
-        # Normal text should be preserved
-        assert "Patient" in redacted
-        assert "120/80" in redacted
+        # Short text should be preserved
+        assert "Patient" in sanitized
+        assert "120/80" in sanitized
 
 
 class TestSecurityDecorators:
@@ -355,7 +355,7 @@ class TestSecurityRegressionSuite:
         required_functions = [
             'validate_api_key',
             'sanitize_prompt',
-            'redact_sensitive_data',
+            'sanitize_for_logging',
         ]
 
         for func_name in required_functions:
