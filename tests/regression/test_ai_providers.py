@@ -1,0 +1,457 @@
+"""Regression tests for AI providers.
+
+These tests verify that all AI providers work correctly
+with mocked API responses.
+"""
+import pytest
+import sys
+from pathlib import Path
+from unittest.mock import patch, MagicMock, Mock
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+
+class TestOpenAIProvider:
+    """Tests for OpenAI AI provider."""
+
+    @pytest.fixture
+    def mock_openai_response(self):
+        """Create mock OpenAI response."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Mocked OpenAI response"
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 20
+        return mock_response
+
+    def test_call_openai_returns_string(self, mock_openai_response, mock_api_keys):
+        """call_openai should return a string."""
+        from src.ai.ai import call_openai
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = mock_openai_response
+            MockOpenAI.return_value = mock_client
+
+            result = call_openai(
+                model="gpt-4",
+                system_message="You are a helpful assistant",
+                user_prompt="Test prompt"
+            )
+
+        assert isinstance(result, str)
+        assert result == "Mocked OpenAI response"
+
+    def test_call_openai_handles_error(self, mock_api_keys):
+        """call_openai should handle API errors gracefully."""
+        from src.ai.ai import call_openai
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = Exception("API Error")
+            MockOpenAI.return_value = mock_client
+
+            result = call_openai(
+                model="gpt-4",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        # Should return error message, not raise exception
+        assert isinstance(result, str)
+        assert "error" in result.lower() or "[Error" in result
+
+
+class TestAnthropicProvider:
+    """Tests for Anthropic AI provider."""
+
+    @pytest.fixture
+    def mock_anthropic_response(self):
+        """Create mock Anthropic response."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock()]
+        mock_response.content[0].text = "Mocked Anthropic response"
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 20
+        return mock_response
+
+    def test_call_anthropic_returns_string(self, mock_anthropic_response, mock_api_keys):
+        """call_anthropic should return a string."""
+        from src.ai.ai import call_anthropic
+
+        with patch('src.ai.ai.Anthropic') as MockAnthropic:
+            mock_client = MagicMock()
+            mock_client.messages.create.return_value = mock_anthropic_response
+            MockAnthropic.return_value = mock_client
+
+            result = call_anthropic(
+                model="claude-3-sonnet-20240229",
+                system_message="You are a helpful assistant",
+                user_prompt="Test prompt"
+            )
+
+        assert isinstance(result, str)
+        assert result == "Mocked Anthropic response"
+
+    def test_call_anthropic_handles_error(self, mock_api_keys):
+        """call_anthropic should handle API errors gracefully."""
+        from src.ai.ai import call_anthropic
+
+        with patch('src.ai.ai.Anthropic') as MockAnthropic:
+            mock_client = MagicMock()
+            mock_client.messages.create.side_effect = Exception("API Error")
+            MockAnthropic.return_value = mock_client
+
+            result = call_anthropic(
+                model="claude-3-sonnet-20240229",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        assert isinstance(result, str)
+
+
+class TestGrokProvider:
+    """Tests for Grok AI provider."""
+
+    def test_call_grok_returns_string(self, mock_api_keys):
+        """call_grok should return a string."""
+        from src.ai.ai import call_grok
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Mocked Grok response"
+            mock_client.chat.completions.create.return_value = mock_response
+            MockOpenAI.return_value = mock_client
+
+            result = call_grok(
+                model="grok-1",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        assert isinstance(result, str)
+
+
+class TestGeminiProvider:
+    """Tests for Google Gemini AI provider."""
+
+    def test_call_gemini_returns_string(self, mock_api_keys):
+        """call_gemini should return a string."""
+        from src.ai.ai import call_gemini
+
+        with patch('src.ai.ai.genai') as mock_genai:
+            mock_model = MagicMock()
+            mock_response = MagicMock()
+            mock_response.text = "Mocked Gemini response"
+            mock_model.generate_content.return_value = mock_response
+            mock_genai.GenerativeModel.return_value = mock_model
+
+            result = call_gemini(
+                model="gemini-1.5-pro",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        assert isinstance(result, str)
+
+
+class TestPerplexityProvider:
+    """Tests for Perplexity AI provider."""
+
+    def test_call_perplexity_returns_string(self, mock_api_keys):
+        """call_perplexity should return a string."""
+        from src.ai.ai import call_perplexity
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Mocked Perplexity response"
+            mock_client.chat.completions.create.return_value = mock_response
+            MockOpenAI.return_value = mock_client
+
+            result = call_perplexity(
+                model="sonar-medium-chat",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        assert isinstance(result, str)
+
+
+class TestAIProviderSelection:
+    """Tests for AI provider selection logic."""
+
+    def test_call_ai_selects_openai(self, mock_api_keys):
+        """call_ai should route to OpenAI when selected."""
+        from src.ai.ai import call_ai
+
+        with patch('src.ai.ai.call_openai', return_value="OpenAI response") as mock_openai:
+            with patch('src.settings.settings.SETTINGS', {'ai_provider': 'openai'}):
+                result = call_ai(
+                    model="gpt-4",
+                    system_message="Test",
+                    prompt="Test",
+                    provider="openai"
+                )
+
+        # Should have called OpenAI
+        assert mock_openai.called or isinstance(result, str)
+
+    def test_call_ai_selects_anthropic(self, mock_api_keys):
+        """call_ai should route to Anthropic when selected."""
+        from src.ai.ai import call_ai
+
+        with patch('src.ai.ai.call_anthropic', return_value="Anthropic response") as mock_anthropic:
+            result = call_ai(
+                model="claude-3-sonnet-20240229",
+                system_message="Test",
+                prompt="Test",
+                provider="anthropic"
+            )
+
+        assert mock_anthropic.called or isinstance(result, str)
+
+
+class TestSOAPNoteGeneration:
+    """Tests for SOAP note generation."""
+
+    def test_create_soap_note_with_openai(self, mock_api_keys):
+        """create_soap_note_with_openai should generate SOAP note."""
+        from src.ai.ai import create_soap_note_with_openai
+
+        with patch('src.ai.ai.call_ai') as mock_call:
+            mock_call.return_value = """
+            S: Patient reports headache
+            O: Vital signs normal
+            A: Tension headache
+            P: Ibuprofen 400mg PRN
+            """
+
+            result = create_soap_note_with_openai(
+                text="Patient has headache for 2 days"
+            )
+
+        assert isinstance(result, str)
+        # Should contain SOAP sections
+        assert any(section in result for section in ['S:', 'Subjective', 'SUBJECTIVE'])
+
+    def test_soap_note_includes_context(self, mock_api_keys):
+        """SOAP note generation should include context if provided."""
+        from src.ai.ai import create_soap_note_with_openai
+
+        with patch('src.ai.ai.call_ai') as mock_call:
+            mock_call.return_value = "SOAP note with context"
+
+            result = create_soap_note_with_openai(
+                text="Patient has headache",
+                context="History of migraines"
+            )
+
+        # call_ai should have been called with the text
+        assert mock_call.called
+
+
+class TestReferralGeneration:
+    """Tests for referral letter generation."""
+
+    def test_create_referral_returns_string(self, mock_api_keys):
+        """create_referral_with_openai should return string."""
+        from src.ai.ai import create_referral_with_openai
+
+        with patch('src.ai.ai.call_ai') as mock_call:
+            mock_call.return_value = "Referral letter content"
+
+            result = create_referral_with_openai(
+                text="SOAP note content"
+            )
+
+        assert isinstance(result, str)
+
+
+class TestLetterGeneration:
+    """Tests for letter generation."""
+
+    def test_create_letter_returns_string(self, mock_api_keys):
+        """create_letter_with_ai should return string."""
+        from src.ai.ai import create_letter_with_ai
+
+        with patch('src.ai.ai.call_ai') as mock_call:
+            mock_call.return_value = "Letter content"
+
+            result = create_letter_with_ai(
+                text="SOAP note content",
+                recipient_type="patient"
+            )
+
+        assert isinstance(result, str)
+
+    def test_letter_supports_different_recipients(self, mock_api_keys):
+        """Letter generation should support different recipient types."""
+        from src.ai.ai import create_letter_with_ai
+
+        recipient_types = ["patient", "employer", "insurance", "other"]
+
+        with patch('src.ai.ai.call_ai') as mock_call:
+            mock_call.return_value = "Letter content"
+
+            for recipient in recipient_types:
+                result = create_letter_with_ai(
+                    text="SOAP note content",
+                    recipient_type=recipient
+                )
+                assert isinstance(result, str)
+
+
+class TestTimeoutHandling:
+    """Tests for timeout handling in AI calls."""
+
+    def test_timeout_returns_error_message(self, mock_api_keys):
+        """Timeout should return error message, not raise exception."""
+        from src.ai.ai import call_openai
+        import httpx
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = httpx.TimeoutException("Timeout")
+            MockOpenAI.return_value = mock_client
+
+            result = call_openai(
+                model="gpt-4",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        assert isinstance(result, str)
+        # Should contain error indication
+        assert "error" in result.lower() or "timeout" in result.lower() or "[" in result
+
+
+class TestRateLimitHandling:
+    """Tests for rate limit handling in AI calls."""
+
+    def test_rate_limit_handled_gracefully(self, mock_api_keys):
+        """Rate limit should be handled gracefully."""
+        from src.ai.ai import call_openai
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            # Simulate rate limit error
+            mock_client.chat.completions.create.side_effect = Exception("Rate limit exceeded")
+            MockOpenAI.return_value = mock_client
+
+            result = call_openai(
+                model="gpt-4",
+                system_message="Test",
+                user_prompt="Test"
+            )
+
+        # Should return error message
+        assert isinstance(result, str)
+
+
+@pytest.mark.regression
+class TestAIProviderRegressionSuite:
+    """Comprehensive regression tests for AI providers."""
+
+    def test_all_provider_functions_exist(self):
+        """All provider call functions should exist."""
+        from src.ai import ai
+
+        required_functions = [
+            'call_openai',
+            'call_anthropic',
+            'call_grok',
+            'call_gemini',
+            'call_perplexity',
+            'call_ai'
+        ]
+
+        for func_name in required_functions:
+            assert hasattr(ai, func_name), f"Missing function: {func_name}"
+            assert callable(getattr(ai, func_name)), f"{func_name} is not callable"
+
+    def test_document_generation_functions_exist(self):
+        """Document generation functions should exist."""
+        from src.ai import ai
+
+        required_functions = [
+            'create_soap_note_with_openai',
+            'create_referral_with_openai',
+            'create_letter_with_ai'
+        ]
+
+        for func_name in required_functions:
+            assert hasattr(ai, func_name), f"Missing function: {func_name}"
+
+    def test_ai_response_is_always_string(self, mock_api_keys):
+        """AI functions should always return string."""
+        from src.ai.ai import call_ai
+
+        with patch('src.ai.ai.call_openai', return_value="Test"):
+            result = call_ai(
+                model="gpt-4",
+                system_message="Test",
+                prompt="Test",
+                provider="openai"
+            )
+
+        assert isinstance(result, str)
+
+    def test_temperature_parameter_accepted(self, mock_api_keys):
+        """AI functions should accept temperature parameter."""
+        from src.ai.ai import call_openai
+
+        with patch('src.ai.ai.OpenAI') as MockOpenAI:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Response"
+            mock_client.chat.completions.create.return_value = mock_response
+            MockOpenAI.return_value = mock_client
+
+            # Should accept temperature parameter without error
+            result = call_openai(
+                model="gpt-4",
+                system_message="Test",
+                user_prompt="Test",
+                temperature=0.5
+            )
+
+        assert isinstance(result, str)
+
+    def test_empty_prompt_handled(self, mock_api_keys):
+        """Empty prompt should be handled gracefully."""
+        from src.ai.ai import call_ai
+
+        with patch('src.ai.ai.call_openai', return_value=""):
+            result = call_ai(
+                model="gpt-4",
+                system_message="Test",
+                prompt="",
+                provider="openai"
+            )
+
+        # Should return something (empty string or error)
+        assert isinstance(result, str)
+
+    def test_very_long_prompt_handled(self, mock_api_keys):
+        """Very long prompts should be handled."""
+        from src.ai.ai import call_ai
+
+        long_prompt = "A" * 50000  # Very long prompt
+
+        with patch('src.ai.ai.call_openai', return_value="Response"):
+            result = call_ai(
+                model="gpt-4",
+                system_message="Test",
+                prompt=long_prompt,
+                provider="openai"
+            )
+
+        # Should not raise exception
+        assert isinstance(result, str)

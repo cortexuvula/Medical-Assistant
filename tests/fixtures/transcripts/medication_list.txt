@@ -1,0 +1,11 @@
+Patient is currently on the following medications:
+1. Metformin 500mg twice daily for diabetes
+2. Lisinopril 10mg daily for blood pressure
+3. Atorvastatin 20mg at bedtime for cholesterol
+4. Aspirin 81mg daily for cardiac protection
+5. Omeprazole 20mg daily for GERD
+6. Gabapentin 300mg three times daily for neuropathy
+7. Metoprolol 25mg twice daily for heart rate control
+
+Patient reports good compliance with all medications.
+No adverse effects reported.

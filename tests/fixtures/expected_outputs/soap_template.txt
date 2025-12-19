@@ -1,0 +1,7 @@
+S: [Subjective section should contain patient-reported symptoms and history]
+
+O: [Objective section should contain measurable clinical findings]
+
+A: [Assessment section should contain diagnosis or differential diagnoses]
+
+P: [Plan section should contain treatment plan and follow-up instructions]

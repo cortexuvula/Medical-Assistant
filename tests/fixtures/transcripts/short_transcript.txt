@@ -1,0 +1,7 @@
+Patient is a 45-year-old male presenting with chest pain for the past 2 hours.
+Pain is substernal, pressure-like, radiating to left arm.
+Associated with diaphoresis and shortness of breath.
+No prior cardiac history. Takes lisinopril for hypertension.
+Vital signs: BP 150/95, HR 88, RR 18, O2 sat 97% on room air.
+EKG shows ST elevation in leads V1-V4.
+Troponin pending. Cardiology consulted for emergent cath.
