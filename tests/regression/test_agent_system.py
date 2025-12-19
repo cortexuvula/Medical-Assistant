@@ -20,14 +20,15 @@ class TestAgentModels:
         from src.ai.agents.models import AgentConfig
 
         config = AgentConfig(
-            enabled=True,
-            provider="openai",
+            name="Test Agent",
+            description="A test agent for unit testing",
+            system_prompt="Test prompt",
             model="gpt-4",
             temperature=0.7,
-            system_prompt="Test prompt"
+            provider="openai"
         )
 
-        assert config.enabled is True
+        assert config.name == "Test Agent"
         assert config.provider == "openai"
         assert config.model == "gpt-4"
         assert config.temperature == 0.7
@@ -37,27 +38,27 @@ class TestAgentModels:
         from src.ai.agents.models import AgentTask
 
         task = AgentTask(
-            task_type="analyze",
-            content="Test content",
-            context={"key": "value"}
+            task_description="Analyze the content",
+            context="Additional context here",
+            input_data={"key": "value"}
         )
 
-        assert task.task_type == "analyze"
-        assert task.content == "Test content"
-        assert task.context == {"key": "value"}
+        assert task.task_description == "Analyze the content"
+        assert task.context == "Additional context here"
+        assert task.input_data == {"key": "value"}
 
     def test_agent_response_creation(self):
         """AgentResponse should be creatable."""
         from src.ai.agents.models import AgentResponse
 
         response = AgentResponse(
+            result="Result content",
             success=True,
-            content="Result content",
             error=None
         )
 
         assert response.success is True
-        assert response.content == "Result content"
+        assert response.result == "Result content"
         assert response.error is None
 
     def test_agent_response_with_error(self):
@@ -65,8 +66,8 @@ class TestAgentModels:
         from src.ai.agents.models import AgentResponse
 
         response = AgentResponse(
+            result="",
             success=False,
-            content="",
             error="Something went wrong"
         )
 
@@ -149,11 +150,12 @@ class TestSynopsisAgent:
         from src.ai.agents.models import AgentConfig, AgentTask, AgentResponse
 
         config = AgentConfig(
-            enabled=True,
-            provider="openai",
+            name="Synopsis Agent",
+            description="Creates brief synopsis of medical visits",
+            system_prompt="Create synopsis",
             model="gpt-4",
             temperature=0.3,
-            system_prompt="Create synopsis"
+            provider="openai"
         )
 
         mock_ai_caller = MagicMock()
@@ -162,8 +164,8 @@ class TestSynopsisAgent:
         agent = SynopsisAgent(config=config, ai_caller=mock_ai_caller)
 
         task = AgentTask(
-            task_type="synopsis",
-            content="Full SOAP note content here"
+            task_description="Create a synopsis of this visit",
+            input_data={"content": "Full SOAP note content here"}
         )
 
         response = agent.execute(task)
@@ -188,11 +190,12 @@ class TestMedicationAgent:
         from src.ai.agents.models import AgentConfig, AgentTask, AgentResponse
 
         config = AgentConfig(
-            enabled=True,
-            provider="openai",
+            name="Medication Agent",
+            description="Analyzes medications for interactions and dosing",
+            system_prompt="Analyze medications",
             model="gpt-4",
             temperature=0.2,
-            system_prompt="Analyze medications"
+            provider="openai"
         )
 
         mock_ai_caller = MagicMock()
@@ -201,8 +204,8 @@ class TestMedicationAgent:
         agent = MedicationAgent(config=config, ai_caller=mock_ai_caller)
 
         task = AgentTask(
-            task_type="medication",
-            content="Patient on metformin 500mg, lisinopril 10mg"
+            task_description="Analyze medications",
+            input_data={"content": "Patient on metformin 500mg, lisinopril 10mg"}
         )
 
         response = agent.execute(task)
@@ -243,19 +246,20 @@ class TestAgentInputValidation:
         from src.ai.agents.models import AgentConfig, AgentTask
 
         config = AgentConfig(
-            enabled=True,
-            provider="openai",
+            name="Synopsis Agent",
+            description="Creates brief synopsis",
+            system_prompt="Create synopsis",
             model="gpt-4",
             temperature=0.3,
-            system_prompt="Create synopsis"
+            provider="openai"
         )
 
         mock_ai_caller = MagicMock()
         agent = SynopsisAgent(config=config, ai_caller=mock_ai_caller)
 
         task = AgentTask(
-            task_type="synopsis",
-            content=""  # Empty content
+            task_description="Create synopsis",
+            input_data={"content": ""}  # Empty content
         )
 
         response = agent.execute(task)
@@ -286,18 +290,18 @@ class TestAgentRetry:
             # Mock an agent that fails then succeeds
             mock_agent = MagicMock()
             mock_agent.execute.side_effect = [
-                AgentResponse(success=False, content="", error="Retry 1"),
-                AgentResponse(success=True, content="Success", error=None)
+                AgentResponse(result="", success=False, error="Retry 1"),
+                AgentResponse(result="Success", success=True, error=None)
             ]
 
             with patch.object(manager, 'get_agent', return_value=mock_agent):
                 with patch.object(manager, '_execute_with_retry') as mock_retry:
                     mock_retry.return_value = (
-                        AgentResponse(success=True, content="Success", error=None),
+                        AgentResponse(result="Success", success=True, error=None),
                         2  # Took 2 attempts
                     )
 
-                    task = AgentTask(task_type="test", content="Test")
+                    task = AgentTask(task_description="Test task")
                     # The actual call would use retry logic
                     result = mock_retry(mock_agent, task)
 
@@ -333,8 +337,8 @@ class TestAgentSystemRegressionSuite:
         from src.ai.agents.models import AgentResponse
 
         response = AgentResponse(
+            result="Test content",
             success=True,
-            content="Test content",
             error=None,
             metadata={"key": "value"}
         )
@@ -342,7 +346,7 @@ class TestAgentSystemRegressionSuite:
         # Should be convertible to dict and then to JSON
         response_dict = {
             "success": response.success,
-            "content": response.content,
+            "result": response.result,
             "error": response.error,
             "metadata": response.metadata
         }
@@ -354,18 +358,18 @@ class TestAgentSystemRegressionSuite:
         """AgentTask should accept various context types."""
         from src.ai.agents.models import AgentTask
 
-        # Dict context
+        # String context
         task1 = AgentTask(
-            task_type="test",
-            content="Test",
-            context={"key": "value"}
+            task_description="Test task",
+            context="Additional context",
+            input_data={"key": "value"}
         )
-        assert task1.context == {"key": "value"}
+        assert task1.context == "Additional context"
+        assert task1.input_data == {"key": "value"}
 
         # None context
         task2 = AgentTask(
-            task_type="test",
-            content="Test",
+            task_description="Test task",
             context=None
         )
         assert task2.context is None
@@ -377,36 +381,30 @@ class TestAgentSystemRegressionSuite:
         # Valid temperatures
         for temp in [0.0, 0.5, 1.0]:
             config = AgentConfig(
-                enabled=True,
-                provider="openai",
+                name="Test Agent",
+                description="Test description",
+                system_prompt="Test",
                 model="gpt-4",
                 temperature=temp,
-                system_prompt="Test"
+                provider="openai"
             )
             assert 0.0 <= config.temperature <= 2.0
 
-    def test_disabled_agent_handling(self, mock_api_keys):
-        """Disabled agents should not execute."""
-        from src.ai.agents.synopsis import SynopsisAgent
-        from src.ai.agents.models import AgentConfig, AgentTask
+    def test_agent_config_with_defaults(self, mock_api_keys):
+        """AgentConfig should have sensible defaults."""
+        from src.ai.agents.models import AgentConfig
 
         config = AgentConfig(
-            enabled=False,  # Disabled
-            provider="openai",
-            model="gpt-4",
-            temperature=0.3,
-            system_prompt="Test"
+            name="Test Agent",
+            description="Test description",
+            system_prompt="Test prompt"
         )
 
-        mock_ai_caller = MagicMock()
-        agent = SynopsisAgent(config=config, ai_caller=mock_ai_caller)
-
-        task = AgentTask(task_type="synopsis", content="Test")
-        response = agent.execute(task)
-
-        # Should return error response for disabled agent
-        # or the agent framework should prevent execution
-        assert response is not None
+        # Check default values are applied
+        assert config.model == "gpt-4"  # Default model
+        assert config.temperature == 0.7  # Default temperature
+        assert config.provider is None  # Default provider
+        assert config.available_tools == []  # Default empty tools
 
     def test_agent_handles_unicode_content(self, mock_api_keys):
         """Agents should handle unicode content."""
@@ -414,11 +412,12 @@ class TestAgentSystemRegressionSuite:
         from src.ai.agents.models import AgentConfig, AgentTask, AgentResponse
 
         config = AgentConfig(
-            enabled=True,
-            provider="openai",
+            name="Synopsis Agent",
+            description="Creates brief synopsis",
+            system_prompt="Test",
             model="gpt-4",
             temperature=0.3,
-            system_prompt="Test"
+            provider="openai"
         )
 
         mock_ai_caller = MagicMock()
@@ -427,8 +426,8 @@ class TestAgentSystemRegressionSuite:
         agent = SynopsisAgent(config=config, ai_caller=mock_ai_caller)
 
         task = AgentTask(
-            task_type="synopsis",
-            content="Patient José García, température 38°C"
+            task_description="Create synopsis",
+            input_data={"content": "Patient José García, température 38°C"}
         )
 
         response = agent.execute(task)
