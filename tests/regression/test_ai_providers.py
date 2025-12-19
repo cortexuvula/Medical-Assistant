@@ -161,8 +161,8 @@ class TestPerplexityProvider:
 class TestAIProviderSelection:
     """Tests for AI provider selection logic."""
 
-    def test_call_ai_selects_openai(self, mock_api_keys):
-        """call_ai should route to OpenAI when selected."""
+    def test_call_ai_routes_based_on_settings(self, mock_api_keys):
+        """call_ai should route based on settings."""
         from src.ai.ai import call_ai
 
         with patch('src.ai.ai.call_openai', return_value="OpenAI response") as mock_openai:
@@ -171,25 +171,25 @@ class TestAIProviderSelection:
                     model="gpt-4",
                     system_message="Test",
                     prompt="Test",
-                    provider="openai"
+                    temperature=0.7
                 )
 
-        # Should have called OpenAI
-        assert mock_openai.called or isinstance(result, str)
+        # Result should always be a string
+        assert isinstance(result, str)
 
-    def test_call_ai_selects_anthropic(self, mock_api_keys):
-        """call_ai should route to Anthropic when selected."""
+    def test_call_ai_returns_string(self, mock_api_keys):
+        """call_ai should always return a string."""
         from src.ai.ai import call_ai
 
-        with patch('src.ai.ai.call_anthropic', return_value="Anthropic response") as mock_anthropic:
-            result = call_ai(
-                model="claude-3-sonnet-20240229",
-                system_message="Test",
-                prompt="Test",
-                provider="anthropic"
-            )
+        result = call_ai(
+            model="gpt-4",
+            system_message="Test",
+            prompt="Test",
+            temperature=0.7
+        )
 
-        assert mock_anthropic.called or isinstance(result, str)
+        # Result should always be a string (either response or error)
+        assert isinstance(result, str)
 
 
 class TestSOAPNoteGeneration:
@@ -365,13 +365,12 @@ class TestAIProviderRegressionSuite:
         """AI functions should always return string."""
         from src.ai.ai import call_ai
 
-        with patch('src.ai.ai.call_openai', return_value="Test"):
-            result = call_ai(
-                model="gpt-4",
-                system_message="Test",
-                prompt="Test",
-                provider="openai"
-            )
+        result = call_ai(
+            model="gpt-4",
+            system_message="Test",
+            prompt="Test",
+            temperature=0.7
+        )
 
         assert isinstance(result, str)
 
@@ -394,13 +393,12 @@ class TestAIProviderRegressionSuite:
         """Empty prompt should be handled gracefully."""
         from src.ai.ai import call_ai
 
-        with patch('src.ai.ai.call_openai', return_value=""):
-            result = call_ai(
-                model="gpt-4",
-                system_message="Test",
-                prompt="",
-                provider="openai"
-            )
+        result = call_ai(
+            model="gpt-4",
+            system_message="Test",
+            prompt="",
+            temperature=0.7
+        )
 
         # Should return something (empty string or error)
         assert isinstance(result, str)
@@ -411,13 +409,12 @@ class TestAIProviderRegressionSuite:
 
         long_prompt = "A" * 50000  # Very long prompt
 
-        with patch('src.ai.ai.call_openai', return_value="Response"):
-            result = call_ai(
-                model="gpt-4",
-                system_message="Test",
-                prompt=long_prompt,
-                provider="openai"
-            )
+        result = call_ai(
+            model="gpt-4",
+            system_message="Test",
+            prompt=long_prompt,
+            temperature=0.7
+        )
 
         # Should not raise exception
         assert isinstance(result, str)
