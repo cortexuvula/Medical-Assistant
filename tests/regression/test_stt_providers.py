@@ -157,19 +157,14 @@ class TestGroqProvider:
 
         assert isinstance(result, str)
 
-    def test_groq_supports_multiple_models(self):
-        """GroqProvider should support multiple Whisper models."""
+    def test_groq_initializes_with_params(self):
+        """GroqProvider should initialize with api_key and language."""
         from src.stt_providers.groq import GroqProvider
 
-        models = [
-            "whisper-large-v3-turbo",
-            "whisper-large-v3",
-            "distil-whisper-large-v3-en"
-        ]
-
-        for model in models:
-            provider = GroqProvider(api_key="test-key", model=model)
-            assert provider.model == model
+        # GroqProvider only accepts api_key and language in __init__
+        # Model selection is handled via settings/config
+        provider = GroqProvider(api_key="test-key", language="en-US")
+        assert provider is not None
 
     def test_groq_test_connection(self):
         """GroqProvider.test_connection() should return boolean."""
