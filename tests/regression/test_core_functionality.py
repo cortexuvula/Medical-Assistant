@@ -400,12 +400,12 @@ class TestCoreRegressionSuite:
 
         response = AgentResponse(
             success=True,
-            content="Test content",
+            result="Test result",
             error=None
         )
 
         assert response.success is True
-        assert response.content == "Test content"
+        assert response.result == "Test result"
         assert response.error is None
 
     def test_agent_task_model_works(self):
@@ -413,11 +413,11 @@ class TestCoreRegressionSuite:
         from src.ai.agents.models import AgentTask
 
         task = AgentTask(
-            task_type="analyze",
-            content="Test content",
-            context={"key": "value"}
+            task_description="Analyze the content",
+            input_data={"content": "Test content"},
+            context="Additional context"
         )
 
-        assert task.task_type == "analyze"
-        assert task.content == "Test content"
-        assert task.context == {"key": "value"}
+        assert task.task_description == "Analyze the content"
+        assert task.input_data == {"content": "Test content"}
+        assert task.context == "Additional context"
