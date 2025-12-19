@@ -185,18 +185,17 @@ class TestElevenLabsProvider:
         """ElevenLabsProvider should initialize with API key."""
         from src.stt_providers.elevenlabs import ElevenLabsProvider
 
-        with patch('src.stt_providers.elevenlabs.ElevenLabs'):
-            provider = ElevenLabsProvider(api_key="test-key")
-            assert provider is not None
+        # ElevenLabsProvider uses direct HTTP requests, no SDK to mock
+        provider = ElevenLabsProvider(api_key="test-key")
+        assert provider is not None
 
     def test_elevenlabs_transcribe_returns_string(self):
         """ElevenLabsProvider.transcribe() should return string."""
         from src.stt_providers.elevenlabs import ElevenLabsProvider
 
-        with patch('src.stt_providers.elevenlabs.ElevenLabs'):
-            provider = ElevenLabsProvider(api_key="test-key")
+        provider = ElevenLabsProvider(api_key="test-key")
 
-            with patch.object(provider, 'transcribe', return_value="Test transcription"):
+        with patch.object(provider, 'transcribe', return_value="Test transcription"):
                 result = provider.transcribe(MockAudioSegment())
 
         assert isinstance(result, str)
