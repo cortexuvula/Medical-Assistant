@@ -215,9 +215,15 @@ class TestSecurityModule:
         """SecurityManager should initialize correctly."""
         from src.utils.security import SecurityManager
 
-        with patch.object(SecurityManager, '_get_key_file_path', return_value=tmp_path / "keys.enc"):
+        # SecurityManager is a singleton - mock its dependencies
+        with patch('src.utils.security.SecureKeyStorage') as mock_storage, \
+             patch('src.utils.security.RateLimiter') as mock_limiter:
+            # Reset singleton for testing
+            SecurityManager._instance = None
             manager = SecurityManager()
             assert manager is not None
+            assert hasattr(manager, 'key_storage')
+            assert hasattr(manager, 'rate_limiter')
 
 
 class TestAgentModuleImports:
