@@ -219,7 +219,7 @@ class TestWhisperProvider:
         """WhisperProvider should initialize without API key."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('src.stt_providers.whisper.whisper'):
+        with patch('whisper.load_model'):
             provider = WhisperProvider()
             assert provider is not None
 
@@ -227,7 +227,7 @@ class TestWhisperProvider:
         """WhisperProvider should not require API key."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('src.stt_providers.whisper.whisper'):
+        with patch('whisper.load_model'):
             # Should not raise error without API key
             provider = WhisperProvider()
             assert provider is not None
@@ -236,7 +236,7 @@ class TestWhisperProvider:
         """WhisperProvider.transcribe() should return string."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('src.stt_providers.whisper.whisper'):
+        with patch('whisper.load_model'):
             provider = WhisperProvider()
 
             with patch.object(provider, 'transcribe', return_value="Test transcription"):
@@ -248,7 +248,7 @@ class TestWhisperProvider:
         """WhisperProvider should use turbo model by default."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('src.stt_providers.whisper.whisper'):
+        with patch('whisper.load_model'):
             provider = WhisperProvider()
             # Default model should be turbo (as per CLAUDE.md)
             assert provider.model in ['turbo', 'large', 'medium', 'small', 'base', 'tiny']
