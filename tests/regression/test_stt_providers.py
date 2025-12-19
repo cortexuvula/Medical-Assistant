@@ -204,11 +204,10 @@ class TestElevenLabsProvider:
         """ElevenLabsProvider.test_connection() should return boolean."""
         from src.stt_providers.elevenlabs import ElevenLabsProvider
 
-        with patch('src.stt_providers.elevenlabs.ElevenLabs'):
-            provider = ElevenLabsProvider(api_key="test-key")
+        provider = ElevenLabsProvider(api_key="test-key")
 
-            with patch.object(provider, 'test_connection', return_value=True):
-                result = provider.test_connection()
+        with patch.object(provider, 'test_connection', return_value=True):
+            result = provider.test_connection()
 
         assert isinstance(result, bool)
 
