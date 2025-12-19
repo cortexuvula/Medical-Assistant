@@ -288,7 +288,7 @@ class TestTimeoutHandling:
     def test_timeout_returns_error_message(self, mock_api_keys):
         """Timeout should return error message, not raise exception."""
         from src.ai.ai import call_openai
-        from src.utils.errors import AppTimeoutError
+        from utils.exceptions import TimeoutError as AppTimeoutError
 
         with patch('src.ai.ai._openai_api_call') as mock_api_call:
             mock_api_call.side_effect = AppTimeoutError("Timeout", timeout_seconds=30)
