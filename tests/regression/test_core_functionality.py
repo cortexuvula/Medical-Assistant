@@ -59,7 +59,7 @@ class TestDataFolderManager:
         from src.managers.data_folder_manager import data_folder_manager
 
         # Check that paths are Path objects or strings
-        assert hasattr(data_folder_manager, 'app_data_path')
+        assert hasattr(data_folder_manager, 'app_data_folder')
         assert hasattr(data_folder_manager, 'database_file_path')
         assert hasattr(data_folder_manager, 'settings_file_path')
 
