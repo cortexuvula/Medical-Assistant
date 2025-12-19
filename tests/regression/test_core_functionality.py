@@ -160,18 +160,15 @@ class TestAudioHandlerInitialization:
         except ImportError as e:
             pytest.fail(f"Failed to import AudioHandler: {e}")
 
-    @patch('src.audio.audio.get_all_devices')
-    def test_audio_handler_initializes(self, mock_devices, mock_api_keys):
-        """AudioHandler should initialize with mocked devices."""
-        mock_devices.return_value = {
-            'input': [{'name': 'Test Mic', 'id': 0}],
-            'output': [{'name': 'Test Speaker', 'id': 1}]
-        }
-
+    def test_audio_handler_initializes(self, mock_api_keys):
+        """AudioHandler should initialize with mocked providers."""
         from src.audio.audio import AudioHandler
 
-        # Mock the provider initializations
-        with patch.object(AudioHandler, '_init_stt_providers'):
+        # Mock the STT providers that are initialized in __init__
+        with patch('src.audio.audio.ElevenLabsProvider') as mock_elevenlabs, \
+             patch('src.audio.audio.DeepgramProvider') as mock_deepgram, \
+             patch('src.audio.audio.GroqProvider') as mock_groq, \
+             patch('src.audio.audio.WhisperProvider') as mock_whisper:
             handler = AudioHandler()
             assert handler is not None
 
