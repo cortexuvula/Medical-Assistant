@@ -181,9 +181,13 @@ class TestRateLimiting:
         from src.utils.security import SecurityManager
 
         with patch('src.utils.security.SecureKeyStorage'), \
-             patch('src.utils.security.RateLimiter'):
+             patch('src.utils.security.RateLimiter') as mock_limiter:
             SecurityManager._instance = None
             manager = SecurityManager()
+
+            # Configure the rate_limiter mock to return expected tuple
+            manager.rate_limiter = MagicMock()
+            manager.rate_limiter.check_rate_limit = MagicMock(return_value=(True, None))
 
             # Make several requests - uses rate_limiter internally
             for _ in range(5):
