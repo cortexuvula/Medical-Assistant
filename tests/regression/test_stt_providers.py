@@ -219,7 +219,8 @@ class TestWhisperProvider:
         """WhisperProvider should initialize without API key."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('whisper.load_model'):
+        # Mock _check_whisper_available to avoid actual import
+        with patch.object(WhisperProvider, '_check_whisper_available', return_value=True):
             provider = WhisperProvider()
             assert provider is not None
 
@@ -227,16 +228,18 @@ class TestWhisperProvider:
         """WhisperProvider should not require API key."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('whisper.load_model'):
+        with patch.object(WhisperProvider, '_check_whisper_available', return_value=True):
             # Should not raise error without API key
             provider = WhisperProvider()
             assert provider is not None
+            # Verify it doesn't require API key
+            assert provider.requires_api_key is False
 
     def test_whisper_transcribe_returns_string(self):
         """WhisperProvider.transcribe() should return string."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('whisper.load_model'):
+        with patch.object(WhisperProvider, '_check_whisper_available', return_value=True):
             provider = WhisperProvider()
 
             with patch.object(provider, 'transcribe', return_value="Test transcription"):
@@ -244,14 +247,16 @@ class TestWhisperProvider:
 
         assert isinstance(result, str)
 
-    def test_whisper_uses_turbo_model_by_default(self):
-        """WhisperProvider should use turbo model by default."""
+    def test_whisper_is_local_provider(self):
+        """WhisperProvider should be a local provider (no API key required)."""
         from src.stt_providers.whisper import WhisperProvider
 
-        with patch('whisper.load_model'):
+        with patch.object(WhisperProvider, '_check_whisper_available', return_value=False):
             provider = WhisperProvider()
-            # Default model should be turbo (as per CLAUDE.md)
-            assert provider.model in ['turbo', 'large', 'medium', 'small', 'base', 'tiny']
+            # Verify it doesn't require an API key
+            assert provider.requires_api_key is False
+            # Provider should report not available if whisper isn't installed
+            assert provider.is_available is False
 
 
 class TestProviderFallback:
