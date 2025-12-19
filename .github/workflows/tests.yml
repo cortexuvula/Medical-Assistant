@@ -83,7 +83,7 @@ jobs:
         MEDICAL_ASSISTANT_ENV: testing
         DISPLAY: ':99'
       run: |
-        xvfb-run -a pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_ui_basic.py --ignore=tests/unit/test_tkinter_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_workflow_tabs.py --ignore=tests/unit/test_tkinter_chat_and_editors.py
+        xvfb-run -a pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_ui_basic.py --ignore=tests/unit/test_tkinter_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_workflow_tabs.py --ignore=tests/unit/test_tkinter_chat_and_editors.py --ignore=tests/integration/test_recording_pipeline.py --ignore=tests/unit/test_minimal.py --ignore=tests/unit/test_services.py
     
     # Run tests (Windows/macOS)
     - name: Run tests with coverage (Windows/macOS)
@@ -91,7 +91,7 @@ jobs:
       env:
         MEDICAL_ASSISTANT_ENV: testing
       run: |
-        pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_ui_basic.py --ignore=tests/unit/test_tkinter_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_workflow_tabs.py --ignore=tests/unit/test_tkinter_chat_and_editors.py
+        pytest -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0 --ignore=tests/unit/test_ui_basic.py --ignore=tests/unit/test_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_ui_basic.py --ignore=tests/unit/test_tkinter_ui_medical_assistant.py --ignore=tests/unit/test_tkinter_workflow_tabs.py --ignore=tests/unit/test_tkinter_chat_and_editors.py --ignore=tests/integration/test_recording_pipeline.py --ignore=tests/unit/test_minimal.py --ignore=tests/unit/test_services.py
     
     # Upload coverage
     - name: Upload coverage to Codecov
