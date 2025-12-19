@@ -48,17 +48,15 @@ class TestAudioHandlerImports:
 class TestAudioHandlerInitialization:
     """Tests for AudioHandler initialization."""
 
-    @patch('src.audio.audio.get_all_devices')
-    def test_audio_handler_initializes(self, mock_devices):
-        """AudioHandler should initialize with default settings."""
-        mock_devices.return_value = {
-            'input': [{'name': 'Test Mic', 'id': 0}],
-            'output': [{'name': 'Test Speaker', 'id': 1}]
-        }
-
+    def test_audio_handler_initializes(self):
+        """AudioHandler should initialize with mocked providers."""
         from src.audio.audio import AudioHandler
 
-        with patch.object(AudioHandler, '_init_stt_providers'):
+        # Mock the STT providers that are initialized in __init__
+        with patch('src.audio.audio.ElevenLabsProvider') as mock_elevenlabs, \
+             patch('src.audio.audio.DeepgramProvider') as mock_deepgram, \
+             patch('src.audio.audio.GroqProvider') as mock_groq, \
+             patch('src.audio.audio.WhisperProvider') as mock_whisper:
             handler = AudioHandler()
 
         assert handler is not None
@@ -105,18 +103,16 @@ class TestTranscriptionFlow:
         """transcribe_audio should return a string."""
         from src.audio.audio import AudioHandler
 
-        with patch('src.audio.audio.get_all_devices') as mock_devices:
-            mock_devices.return_value = {
-                'input': [{'name': 'Test Mic', 'id': 0}],
-                'output': []
-            }
+        # Mock the STT providers
+        with patch('src.audio.audio.ElevenLabsProvider'), \
+             patch('src.audio.audio.DeepgramProvider'), \
+             patch('src.audio.audio.GroqProvider'), \
+             patch('src.audio.audio.WhisperProvider'):
+            handler = AudioHandler()
 
-            with patch.object(AudioHandler, '_init_stt_providers'):
-                handler = AudioHandler()
-
-                # Mock the transcribe method
-                with patch.object(handler, 'transcribe_audio', return_value="Test transcription"):
-                    result = handler.transcribe_audio(MockAudioSegment())
+            # Mock the transcribe method
+            with patch.object(handler, 'transcribe_audio', return_value="Test transcription"):
+                result = handler.transcribe_audio(MockAudioSegment())
 
         assert isinstance(result, str)
 
@@ -124,14 +120,15 @@ class TestTranscriptionFlow:
         """Transcription should handle empty/silent audio."""
         from src.audio.audio import AudioHandler
 
-        with patch('src.audio.audio.get_all_devices') as mock_devices:
-            mock_devices.return_value = {'input': [], 'output': []}
+        # Mock the STT providers
+        with patch('src.audio.audio.ElevenLabsProvider'), \
+             patch('src.audio.audio.DeepgramProvider'), \
+             patch('src.audio.audio.GroqProvider'), \
+             patch('src.audio.audio.WhisperProvider'):
+            handler = AudioHandler()
 
-            with patch.object(AudioHandler, '_init_stt_providers'):
-                handler = AudioHandler()
-
-                with patch.object(handler, 'transcribe_audio', return_value=""):
-                    result = handler.transcribe_audio(MockAudioSegment())
+            with patch.object(handler, 'transcribe_audio', return_value=""):
+                result = handler.transcribe_audio(MockAudioSegment())
 
         # Empty or silence indicator is acceptable
         assert result in ["", "[Silence...]", None] or isinstance(result, str)
@@ -144,20 +141,23 @@ class TestProviderSelection:
         """set_stt_provider should change the active provider."""
         from src.audio.audio import AudioHandler
 
-        with patch('src.audio.audio.get_all_devices') as mock_devices:
-            mock_devices.return_value = {'input': [], 'output': []}
+        # Mock the STT providers
+        with patch('src.audio.audio.ElevenLabsProvider'), \
+             patch('src.audio.audio.DeepgramProvider'), \
+             patch('src.audio.audio.GroqProvider'), \
+             patch('src.audio.audio.WhisperProvider'):
+            handler = AudioHandler()
 
-            with patch.object(AudioHandler, '_init_stt_providers'):
-                handler = AudioHandler()
-                handler._stt_providers = {
-                    'deepgram': MagicMock(),
-                    'groq': MagicMock()
-                }
-                handler._current_stt_provider = 'deepgram'
+            # Set up mock provider dict
+            handler._stt_providers = {
+                'deepgram': MagicMock(),
+                'groq': MagicMock()
+            }
+            handler._current_stt_provider = 'deepgram'
 
-                handler.set_stt_provider('groq')
+            handler.set_stt_provider('groq')
 
-                assert handler._current_stt_provider == 'groq'
+            assert handler._current_stt_provider == 'groq'
 
 
 class TestAudioStateManager:
