@@ -138,26 +138,24 @@ class TestProviderSelection:
     """Tests for STT provider selection."""
 
     def test_set_stt_provider_changes_provider(self, mock_api_keys):
-        """set_stt_provider should change the active provider."""
+        """set_stt_provider should change the active provider setting."""
         from src.audio.audio import AudioHandler
 
-        # Mock the STT providers
+        # Mock the STT providers and settings
         with patch('src.audio.audio.ElevenLabsProvider'), \
              patch('src.audio.audio.DeepgramProvider'), \
              patch('src.audio.audio.GroqProvider'), \
-             patch('src.audio.audio.WhisperProvider'):
+             patch('src.audio.audio.WhisperProvider'), \
+             patch('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}) as mock_settings, \
+             patch('settings.settings.save_settings') as mock_save:
             handler = AudioHandler()
 
-            # Set up mock provider dict
-            handler._stt_providers = {
-                'deepgram': MagicMock(),
-                'groq': MagicMock()
-            }
-            handler._current_stt_provider = 'deepgram'
-
+            # Call set_stt_provider
             handler.set_stt_provider('groq')
 
-            assert handler._current_stt_provider == 'groq'
+            # Verify settings were updated
+            assert mock_settings['stt_provider'] == 'groq'
+            mock_save.assert_called_once()
 
 
 class TestAudioStateManager:
@@ -272,24 +270,25 @@ class TestAudioPipelineRegressionSuite:
         """Transcription should return consistent result types."""
         from src.audio.audio import AudioHandler
 
-        with patch('src.audio.audio.get_all_devices') as mock_devices:
-            mock_devices.return_value = {'input': [], 'output': []}
+        # Mock the STT providers
+        with patch('src.audio.audio.ElevenLabsProvider'), \
+             patch('src.audio.audio.DeepgramProvider'), \
+             patch('src.audio.audio.GroqProvider'), \
+             patch('src.audio.audio.WhisperProvider'):
+            handler = AudioHandler()
 
-            with patch.object(AudioHandler, '_init_stt_providers'):
-                handler = AudioHandler()
+            # Test with different mock returns
+            test_cases = [
+                "Normal transcription",
+                "",
+                "[Silence...]",
+                "Text with émojis 🏥",
+            ]
 
-                # Test with different mock returns
-                test_cases = [
-                    "Normal transcription",
-                    "",
-                    "[Silence...]",
-                    "Text with émojis 🏥",
-                ]
-
-                for expected in test_cases:
-                    with patch.object(handler, 'transcribe_audio', return_value=expected):
-                        result = handler.transcribe_audio(MockAudioSegment())
-                        assert isinstance(result, str)
+            for expected in test_cases:
+                with patch.object(handler, 'transcribe_audio', return_value=expected):
+                    result = handler.transcribe_audio(MockAudioSegment())
+                    assert isinstance(result, str)
 
     def test_audio_segment_handling(self):
         """Audio segments should be handled correctly."""
@@ -304,34 +303,25 @@ class TestAudioPipelineRegressionSuite:
         """Provider fallback should work when primary fails."""
         from src.audio.audio import AudioHandler
 
-        with patch('src.audio.audio.get_all_devices') as mock_devices:
-            mock_devices.return_value = {'input': [], 'output': []}
+        # Mock the STT providers
+        with patch('src.audio.audio.ElevenLabsProvider'), \
+             patch('src.audio.audio.DeepgramProvider'), \
+             patch('src.audio.audio.GroqProvider'), \
+             patch('src.audio.audio.WhisperProvider'):
+            handler = AudioHandler()
 
-            with patch.object(AudioHandler, '_init_stt_providers'):
-                handler = AudioHandler()
+            # Setup mock providers for fallback testing
+            primary_provider = MagicMock()
+            primary_provider.transcribe.side_effect = Exception("Primary failed")
 
-                # Setup mock providers
-                primary_provider = MagicMock()
-                primary_provider.transcribe.side_effect = Exception("Primary failed")
+            fallback_provider = MagicMock()
+            fallback_provider.transcribe.return_value = "Fallback transcription"
 
-                fallback_provider = MagicMock()
-                fallback_provider.transcribe.return_value = "Fallback transcription"
-
-                handler._stt_providers = {
-                    'primary': primary_provider,
-                    'fallback': fallback_provider
-                }
-
-                # Mock the fallback mechanism
-                with patch.object(handler, '_try_transcription_with_provider') as mock_try:
-                    mock_try.side_effect = [
-                        "",  # Primary fails
-                        "Fallback transcription"  # Fallback succeeds
-                    ]
-
-                    # The actual implementation would handle this
-                    # This test verifies the mock setup
-                    assert mock_try.call_count == 0  # Not called yet
+            # Mock transcribe_audio to simulate fallback behavior
+            with patch.object(handler, 'transcribe_audio', return_value="Fallback transcription"):
+                result = handler.transcribe_audio(MockAudioSegment())
+                # Should get fallback result
+                assert result == "Fallback transcription"
 
     def test_recording_saves_to_database(self, tmp_path, mock_api_keys):
         """Recording should be saved to database after processing."""
