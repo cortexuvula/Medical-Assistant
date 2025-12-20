@@ -426,20 +426,22 @@ class SecureKeyStorage:
     
     def list_providers(self) -> Dict[str, Dict[str, str]]:
         """List stored providers with metadata (not the actual keys).
-        
+
         Returns:
             Dictionary of provider metadata
         """
         with self._lock:
             keys = self._load_keys()
-            
+
             # Return metadata only, not the encrypted keys
+            # Filter out internal metadata entries
             return {
                 provider: {
-                    "stored_at": data["stored_at"],
-                    "key_hash": data["key_hash"]
+                    "stored_at": data.get("stored_at", ""),
+                    "key_hash": data.get("key_hash", "")
                 }
                 for provider, data in keys.items()
+                if provider != "_metadata" and isinstance(data, dict)
             }
     
     def _load_keys(self) -> Dict[str, Any]:

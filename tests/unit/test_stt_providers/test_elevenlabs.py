@@ -4,11 +4,16 @@ import os
 import json
 import tempfile
 import logging
+import sys
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, mock_open
 import numpy as np
 from pydub import AudioSegment
 
-from stt_providers.elevenlabs import ElevenLabsProvider
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.stt_providers.elevenlabs import ElevenLabsProvider
 
 
 class TestElevenLabsProvider:
@@ -65,9 +70,9 @@ class TestElevenLabsProvider:
         assert provider.api_key == ""
         assert provider.language == "en-US"
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_transcribe_success(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment, mock_elevenlabs_response):
         """Test successful transcription."""
         # Mock settings
@@ -105,9 +110,9 @@ class TestElevenLabsProvider:
         assert call_args[1]["headers"]["xi-api-key"] == "test-elevenlabs-key"
         assert call_args[1]["data"]["model_id"] == "scribe_v1"
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_transcribe_with_diarization(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test transcription with diarization enabled."""
         # Mock settings with diarization
@@ -171,9 +176,9 @@ class TestElevenLabsProvider:
         
         assert result == ""
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_transcribe_api_error(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test handling of API errors."""
         # Mock settings
@@ -201,9 +206,9 @@ class TestElevenLabsProvider:
         
         assert result == ""
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_transcribe_network_error(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test handling of network errors."""
         # Mock settings
@@ -228,9 +233,9 @@ class TestElevenLabsProvider:
         
         assert result == ""
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_transcribe_timeout_calculation(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test timeout calculation based on file size."""
         # Mock settings
@@ -310,9 +315,9 @@ class TestElevenLabsProvider:
         assert "Speaker Unknown: Hello" in result
         assert "Speaker 0: world" in result
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_file_cleanup_on_success(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test that temporary files are cleaned up on success."""
         # Mock settings
@@ -346,9 +351,9 @@ class TestElevenLabsProvider:
         
         assert file_deleted, "Temporary file should be deleted"
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
-    @patch('stt_providers.elevenlabs.requests.post')
-    @patch('stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.requests.post')
+    @patch('src.stt_providers.elevenlabs.tempfile.NamedTemporaryFile')
     def test_file_cleanup_on_error(self, mock_temp_file, mock_post, mock_settings, provider, mock_audio_segment):
         """Test that temporary files are cleaned up on error."""
         # Mock settings
@@ -379,7 +384,7 @@ class TestElevenLabsProvider:
         
         assert cleanup_attempted, "Cleanup should be attempted even on error"
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
     def test_format_diarized_transcript_from_segments(self, mock_settings, provider):
         """Test formatting diarized transcript from segments structure."""
         result_data = {
@@ -396,7 +401,7 @@ class TestElevenLabsProvider:
         assert "Speaker 1: Hi, how are you?" in formatted
         assert "Speaker 0: I'm good, thanks!" in formatted
     
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('src.stt_providers.elevenlabs.SETTINGS')
     def test_format_diarized_transcript_from_speakers(self, mock_settings, provider):
         """Test formatting diarized transcript from speakers structure."""
         result_data = {

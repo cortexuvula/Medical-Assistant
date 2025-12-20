@@ -3,12 +3,17 @@ import pytest
 import os
 import tempfile
 import logging
+import sys
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, mock_open
 import numpy as np
 from pydub import AudioSegment
 
-from stt_providers.groq import GroqProvider
-from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.stt_providers.groq import GroqProvider
+from src.utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 
 
 class TestGroqProvider:
@@ -51,8 +56,8 @@ class TestGroqProvider:
         assert provider.api_key == ""
         assert provider.language == "en-US"
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_transcribe_success(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test successful transcription."""
@@ -128,8 +133,8 @@ class TestGroqProvider:
         
         assert "API key not configured" in str(exc_info.value)
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_transcribe_api_key_not_found(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test transcription when API key is not found in secure storage."""
@@ -157,8 +162,8 @@ class TestGroqProvider:
         
         assert "API key not configured" in str(exc_info.value)
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_transcribe_timeout_calculation(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test timeout calculation based on file size."""
@@ -222,8 +227,8 @@ class TestGroqProvider:
                         call_args = mock_client.audio.transcriptions.create.call_args
                         assert call_args[1]["timeout"] == expected_timeout
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_transcribe_api_error(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test handling of API errors."""
@@ -275,8 +280,8 @@ class TestGroqProvider:
             
             assert "Unexpected error during GROQ transcription" in str(exc_info.value)
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_transcribe_unexpected_response_format(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test handling of unexpected response format."""
@@ -330,8 +335,8 @@ class TestGroqProvider:
             
             assert "Unexpected response format from GROQ API" in str(exc_info.value)
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_language_code_extraction(self, mock_temp_file, mock_get_security_manager, mock_get_config, mock_audio_segment):
         """Test language code extraction from full language tags."""
@@ -398,8 +403,8 @@ class TestGroqProvider:
                         call_args = mock_client.audio.transcriptions.create.call_args
                         assert call_args[1]["language"] == expected_lang
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_file_cleanup_on_success(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test that temporary files are cleaned up on success."""
@@ -464,8 +469,8 @@ class TestGroqProvider:
         
         assert file_deleted, "Temporary file should be deleted"
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_file_cleanup_on_error(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment):
         """Test that temporary files are cleaned up on error."""
@@ -531,8 +536,8 @@ class TestGroqProvider:
         
         assert cleanup_attempted, "Cleanup should be attempted even on error"
     
-    @patch('stt_providers.groq.get_config')
-    @patch('stt_providers.groq.get_security_manager')
+    @patch('src.stt_providers.groq.get_config')
+    @patch('src.stt_providers.groq.get_security_manager')
     @patch('tempfile.NamedTemporaryFile')
     def test_file_cleanup_failure_handling(self, mock_temp_file, mock_get_security_manager, mock_get_config, provider, mock_audio_segment, caplog):
         """Test handling of file cleanup failures."""
@@ -599,7 +604,7 @@ class TestGroqProvider:
     
     def test_provider_inheritance(self, provider):
         """Test that provider properly inherits from base."""
-        from stt_providers.base import BaseSTTProvider
+        from src.stt_providers.base import BaseSTTProvider
         
         assert isinstance(provider, BaseSTTProvider)
         assert hasattr(provider, 'transcribe')

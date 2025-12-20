@@ -3,11 +3,16 @@ import pytest
 import os
 import tempfile
 import logging
+import sys
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import numpy as np
 from pydub import AudioSegment
 
-from stt_providers.whisper import WhisperProvider
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from src.stt_providers.whisper import WhisperProvider
 
 
 class TestWhisperProvider:
@@ -424,7 +429,7 @@ class TestWhisperProvider:
     
     def test_provider_inheritance(self, provider_with_whisper):
         """Test that provider properly inherits from base."""
-        from stt_providers.base import BaseSTTProvider
+        from src.stt_providers.base import BaseSTTProvider
         
         assert isinstance(provider_with_whisper, BaseSTTProvider)
         assert hasattr(provider_with_whisper, 'transcribe')
