@@ -1,94 +1,107 @@
 #!/usr/bin/env python3
 """
-Test script to diagnose audio recording issues.
-Run this to test if audio is being captured correctly.
+Audio recording tests.
+
+These tests verify audio functionality when hardware is available,
+and skip gracefully in CI environments without audio devices.
 """
+import pytest
+import sys
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
-import numpy as np
-import sounddevice as sd
-from pydub import AudioSegment
-import time
-import os
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-def test_recording():
-    print("Audio Recording Test")
-    print("=" * 50)
-    
-    # List audio devices
-    print("\nAvailable audio devices:")
-    devices = sd.query_devices()
-    for i, device in enumerate(devices):
-        if device['max_input_channels'] > 0:
-            print(f"{i}: {device['name']} (Channels: {device['max_input_channels']})")
-    
-    # Get default device
-    default_device = sd.default.device[0]
-    print(f"\nDefault input device: {default_device}")
-    
-    # Test parameters
-    sample_rate = 48000
-    duration = 3  # seconds
-    
-    print(f"\nRecording {duration} seconds of audio...")
-    print("Please speak into your microphone...")
-    
-    # Record audio
-    recording = sd.rec(int(duration * sample_rate), 
-                      samplerate=sample_rate, 
-                      channels=1, 
-                      dtype='float32')
-    sd.wait()  # Wait for recording to complete
-    
-    print(f"\nRecording complete!")
-    print(f"Recording shape: {recording.shape}")
-    print(f"Recording dtype: {recording.dtype}")
-    print(f"Max amplitude: {np.abs(recording).max():.6f}")
-    print(f"Mean amplitude: {np.abs(recording).mean():.6f}")
-    
-    # Check if audio is silent
-    if np.abs(recording).max() < 0.001:
-        print("\nWARNING: Recording appears to be silent!")
-        print("Please check your microphone settings and permissions.")
-    
-    # Convert to AudioSegment
-    print("\nConverting to AudioSegment...")
-    
-    # Flatten array if needed
-    if len(recording.shape) > 1:
-        recording = recording.flatten()
-    
-    # Convert to int16
-    audio_clipped = np.clip(recording, -1.0, 1.0)
-    audio_int16 = (audio_clipped * 32767).astype(np.int16)
-    
-    # Create AudioSegment
-    audio_segment = AudioSegment(
-        data=audio_int16.tobytes(),
-        sample_width=2,
-        frame_rate=sample_rate,
-        channels=1
-    )
-    
-    print(f"AudioSegment created: {len(audio_segment)}ms duration")
-    
-    # Save test file
-    test_file = "test_recording.mp3"
-    audio_segment.export(test_file, format="mp3")
-    print(f"\nTest audio saved to: {test_file}")
-    print(f"File size: {os.path.getsize(test_file)} bytes")
-    
-    # Play back the recording (optional)
+
+def audio_available():
+    """Check if audio hardware is available."""
     try:
-        print("\nPlaying back recording...")
-        sd.play(recording, sample_rate)
-        sd.wait()
-        print("Playback complete!")
-    except Exception as e:
-        print(f"Playback failed: {e}")
-    
-    print("\n" + "=" * 50)
-    print("Test complete! Check the test_recording.mp3 file.")
-    print("If the file contains only static, there may be an audio input issue.")
+        import sounddevice as sd
+        devices = sd.query_devices()
+        # Check if any input devices exist
+        return any(d['max_input_channels'] > 0 for d in devices)
+    except Exception:
+        return False
 
-if __name__ == "__main__":
-    test_recording()
+
+@pytest.mark.skipif(not audio_available(), reason="No audio hardware available")
+class TestAudioRecording:
+    """Tests that require audio hardware."""
+
+    def test_list_audio_devices(self):
+        """Test that audio devices can be listed."""
+        import sounddevice as sd
+        devices = sd.query_devices()
+        assert len(devices) > 0
+
+    def test_default_device_available(self):
+        """Test that a default device is available."""
+        import sounddevice as sd
+        default = sd.default.device
+        assert default is not None
+
+
+class TestAudioMocked:
+    """Tests with mocked audio for CI environments."""
+
+    def test_audio_handler_imports(self):
+        """Test AudioHandler can be imported."""
+        from src.audio.audio import AudioHandler
+        assert AudioHandler is not None
+
+    def test_recording_manager_imports(self):
+        """Test RecordingManager can be imported."""
+        from src.audio.recording_manager import RecordingManager
+        assert RecordingManager is not None
+
+    def test_audio_segment_creation(self):
+        """Test AudioSegment can be created."""
+        from pydub import AudioSegment
+        import numpy as np
+
+        # Create silent audio data
+        sample_rate = 44100
+        duration = 1  # second
+        samples = np.zeros(sample_rate * duration, dtype=np.int16)
+
+        segment = AudioSegment(
+            data=samples.tobytes(),
+            sample_width=2,
+            frame_rate=sample_rate,
+            channels=1
+        )
+
+        assert len(segment) == 1000  # 1000 ms
+        assert segment.frame_rate == sample_rate
+
+    def test_audio_conversion(self):
+        """Test audio data conversion."""
+        import numpy as np
+
+        # Simulate recording data
+        recording = np.random.uniform(-1, 1, 1000).astype(np.float32)
+
+        # Convert to int16 (as done in actual code)
+        audio_clipped = np.clip(recording, -1.0, 1.0)
+        audio_int16 = (audio_clipped * 32767).astype(np.int16)
+
+        assert audio_int16.dtype == np.int16
+        assert len(audio_int16) == 1000
+
+    @patch('sounddevice.rec')
+    @patch('sounddevice.wait')
+    def test_recording_with_mocked_device(self, mock_wait, mock_rec):
+        """Test recording flow with mocked sounddevice."""
+        import numpy as np
+
+        # Setup mock to return audio data
+        mock_audio = np.zeros((48000, 1), dtype=np.float32)
+        mock_rec.return_value = mock_audio
+
+        # Simulate a recording call
+        import sounddevice as sd
+        result = sd.rec(48000, samplerate=48000, channels=1)
+
+        mock_rec.assert_called_once()
+        assert result.shape == (48000, 1)

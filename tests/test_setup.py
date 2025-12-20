@@ -10,11 +10,11 @@ def test_pytest_is_working():
 def test_imports_work():
     """Test that we can import main modules."""
     # These imports should not raise exceptions
-    import database
-    import config
-    import validation
-    import security
-    
+    from src.database import database
+    from src.core import config
+    from src.utils import validation
+    from src.utils import security
+
     assert True
 
 
