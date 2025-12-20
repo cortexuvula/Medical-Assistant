@@ -71,9 +71,9 @@ class TestAIProcessor:
         input_text = "patient has headache. took tylenol"
         result = ai_processor.refine_text(input_text)
 
-        # OperationResult interface
+        # OperationResult interface - use .value for the result dict
         assert result.success is True
-        assert result.data["text"] == "Refined text output"
+        assert result.value["text"] == "Refined text output"
 
         # Verify the function was called
         mock_adjust.assert_called_once()
@@ -87,7 +87,7 @@ class TestAIProcessor:
         result = ai_processor.improve_text(input_text)
 
         assert result.success is True
-        assert result.data["text"] == "Improved text output"
+        assert result.value["text"] == "Improved text output"
 
         # Verify the function was called
         mock_improve.assert_called_once()
@@ -103,7 +103,7 @@ class TestAIProcessor:
         result = ai_processor.create_soap_note(transcript)
 
         assert result.success is True
-        assert "S:" in result.data["text"]
+        assert "S:" in result.value["text"]
 
     def test_empty_input_handling(self, ai_processor):
         """Test handling of empty input."""
@@ -143,7 +143,7 @@ class TestAIProcessor:
         result = ai_processor.create_referral_letter(text, letter_options)
 
         assert result.success is True
-        assert "Dear Specialist" in result.data["text"]
+        assert "Dear Specialist" in result.value["text"]
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_create_letter(self, mock_adjust, ai_processor):
@@ -159,7 +159,7 @@ class TestAIProcessor:
         result = ai_processor.create_letter(text, "confirmation", letter_options)
 
         assert result.success is True
-        assert "Dear Patient" in result.data["text"]
+        assert "Dear Patient" in result.value["text"]
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_additional_context_handling(self, mock_adjust, ai_processor):
@@ -201,7 +201,7 @@ class TestAIProcessor:
         result = ai_processor.refine_text(long_text)
 
         assert result.success is True
-        assert result.data["text"] == "Processed long text"
+        assert result.value["text"] == "Processed long text"
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_special_characters_handling(self, mock_adjust, ai_processor):
@@ -212,7 +212,7 @@ class TestAIProcessor:
         result = ai_processor.refine_text(special_text)
 
         assert result.success is True
-        assert "°" in result.data["text"]  # Degree symbol preserved
+        assert "°" in result.value["text"]  # Degree symbol preserved
 
     @patch('src.ai.ai_processor.create_soap_note_with_openai')
     @patch('src.ai.ai_processor.get_possible_conditions')
@@ -224,7 +224,7 @@ class TestAIProcessor:
         result = ai_processor.create_soap_note("Patient has headache")
 
         assert result.success is True
-        assert "S:" in result.data["text"]
+        assert "S:" in result.value["text"]
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_error_handling_with_exception_details(self, mock_adjust, ai_processor):
@@ -244,7 +244,7 @@ class TestAIProcessor:
         result = ai_processor.create_letter("test content", "general", {})
 
         assert result.success is True
-        assert result.data["text"] == "Generated letter content"
+        assert result.value["text"] == "Generated letter content"
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_refine_with_custom_prompt_from_settings(self, mock_adjust, ai_processor):
