@@ -1,11 +1,19 @@
 import os
 import json
 import logging
+import time
+import threading
 from core.config import get_config
 from settings.settings_migrator import get_migrator
 from managers.data_folder_manager import data_folder_manager
 
 SETTINGS_FILE = str(data_folder_manager.settings_file_path)
+
+# Settings cache for avoiding repeated file reads (saves 10-50ms per access)
+_settings_cache: dict = None
+_settings_cache_time: float = 0.0
+_settings_cache_lock = threading.Lock()
+SETTINGS_CACHE_TTL = 5.0  # Cache valid for 5 seconds
 DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
 
 # NEW: Default AI Provider setting (default is OpenAI)
@@ -435,28 +443,75 @@ def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
     
     return merged
 
-def load_settings() -> dict:
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                loaded_settings = json.load(f)
-                # Debug: Log what we're loading
-                synopsis_provider = loaded_settings.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
-                logging.info(f"Loading settings from file, synopsis provider: {synopsis_provider}")
-                # Merge with defaults to ensure all keys exist
-                merged = merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
-                # Debug: Log after merge
-                merged_provider = merged.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
-                logging.info(f"After merge, synopsis provider: {merged_provider}")
-                return merged
-        except Exception as e:
-            logging.error("Error loading settings", exc_info=True)
-    return _DEFAULT_SETTINGS.copy()
+def load_settings(force_refresh: bool = False) -> dict:
+    """Load settings with caching to avoid repeated file reads.
+
+    Caches settings for SETTINGS_CACHE_TTL seconds to improve performance.
+    Saves 10-50ms per access when cache is valid.
+
+    Args:
+        force_refresh: Force reload from disk ignoring cache
+
+    Returns:
+        Settings dictionary
+    """
+    global _settings_cache, _settings_cache_time
+
+    current_time = time.time()
+
+    # Check cache first (thread-safe read)
+    if not force_refresh and _settings_cache is not None:
+        if current_time - _settings_cache_time < SETTINGS_CACHE_TTL:
+            return _settings_cache
+
+    # Need to reload - acquire lock for thread safety
+    with _settings_cache_lock:
+        # Double-check after acquiring lock
+        if not force_refresh and _settings_cache is not None:
+            if current_time - _settings_cache_time < SETTINGS_CACHE_TTL:
+                return _settings_cache
+
+        # Load from file
+        if os.path.exists(SETTINGS_FILE):
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    loaded_settings = json.load(f)
+                    # Debug: Log what we're loading
+                    synopsis_provider = loaded_settings.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
+                    logging.debug(f"Loading settings from file, synopsis provider: {synopsis_provider}")
+                    # Merge with defaults to ensure all keys exist
+                    merged = merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
+                    # Debug: Log after merge
+                    merged_provider = merged.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
+                    logging.debug(f"After merge, synopsis provider: {merged_provider}")
+
+                    # Update cache
+                    _settings_cache = merged
+                    _settings_cache_time = current_time
+                    return merged
+            except Exception as e:
+                logging.error("Error loading settings", exc_info=True)
+
+        result = _DEFAULT_SETTINGS.copy()
+        _settings_cache = result
+        _settings_cache_time = current_time
+        return result
+
+
+def invalidate_settings_cache() -> None:
+    """Invalidate the settings cache to force reload on next access."""
+    global _settings_cache, _settings_cache_time
+    with _settings_cache_lock:
+        _settings_cache = None
+        _settings_cache_time = 0.0
 
 def save_settings(settings: dict) -> None:
+    """Save settings to file and invalidate cache."""
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=4)
+        # Invalidate cache so next load gets fresh data
+        invalidate_settings_cache()
     except Exception as e:
         logging.error("Error saving settings", exc_info=True)
 

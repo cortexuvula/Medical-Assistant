@@ -81,20 +81,36 @@ class WorkflowUI:
         return workflow_notebook
     
     def _on_workflow_tab_changed(self, event):
-        """Handle workflow tab change event."""
+        """Handle workflow tab change event with debouncing.
+
+        Uses 100ms debounce to prevent multiple refreshes during rapid tab switching.
+        This improves UI responsiveness by avoiding redundant work.
+        """
+        # Cancel pending refresh if switching quickly (debounce)
+        if hasattr(self, '_pending_tab_refresh'):
+            try:
+                self.parent.after_cancel(self._pending_tab_refresh)
+            except Exception:
+                pass
+
+        # Schedule the actual refresh with 100ms debounce
+        self._pending_tab_refresh = self.parent.after(100, lambda: self._do_tab_change(event))
+
+    def _do_tab_change(self, event):
+        """Perform the actual tab change handling after debounce."""
         try:
             notebook = event.widget
             tab_index = notebook.index("current")
             tab_names = ["record", "process", "generate", "recordings"]
-            
+
             if 0 <= tab_index < len(tab_names):
                 self.current_workflow = tab_names[tab_index]
                 logging.debug(f"Switched to {self.current_workflow} workflow")
-                
+
                 # Refresh recordings list when switching to Recordings tab
                 if self.current_workflow == "recordings":
                     self.recordings_tab._refresh_recordings_list()
-                
+
                 # Trigger any workflow-specific updates
                 if hasattr(self.parent, 'on_workflow_changed'):
                     self.parent.on_workflow_changed(self.current_workflow)

@@ -39,9 +39,14 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     PROVIDER_OLLAMA: 180.0,      # Ollama (local, can be very slow depending on model)
     PROVIDER_GEMINI: 90.0,       # Google Gemini API calls
 
+    # STT Provider timeouts (for transcription)
+    "deepgram": 120.0,        # Deepgram STT (long audio files)
+    "groq": 60.0,             # Groq Whisper STT (fast)
+    "elevenlabs": 90.0,       # ElevenLabs STT
+
     # Other service timeouts
     "rag": 30.0,              # RAG/N8N webhook calls
-    "stt": 120.0,             # Speech-to-text transcription
+    "stt": 120.0,             # Generic speech-to-text transcription
     "tts": 30.0,              # Text-to-speech synthesis
     "health_check": 5.0,      # Service health checks
 
