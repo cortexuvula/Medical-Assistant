@@ -14,6 +14,20 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    """Clear the settings cache before each test.
+
+    This ensures tests don't interfere with each other when patching SETTINGS_FILE.
+    The cache would otherwise return stale data from a different file path.
+    """
+    from src.settings.settings import invalidate_settings_cache
+    invalidate_settings_cache()
+    yield
+    # Also clear after test to be safe
+    invalidate_settings_cache()
+
+
 class TestSettingsLoad:
     """Tests for loading settings."""
 
