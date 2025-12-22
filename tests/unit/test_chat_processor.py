@@ -238,7 +238,7 @@ class TestPromptConstruction:
         context = {"tab_name": "chat", "has_content": False}
         prompt = processor._construct_prompt("Hello", context)
 
-        assert "helpful medical AI assistant" in prompt.lower()
+        assert "helpful medical ai assistant" in prompt.lower()
         assert "do not modify any document" in prompt.lower()
 
 
@@ -618,7 +618,7 @@ class TestToolSettings:
 
     @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    @patch('src.ai.chat_processor.save_settings')
+    @patch('settings.settings.save_settings')
     def test_enable_tools(self, mock_save, mock_mcp):
         """Test enabling tools."""
         from src.ai.chat_processor import ChatProcessor
@@ -637,7 +637,7 @@ class TestToolSettings:
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    @patch('src.ai.chat_processor.save_settings')
+    @patch('settings.settings.save_settings')
     def test_disable_tools(self, mock_save, mock_agent, mock_executor, mock_mcp):
         """Test disabling tools."""
         from src.ai.chat_processor import ChatProcessor

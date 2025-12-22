@@ -98,99 +98,131 @@ class TestGetProvider:
     @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator'}})
     def test_get_provider_handles_exception(self):
         """Test that exceptions are wrapped in TranslationError."""
-        from src.utils.exceptions import TranslationError
+        from utils.exceptions import TranslationError
 
         with patch.object(self.manager, '_create_provider') as mock_create:
             mock_create.side_effect = Exception("Provider creation failed")
 
-            with pytest.raises(TranslationError):
+            with pytest.raises(TranslationError) as exc_info:
                 self.manager.get_provider()
+
+            assert "Provider creation failed" in str(exc_info.value)
 
 
 class TestCreateProvider:
     """Tests for provider creation."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
+    def test_create_provider_unknown_provider(self):
+        """Test that unknown provider raises ValueError."""
         from src.managers.translation_manager import TranslationManager
 
         with patch('src.managers.translation_manager.get_security_manager') as mock_security:
-            self.mock_security_manager = Mock()
-            mock_security.return_value = self.mock_security_manager
-            self.manager = TranslationManager()
+            mock_security.return_value = Mock()
+            manager = TranslationManager()
 
-    def test_create_provider_unknown_provider(self):
-        """Test that unknown provider raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            self.manager._create_provider("unknown_provider")
+            manager._create_provider("unknown_provider")
 
         assert "Unknown provider" in str(exc_info.value)
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_create_provider_deep_translator_google(self, mock_provider_class):
+    def test_create_provider_deep_translator_google(self):
         """Test creating DeepTranslator with Google."""
+        from src.managers.translation_manager import TranslationManager
+
+        mock_provider_class = Mock()
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
 
-        self.manager._create_provider("deep_translator", "google")
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            with patch('src.managers.translation_manager.DeepTranslatorProvider', mock_provider_class):
+                mock_security.return_value = Mock()
+                manager = TranslationManager()
+                manager._create_provider("deep_translator", "google")
 
         mock_provider_class.assert_called_once_with(
             provider_type="google",
             api_key=""
         )
-        assert self.manager._provider_instance is mock_provider
+        assert manager._provider_instance is mock_provider
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_create_provider_deep_translator_deepl(self, mock_provider_class):
+    def test_create_provider_deep_translator_deepl(self):
         """Test creating DeepTranslator with DeepL (requires API key)."""
-        self.mock_security_manager.get_api_key.return_value = "deepl-api-key"
+        from src.managers.translation_manager import TranslationManager
+
+        mock_provider_class = Mock()
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
+        mock_security_manager = Mock()
+        mock_security_manager.get_api_key.return_value = "deepl-api-key"
 
-        self.manager._create_provider("deep_translator", "deepl")
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            with patch('src.managers.translation_manager.DeepTranslatorProvider', mock_provider_class):
+                mock_security.return_value = mock_security_manager
+                manager = TranslationManager()
+                manager._create_provider("deep_translator", "deepl")
 
-        self.mock_security_manager.get_api_key.assert_called_with("deepl_translation")
+        mock_security_manager.get_api_key.assert_called_with("deepl_translation")
         mock_provider_class.assert_called_once_with(
             provider_type="deepl",
             api_key="deepl-api-key"
         )
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_create_provider_deep_translator_microsoft(self, mock_provider_class):
+    def test_create_provider_deep_translator_microsoft(self):
         """Test creating DeepTranslator with Microsoft (requires API key)."""
-        self.mock_security_manager.get_api_key.return_value = "ms-api-key"
+        from src.managers.translation_manager import TranslationManager
+
+        mock_provider_class = Mock()
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
+        mock_security_manager = Mock()
+        mock_security_manager.get_api_key.return_value = "ms-api-key"
 
-        self.manager._create_provider("deep_translator", "microsoft")
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            with patch('src.managers.translation_manager.DeepTranslatorProvider', mock_provider_class):
+                mock_security.return_value = mock_security_manager
+                manager = TranslationManager()
+                manager._create_provider("deep_translator", "microsoft")
 
-        self.mock_security_manager.get_api_key.assert_called_with("microsoft_translation")
+        mock_security_manager.get_api_key.assert_called_with("microsoft_translation")
         mock_provider_class.assert_called_once_with(
             provider_type="microsoft",
             api_key="ms-api-key"
         )
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_create_provider_handles_none_api_key(self, mock_provider_class):
+    def test_create_provider_handles_none_api_key(self):
         """Test handling when API key is None."""
-        self.mock_security_manager.get_api_key.return_value = None
+        from src.managers.translation_manager import TranslationManager
+
+        mock_provider_class = Mock()
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
+        mock_security_manager = Mock()
+        mock_security_manager.get_api_key.return_value = None
 
-        self.manager._create_provider("deep_translator", "deepl")
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            with patch('src.managers.translation_manager.DeepTranslatorProvider', mock_provider_class):
+                mock_security.return_value = mock_security_manager
+                manager = TranslationManager()
+                manager._create_provider("deep_translator", "deepl")
 
         mock_provider_class.assert_called_once_with(
             provider_type="deepl",
             api_key=""
         )
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_create_provider_default_sub_provider(self, mock_provider_class):
+    def test_create_provider_default_sub_provider(self):
         """Test default sub-provider when None is passed."""
+        from src.managers.translation_manager import TranslationManager
+
+        mock_provider_class = Mock()
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
 
-        self.manager._create_provider("deep_translator", None)
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            with patch('src.managers.translation_manager.DeepTranslatorProvider', mock_provider_class):
+                mock_security.return_value = Mock()
+                manager = TranslationManager()
+                manager._create_provider("deep_translator", None)
 
         mock_provider_class.assert_called_once_with(
             provider_type="google",
@@ -469,38 +501,38 @@ class TestProviderCacheKey:
 
             assert self.manager._current_provider == 'deep_translator:google'
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_provider_not_recreated_when_same_key(self, mock_provider_class):
+    def test_provider_not_recreated_when_same_key(self):
         """Test provider is not recreated when key matches."""
         mock_provider = Mock()
-        mock_provider_class.return_value = mock_provider
 
-        # First call creates provider
-        with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
-            self.manager.get_provider()
-            assert mock_provider_class.call_count == 1
+        with patch.object(self.manager, '_create_provider') as mock_create:
+            mock_create.side_effect = lambda p, s: setattr(self.manager, '_provider_instance', mock_provider)
 
-            # Second call with same settings should not recreate
-            self.manager.get_provider()
-            assert mock_provider_class.call_count == 1
+            # First call creates provider
+            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
+                self.manager.get_provider()
+                assert mock_create.call_count == 1
 
-    @patch('src.managers.translation_manager.DeepTranslatorProvider')
-    def test_provider_recreated_when_key_changes(self, mock_provider_class):
+                # Second call with same settings should not recreate
+                self.manager.get_provider()
+                assert mock_create.call_count == 1
+
+    def test_provider_recreated_when_key_changes(self):
         """Test provider is recreated when key changes."""
         mock_provider = Mock()
-        mock_provider_class.return_value = mock_provider
 
-        # First call creates provider
-        with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
-            self.manager.get_provider()
-            assert mock_provider_class.call_count == 1
+        with patch.object(self.manager, '_create_provider') as mock_create:
+            mock_create.side_effect = lambda p, s: setattr(self.manager, '_provider_instance', mock_provider)
 
-        # Change sub_provider
-        with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}}):
-            with patch.object(self.manager, 'security_manager') as mock_sm:
-                mock_sm.get_api_key.return_value = "key"
+            # First call creates provider
+            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
                 self.manager.get_provider()
-                assert mock_provider_class.call_count == 2
+                assert mock_create.call_count == 1
+
+            # Change sub_provider - should trigger recreation
+            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}}):
+                self.manager.get_provider()
+                assert mock_create.call_count == 2
 
 
 class TestEdgeCases:

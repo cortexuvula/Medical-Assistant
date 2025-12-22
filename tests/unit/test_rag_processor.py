@@ -439,7 +439,7 @@ class TestAsyncProcessing:
             self.processor._process_message_async("test query", None)
 
             mock_error.assert_called()
-            assert "timeout" in mock_error.call_args[0][0].lower()
+            assert "timed out" in mock_error.call_args[0][0].lower()
 
     @patch('src.ai.rag_processor.requests.post')
     def test_async_processing_handles_connection_error(self, mock_post):

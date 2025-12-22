@@ -205,7 +205,7 @@ class TestTypedConfigsThreadSafety:
 
     def test_batch_processing_options_concurrent_creation(self):
         """Test concurrent creation of BatchProcessingOptions."""
-        from src.types.configs import BatchProcessingOptions, Priority
+        from src.type_definitions.configs import BatchProcessingOptions, Priority
 
         options_list: List[BatchProcessingOptions] = []
         lock = threading.Lock()
@@ -229,7 +229,7 @@ class TestTypedConfigsThreadSafety:
 
     def test_config_to_dict_thread_safe(self):
         """Test that to_dict is thread-safe."""
-        from src.types.configs import AgentExecutionOptions
+        from src.type_definitions.configs import AgentExecutionOptions
 
         options = AgentExecutionOptions(timeout=30, max_retries=5)
         results: List[dict] = []

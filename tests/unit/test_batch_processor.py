@@ -207,7 +207,7 @@ class TestProcessBatchRecordings:
         recordings = [{'id': 1, 'filename': 'test.wav', 'transcript': 'text'}]
         self.mock_app.db.get_recordings_by_ids.return_value = recordings
 
-        with patch('src.processing.batch_processor.ProcessingQueue') as MockQueue:
+        with patch('processing.processing_queue.ProcessingQueue') as MockQueue:
             mock_queue = Mock()
             mock_queue.add_batch_recordings.return_value = "batch-123"
             MockQueue.return_value = mock_queue
@@ -412,7 +412,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -432,7 +432,7 @@ class TestProcessBatchFiles:
 
         callback = Mock()
 
-        with patch('src.processing.batch_processor.ProcessingQueue') as MockQueue:
+        with patch('processing.processing_queue.ProcessingQueue') as MockQueue:
             self.processor.process_batch_files(
                 ["/nonexistent.wav"],
                 {},
@@ -450,7 +450,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -477,7 +477,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
@@ -501,7 +501,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'elevenlabs'}):
@@ -525,7 +525,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'local whisper'}):
@@ -549,7 +549,7 @@ class TestProcessBatchFiles:
 
             progress_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -574,7 +574,7 @@ class TestProcessBatchFiles:
             self.mock_app.audio_handler.groq_provider.transcribe.side_effect = Exception("Transcription failed")
             complete_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -600,7 +600,7 @@ class TestProcessBatchFiles:
             self.mock_app.audio_handler.groq_provider.transcribe.return_value = None
             progress_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -625,7 +625,7 @@ class TestProcessBatchFiles:
             self.mock_app.audio_handler.groq_provider.transcribe.return_value = "transcript"
             self.mock_app.db.add_recording.return_value = None  # Failure
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -650,7 +650,7 @@ class TestProcessBatchFiles:
 
             progress_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -677,7 +677,7 @@ class TestProcessBatchFiles:
 
             complete_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -702,7 +702,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 1
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -726,7 +726,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.return_value = 42
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -755,7 +755,7 @@ class TestProcessBatchFiles:
         try:
             progress_callback = Mock()
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'unknown_provider'}):
@@ -785,7 +785,7 @@ class TestProcessBatchFiles:
             self.mock_app.db.add_recording.side_effect = [1, 2, 3]
             self.mock_app.processing_queue.add_recording.return_value = "task-123"
 
-            with patch('src.processing.batch_processor.AudioSegment') as MockAudio:
+            with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
                 with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
@@ -851,7 +851,7 @@ class TestBatchProcessorEdgeCases:
         recordings = [{'id': 1, 'filename': 'test.wav', 'transcript': 'text'}]
         self.mock_app.db.get_recordings_by_ids.return_value = recordings
 
-        with patch('src.processing.batch_processor.ProcessingQueue') as MockQueue:
+        with patch('processing.processing_queue.ProcessingQueue') as MockQueue:
             mock_queue = Mock()
             mock_queue.add_batch_recordings.return_value = "batch-123"
             MockQueue.return_value = mock_queue
