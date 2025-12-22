@@ -10,9 +10,20 @@ import requests
 import threading
 import time
 import atexit
+import logging
 from typing import Dict, Optional
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
+
+logger = logging.getLogger(__name__)
+
+# Check if HTTP/2 support is available
+try:
+    import h2  # noqa: F401
+    HTTP2_AVAILABLE = True
+except ImportError:
+    HTTP2_AVAILABLE = False
+    logger.debug("h2 package not installed, HTTP/2 disabled. Install with: pip install httpx[http2]")
 
 
 class HTTPClientManager:
@@ -109,7 +120,7 @@ class HTTPClientManager:
                         write=30.0,
                         pool=5.0,
                     ),
-                    http2=True,  # Enable HTTP/2 for better performance
+                    http2=HTTP2_AVAILABLE,  # Enable HTTP/2 if h2 package is installed
                 )
 
             return self._httpx_clients[provider]
