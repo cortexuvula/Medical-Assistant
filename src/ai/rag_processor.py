@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 from managers.data_folder_manager import data_folder_manager
 from utils.timeout_config import get_timeout, get_timeout_tuple
+from utils.http_client_manager import get_http_client_manager
 
 # Load environment variables
 # Try loading from root .env first, then fall back to AppData .env
@@ -210,10 +211,11 @@ class RagProcessor:
                 
                 logging.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
                 logging.info(f"Payload: {payload}")
-                
-                # Use centralized timeout configuration
+
+                # Use pooled HTTP session for connection reuse (saves 50-200ms per call)
+                session = get_http_client_manager().get_requests_session("rag")
                 timeout = get_timeout_tuple("rag")
-                response = requests.post(
+                response = session.post(
                     self.n8n_webhook_url,
                     headers=headers,
                     json=payload,

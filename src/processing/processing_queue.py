@@ -60,7 +60,10 @@ class ProcessingQueue:
             max_workers: Maximum number of concurrent processing threads
         """
         self.app = app
-        self.max_workers = max_workers or SETTINGS.get("max_background_workers", 2)
+        # Dynamic default: use CPU count - 1 (capped at 6) for better throughput
+        # This increases concurrent processing from 2 to 4-6 workers typically
+        default_workers = min(os.cpu_count() - 1, 6) if os.cpu_count() else 4
+        self.max_workers = max_workers or SETTINGS.get("max_background_workers", default_workers)
 
         # Core components
         self.queue = Queue()
@@ -550,8 +553,9 @@ class ProcessingQueue:
         recording_data["retry_count"] = retry_count
         recording_data["last_error"] = error_msg
         
-        # Calculate backoff delay
-        delay = min(300, 2 ** retry_count)  # Max 5 minutes
+        # Calculate backoff delay - faster recovery for better UX
+        # 0.5s, 1s, 2s, 4s... up to 30s (instead of 2s, 4s, 8s... up to 5 min)
+        delay = min(30, 0.5 * (2 ** retry_count))
         
         with self.lock:
             self.stats["total_retried"] += 1

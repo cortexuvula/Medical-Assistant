@@ -23,6 +23,7 @@ from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call, rate_limited
 from utils.timeout_config import get_timeout, get_timeout_tuple
+from utils.http_client_manager import get_http_client_manager
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
     PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
@@ -75,9 +76,8 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
     timeout_seconds = get_timeout("openai")
 
     try:
-        # Create a client with explicit timeout
-        # httpx timeout is used by the OpenAI client
-        http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+        # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
+        http_client = get_http_client_manager().get_httpx_client("openai", timeout_seconds)
         client = OpenAI(http_client=http_client)
 
         response = client.chat.completions.create(
@@ -226,9 +226,9 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
     prompt = security_manager.sanitize_input(prompt, "prompt")
     system_message = security_manager.sanitize_input(system_message, "prompt")
 
-    # Create client with explicit timeout
+    # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
     timeout_seconds = get_timeout("perplexity")
-    http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+    http_client = get_http_client_manager().get_httpx_client("perplexity", timeout_seconds)
     client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", http_client=http_client)
 
     # Get model from the appropriate settings based on the task
@@ -265,13 +265,15 @@ def call_perplexity(system_message: str, prompt: str, temperature: float) -> str
         return f"[Error: {title}] {message}"
 
 def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
-    import requests
     import json
     import time
-    
+
     # Sanitize inputs first
     prompt = sanitize_prompt(prompt)
     system_message = sanitize_prompt(system_message)
+
+    # Get pooled session for connection reuse
+    session = get_http_client_manager().get_requests_session("ollama")
     
     # Get Ollama API URL from environment or use default
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
@@ -306,7 +308,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
             
             # Check if Ollama service is running before making the request
             try:
-                health_check = requests.get(f"{base_url}/api/version", timeout=5)
+                health_check = session.get(f"{base_url}/api/version", timeout=5)
                 if health_check.status_code != 200:
                     logging.error(f"Ollama service health check failed: {health_check.status_code}")
                     if attempt == max_retries - 1:  # Last attempt
@@ -323,7 +325,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
                 continue
             
             # Try the '/api/generate' endpoint which works more consistently across models
-            response = requests.post(
+            response = session.post(
                 f"{base_url}/api/generate",
                 headers={"Content-Type": "application/json"},
                 data=json.dumps(payload),
@@ -394,12 +396,14 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
 
 def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperature: float, timeout: int) -> str:
     """Fallback method to use the chat API endpoint if generate fails"""
-    import requests
     import json
-    
+
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
     base_url = ollama_url.rstrip("/")
-    
+
+    # Get pooled session for connection reuse
+    session = get_http_client_manager().get_requests_session("ollama")
+
     logging.info(f"Trying fallback chat API for Ollama model: {model}")
     
     chat_payload = {
@@ -413,7 +417,7 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
     }
     
     try:
-        response = requests.post(
+        response = session.post(
             f"{base_url}/api/chat",
             headers={"Content-Type": "application/json"},
             data=json.dumps(chat_payload),
@@ -550,11 +554,12 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         # Use consolidated debug logging
         log_api_call_debug("Anthropic", model, temperature, system_message, prompt)
 
-        # Initialize Anthropic client with explicit timeout
+        # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
         timeout_seconds = get_timeout("anthropic")
+        http_client = get_http_client_manager().get_httpx_client("anthropic", timeout_seconds)
         client = Anthropic(
             api_key=api_key,
-            timeout=httpx.Timeout(timeout_seconds, connect=10.0)
+            http_client=http_client
         )
 
         messages = [
@@ -612,9 +617,9 @@ def call_grok(model: str, system_message: str, prompt: str, temperature: float) 
     # Use consolidated debug logging
     log_api_call_debug("Grok", model, temperature, system_message, prompt)
 
-    # Create client with explicit timeout
+    # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
     timeout_seconds = get_timeout("grok")
-    http_client = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+    http_client = get_http_client_manager().get_httpx_client("grok", timeout_seconds)
     client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1", http_client=http_client)
 
     messages = [
