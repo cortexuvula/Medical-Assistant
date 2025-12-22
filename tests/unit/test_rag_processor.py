@@ -334,14 +334,20 @@ class TestAsyncProcessing:
             with patch('src.ai.rag_processor.load_dotenv'):
                 self.processor = RagProcessor(self.mock_app)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_adds_user_message(self, mock_post):
+    def _create_mock_session(self, mock_response):
+        """Create a mock HTTP session that returns the given response."""
+        mock_session = Mock()
+        mock_session.post.return_value = mock_response
+        return mock_session
+
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_adds_user_message(self, mock_get_manager):
         """Test that user message is added to RAG tab."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test response"}'
         mock_response.json.return_value = {"output": "test response"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab') as mock_add:
             self.processor._process_message_async("test query", None)
@@ -350,14 +356,14 @@ class TestAsyncProcessing:
             calls = mock_add.call_args_list
             assert any("User" in str(call) for call in calls)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_generates_session_id(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_generates_session_id(self, mock_get_manager):
         """Test that session ID is generated and reused."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab'):
             self.processor._process_message_async("query 1", None)
@@ -368,30 +374,31 @@ class TestAsyncProcessing:
 
             assert session_id_1 == session_id_2
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_includes_auth_header(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_includes_auth_header(self, mock_get_manager):
         """Test that authorization header is included."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_session = self._create_mock_session(mock_response)
+        mock_get_manager.return_value.get_requests_session.return_value = mock_session
 
         with patch.object(self.processor, '_add_message_to_rag_tab'):
             self.processor._process_message_async("test query", None)
 
-            call_kwargs = mock_post.call_args[1]
+            call_kwargs = mock_session.post.call_args[1]
             headers = call_kwargs.get('headers', {})
             assert 'Authorization' in headers
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_list_response(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_list_response(self, mock_get_manager):
         """Test handling of list response format."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '[{"output": "list response"}]'
         mock_response.json.return_value = [{"output": "list response"}]
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab') as mock_add:
             self.processor._process_message_async("test query", None)
@@ -400,14 +407,14 @@ class TestAsyncProcessing:
             calls = mock_add.call_args_list
             assert any("list response" in str(call) for call in calls)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_dict_response(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_dict_response(self, mock_get_manager):
         """Test handling of dict response format."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "dict response"}'
         mock_response.json.return_value = {"output": "dict response"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab') as mock_add:
             self.processor._process_message_async("test query", None)
@@ -415,13 +422,13 @@ class TestAsyncProcessing:
             calls = mock_add.call_args_list
             assert any("dict response" in str(call) for call in calls)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_empty_response(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_empty_response(self, mock_get_manager):
         """Test handling of empty response."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = ""
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab') as mock_add:
             self.processor._process_message_async("test query", None)
@@ -429,11 +436,13 @@ class TestAsyncProcessing:
             calls = mock_add.call_args_list
             assert any("didn't return" in str(call).lower() or "processed" in str(call).lower() for call in calls)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_timeout(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_timeout(self, mock_get_manager):
         """Test handling of request timeout."""
         import requests
-        mock_post.side_effect = requests.exceptions.Timeout()
+        mock_session = Mock()
+        mock_session.post.side_effect = requests.exceptions.Timeout()
+        mock_get_manager.return_value.get_requests_session.return_value = mock_session
 
         with patch.object(self.processor, '_display_error') as mock_error:
             self.processor._process_message_async("test query", None)
@@ -441,11 +450,13 @@ class TestAsyncProcessing:
             mock_error.assert_called()
             assert "timed out" in mock_error.call_args[0][0].lower()
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_connection_error(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_connection_error(self, mock_get_manager):
         """Test handling of connection error."""
         import requests
-        mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        mock_session = Mock()
+        mock_session.post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        mock_get_manager.return_value.get_requests_session.return_value = mock_session
 
         with patch.object(self.processor, '_display_error') as mock_error:
             self.processor._process_message_async("test query", None)
@@ -453,14 +464,14 @@ class TestAsyncProcessing:
             mock_error.assert_called()
             assert "error" in mock_error.call_args[0][0].lower()
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_handles_json_decode_error(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_handles_json_decode_error(self, mock_get_manager):
         """Test handling of invalid JSON response."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = "not valid json {"
         mock_response.json.side_effect = json.JSONDecodeError("test", "test", 0)
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab') as mock_add:
             self.processor._process_message_async("test query", None)
@@ -469,14 +480,14 @@ class TestAsyncProcessing:
             calls = mock_add.call_args_list
             assert len(calls) >= 1
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_resets_is_processing_flag(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_resets_is_processing_flag(self, mock_get_manager):
         """Test that is_processing flag is reset after completion."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         self.processor.is_processing = True
 
@@ -485,14 +496,14 @@ class TestAsyncProcessing:
 
         assert self.processor.is_processing is False
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_calls_callback(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_calls_callback(self, mock_get_manager):
         """Test that callback is called after processing."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         callback = Mock()
 
@@ -501,8 +512,8 @@ class TestAsyncProcessing:
 
         self.mock_app.after.assert_called()
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_async_processing_strips_auth_quotes(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_async_processing_strips_auth_quotes(self, mock_get_manager):
         """Test that auth header has quotes stripped."""
         self.processor.n8n_auth_header = "'Bearer token'"
 
@@ -510,12 +521,13 @@ class TestAsyncProcessing:
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_session = self._create_mock_session(mock_response)
+        mock_get_manager.return_value.get_requests_session.return_value = mock_session
 
         with patch.object(self.processor, '_add_message_to_rag_tab'):
             self.processor._process_message_async("test query", None)
 
-            call_kwargs = mock_post.call_args[1]
+            call_kwargs = mock_session.post.call_args[1]
             headers = call_kwargs.get('headers', {})
             assert headers.get('Authorization') == 'Bearer token'
 
@@ -788,14 +800,20 @@ class TestSessionManagement:
             with patch('src.ai.rag_processor.load_dotenv'):
                 self.processor = RagProcessor(self.mock_app)
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_session_id_generated_on_first_request(self, mock_post):
+    def _create_mock_session(self, mock_response):
+        """Create a mock HTTP session that returns the given response."""
+        mock_session = Mock()
+        mock_session.post.return_value = mock_response
+        return mock_session
+
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_session_id_generated_on_first_request(self, mock_get_manager):
         """Test that session ID is generated on first request."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         assert not hasattr(self.processor, 'session_id') or self.processor.session_id is None
 
@@ -805,24 +823,25 @@ class TestSessionManagement:
         assert hasattr(self.processor, 'session_id')
         assert self.processor.session_id is not None
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_session_id_sent_in_payload(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_session_id_sent_in_payload(self, mock_get_manager):
         """Test that session ID is included in request payload."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_session = self._create_mock_session(mock_response)
+        mock_get_manager.return_value.get_requests_session.return_value = mock_session
 
         with patch.object(self.processor, '_add_message_to_rag_tab'):
             self.processor._process_message_async("test", None)
 
-        call_kwargs = mock_post.call_args[1]
+        call_kwargs = mock_session.post.call_args[1]
         payload = call_kwargs.get('json', {})
         assert 'sessionId' in payload
 
-    @patch('src.ai.rag_processor.requests.post')
-    def test_session_id_is_uuid_format(self, mock_post):
+    @patch('src.ai.rag_processor.get_http_client_manager')
+    def test_session_id_is_uuid_format(self, mock_get_manager):
         """Test that session ID is in UUID format."""
         import uuid
 
@@ -830,7 +849,7 @@ class TestSessionManagement:
         mock_response.status_code = 200
         mock_response.text = '{"output": "test"}'
         mock_response.json.return_value = {"output": "test"}
-        mock_post.return_value = mock_response
+        mock_get_manager.return_value.get_requests_session.return_value = self._create_mock_session(mock_response)
 
         with patch.object(self.processor, '_add_message_to_rag_tab'):
             self.processor._process_message_async("test", None)
