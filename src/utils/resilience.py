@@ -19,6 +19,66 @@ from utils.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+# HTTP status codes that are safe to retry (transient errors)
+RETRYABLE_HTTP_CODES = frozenset({
+    408,  # Request Timeout
+    429,  # Too Many Requests (Rate Limit)
+    500,  # Internal Server Error (sometimes transient)
+    502,  # Bad Gateway
+    503,  # Service Unavailable
+    504,  # Gateway Timeout
+})
+
+# Error types that indicate transient failures
+RETRYABLE_ERROR_TYPES = frozenset({
+    'timeout',
+    'connection_error',
+    'rate_limit',
+    'server_error',
+    'temporary_failure',
+})
+
+
+def is_retryable_error(error: Exception, status_code: Optional[int] = None) -> bool:
+    """
+    Determine if an error is safe to retry.
+
+    Args:
+        error: The exception that was raised
+        status_code: HTTP status code if available
+
+    Returns:
+        True if the error should be retried, False otherwise
+    """
+    # Check status code first if provided
+    if status_code is not None and status_code in RETRYABLE_HTTP_CODES:
+        return True
+
+    # Check exception type
+    if isinstance(error, RateLimitError):
+        return True
+    if isinstance(error, ServiceUnavailableError):
+        return True
+
+    # Check for timeout-related errors
+    error_str = str(error).lower()
+    if any(keyword in error_str for keyword in ['timeout', 'timed out', 'connection reset']):
+        return True
+
+    # Check for connection errors
+    if any(keyword in error_str for keyword in ['connection refused', 'connection error', 'network']):
+        return True
+
+    # Don't retry authentication or validation errors
+    if isinstance(error, AuthenticationError):
+        return False
+    if 'invalid' in error_str or 'unauthorized' in error_str or 'forbidden' in error_str:
+        return False
+
+    # Default: don't retry unknown errors
+    return False
+
+
 class CircuitState(Enum):
     """Circuit breaker states."""
     CLOSED = "closed"
@@ -97,7 +157,70 @@ def retry(
             
             if last_exception:
                 raise last_exception
-                
+
+        return wrapper
+    return decorator
+
+
+def smart_retry(
+    max_retries: int = 3,
+    initial_delay: float = 0.5,
+    backoff_factor: float = 2.0,
+    max_delay: float = 30.0
+) -> Callable:
+    """
+    Smart retry decorator that only retries on transient errors.
+
+    Uses is_retryable_error() to determine if an error should be retried,
+    providing smarter retry logic than the basic retry decorator.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay between retries in seconds
+        backoff_factor: Multiplier for delay after each retry
+        max_delay: Maximum delay between retries
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            delay = initial_delay
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    # Extract status code if available
+                    status_code = getattr(e, 'status_code', None)
+                    if status_code is None and hasattr(e, 'response'):
+                        status_code = getattr(e.response, 'status_code', None)
+
+                    # Check if error is retryable
+                    if not is_retryable_error(e, status_code):
+                        logger.debug(f"Non-retryable error in {func.__name__}: {e}")
+                        raise
+
+                    if attempt == max_retries:
+                        logger.error(f"Max retries ({max_retries}) reached for {func.__name__}")
+                        raise
+
+                    # Handle rate limit errors with specific retry-after
+                    if isinstance(e, RateLimitError) and e.retry_after:
+                        delay = min(e.retry_after, max_delay)
+
+                    logger.warning(
+                        f"Smart retry {attempt + 1}/{max_retries} for {func.__name__} "
+                        f"after {delay:.1f}s due to: {str(e)}"
+                    )
+
+                    time.sleep(delay)
+                    delay = min(delay * backoff_factor, max_delay)
+
+            if last_exception:
+                raise last_exception
+
         return wrapper
     return decorator
 

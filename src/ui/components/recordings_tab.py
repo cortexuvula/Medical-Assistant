@@ -11,6 +11,7 @@ from typing import Dict, Callable, Optional, List, Protocol, runtime_checkable, 
 import logging
 import threading
 import os
+import time
 from datetime import datetime
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
@@ -68,6 +69,11 @@ class RecordingsTab:
         self.recordings_search_var = None
         self.recording_count_label = None
         self.recordings_context_menu = None
+
+        # Recordings cache (avoids reloading on every tab switch)
+        self._recordings_cache: Optional[List[Dict[str, Any]]] = None
+        self._recordings_cache_time: float = 0.0
+        self.RECORDINGS_CACHE_TTL = 10.0  # seconds
 
         # Batch processing state
         self.batch_progress_dialog = None
@@ -326,15 +332,36 @@ class RecordingsTab:
         
         return recordings_frame
     
-    def _refresh_recordings_list(self):
-        """Refresh the recordings list from database."""
-        # Show loading state
+    def _refresh_recordings_list(self, force_refresh: bool = False):
+        """Refresh the recordings list from database with caching.
+
+        Uses a cache to avoid reloading on every tab switch (saves 500ms-2s).
+
+        Args:
+            force_refresh: Force reload from database ignoring cache
+        """
+        current_time = time.time()
+
+        # Check cache first (unless force refresh)
+        if (not force_refresh
+                and self._recordings_cache is not None
+                and current_time - self._recordings_cache_time < self.RECORDINGS_CACHE_TTL):
+            # Use cached data - just repopulate the tree
+            self._populate_recordings_tree(self._recordings_cache)
+            return
+
+        # Show loading state for fresh load
         self._show_loading_state()
 
         def task():
             try:
                 # Get recent recordings from database
                 recordings = self.data_provider.get_all_recordings()
+
+                # Update cache
+                self._recordings_cache = recordings
+                self._recordings_cache_time = time.time()
+
                 # Update UI on main thread - check if parent still exists
                 if self.parent and hasattr(self.parent, 'after'):
                     try:
@@ -354,6 +381,11 @@ class RecordingsTab:
 
         # Run in background thread
         threading.Thread(target=task, daemon=True).start()
+
+    def invalidate_recordings_cache(self):
+        """Invalidate the recordings cache to force refresh on next access."""
+        self._recordings_cache = None
+        self._recordings_cache_time = 0.0
 
     def _show_loading_state(self):
         """Show loading state in the recordings tree."""
@@ -598,10 +630,13 @@ class RecordingsTab:
                 logging.error(f"Error deleting recording {rec_id}: {e}")
                 errors.append(f"Recording {rec_id}: {str(e)}")
         
+        # Invalidate cache since recordings changed
+        self.invalidate_recordings_cache()
+
         # Update count
         total_count = len(self.recordings_tree.get_children())
         self.recording_count_label.config(text=f"{total_count} recording{'s' if total_count != 1 else ''}")
-        
+
         # Update status
         if deleted_count == count:
             self.parent.status_manager.success(f"{deleted_count} recording{'s' if deleted_count > 1 else ''} deleted")
@@ -720,9 +755,12 @@ class RecordingsTab:
                 # Reset current recording ID
                 self.parent.current_recording_id = None
                 
+                # Invalidate cache since recordings were cleared
+                self.invalidate_recordings_cache()
+
                 # Update status
                 self.parent.status_manager.success("All recordings cleared from database")
-                
+
                 tkinter.messagebox.showinfo(
                     "Success",
                     "All recordings have been cleared from the database."
@@ -787,8 +825,8 @@ class RecordingsTab:
                 self.parent.reprocess_failed_recordings(failed_recording_ids)
                 self.parent.status_manager.success(f"Queued {count} recording{'s' if count > 1 else ''} for reprocessing")
                 
-                # Refresh the list after a short delay
-                self.parent.after(1000, self._refresh_recordings_list)
+                # Refresh the list after a short delay (force refresh to bypass cache)
+                self.parent.after(1000, lambda: self._refresh_recordings_list(force_refresh=True))
             else:
                 tk.messagebox.showerror("Error", "Reprocessing functionality not available")
                 
