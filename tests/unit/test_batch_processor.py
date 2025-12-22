@@ -415,7 +415,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file, "/invalid/path.wav"],
                         {"process_soap": True}
@@ -453,7 +453,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"priority": "high", "process_soap": True}
@@ -480,7 +480,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True}
@@ -504,7 +504,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'elevenlabs'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'elevenlabs'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True}
@@ -528,7 +528,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'local whisper'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'local whisper'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True}
@@ -552,7 +552,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True, "continue_on_error": True},
@@ -577,7 +577,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     with pytest.raises(Exception):
                         self.processor.process_batch_files(
                             [valid_file],
@@ -603,7 +603,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True},
@@ -628,7 +628,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     with pytest.raises(Exception):
                         self.processor.process_batch_files(
                             [valid_file],
@@ -653,7 +653,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True},
@@ -680,7 +680,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True},
@@ -705,7 +705,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True}
@@ -729,7 +729,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True, "process_referral": False}
@@ -758,7 +758,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'unknown_provider'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'unknown_provider'}):
                     self.processor.process_batch_files(
                         [valid_file],
                         {"process_soap": True, "continue_on_error": True},
@@ -788,7 +788,7 @@ class TestProcessBatchFiles:
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
 
-                with patch.dict('src.settings.settings.SETTINGS', {'stt_provider': 'groq'}):
+                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
                     self.processor.process_batch_files(
                         files,
                         {"process_soap": True}

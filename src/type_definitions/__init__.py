@@ -1,6 +1,6 @@
 """Type definitions and configuration dataclasses."""
 
-from types.configs import (
+from .configs import (
     BatchProcessingOptions,
     AgentExecutionOptions,
     TranscriptionOptions,
