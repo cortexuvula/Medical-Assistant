@@ -1,15 +1,22 @@
 """
 Translation Manager for handling translation providers.
+
+This module provides the TranslationManager class for handling translation
+operations with multiple provider backends. All public methods provide
+both exception-based (original) and OperationResult-based (safe) variants
+for flexibility in error handling.
 """
 
 import logging
-from typing import Optional, Dict, Any
+import threading
+from typing import Optional, Dict, Any, List, Tuple
 
 from translation.base import BaseTranslationProvider
 from translation.deep_translator_provider import DeepTranslatorProvider
 from settings.settings import SETTINGS
 from utils.security import get_security_manager
 from utils.exceptions import TranslationError
+from utils.error_handling import OperationResult
 
 
 class TranslationManager:
@@ -85,52 +92,101 @@ class TranslationManager:
     
     def translate(self, text: str, source_lang: str = None, target_lang: str = None) -> str:
         """Translate text using the current provider.
-        
+
         Args:
             text: Text to translate
             source_lang: Source language code (if None, will auto-detect)
             target_lang: Target language code (if None, uses settings)
-            
+
         Returns:
             Translated text
+
+        Raises:
+            Exception: If translation fails
+
+        Note:
+            For non-throwing version, use translate_safe() which returns OperationResult.
         """
         if not text:
             return ""
-        
+
         try:
             provider = self.get_provider()
-            
+
             # Get language settings if not provided
             translation_settings = SETTINGS.get("translation", {})
             if source_lang is None:
                 # Try to detect language
                 detected_lang = provider.detect_language(text)
                 source_lang = detected_lang or translation_settings.get("patient_language", "es")
-            
+
             if target_lang is None:
                 target_lang = translation_settings.get("doctor_language", "en")
-            
+
             # Log the actual language codes being used
             self.logger.debug(f"Translation request: source={source_lang}, target={target_lang}, text_length={len(text)}")
-            
+
             # Perform translation
             result = provider.translate(text, source_lang, target_lang)
-            
+
             self.logger.info(f"Translated text from {source_lang} to {target_lang}")
             return result
-            
+
         except Exception as e:
             self.logger.error(f"Translation failed: {e}")
             raise
+
+    def translate_safe(self, text: str, source_lang: str = None, target_lang: str = None) -> OperationResult[str]:
+        """Translate text using the current provider with OperationResult return type.
+
+        This is the recommended method for new code as it provides structured
+        error handling without exceptions.
+
+        Args:
+            text: Text to translate
+            source_lang: Source language code (if None, will auto-detect)
+            target_lang: Target language code (if None, uses settings)
+
+        Returns:
+            OperationResult containing translated text on success, or error details on failure
+
+        Example:
+            result = manager.translate_safe("Hello")
+            if result.success:
+                print(result.value)
+            else:
+                print(f"Error: {result.error}")
+        """
+        if not text:
+            return OperationResult.success("")
+
+        try:
+            result = self.translate(text, source_lang, target_lang)
+            return OperationResult.success(
+                result,
+                source_language=source_lang,
+                target_language=target_lang
+            )
+        except Exception as e:
+            return OperationResult.failure(
+                f"Translation failed: {str(e)}",
+                error_code="TRANSLATION_ERROR",
+                exception=e,
+                source_language=source_lang,
+                target_language=target_lang
+            )
     
     def detect_language(self, text: str) -> Optional[str]:
         """Detect the language of the given text.
-        
+
         Args:
             text: Text to analyze
-            
+
         Returns:
             Language code or None if detection failed
+
+        Note:
+            For structured error handling, use detect_language_safe().
         """
         try:
             provider = self.get_provider()
@@ -138,12 +194,47 @@ class TranslationManager:
         except Exception as e:
             self.logger.error(f"Language detection failed: {e}")
             return None
-    
-    def get_supported_languages(self) -> list:
+
+    def detect_language_safe(self, text: str) -> OperationResult[str]:
+        """Detect the language of the given text with OperationResult return type.
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            OperationResult containing language code on success, or error details on failure
+        """
+        if not text:
+            return OperationResult.failure(
+                "Cannot detect language of empty text",
+                error_code="EMPTY_TEXT"
+            )
+
+        try:
+            provider = self.get_provider()
+            result = provider.detect_language(text)
+            if result:
+                return OperationResult.success(result)
+            else:
+                return OperationResult.failure(
+                    "Language detection returned no result",
+                    error_code="DETECTION_FAILED"
+                )
+        except Exception as e:
+            return OperationResult.failure(
+                f"Language detection failed: {str(e)}",
+                error_code="DETECTION_ERROR",
+                exception=e
+            )
+
+    def get_supported_languages(self) -> List[Tuple[str, str]]:
         """Get list of supported languages for current provider.
-        
+
         Returns:
             List of (code, name) tuples
+
+        Note:
+            For structured error handling, use get_supported_languages_safe().
         """
         try:
             provider = self.get_provider()
@@ -151,12 +242,32 @@ class TranslationManager:
         except Exception as e:
             self.logger.error(f"Failed to get supported languages: {e}")
             return []
-    
+
+    def get_supported_languages_safe(self) -> OperationResult[List[Tuple[str, str]]]:
+        """Get list of supported languages with OperationResult return type.
+
+        Returns:
+            OperationResult containing list of (code, name) tuples on success
+        """
+        try:
+            provider = self.get_provider()
+            languages = provider.get_supported_languages()
+            return OperationResult.success(languages)
+        except Exception as e:
+            return OperationResult.failure(
+                f"Failed to get supported languages: {str(e)}",
+                error_code="LANGUAGES_ERROR",
+                exception=e
+            )
+
     def test_connection(self) -> bool:
         """Test connection to the translation service.
-        
+
         Returns:
             True if connection successful, False otherwise
+
+        Note:
+            For structured error handling, use test_connection_safe().
         """
         try:
             provider = self.get_provider()
@@ -164,6 +275,29 @@ class TranslationManager:
         except Exception as e:
             self.logger.error(f"Connection test failed: {e}")
             return False
+
+    def test_connection_safe(self) -> OperationResult[bool]:
+        """Test connection to the translation service with OperationResult return type.
+
+        Returns:
+            OperationResult containing True on success, or error details on failure
+        """
+        try:
+            provider = self.get_provider()
+            result = provider.test_connection()
+            if result:
+                return OperationResult.success(True)
+            else:
+                return OperationResult.failure(
+                    "Connection test failed",
+                    error_code="CONNECTION_FAILED"
+                )
+        except Exception as e:
+            return OperationResult.failure(
+                f"Connection test error: {str(e)}",
+                error_code="CONNECTION_ERROR",
+                exception=e
+            )
     
     def update_settings(self, settings: Dict[str, Any]):
         """Update translation settings.
@@ -181,17 +315,23 @@ class TranslationManager:
         self.logger.info("Translation settings updated")
 
 
-# Global instance
+# Global instance with thread-safe initialization
 _translation_manager = None
+_translation_manager_lock = threading.Lock()
 
 
 def get_translation_manager() -> TranslationManager:
     """Get or create the global TranslationManager instance.
-    
+
+    Thread-safe implementation using double-checked locking pattern.
+
     Returns:
         TranslationManager instance
     """
     global _translation_manager
     if _translation_manager is None:
-        _translation_manager = TranslationManager()
+        with _translation_manager_lock:
+            # Double-check after acquiring lock
+            if _translation_manager is None:
+                _translation_manager = TranslationManager()
     return _translation_manager

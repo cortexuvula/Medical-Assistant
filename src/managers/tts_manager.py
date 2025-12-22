@@ -1,11 +1,16 @@
 """
 TTS Manager for handling text-to-speech providers.
+
+This module provides the TTSManager class for handling text-to-speech
+operations with multiple provider backends. All public methods provide
+both exception-based (original) and OperationResult-based (safe) variants
+for flexibility in error handling.
 """
 
 import logging
 import pygame
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydub import AudioSegment
 from pydub.playback import play
 
@@ -16,6 +21,7 @@ from tts_providers.google_tts import GoogleTTSProvider
 from settings.settings import SETTINGS
 from utils.security import get_security_manager
 from utils.exceptions import APIError
+from utils.error_handling import OperationResult
 
 
 class TTSManager:
@@ -92,42 +98,94 @@ class TTSManager:
     
     def synthesize(self, text: str, language: str = None, voice: str = None, **kwargs) -> AudioSegment:
         """Synthesize text to speech.
-        
+
         Args:
             text: Text to synthesize
             language: Language code (if None, uses settings)
             voice: Voice ID/name (if None, uses default)
             **kwargs: Additional provider-specific parameters
-            
+
         Returns:
             AudioSegment containing synthesized speech
+
+        Raises:
+            ValueError: If text is empty
+            Exception: If synthesis fails
+
+        Note:
+            For non-throwing version, use synthesize_safe() which returns OperationResult.
         """
         if not text:
             raise ValueError("Text cannot be empty")
-        
+
         try:
             provider = self.get_provider()
-            
+
             # Get language from settings if not provided
             if language is None:
                 tts_settings = SETTINGS.get("tts", {})
                 translation_settings = SETTINGS.get("translation", {})
                 language = tts_settings.get("language", translation_settings.get("patient_language", "en"))
-            
+
             # Get voice from settings if not provided
             if voice is None:
                 tts_settings = SETTINGS.get("tts", {})
                 voice = tts_settings.get("voice", None)
-            
+
             # Synthesize speech
             audio = provider.synthesize(text, language, voice, **kwargs)
-            
+
             self.logger.info(f"Synthesized {len(text)} characters in {language}")
             return audio
-            
+
         except Exception as e:
             self.logger.error(f"TTS synthesis failed: {e}")
             raise
+
+    def synthesize_safe(self, text: str, language: str = None, voice: str = None, **kwargs) -> OperationResult[AudioSegment]:
+        """Synthesize text to speech with OperationResult return type.
+
+        This is the recommended method for new code as it provides structured
+        error handling without exceptions.
+
+        Args:
+            text: Text to synthesize
+            language: Language code (if None, uses settings)
+            voice: Voice ID/name (if None, uses default)
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            OperationResult containing AudioSegment on success, or error details on failure
+
+        Example:
+            result = manager.synthesize_safe("Hello world")
+            if result.success:
+                play_audio(result.value)
+            else:
+                print(f"Error: {result.error}")
+        """
+        if not text:
+            return OperationResult.failure(
+                "Text cannot be empty",
+                error_code="EMPTY_TEXT"
+            )
+
+        try:
+            audio = self.synthesize(text, language, voice, **kwargs)
+            return OperationResult.success(
+                audio,
+                language=language,
+                voice=voice,
+                text_length=len(text)
+            )
+        except Exception as e:
+            return OperationResult.failure(
+                f"TTS synthesis failed: {str(e)}",
+                error_code="SYNTHESIS_ERROR",
+                exception=e,
+                language=language,
+                voice=voice
+            )
     
     def synthesize_and_play(self, text: str, language: str = None, voice: str = None, 
                            blocking: bool = False, output_device: str = None, **kwargs):
@@ -252,14 +310,17 @@ class TTSManager:
         if self._pygame_available and pygame.mixer.music.get_busy():
             pygame.mixer.music.stop()
     
-    def get_available_voices(self, language: str = None) -> list:
+    def get_available_voices(self, language: str = None) -> List[Dict[str, Any]]:
         """Get available voices for current provider.
-        
+
         Args:
             language: Optional language code to filter voices
-            
+
         Returns:
             List of voice dictionaries
+
+        Note:
+            For structured error handling, use get_available_voices_safe().
         """
         try:
             provider = self.get_provider()
@@ -267,12 +328,36 @@ class TTSManager:
         except Exception as e:
             self.logger.error(f"Failed to get available voices: {e}")
             return []
-    
-    def get_supported_languages(self) -> list:
+
+    def get_available_voices_safe(self, language: str = None) -> OperationResult[List[Dict[str, Any]]]:
+        """Get available voices with OperationResult return type.
+
+        Args:
+            language: Optional language code to filter voices
+
+        Returns:
+            OperationResult containing list of voice dictionaries on success
+        """
+        try:
+            provider = self.get_provider()
+            voices = provider.get_available_voices(language)
+            return OperationResult.success(voices, language=language)
+        except Exception as e:
+            return OperationResult.failure(
+                f"Failed to get available voices: {str(e)}",
+                error_code="VOICES_ERROR",
+                exception=e,
+                language=language
+            )
+
+    def get_supported_languages(self) -> List[Dict[str, Any]]:
         """Get supported languages for current provider.
-        
+
         Returns:
             List of language dictionaries
+
+        Note:
+            For structured error handling, use get_supported_languages_safe().
         """
         try:
             provider = self.get_provider()
@@ -280,12 +365,32 @@ class TTSManager:
         except Exception as e:
             self.logger.error(f"Failed to get supported languages: {e}")
             return []
-    
+
+    def get_supported_languages_safe(self) -> OperationResult[List[Dict[str, Any]]]:
+        """Get supported languages with OperationResult return type.
+
+        Returns:
+            OperationResult containing list of language dictionaries on success
+        """
+        try:
+            provider = self.get_provider()
+            languages = provider.get_supported_languages()
+            return OperationResult.success(languages)
+        except Exception as e:
+            return OperationResult.failure(
+                f"Failed to get supported languages: {str(e)}",
+                error_code="LANGUAGES_ERROR",
+                exception=e
+            )
+
     def test_connection(self) -> bool:
         """Test connection to the TTS service.
-        
+
         Returns:
             True if connection successful, False otherwise
+
+        Note:
+            For structured error handling, use test_connection_safe().
         """
         try:
             provider = self.get_provider()
@@ -293,6 +398,29 @@ class TTSManager:
         except Exception as e:
             self.logger.error(f"Connection test failed: {e}")
             return False
+
+    def test_connection_safe(self) -> OperationResult[bool]:
+        """Test connection with OperationResult return type.
+
+        Returns:
+            OperationResult containing True on success, or error details on failure
+        """
+        try:
+            provider = self.get_provider()
+            result = provider.test_connection()
+            if result:
+                return OperationResult.success(True)
+            else:
+                return OperationResult.failure(
+                    "Connection test failed",
+                    error_code="CONNECTION_FAILED"
+                )
+        except Exception as e:
+            return OperationResult.failure(
+                f"Connection test error: {str(e)}",
+                error_code="CONNECTION_ERROR",
+                exception=e
+            )
     
     def estimate_duration(self, text: str) -> float:
         """Estimate the duration of synthesized speech.
@@ -328,17 +456,23 @@ class TTSManager:
         self.logger.info("TTS settings updated")
 
 
-# Global instance
+# Global instance with thread-safe initialization
 _tts_manager = None
+_tts_manager_lock = threading.Lock()
 
 
 def get_tts_manager() -> TTSManager:
     """Get or create the global TTSManager instance.
-    
+
+    Thread-safe implementation using double-checked locking pattern.
+
     Returns:
         TTSManager instance
     """
     global _tts_manager
     if _tts_manager is None:
-        _tts_manager = TTSManager()
+        with _tts_manager_lock:
+            # Double-check after acquiring lock
+            if _tts_manager is None:
+                _tts_manager = TTSManager()
     return _tts_manager
