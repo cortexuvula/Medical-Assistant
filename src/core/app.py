@@ -226,7 +226,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def import_contacts_from_csv(self) -> None:
         """Show dialog to import contacts from CSV file."""
         from ui.dialogs.import_contacts_dialog import ImportContactsDialog
-        dialog = ImportContactsDialog(self.root)
+        dialog = ImportContactsDialog(self)
         result = dialog.show()
         if result and result.get("imported", 0) > 0:
             # Contacts were imported successfully
