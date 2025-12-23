@@ -104,17 +104,29 @@ Format the referral letter with:
     def execute(self, task: AgentTask) -> AgentResponse:
         """
         Execute referral generation tasks.
-        
+
         Args:
             task: Task containing clinical information and referral requirements
-            
+
         Returns:
             AgentResponse with generated referral letter
         """
         try:
-            # Determine referral type from task
+            # If we have soap_note or transcript in input, use the standard referral
+            # which handles all the recipient-aware logic correctly
+            has_new_style_input = (
+                task.input_data.get('soap_note') or
+                task.input_data.get('transcript') or
+                task.input_data.get('recipient_type')
+            )
+
+            if has_new_style_input:
+                # Use the comprehensive standard referral method
+                return self._generate_standard_referral(task)
+
+            # Legacy routing for backward compatibility with old-style input
             referral_type = self._determine_referral_type(task)
-            
+
             if referral_type == "specialist":
                 return self._generate_specialist_referral(task)
             elif referral_type == "urgent":
@@ -249,6 +261,9 @@ Format the referral letter with:
         transcript = task.input_data.get('transcript', '')
         clinical_info = task.input_data.get('clinical_info', '') or soap_note or transcript
         specific_concerns = task.input_data.get('specific_concerns', '') or task.input_data.get('conditions', '')
+
+        logger.debug(f"_generate_specialist_referral input_data keys: {list(task.input_data.keys())}")
+        logger.debug(f"soap_note length: {len(soap_note)}, transcript length: {len(transcript)}, clinical_info length: {len(clinical_info)}")
 
         if not clinical_info:
             return AgentResponse(

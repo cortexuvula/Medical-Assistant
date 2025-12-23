@@ -777,6 +777,9 @@ class DocumentGenerators:
                 else:
                     input_data["transcript"] = source_text
 
+                logging.debug(f"Referral input_data keys: {list(input_data.keys())}")
+                logging.debug(f"source_text length: {len(source_text)}, is_soap: {is_soap}")
+
                 # Determine task description based on recipient type
                 recipient_type_labels = {
                     "specialist": "specialist consultation",
