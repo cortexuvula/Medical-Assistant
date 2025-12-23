@@ -151,6 +151,9 @@ class MenuManager:
         # Add other settings options
         settings_menu.add_command(label="Export Prompts", command=self.app.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.app.import_prompts)
+        settings_menu.add_separator()
+        settings_menu.add_command(label="Import Contacts from CSV...", command=self.app.import_contacts_from_csv)
+        settings_menu.add_separator()
         settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
         settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
         settings_menu.add_separator()

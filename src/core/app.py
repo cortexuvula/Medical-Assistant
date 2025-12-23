@@ -223,6 +223,15 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Import prompts using FileManager."""
         self.file_manager.import_prompts()
 
+    def import_contacts_from_csv(self) -> None:
+        """Show dialog to import contacts from CSV file."""
+        from ui.dialogs.import_contacts_dialog import ImportContactsDialog
+        dialog = ImportContactsDialog(self.root)
+        result = dialog.show()
+        if result and result.get("imported", 0) > 0:
+            # Contacts were imported successfully
+            pass
+
     def create_widgets(self) -> None:
         """Create widgets for the workflow UI mode."""
         # Define command mapping for buttons

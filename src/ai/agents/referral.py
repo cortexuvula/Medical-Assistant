@@ -1,11 +1,18 @@
 """
 Referral agent for generating professional medical referral letters.
+
+Supports multiple recipient types with tailored formatting:
+- specialist: Consulting specialist referral
+- gp_backreferral: Back-referral to referring GP
+- hospital: Hospital/ER admission request
+- diagnostic: Diagnostic services request
 """
 
 import logging
 import re
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from datetime import datetime
+from enum import Enum
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
@@ -15,6 +22,22 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class ReferralRecipientType(Enum):
+    """Types of referral recipients with different formatting needs."""
+    SPECIALIST = "specialist"
+    GP_BACKREFERRAL = "gp_backreferral"
+    HOSPITAL = "hospital"
+    DIAGNOSTIC = "diagnostic"
+
+
+class UrgencyLevel(Enum):
+    """Urgency levels for referrals."""
+    ROUTINE = "routine"
+    SOON = "soon"
+    URGENT = "urgent"
+    EMERGENCY = "emergency"
 
 
 class ReferralAgent(BaseAgent):
@@ -65,7 +88,7 @@ Format the referral letter with:
 10. Sender's information and contact details""",
         model="gpt-4",
         temperature=0.3,  # Lower temperature for professional consistency
-        max_tokens=500
+        max_tokens=1000  # Increased for comprehensive referral letters
     )
     
     def __init__(self, config: Optional[AgentConfig] = None, ai_caller: Optional['AICallerProtocol'] = None):
@@ -128,10 +151,26 @@ Format the referral letter with:
             return "standard"
     
     def _generate_standard_referral(self, task: AgentTask) -> AgentResponse:
-        """Generate a standard referral letter."""
+        """Generate a standard referral letter.
+
+        Supports enhanced recipient-aware generation when recipient_type is provided.
+
+        Input data fields:
+            - soap_note: SOAP note text (optional, preferred over transcript)
+            - transcript: Transcript text (optional, fallback if no SOAP)
+            - conditions: Conditions to focus on (optional)
+            - recipient_type: Type of recipient - specialist, gp_backreferral, hospital, diagnostic (optional)
+            - urgency: Urgency level - routine, soon, urgent, emergency (optional)
+            - specialty: Target specialty (optional, can be auto-inferred)
+            - recipient_details: Dict with name, facility, fax, etc. (optional)
+        """
         soap_note = task.input_data.get('soap_note', '')
         transcript = task.input_data.get('transcript', '')
         conditions = task.input_data.get('conditions', '')
+        recipient_type = task.input_data.get('recipient_type', 'specialist')
+        input_urgency = task.input_data.get('urgency', 'routine')
+        specialty = task.input_data.get('specialty', '')
+        recipient_details = task.input_data.get('recipient_details', {})
 
         # Use SOAP note if available, otherwise use transcript
         source_text = soap_note or transcript
@@ -142,38 +181,64 @@ Format the referral letter with:
                 error="No clinical information provided for referral generation"
             )
 
-        # Infer specialty from conditions for better targeting
-        inferred_specialty = self._infer_specialty_from_conditions(conditions)
+        # Infer specialty from conditions if not provided
+        inferred_specialty = specialty or self._infer_specialty_from_conditions(conditions)
 
-        prompt = self._build_standard_referral_prompt(
-            source_text, conditions, task.context, inferred_specialty
-        )
+        # Use recipient-aware prompt if recipient_type is provided
+        if recipient_type and recipient_type != 'specialist':
+            # Use the enhanced recipient-aware prompt builder
+            prompt = self._build_recipient_aware_prompt(
+                source_text=source_text,
+                conditions=conditions,
+                recipient_type=recipient_type,
+                urgency=input_urgency,
+                specialty=inferred_specialty,
+                recipient_details=recipient_details,
+                context=task.context
+            )
+        else:
+            # Use standard specialist referral prompt
+            prompt = self._build_standard_referral_prompt(
+                source_text, conditions, task.context, inferred_specialty
+            )
 
         # Call AI to generate referral
         referral_letter = self._call_ai(prompt)
 
-        # Extract metadata - prefer inferred specialty, fall back to extracted
-        urgency = self._extract_urgency(referral_letter)
-        specialty = inferred_specialty or self._extract_specialty(referral_letter)
-        
+        # Extract metadata - prefer provided values, fall back to extraction
+        final_urgency = input_urgency if input_urgency != 'routine' else self._extract_urgency(referral_letter)
+        final_specialty = inferred_specialty or self._extract_specialty(referral_letter)
+
+        # Determine referral type label for metadata
+        recipient_type_labels = {
+            'specialist': 'specialist_consultation',
+            'gp_backreferral': 'gp_back_referral',
+            'hospital': 'hospital_admission',
+            'diagnostic': 'diagnostic_request'
+        }
+
         # Create response
         response = AgentResponse(
             result=referral_letter,
-            thoughts=f"Generated standard referral letter{f' for {conditions}' if conditions else ''}",
+            thoughts=f"Generated {recipient_type} referral{f' for {conditions}' if conditions else ''}",
             success=True,
             metadata={
-                'referral_type': 'standard',
-                'urgency_level': urgency,
-                'specialty': specialty,
+                'referral_type': recipient_type_labels.get(recipient_type, 'standard'),
+                'recipient_type': recipient_type,
+                'urgency_level': final_urgency,
+                'specialty': final_specialty,
                 'has_conditions': bool(conditions),
+                'conditions': conditions,
                 'source': 'soap_note' if soap_note else 'transcript',
+                'recipient_name': recipient_details.get('name', ''),
+                'recipient_facility': recipient_details.get('facility', ''),
                 'model_used': self.config.model
             }
         )
-        
+
         # Add to history
         self.add_to_history(task, response)
-        
+
         return response
     
     def _generate_specialist_referral(self, task: AgentTask) -> AgentResponse:
@@ -636,7 +701,189 @@ Format the referral letter with:
                     return specialty.capitalize()
 
         return None
-    
+
+    def _get_referral_recipient_guidance(self, recipient_type: str) -> Dict[str, Any]:
+        """Get recipient-specific guidance for referral generation.
+
+        Args:
+            recipient_type: Type of recipient (specialist, gp_backreferral, hospital, diagnostic)
+
+        Returns:
+            Dictionary with focus, exclude, tone, and format guidance
+        """
+        guidance = {
+            "specialist": {
+                "focus": [
+                    "Specific condition being referred",
+                    "Relevant history only for the referred condition",
+                    "Pertinent examination findings",
+                    "Previous treatments tried",
+                    "Specific questions for the specialist"
+                ],
+                "exclude": [
+                    "Unrelated comorbidities",
+                    "Social history unless directly relevant",
+                    "Medications unrelated to the referred condition"
+                ],
+                "tone": "Professional physician-to-physician communication",
+                "format": "Formal referral letter with demographics, clinical summary, and specific request",
+                "opening": "Thank you for seeing this patient for evaluation and management of",
+                "closing": "I would appreciate your expert opinion and recommendations regarding"
+            },
+            "gp_backreferral": {
+                "focus": [
+                    "Summary of treatment provided",
+                    "Current clinical status",
+                    "Ongoing management recommendations",
+                    "Follow-up requirements and timeline",
+                    "Red flags to watch for",
+                    "When to re-refer"
+                ],
+                "exclude": [
+                    "Detailed specialist workup unless relevant to GP management",
+                    "Technical jargon that may be specialty-specific"
+                ],
+                "tone": "Collegial summary with clear handover",
+                "format": "Consultation summary with management plan and contingencies",
+                "opening": "Thank you for referring this patient. I am returning them to your care with the following summary",
+                "closing": "Please do not hesitate to re-refer if"
+            },
+            "hospital": {
+                "focus": [
+                    "Admission criteria met",
+                    "Acute clinical issues requiring inpatient care",
+                    "Urgency level and reason",
+                    "Immediate management needs",
+                    "Key investigations and results"
+                ],
+                "exclude": [
+                    "Routine chronic conditions unless relevant to admission",
+                    "Extensive past history"
+                ],
+                "tone": "Concise and actionable",
+                "format": "Admission request with clear reason, urgency, and immediate needs",
+                "opening": "I am requesting admission for this patient due to",
+                "closing": "Immediate priorities include"
+            },
+            "diagnostic": {
+                "focus": [
+                    "Clinical question to be answered",
+                    "Relevant clinical findings supporting the request",
+                    "Specific test or procedure requested",
+                    "Urgency of results needed"
+                ],
+                "exclude": [
+                    "Extensive history unless relevant to interpretation",
+                    "Unrelated clinical information"
+                ],
+                "tone": "Request form style, clear and specific",
+                "format": "Diagnostic request with clinical context for interpretation",
+                "opening": "Please perform the following investigation(s)",
+                "closing": "Clinical question: "
+            }
+        }
+        return guidance.get(recipient_type, guidance["specialist"])
+
+    def _build_recipient_aware_prompt(
+        self,
+        source_text: str,
+        conditions: str,
+        recipient_type: str,
+        urgency: str,
+        specialty: Optional[str] = None,
+        recipient_details: Optional[Dict[str, str]] = None,
+        context: Optional[str] = None
+    ) -> str:
+        """Build a referral prompt tailored to the recipient type.
+
+        Args:
+            source_text: The clinical source text (SOAP or transcript)
+            conditions: Conditions to focus on
+            recipient_type: Type of recipient (specialist, gp_backreferral, hospital, diagnostic)
+            urgency: Urgency level (routine, soon, urgent, emergency)
+            specialty: Target specialty (optional, for specialist referrals)
+            recipient_details: Details about the recipient (name, facility, etc.)
+            context: Additional context
+
+        Returns:
+            Formatted prompt string
+        """
+        guidance = self._get_referral_recipient_guidance(recipient_type)
+        prompt_parts = []
+
+        # Add context if provided
+        if context:
+            prompt_parts.append(f"Additional Context: {context}\n")
+
+        # Recipient details header
+        if recipient_details:
+            if recipient_details.get("name"):
+                prompt_parts.append(f"Recipient: {recipient_details['name']}")
+            if recipient_details.get("facility"):
+                prompt_parts.append(f"Facility: {recipient_details['facility']}")
+            prompt_parts.append("")
+
+        # Type-specific opening
+        if recipient_type == "specialist" and specialty:
+            prompt_parts.append(f"Generate a professional referral letter to a {specialty} specialist.")
+        elif recipient_type == "gp_backreferral":
+            prompt_parts.append("Generate a back-referral letter to the referring GP/family physician.")
+        elif recipient_type == "hospital":
+            prompt_parts.append("Generate a hospital admission request letter.")
+        elif recipient_type == "diagnostic":
+            prompt_parts.append("Generate a diagnostic services request.")
+        else:
+            prompt_parts.append("Generate a professional referral letter.")
+
+        # Urgency statement
+        urgency_statements = {
+            "routine": "This is a routine/elective referral.",
+            "soon": "This referral requires attention within 2-4 weeks.",
+            "urgent": "URGENT: This referral requires attention within 48-72 hours.",
+            "emergency": "EMERGENCY: This patient requires immediate assessment today."
+        }
+        prompt_parts.append(urgency_statements.get(urgency, urgency_statements["routine"]))
+        prompt_parts.append("")
+
+        # Condition focus
+        if conditions:
+            prompt_parts.append(f"**CONDITION FOCUS:** This referral is specifically for: {conditions}")
+            prompt_parts.append("")
+
+        # Guidance-based instructions
+        prompt_parts.append("**INCLUDE (focus on):**")
+        for item in guidance["focus"]:
+            prompt_parts.append(f"- {item}")
+        prompt_parts.append("")
+
+        prompt_parts.append("**EXCLUDE (do not include):**")
+        for item in guidance["exclude"]:
+            prompt_parts.append(f"- {item}")
+        prompt_parts.append("")
+
+        prompt_parts.append(f"**TONE:** {guidance['tone']}")
+        prompt_parts.append(f"**FORMAT:** {guidance['format']}")
+        prompt_parts.append("")
+
+        # Source text
+        prompt_parts.append("**Clinical Information:**")
+        prompt_parts.append(source_text)
+        prompt_parts.append("")
+
+        # Format requirements
+        prompt_parts.append("**Letter Structure:**")
+        prompt_parts.append("- Current date")
+        prompt_parts.append("- Recipient information (if provided)")
+        prompt_parts.append("- Patient demographics (name, DOB)")
+        prompt_parts.append(f"- Opening: {guidance['opening']}")
+        prompt_parts.append("- Clinical summary (following the INCLUDE/EXCLUDE guidance)")
+        prompt_parts.append(f"- Closing: {guidance['closing']}")
+        prompt_parts.append("- Sender information")
+        prompt_parts.append("")
+        prompt_parts.append("Generate the referral letter:")
+
+        return "\n".join(prompt_parts)
+
     def generate_referral_from_soap(self, soap_note: str, conditions: Optional[str] = None) -> Optional[str]:
         """
         Convenience method to generate a referral from a SOAP note.

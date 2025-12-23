@@ -592,7 +592,147 @@ def get_migrations() -> List[Migration]:
         DROP TABLE IF EXISTS processing_queue;
         """
     ))
-    
+
+    # Migration 9: Add saved recipients for referrals
+    migrations.append(Migration(
+        version=9,
+        name="Add saved recipients for referrals",
+        up_sql="""
+        -- Create saved_recipients table for storing frequently used referral recipients
+        CREATE TABLE IF NOT EXISTS saved_recipients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            recipient_type TEXT NOT NULL CHECK(recipient_type IN ('specialist', 'gp_backreferral', 'hospital', 'diagnostic')),
+            specialty TEXT,
+            facility TEXT,
+            address TEXT,
+            fax TEXT,
+            phone TEXT,
+            email TEXT,
+            notes TEXT,
+            last_used DATETIME,
+            use_count INTEGER DEFAULT 0,
+            is_favorite BOOLEAN DEFAULT FALSE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_saved_recipients_type ON saved_recipients(recipient_type);
+        CREATE INDEX IF NOT EXISTS idx_saved_recipients_specialty ON saved_recipients(specialty);
+        CREATE INDEX IF NOT EXISTS idx_saved_recipients_last_used ON saved_recipients(last_used);
+        CREATE INDEX IF NOT EXISTS idx_saved_recipients_use_count ON saved_recipients(use_count);
+
+        -- Create FTS table for recipient search
+        CREATE VIRTUAL TABLE IF NOT EXISTS saved_recipients_fts USING fts5(
+            name,
+            specialty,
+            facility,
+            notes,
+            content=saved_recipients,
+            content_rowid=id
+        );
+
+        -- Triggers to keep FTS in sync
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_ai AFTER INSERT ON saved_recipients BEGIN
+            INSERT INTO saved_recipients_fts(rowid, name, specialty, facility, notes)
+            VALUES (new.id, new.name, new.specialty, new.facility, new.notes);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_ad AFTER DELETE ON saved_recipients BEGIN
+            DELETE FROM saved_recipients_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_au AFTER UPDATE ON saved_recipients BEGIN
+            UPDATE saved_recipients_fts
+            SET name = new.name,
+                specialty = new.specialty,
+                facility = new.facility,
+                notes = new.notes
+            WHERE rowid = new.id;
+        END;
+        """,
+        down_sql="""
+        DROP TRIGGER IF EXISTS saved_recipients_au;
+        DROP TRIGGER IF EXISTS saved_recipients_ad;
+        DROP TRIGGER IF EXISTS saved_recipients_ai;
+        DROP TABLE IF EXISTS saved_recipients_fts;
+        DROP INDEX IF EXISTS idx_saved_recipients_use_count;
+        DROP INDEX IF EXISTS idx_saved_recipients_last_used;
+        DROP INDEX IF EXISTS idx_saved_recipients_specialty;
+        DROP INDEX IF EXISTS idx_saved_recipients_type;
+        DROP TABLE IF EXISTS saved_recipients;
+        """
+    ))
+
+    # Migration 10: Add extended contact fields for CSV import
+    migrations.append(Migration(
+        version=10,
+        name="Add extended contact fields for CSV import",
+        up_sql="""
+        -- Add new columns for detailed contact information
+        ALTER TABLE saved_recipients ADD COLUMN first_name TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN last_name TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN middle_name TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN title TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN payee_number TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN practitioner_number TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN office_address TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN city TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN province TEXT;
+        ALTER TABLE saved_recipients ADD COLUMN postal_code TEXT;
+
+        -- Create index for practitioner number lookups
+        CREATE INDEX IF NOT EXISTS idx_saved_recipients_practitioner ON saved_recipients(practitioner_number);
+
+        -- Update FTS table to include new searchable fields
+        DROP TRIGGER IF EXISTS saved_recipients_au;
+        DROP TRIGGER IF EXISTS saved_recipients_ad;
+        DROP TRIGGER IF EXISTS saved_recipients_ai;
+        DROP TABLE IF EXISTS saved_recipients_fts;
+
+        -- Recreate FTS table with additional fields
+        CREATE VIRTUAL TABLE IF NOT EXISTS saved_recipients_fts USING fts5(
+            name,
+            first_name,
+            last_name,
+            specialty,
+            facility,
+            city,
+            notes,
+            content=saved_recipients,
+            content_rowid=id
+        );
+
+        -- Recreate triggers with new fields
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_ai AFTER INSERT ON saved_recipients BEGIN
+            INSERT INTO saved_recipients_fts(rowid, name, first_name, last_name, specialty, facility, city, notes)
+            VALUES (new.id, new.name, new.first_name, new.last_name, new.specialty, new.facility, new.city, new.notes);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_ad AFTER DELETE ON saved_recipients BEGIN
+            DELETE FROM saved_recipients_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS saved_recipients_au AFTER UPDATE ON saved_recipients BEGIN
+            UPDATE saved_recipients_fts
+            SET name = new.name,
+                first_name = new.first_name,
+                last_name = new.last_name,
+                specialty = new.specialty,
+                facility = new.facility,
+                city = new.city,
+                notes = new.notes
+            WHERE rowid = new.id;
+        END;
+
+        -- Repopulate FTS table
+        INSERT INTO saved_recipients_fts(rowid, name, first_name, last_name, specialty, facility, city, notes)
+        SELECT id, name, first_name, last_name, specialty, facility, city, notes FROM saved_recipients;
+        """,
+        down_sql=None  # Complex migration, no rollback
+    ))
+
     return migrations
 
 
