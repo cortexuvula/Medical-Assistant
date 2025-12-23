@@ -13,7 +13,8 @@ from anthropic.types import Message as AnthropicMessage
 from ai.prompts import (
     REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
-    SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
+    SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE,
+    get_soap_system_message
 )
 from settings.settings import SETTINGS, _DEFAULT_SETTINGS
 from utils.error_codes import get_error_message, format_api_error
@@ -1004,25 +1005,40 @@ def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool =
 
 def create_soap_note_with_openai(text: str, context: str = "") -> str:
     from datetime import datetime
-    
+
     # We don't need to check the provider here since call_ai will handle it
     # Just pass the model name based on the type of note we're creating
     model = SETTINGS["soap_note"]["model"]  # Use actual settings, not defaults
-    
+
+    # Get ICD code version from settings (default to ICD-9 for backwards compatibility)
+    icd_version = SETTINGS.get("soap_note", {}).get("icd_code_version", "ICD-9")
+
+    # Get dynamic system message based on ICD code preference
+    system_message = get_soap_system_message(icd_version)
+
+    # Check if user has a custom system message override
+    custom_message = SETTINGS.get("soap_note", {}).get("system_message", "")
+    if custom_message and custom_message.strip():
+        # Use custom message if provided (for advanced users who want full control)
+        system_message = custom_message
+
+    # Get temperature from settings (default 0.4 for consistent output)
+    temperature = SETTINGS.get("soap_note", {}).get("temperature", 0.4)
+
     # Get current time and date in the specified format
     current_datetime = datetime.now()
     time_date_str = current_datetime.strftime("Time %H:%M Date %d %b %Y")
-    
+
     # Build the transcript with time/date prepended
     transcript_with_datetime = f"{time_date_str}\n\n{text}"
-    
+
     # If context is provided, prepend it to the prompt
     if context and context.strip():
         full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
     else:
         full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
-    
-    result = call_ai(model, SOAP_SYSTEM_MESSAGE, full_prompt, 0.7)
+
+    result = call_ai(model, system_message, full_prompt, temperature)
     # Clean both markdown and citations
     cleaned_soap = clean_text(result)
     

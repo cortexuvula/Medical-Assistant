@@ -81,7 +81,9 @@ class AppSettingsMixin:
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229")),
-            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash"))
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash")),
+            current_icd_version=cfg.get("icd_code_version", "ICD-9"),
+            is_soap_settings=True
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -218,7 +220,8 @@ class AppSettingsMixin:
 
     def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                            grok_model: str, ollama_model: str, system_prompt: str,
-                           anthropic_model: str, gemini_model: str = "") -> None:
+                           anthropic_model: str, gemini_model: str = "",
+                           icd_code_version: str = "ICD-9") -> None:
         """Save SOAP note settings."""
         from settings.settings import save_settings, SETTINGS
         # Preserve existing temperature settings
@@ -230,6 +233,7 @@ class AppSettingsMixin:
         SETTINGS["soap_note"]["ollama_model"] = ollama_model
         SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
         SETTINGS["soap_note"]["gemini_model"] = gemini_model
+        SETTINGS["soap_note"]["icd_code_version"] = icd_code_version
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 

@@ -283,7 +283,8 @@ def _create_temperature_tab(parent: ttk.Frame, current_temp: float, default_temp
 def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
                          save_callback: callable, current_ollama: str = "", current_system_prompt: str = "",
-                         current_anthropic: str = "", current_gemini: str = "") -> None:
+                         current_anthropic: str = "", current_gemini: str = "",
+                         current_icd_version: str = "ICD-9", is_soap_settings: bool = False) -> None:
     """Show settings dialog for configuring prompt and model.
 
     Args:
@@ -300,6 +301,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         current_system_prompt: Current system prompt text
         current_anthropic: Current Anthropic model
         current_gemini: Current Gemini model
+        current_icd_version: Current ICD code version (ICD-9, ICD-10, or both)
+        is_soap_settings: Whether this is the SOAP settings dialog (shows ICD selector)
     """
     # Create dialog
     dialog = tk.Toplevel(parent)
@@ -320,20 +323,55 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     # Create notebook for tabs
     notebook = ttk.Notebook(dialog)
     notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
+
     # Create tabs
     prompts_tab = ttk.Frame(notebook)
     models_tab = ttk.Frame(notebook)
     temperature_tab = ttk.Frame(notebook)
-    
+
     notebook.add(prompts_tab, text="Prompts")
     notebook.add(models_tab, text="Models")
     notebook.add(temperature_tab, text="Temperature")
-    
+
+    # Add Options tab for SOAP settings (ICD code version)
+    icd_version_var = tk.StringVar(value=current_icd_version)
+    if is_soap_settings:
+        options_tab = ttk.Frame(notebook)
+        notebook.add(options_tab, text="Options")
+
+        # ICD Code Version selector
+        icd_frame = ttk.LabelFrame(options_tab, text="ICD Code Version", padding=15)
+        icd_frame.pack(fill=tk.X, padx=20, pady=20)
+
+        ttk.Label(icd_frame, text="Select which ICD code version to include in SOAP notes:",
+                 wraplength=400).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 15))
+
+        icd_options = [
+            ("ICD-9", "ICD-9", "Use ICD-9 codes only (traditional format)"),
+            ("ICD-10", "ICD-10", "Use ICD-10 codes only (newer standard)"),
+            ("both", "Both ICD-9 and ICD-10", "Include both ICD-9 and ICD-10 codes")
+        ]
+
+        for i, (value, label, description) in enumerate(icd_options):
+            rb = ttk.Radiobutton(icd_frame, text=label, value=value, variable=icd_version_var)
+            rb.grid(row=i+1, column=0, sticky="w", pady=5)
+            ttk.Label(icd_frame, text=description, foreground="gray").grid(
+                row=i+1, column=1, sticky="w", padx=(20, 0), pady=5)
+
+        # Temperature guidance note for SOAP
+        temp_note_frame = ttk.LabelFrame(options_tab, text="SOAP Note Quality Tips", padding=15)
+        temp_note_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ttk.Label(temp_note_frame,
+                 text="For consistent, accurate SOAP notes, a temperature of 0.3-0.5 is recommended.\n"
+                      "Lower temperatures produce more focused, predictable output.\n"
+                      "The default is now 0.4 for optimal clinical documentation.",
+                 wraplength=500, justify="left").pack(anchor="w")
+
     # Populate tabs
     prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
     model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama, current_anthropic, current_gemini)
-    
+
     # Get temperature from config
     current_temp = config.get("temperature", default.get("temperature", 0.7))
     default_temp = default.get("temperature", 0.7)
@@ -384,7 +422,11 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         # Reset temperature
         temp_scale.set(default_temp)
         temp_value_var.set(f"{default_temp:.1f}")
-        
+
+        # Reset ICD version for SOAP settings
+        if is_soap_settings:
+            icd_version_var.set("ICD-9")
+
         # Set focus
         prompt_text.focus_set()
     
@@ -393,7 +435,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         # Add temperature to config
         config["temperature"] = temp_scale.get()
 
-        save_callback(
+        # Build arguments for save callback
+        save_args = [
             prompt_text.get("1.0", tk.END).strip(),
             model_vars['openai'].get().strip(),
             model_vars['perplexity'].get().strip(),
@@ -402,7 +445,13 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             system_prompt_text.get("1.0", tk.END).strip(),
             model_vars['anthropic'].get().strip(),
             model_vars['gemini'].get().strip()
-        )
+        ]
+
+        # Add ICD version for SOAP settings
+        if is_soap_settings:
+            save_args.append(icd_version_var.get())
+
+        save_callback(*save_args)
         dialog.destroy()
     
     # Create buttons
