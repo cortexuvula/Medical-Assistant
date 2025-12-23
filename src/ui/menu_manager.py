@@ -153,6 +153,7 @@ class MenuManager:
         settings_menu.add_command(label="Import Prompts", command=self.app.import_prompts)
         settings_menu.add_separator()
         settings_menu.add_command(label="Import Contacts from CSV...", command=self.app.import_contacts_from_csv)
+        settings_menu.add_command(label="Manage Address Book...", command=self.app.manage_address_book)
         settings_menu.add_separator()
         settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
         settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)

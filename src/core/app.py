@@ -232,6 +232,12 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             # Contacts were imported successfully
             pass
 
+    def manage_address_book(self) -> None:
+        """Show dialog to manage address book contacts."""
+        from ui.dialogs.manage_recipients_dialog import ManageRecipientsDialog
+        dialog = ManageRecipientsDialog(self)
+        dialog.show()
+
     def create_widgets(self) -> None:
         """Create widgets for the workflow UI mode."""
         # Define command mapping for buttons
