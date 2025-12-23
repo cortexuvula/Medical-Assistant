@@ -281,13 +281,17 @@ class ManageRecipientsDialog:
         self._populate_tree()
 
     def _populate_tree(self):
-        """Populate the tree with filtered recipients."""
+        """Populate the tree with filtered recipients.
+
+        Uses FTS (full-text search) when a search term is present,
+        falls back to loading all recipients when no search.
+        """
         # Clear existing items
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         # Get filter values
-        search_term = self.search_var.get().lower().strip()
+        search_term = self.search_var.get().strip()
         type_filter = self.type_filter_var.get()
 
         # Get type value from display name
@@ -297,26 +301,23 @@ class ManageRecipientsDialog:
                 type_value = value
                 break
 
+        # Get recipients - use FTS search when there's a search term
+        if search_term:
+            # Use database FTS search for better performance
+            recipients = self.recipient_manager.search_recipients(search_term)
+        else:
+            # No search - use cached all_recipients or fetch by type
+            if type_value:
+                recipients = [r for r in self.all_recipients if r.get("recipient_type") == type_value]
+            else:
+                recipients = self.all_recipients
+
         # Filter and add recipients
         count = 0
-        for recipient in self.all_recipients:
-            # Type filter
+        for recipient in recipients:
+            # Apply type filter to search results as well
             if type_value and recipient.get("recipient_type") != type_value:
                 continue
-
-            # Search filter
-            if search_term:
-                searchable = " ".join([
-                    str(recipient.get("name", "")),
-                    str(recipient.get("first_name", "")),
-                    str(recipient.get("last_name", "")),
-                    str(recipient.get("specialty", "")),
-                    str(recipient.get("facility", "")),
-                    str(recipient.get("city", "")),
-                    str(recipient.get("notes", ""))
-                ]).lower()
-                if search_term not in searchable:
-                    continue
 
             # Get display values
             name = recipient.get("name", "Unknown")

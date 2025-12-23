@@ -304,27 +304,58 @@ class ReferralOptionsDialog:
                 font=("Segoe UI", 9, "italic")
             ).pack(anchor=W)
 
-        # Row 4: Saved Recipients
+        # Row 4: Saved Recipients with searchable selection
         recipients_frame = ttk.LabelFrame(main_frame, text="Recipient Details (Optional)", padding=10)
         recipients_frame.pack(fill=X, pady=(0, 10))
 
-        # Saved recipients dropdown
-        saved_row = ttk.Frame(recipients_frame)
-        saved_row.pack(fill=X, pady=(0, 10))
+        # Search row
+        search_row = ttk.Frame(recipients_frame)
+        search_row.pack(fill=X, pady=(0, 5))
 
-        ttk.Label(saved_row, text="Saved Recipients:").pack(side=LEFT, padx=(0, 10))
+        ttk.Label(search_row, text="Search Recipients:").pack(side=LEFT, padx=(0, 10))
 
-        recipient_names = ["(New recipient)"] + [r.get("name", "Unknown") for r in self.saved_recipients]
-        self.saved_recipient_var = tk.StringVar(value="(New recipient)")
-        self.saved_recipient_combo = ttk.Combobox(
-            saved_row,
-            textvariable=self.saved_recipient_var,
-            values=recipient_names,
-            state="readonly",
-            width=30
-        )
-        self.saved_recipient_combo.pack(side=LEFT, fill=X, expand=True)
-        self.saved_recipient_combo.bind("<<ComboboxSelected>>", self._on_saved_recipient_selected)
+        self.recipient_search_var = tk.StringVar()
+        self.recipient_search_var.trace_add("write", self._on_recipient_search)
+        search_entry = ttk.Entry(search_row, textvariable=self.recipient_search_var, width=30)
+        search_entry.pack(side=LEFT, fill=X, expand=True, padx=(0, 5))
+
+        ttk.Button(
+            search_row,
+            text="Clear",
+            command=self._clear_recipient_selection,
+            style="secondary.TButton",
+            width=6
+        ).pack(side=LEFT)
+
+        # Recipient listbox with scrollbar
+        list_frame = ttk.Frame(recipients_frame)
+        list_frame.pack(fill=X, pady=(0, 10))
+
+        self.recipient_listbox = tk.Listbox(list_frame, height=5, selectmode=tk.SINGLE, exportselection=False)
+        list_scrollbar = ttk.Scrollbar(list_frame, orient=VERTICAL, command=self.recipient_listbox.yview)
+        self.recipient_listbox.configure(yscrollcommand=list_scrollbar.set)
+
+        self.recipient_listbox.pack(side=LEFT, fill=X, expand=True)
+        list_scrollbar.pack(side=RIGHT, fill=Y)
+
+        # Bind selection events
+        self.recipient_listbox.bind('<<ListboxSelect>>', self._on_recipient_listbox_select)
+        self.recipient_listbox.bind('<Double-Button-1>', self._on_recipient_double_click)
+
+        # Store recipient data for lookup
+        self._listbox_recipients = []
+
+        # Selected recipient label
+        self.selected_recipient_var = tk.StringVar(value="No recipient selected")
+        ttk.Label(
+            recipients_frame,
+            textvariable=self.selected_recipient_var,
+            foreground="gray",
+            font=("Segoe UI", 9, "italic")
+        ).pack(anchor=W, pady=(0, 10))
+
+        # Populate initial list with recent recipients
+        self._populate_recipient_list()
 
         # Manual recipient details
         details_grid = ttk.Frame(recipients_frame)
@@ -387,28 +418,124 @@ class ReferralOptionsDialog:
             elif recipient_type == "diagnostic":
                 self.specialty_var.set("Radiology")
 
-    def _on_saved_recipient_selected(self, event=None):
-        """Handle saved recipient selection."""
-        selected = self.saved_recipient_var.get()
+    def _populate_recipient_list(self, search_query: str = ""):
+        """Populate the recipient listbox with filtered results.
 
-        if selected == "(New recipient)":
-            # Clear fields
-            self.recipient_name_var.set("")
-            self.recipient_facility_var.set("")
-            self.recipient_fax_var.set("")
-            self.save_recipient_var.set(False)
+        Args:
+            search_query: Optional search query to filter recipients
+        """
+        self.recipient_listbox.delete(0, tk.END)
+        self._listbox_recipients = []
+
+        if not search_query:
+            # Show recent recipients when no search
+            # First show favorites, then recent
+            favorites = [r for r in self.saved_recipients if r.get("is_favorite")]
+            recent = sorted(
+                self.saved_recipients,
+                key=lambda x: x.get("last_used") or "",
+                reverse=True
+            )[:10]
+
+            if favorites:
+                self.recipient_listbox.insert(tk.END, "── Favorites ──")
+                self._listbox_recipients.append(None)  # Separator marker
+                for r in favorites[:5]:
+                    display = self._format_recipient_display(r)
+                    self.recipient_listbox.insert(tk.END, f"  {display}")
+                    self._listbox_recipients.append(r)
+
+            if recent:
+                self.recipient_listbox.insert(tk.END, "── Recent ──")
+                self._listbox_recipients.append(None)  # Separator marker
+                for r in recent:
+                    if r not in favorites[:5]:  # Avoid duplicates
+                        display = self._format_recipient_display(r)
+                        self.recipient_listbox.insert(tk.END, f"  {display}")
+                        self._listbox_recipients.append(r)
+
+            if not favorites and not recent:
+                self.recipient_listbox.insert(tk.END, "  No saved recipients")
+                self._listbox_recipients.append(None)
         else:
-            # Find the selected recipient
-            for recipient in self.saved_recipients:
-                if recipient.get("name") == selected:
-                    self.recipient_name_var.set(recipient.get("name", ""))
-                    self.recipient_facility_var.set(recipient.get("facility", ""))
-                    self.recipient_fax_var.set(recipient.get("fax", ""))
-                    if recipient.get("specialty"):
-                        self.specialty_var.set(recipient.get("specialty"))
-                    if recipient.get("recipient_type"):
-                        self.recipient_type_var.set(recipient.get("recipient_type"))
-                    break
+            # Search using simple substring matching on saved_recipients
+            query_lower = search_query.lower()
+            matches = []
+            for r in self.saved_recipients:
+                searchable = " ".join([
+                    str(r.get("name", "")),
+                    str(r.get("first_name", "")),
+                    str(r.get("last_name", "")),
+                    str(r.get("specialty", "")),
+                    str(r.get("facility", "")),
+                    str(r.get("city", ""))
+                ]).lower()
+                if query_lower in searchable:
+                    matches.append(r)
+
+            if matches:
+                for r in matches[:15]:  # Limit results
+                    display = self._format_recipient_display(r)
+                    fav = " ★" if r.get("is_favorite") else ""
+                    self.recipient_listbox.insert(tk.END, f"{display}{fav}")
+                    self._listbox_recipients.append(r)
+            else:
+                self.recipient_listbox.insert(tk.END, "  No matches found")
+                self._listbox_recipients.append(None)
+
+    def _format_recipient_display(self, recipient: Dict[str, Any]) -> str:
+        """Format recipient for display in listbox."""
+        name = recipient.get("name", "Unknown")
+        specialty = recipient.get("specialty", "")
+        if specialty:
+            return f"{name} - {specialty}"
+        return name
+
+    def _on_recipient_search(self, *args):
+        """Handle search input change."""
+        query = self.recipient_search_var.get().strip()
+        self._populate_recipient_list(query)
+
+    def _on_recipient_listbox_select(self, event=None):
+        """Handle listbox selection."""
+        selection = self.recipient_listbox.curselection()
+        if not selection:
+            return
+
+        index = selection[0]
+        if index < len(self._listbox_recipients):
+            recipient = self._listbox_recipients[index]
+            if recipient:  # Not a separator
+                self._select_recipient(recipient)
+
+    def _on_recipient_double_click(self, event=None):
+        """Handle double-click on listbox item."""
+        self._on_recipient_listbox_select(event)
+
+    def _select_recipient(self, recipient: Dict[str, Any]):
+        """Select a recipient and populate fields."""
+        self.recipient_name_var.set(recipient.get("name", ""))
+        self.recipient_facility_var.set(recipient.get("facility", ""))
+        self.recipient_fax_var.set(recipient.get("fax", ""))
+
+        if recipient.get("specialty"):
+            self.specialty_var.set(recipient.get("specialty"))
+        if recipient.get("recipient_type"):
+            self.recipient_type_var.set(recipient.get("recipient_type"))
+
+        # Update selected label
+        display = self._format_recipient_display(recipient)
+        self.selected_recipient_var.set(f"Selected: {display}")
+
+    def _clear_recipient_selection(self):
+        """Clear recipient selection and fields."""
+        self.recipient_search_var.set("")
+        self.recipient_name_var.set("")
+        self.recipient_facility_var.set("")
+        self.recipient_fax_var.set("")
+        self.selected_recipient_var.set("No recipient selected")
+        self.save_recipient_var.set(False)
+        self._populate_recipient_list()
 
     def _generate(self):
         """Handle generate button click."""
