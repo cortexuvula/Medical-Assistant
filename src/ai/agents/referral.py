@@ -244,9 +244,12 @@ Format the referral letter with:
     def _generate_specialist_referral(self, task: AgentTask) -> AgentResponse:
         """Generate a specialist-specific referral."""
         specialty = task.input_data.get('specialty', '')
-        clinical_info = task.input_data.get('clinical_info', '')
-        specific_concerns = task.input_data.get('specific_concerns', '')
-        
+        # Support both old field name and new field names
+        soap_note = task.input_data.get('soap_note', '')
+        transcript = task.input_data.get('transcript', '')
+        clinical_info = task.input_data.get('clinical_info', '') or soap_note or transcript
+        specific_concerns = task.input_data.get('specific_concerns', '') or task.input_data.get('conditions', '')
+
         if not clinical_info:
             return AgentResponse(
                 result="",
@@ -281,9 +284,12 @@ Format the referral letter with:
     
     def _generate_urgent_referral(self, task: AgentTask) -> AgentResponse:
         """Generate an urgent referral letter."""
-        clinical_info = task.input_data.get('clinical_info', '')
+        # Support both old field name and new field names
+        soap_note = task.input_data.get('soap_note', '')
+        transcript = task.input_data.get('transcript', '')
+        clinical_info = task.input_data.get('clinical_info', '') or soap_note or transcript
         red_flags = task.input_data.get('red_flags', [])
-        
+
         if not clinical_info:
             return AgentResponse(
                 result="",
@@ -357,10 +363,13 @@ Format the referral letter with:
     
     def _generate_diagnostic_referral(self, task: AgentTask) -> AgentResponse:
         """Generate a referral for diagnostic procedures."""
-        clinical_info = task.input_data.get('clinical_info', '')
+        # Support both old field name and new field names
+        soap_note = task.input_data.get('soap_note', '')
+        transcript = task.input_data.get('transcript', '')
+        clinical_info = task.input_data.get('clinical_info', '') or soap_note or transcript
         requested_tests = task.input_data.get('requested_tests', [])
-        clinical_question = task.input_data.get('clinical_question', '')
-        
+        clinical_question = task.input_data.get('clinical_question', '') or task.input_data.get('conditions', '')
+
         if not clinical_info:
             return AgentResponse(
                 result="",
