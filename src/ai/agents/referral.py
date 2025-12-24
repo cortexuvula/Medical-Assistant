@@ -74,6 +74,7 @@ Guidelines:
 - Only list medications relevant to the condition being referred
 - Only mention investigations relevant to the referral reason
 - End with specific questions or requests for the specialist
+- When recipient details are provided, use the actual names and facility information - never use placeholder text like [Doctor's Name] or [Specialist's Name]
 
 Format the referral letter with:
 1. Date and recipient information
@@ -897,7 +898,14 @@ Format the referral letter with:
         # Format requirements
         prompt_parts.append("**Letter Structure:**")
         prompt_parts.append("- Current date")
-        prompt_parts.append("- Recipient information (if provided)")
+        if recipient_details and recipient_details.get("name"):
+            recipient_line = f"- Address the letter to: {recipient_details['name']}"
+            if recipient_details.get("facility"):
+                recipient_line += f" at {recipient_details['facility']}"
+            prompt_parts.append(recipient_line)
+            prompt_parts.append("- DO NOT use placeholder text like [Doctor's Name] or [Specialist's Name] - use the actual recipient name provided above")
+        else:
+            prompt_parts.append("- Recipient information (use appropriate placeholders if not provided)")
         prompt_parts.append("- Patient demographics (name, DOB)")
         prompt_parts.append(f"- Opening: {guidance['opening']}")
         prompt_parts.append("- Clinical summary (following the INCLUDE/EXCLUDE guidance)")
