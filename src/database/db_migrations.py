@@ -733,6 +733,57 @@ def get_migrations() -> List[Migration]:
         down_sql=None  # Complex migration, no rollback
     ))
 
+    # Migration 11: Add translation sessions support
+    migrations.append(Migration(
+        version=11,
+        name="Add translation sessions support",
+        up_sql="""
+        -- Create translation sessions table
+        CREATE TABLE IF NOT EXISTS translation_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT UNIQUE NOT NULL,
+            recording_id INTEGER REFERENCES recordings(id),
+            patient_language TEXT NOT NULL,
+            doctor_language TEXT NOT NULL,
+            patient_name TEXT,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            ended_at DATETIME
+        );
+
+        -- Create translation entries table
+        CREATE TABLE IF NOT EXISTS translation_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            entry_id TEXT UNIQUE NOT NULL,
+            speaker TEXT NOT NULL CHECK(speaker IN ('patient', 'doctor')),
+            timestamp DATETIME NOT NULL,
+            original_text TEXT NOT NULL,
+            original_language TEXT NOT NULL,
+            translated_text TEXT NOT NULL,
+            target_language TEXT NOT NULL,
+            llm_refined_text TEXT,
+            duration_seconds REAL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES translation_sessions(session_id) ON DELETE CASCADE
+        );
+
+        -- Create indexes for efficient queries
+        CREATE INDEX IF NOT EXISTS idx_translation_sessions_recording ON translation_sessions(recording_id);
+        CREATE INDEX IF NOT EXISTS idx_translation_sessions_created ON translation_sessions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_translation_entries_session ON translation_entries(session_id);
+        CREATE INDEX IF NOT EXISTS idx_translation_entries_timestamp ON translation_entries(timestamp);
+        """,
+        down_sql="""
+        DROP INDEX IF EXISTS idx_translation_entries_timestamp;
+        DROP INDEX IF EXISTS idx_translation_entries_session;
+        DROP INDEX IF EXISTS idx_translation_sessions_created;
+        DROP INDEX IF EXISTS idx_translation_sessions_recording;
+        DROP TABLE IF EXISTS translation_entries;
+        DROP TABLE IF EXISTS translation_sessions;
+        """
+    ))
+
     return migrations
 
 

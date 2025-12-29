@@ -90,16 +90,24 @@ class TranslationManager:
         
         self.logger.info(f"Created {provider_name} provider with sub-provider: {sub_provider}")
     
-    def translate(self, text: str, source_lang: str = None, target_lang: str = None) -> str:
+    def translate(
+        self,
+        text: str,
+        source_lang: str = None,
+        target_lang: str = None,
+        refine_medical: bool = None
+    ) -> str:
         """Translate text using the current provider.
 
         Args:
             text: Text to translate
             source_lang: Source language code (if None, will auto-detect)
             target_lang: Target language code (if None, uses settings)
+            refine_medical: If True, use LLM to refine medical terminology.
+                          If None, uses setting from translation.llm_refinement_enabled
 
         Returns:
-            Translated text
+            Translated text (optionally refined for medical accuracy)
 
         Raises:
             Exception: If translation fails
@@ -126,10 +134,33 @@ class TranslationManager:
             # Log the actual language codes being used
             self.logger.debug(f"Translation request: source={source_lang}, target={target_lang}, text_length={len(text)}")
 
-            # Perform translation
+            # Perform initial translation (Google/DeepL)
             result = provider.translate(text, source_lang, target_lang)
 
             self.logger.info(f"Translated text from {source_lang} to {target_lang}")
+
+            # Optional LLM refinement for medical terminology
+            if refine_medical is None:
+                refine_medical = translation_settings.get("llm_refinement_enabled", False)
+
+            if refine_medical:
+                try:
+                    from ai.translation_refiner import get_translation_refiner
+                    refiner = get_translation_refiner()
+
+                    refinement = refiner.refine_translation(
+                        source_text=text,
+                        initial_translation=result,
+                        source_lang=source_lang,
+                        target_lang=target_lang
+                    )
+
+                    if refinement.was_refined:
+                        self.logger.info(f"LLM refined translation (detected terms: {refinement.medical_terms_detected})")
+                        return refinement.refined_translation
+                except Exception as e:
+                    self.logger.warning(f"LLM refinement failed, using original translation: {e}")
+
             return result
 
         except Exception as e:

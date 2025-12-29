@@ -294,7 +294,12 @@ Format your response as:
         "doctor_language": "en",        # Default doctor language (English)
         "auto_detect": True,           # Auto-detect patient language
         "input_device": "",            # Translation-specific microphone
-        "output_device": ""            # Translation-specific speaker/output device
+        "output_device": "",           # Translation-specific speaker/output device
+        # LLM-based medical translation refinement (hybrid approach)
+        "llm_refinement_enabled": False,  # Enable LLM refinement for medical terms
+        "refinement_provider": "openai",  # AI provider for refinement
+        "refinement_model": "gpt-3.5-turbo",  # Model for refinement (cost-efficient)
+        "refinement_temperature": 0.1   # Low temp for consistent translations
     },
     "tts": {
         "provider": "pyttsx3",         # TTS provider (pyttsx3, elevenlabs, google)

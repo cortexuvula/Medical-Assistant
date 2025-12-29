@@ -16,9 +16,11 @@ from datetime import datetime
 
 from managers.translation_manager import get_translation_manager
 from managers.tts_manager import get_tts_manager
+from managers.translation_session_manager import get_translation_session_manager
 from audio.audio import AudioHandler
 from ui.tooltip import ToolTip
 from settings.settings import SETTINGS
+from models.translation_session import TranslationEntry, Speaker
 
 
 class TranslationDialog:
@@ -41,7 +43,8 @@ class TranslationDialog:
         )
         self.translation_manager = get_translation_manager()
         self.tts_manager = get_tts_manager()
-        
+        self.session_manager = get_translation_session_manager()
+
         self.dialog = None
         self.is_recording = False
         self.stop_recording_func = None
@@ -117,31 +120,71 @@ class TranslationDialog:
         # Create main container
         main_container = ttk.Frame(self.dialog)
         main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
-        
-        # Create language selection bar
+
+        # Create language selection bar at top
         self._create_language_bar(main_container)
-        
+
         # Create separator
         ttk.Separator(main_container, orient=HORIZONTAL).pack(fill=X, pady=(10, 15))
-        
-        # Create patient section (top)
-        patient_frame = ttk.Labelframe(main_container, text="Patient", padding=10)
+
+        # Create horizontal paned window for translation and history panels
+        self.main_paned = ttk.Panedwindow(main_container, orient=HORIZONTAL)
+        self.main_paned.pack(fill=BOTH, expand=True, pady=(0, 10))
+
+        # Left pane: Current translation exchange
+        left_frame = ttk.Frame(self.main_paned)
+        self.main_paned.add(left_frame, weight=3)
+
+        # Patient section (top of left pane)
+        patient_frame = ttk.Labelframe(left_frame, text="Patient", padding=10)
         patient_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
         self._create_patient_section(patient_frame)
-        
-        # Create doctor section (bottom)
-        doctor_frame = ttk.Labelframe(main_container, text="Doctor", padding=10)
+
+        # Doctor section (bottom of left pane)
+        doctor_frame = ttk.Labelframe(left_frame, text="Doctor", padding=10)
         doctor_frame.pack(fill=BOTH, expand=True)
         self._create_doctor_section(doctor_frame)
-        
-        # Create button bar
+
+        # Right pane: Conversation history
+        right_frame = ttk.Frame(self.main_paned)
+        self.main_paned.add(right_frame, weight=1)
+        self._create_history_panel(right_frame)
+
+        # Create button bar at bottom
         self._create_button_bar(main_container)
-        
+
+        # Start a new session
+        self._start_new_session()
+
+        # Bind keyboard shortcuts
+        self._bind_keyboard_shortcuts()
+
         # Handle dialog close
         self.dialog.protocol("WM_DELETE_WINDOW", self._on_close)
-        
+
         # Focus on dialog
         self.dialog.focus_set()
+
+    def _bind_keyboard_shortcuts(self):
+        """Bind keyboard shortcuts for accessibility."""
+        # Recording toggle (Ctrl+R)
+        self.dialog.bind('<Control-r>', lambda e: self._toggle_recording())
+        self.dialog.bind('<Control-R>', lambda e: self._toggle_recording())
+
+        # Stop recording (Escape)
+        self.dialog.bind('<Escape>', lambda e: self._stop_recording() if self.is_recording else None)
+
+        # Play response (Ctrl+P)
+        self.dialog.bind('<Control-p>', lambda e: self._play_doctor_response())
+        self.dialog.bind('<Control-P>', lambda e: self._play_doctor_response())
+
+        # Export session (Ctrl+E)
+        self.dialog.bind('<Control-e>', lambda e: self._export_session())
+        self.dialog.bind('<Control-E>', lambda e: self._export_session())
+
+        # New session (Ctrl+N)
+        self.dialog.bind('<Control-n>', lambda e: self._start_new_session())
+        self.dialog.bind('<Control-N>', lambda e: self._start_new_session())
     
     def _create_language_bar(self, parent):
         """Create language selection controls.
@@ -238,6 +281,8 @@ class TranslationDialog:
             self.selected_microphone.set(self.input_device)
         elif microphones:
             # Default to first available
+            if self.input_device:
+                self.logger.warning(f"Saved microphone '{self.input_device}' not found, using default")
             self.selected_microphone.set(microphones[0])
         
         self.mic_combo = ttk.Combobox(
@@ -449,7 +494,7 @@ class TranslationDialog:
         self.doctor_input_text = tk.Text(
             left_frame,
             wrap=WORD,
-            height=5,
+            height=8,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
             background="#f0fff0"  # Light green background
@@ -472,7 +517,7 @@ class TranslationDialog:
         self.doctor_translated_text = tk.Text(
             right_frame,
             wrap=WORD,
-            height=5,
+            height=8,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
             background="#fff0f5"  # Light pink background
@@ -528,6 +573,8 @@ class TranslationDialog:
             self.selected_output.set(self.output_device)
         elif output_devices:
             # Default to first available
+            if self.output_device:
+                self.logger.warning(f"Saved output device '{self.output_device}' not found, using default")
             self.selected_output.set(output_devices[0])
         
         self.output_combo = ttk.Combobox(
@@ -750,20 +797,34 @@ class TranslationDialog:
                     source_lang=self.patient_language,
                     target_lang=self.doctor_language
                 )
-                
-                # Update UI on main thread
-                self.dialog.after(0, lambda: [
-                    self.patient_translated_text.delete("1.0", tk.END),
-                    self.patient_translated_text.insert("1.0", translated),
+
+                # Add entry to session history
+                def update_ui():
+                    self.patient_translated_text.delete("1.0", tk.END)
+                    self.patient_translated_text.insert("1.0", translated)
                     self.recording_status.config(text="Ready", foreground="green")
-                ])
-                
+
+                    # Add to history
+                    try:
+                        entry = self.session_manager.add_patient_entry(
+                            original_text=transcript,
+                            original_language=self.patient_language,
+                            translated_text=translated,
+                            target_language=self.doctor_language
+                        )
+                        self._add_history_entry(entry)
+                    except Exception as he:
+                        self.logger.error(f"Failed to add history entry: {he}")
+
+                # Update UI on main thread
+                self.dialog.after(0, update_ui)
+
             except Exception as e:
                 self.logger.error(f"Translation failed: {e}")
                 self.dialog.after(0, lambda: self.recording_status.config(
                     text=f"Translation error: {str(e)}", foreground="red"
                 ))
-        
+
         # Start translation thread
         threading.Thread(target=translate, daemon=True).start()
     
@@ -783,8 +844,8 @@ class TranslationDialog:
         if hasattr(self, '_translation_timer'):
             self.dialog.after_cancel(self._translation_timer)
         
-        # Set new timer for translation (debounce)
-        self._translation_timer = self.dialog.after(500, lambda: self._translate_doctor_text(text))
+        # Set new timer for translation (debounce - 300ms for responsive feel)
+        self._translation_timer = self.dialog.after(300, lambda: self._translate_doctor_text(text))
     
     def _translate_doctor_text(self, text: str):
         """Translate doctor's text to patient's language.
@@ -815,12 +876,25 @@ class TranslationDialog:
     
     def _play_doctor_response(self):
         """Play the translated doctor response using TTS."""
-        # Get translated text
-        text = self.doctor_translated_text.get("1.0", tk.END).strip()
-        
-        if not text:
+        # Get texts
+        original_text = self.doctor_input_text.get("1.0", tk.END).strip()
+        translated_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+
+        if not translated_text:
             return
-        
+
+        # Add doctor entry to history (when they send the response)
+        try:
+            entry = self.session_manager.add_doctor_entry(
+                original_text=original_text,
+                original_language=self.doctor_language,
+                translated_text=translated_text,
+                target_language=self.patient_language
+            )
+            self._add_history_entry(entry)
+        except Exception as e:
+            self.logger.error(f"Failed to add doctor entry to history: {e}")
+
         # Disable play button
         self.play_button.config(state=DISABLED, text="Playing...")
         
@@ -978,21 +1052,278 @@ class TranslationDialog:
         # Stop any ongoing recording
         if self.is_recording:
             self._stop_recording()
-        
+
         # Stop any TTS playback
         self._stop_playback()
-        
+
+        # End the current session
+        try:
+            self.session_manager.end_session()
+        except Exception as e:
+            self.logger.error(f"Error ending translation session: {e}")
+
         # Clean up audio handler
         try:
             self.audio_handler.cleanup()
         except Exception as e:
             self.logger.error(f"Error cleaning up audio handler: {e}")
-        
+
         # Save language and device preferences
         SETTINGS["translation"]["patient_language"] = self.patient_language
         SETTINGS["translation"]["doctor_language"] = self.doctor_language
         SETTINGS["translation"]["input_device"] = self.selected_microphone.get()
         SETTINGS["translation"]["output_device"] = self.selected_output.get()
-        
+
         # Destroy dialog
         self.dialog.destroy()
+
+    def _create_history_panel(self, parent):
+        """Create the conversation history panel.
+
+        Args:
+            parent: Parent widget for the history panel
+        """
+        # History frame with labelframe styling
+        history_frame = ttk.Labelframe(parent, text="Conversation History", padding=10)
+        history_frame.pack(fill=BOTH, expand=True)
+
+        # Header with controls
+        header_frame = ttk.Frame(history_frame)
+        header_frame.pack(fill=X, pady=(0, 10))
+
+        ttk.Button(
+            header_frame,
+            text="New Session",
+            command=self._start_new_session,
+            bootstyle="outline-primary",
+            width=12
+        ).pack(side=LEFT, padx=(0, 5))
+
+        ttk.Button(
+            header_frame,
+            text="Export",
+            command=self._export_session,
+            bootstyle="outline-info",
+            width=10
+        ).pack(side=LEFT)
+
+        # Create canvas for scrollable history
+        canvas_frame = ttk.Frame(history_frame)
+        canvas_frame.pack(fill=BOTH, expand=True)
+
+        self.history_canvas = tk.Canvas(canvas_frame, highlightthickness=0)
+        history_scrollbar = ttk.Scrollbar(
+            canvas_frame,
+            orient=VERTICAL,
+            command=self.history_canvas.yview
+        )
+
+        # Create frame inside canvas for entries
+        self.history_entries_frame = ttk.Frame(self.history_canvas)
+
+        # Configure canvas window
+        self.history_window = self.history_canvas.create_window(
+            (0, 0),
+            window=self.history_entries_frame,
+            anchor=NW
+        )
+
+        # Pack scrollbar and canvas
+        history_scrollbar.pack(side=RIGHT, fill=Y)
+        self.history_canvas.pack(side=LEFT, fill=BOTH, expand=True)
+
+        # Configure scrolling
+        self.history_canvas.configure(yscrollcommand=history_scrollbar.set)
+
+        # Bind events for scrolling
+        self.history_entries_frame.bind("<Configure>", self._on_history_frame_configure)
+        self.history_canvas.bind("<Configure>", self._on_history_canvas_configure)
+
+        # Bind mouse wheel scrolling
+        self.history_canvas.bind_all("<MouseWheel>", self._on_history_mousewheel)
+        self.history_canvas.bind_all("<Button-4>", self._on_history_mousewheel)
+        self.history_canvas.bind_all("<Button-5>", self._on_history_mousewheel)
+
+        # Welcome message
+        self._add_history_welcome()
+
+    def _on_history_frame_configure(self, event):
+        """Update scroll region when history frame size changes."""
+        self.history_canvas.configure(scrollregion=self.history_canvas.bbox("all"))
+
+    def _on_history_canvas_configure(self, event):
+        """Update window width when canvas size changes."""
+        self.history_canvas.itemconfig(self.history_window, width=event.width)
+
+    def _on_history_mousewheel(self, event):
+        """Handle mouse wheel scrolling in history panel."""
+        if event.num == 4 or event.delta > 0:
+            self.history_canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.history_canvas.yview_scroll(1, "units")
+
+    def _add_history_welcome(self):
+        """Add welcome message to history panel."""
+        welcome_frame = ttk.Frame(self.history_entries_frame, padding=10)
+        welcome_frame.pack(fill=X, pady=5)
+
+        ttk.Label(
+            welcome_frame,
+            text="Session started",
+            font=("", 9, "italic"),
+            foreground="gray"
+        ).pack(anchor=W)
+
+        ttk.Label(
+            welcome_frame,
+            text=f"Patient: {self.patient_language} | Doctor: {self.doctor_language}",
+            font=("", 8),
+            foreground="gray"
+        ).pack(anchor=W)
+
+    def _add_history_entry(self, entry: TranslationEntry):
+        """Add a translation entry to the history panel.
+
+        Args:
+            entry: TranslationEntry to display
+        """
+        # Create entry frame
+        entry_frame = ttk.Frame(self.history_entries_frame, padding=5)
+        entry_frame.pack(fill=X, pady=2, padx=2)
+
+        # Speaker color
+        speaker_color = "#0066cc" if entry.speaker == Speaker.DOCTOR else "#cc6600"
+        speaker_label = entry.speaker.value.title()
+
+        # Header row with speaker and time
+        header_frame = ttk.Frame(entry_frame)
+        header_frame.pack(fill=X)
+
+        ttk.Label(
+            header_frame,
+            text=speaker_label,
+            foreground=speaker_color,
+            font=("", 9, "bold")
+        ).pack(side=LEFT)
+
+        time_str = entry.timestamp.strftime("%H:%M:%S")
+        ttk.Label(
+            header_frame,
+            text=time_str,
+            foreground="gray",
+            font=("", 8)
+        ).pack(side=RIGHT)
+
+        # Original text
+        ttk.Label(
+            entry_frame,
+            text=f"[{entry.original_language}] {entry.original_text}",
+            wraplength=250,
+            font=("", 9),
+            justify=LEFT
+        ).pack(fill=X, anchor=W)
+
+        # Translated text
+        display_translation = entry.llm_refined_text or entry.translated_text
+        ttk.Label(
+            entry_frame,
+            text=f"[{entry.target_language}] {display_translation}",
+            wraplength=250,
+            font=("", 9),
+            foreground="gray",
+            justify=LEFT
+        ).pack(fill=X, anchor=W)
+
+        # Separator
+        ttk.Separator(entry_frame, orient=HORIZONTAL).pack(fill=X, pady=(5, 0))
+
+        # Auto-scroll to bottom
+        self.history_canvas.update_idletasks()
+        self.history_canvas.yview_moveto(1.0)
+
+    def _start_new_session(self):
+        """Start a new translation session."""
+        # End any existing session
+        if self.session_manager.current_session:
+            self.session_manager.end_session()
+
+        # Clear history display
+        for widget in self.history_entries_frame.winfo_children():
+            widget.destroy()
+
+        # Start new session
+        self.session_manager.start_session(
+            patient_language=self.patient_language,
+            doctor_language=self.doctor_language
+        )
+
+        # Add welcome message
+        self._add_history_welcome()
+
+        # Clear current text areas
+        self._clear_all()
+
+        self.logger.info("Started new translation session")
+
+    def _export_session(self):
+        """Export the current session to a file."""
+        if not self.session_manager.current_session:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "No Session",
+                "No active translation session to export.",
+                parent=self.dialog
+            )
+            return
+
+        from tkinter import filedialog
+
+        # Get save location
+        filename = filedialog.asksaveasfilename(
+            parent=self.dialog,
+            title="Export Session",
+            defaultextension=".txt",
+            filetypes=[
+                ("Text files", "*.txt"),
+                ("JSON files", "*.json"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if not filename:
+            return
+
+        try:
+            # Determine format from extension
+            if filename.endswith('.json'):
+                content = self.session_manager.export_session(
+                    self.session_manager.current_session.session_id,
+                    format="json"
+                )
+            else:
+                content = self.session_manager.export_session(
+                    self.session_manager.current_session.session_id,
+                    format="txt"
+                )
+
+            if content:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(content)
+
+                from tkinter import messagebox
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Session exported to:\n{filename}",
+                    parent=self.dialog
+                )
+            else:
+                raise ValueError("Failed to generate export content")
+
+        except Exception as e:
+            self.logger.error(f"Export failed: {e}")
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Export Failed",
+                f"Failed to export session:\n{str(e)}",
+                parent=self.dialog
+            )

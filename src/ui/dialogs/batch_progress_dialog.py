@@ -38,7 +38,7 @@ class BatchProgressDialog:
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Batch Processing Progress")
         self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog.geometry(f"{self.dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.minsize(700, 500)
         
