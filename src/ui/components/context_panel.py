@@ -62,14 +62,14 @@ class ContextPanel:
         self.components['context_content_frame'] = content_frame
         
         # Quick templates
-        self.templates_frame = ttk.LabelFrame(content_frame, text="Quick Templates", padding=10)
+        self.templates_frame = ttk.Labelframe(content_frame, text="Quick Templates", padding=10)
         self.templates_frame.pack(fill=tk.X, pady=(0, 10))
         
         # Create initial templates
         self._create_template_buttons()
         
         # Context text area
-        text_frame = ttk.LabelFrame(content_frame, text="Context Information", padding=10)
+        text_frame = ttk.Labelframe(content_frame, text="Context Information", padding=10)
         text_frame.pack(fill=tk.BOTH, expand=True)
         
         # Create text widget with scrollbar

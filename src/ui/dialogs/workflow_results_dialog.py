@@ -116,7 +116,7 @@ class WorkflowResultsDialog:
         self.progress_label.pack(side=tk.RIGHT)
         
         # Patient info summary
-        info_frame = ttk.LabelFrame(parent, text="Patient Information", padding="10")
+        info_frame = ttk.Labelframe(parent, text="Patient Information", padding="10")
         info_frame.pack(fill=tk.X, padx=10, pady=5)
         
         info_text = []
@@ -138,7 +138,7 @@ class WorkflowResultsDialog:
         
         # Workflow metadata
         if self.metadata:
-            meta_frame = ttk.LabelFrame(parent, text="Workflow Details", padding="10")
+            meta_frame = ttk.Labelframe(parent, text="Workflow Details", padding="10")
             meta_frame.pack(fill=tk.X, padx=10, pady=5)
             
             # Duration
@@ -160,7 +160,7 @@ class WorkflowResultsDialog:
                 steps_label.pack(anchor=tk.W)
         
         # Workflow steps checklist
-        checklist_frame = ttk.LabelFrame(parent, text="Workflow Steps", padding="10")
+        checklist_frame = ttk.Labelframe(parent, text="Workflow Steps", padding="10")
         checklist_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Create scrollable frame for steps

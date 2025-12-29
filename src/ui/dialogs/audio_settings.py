@@ -933,14 +933,14 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
         # Context-specific suggestions (with_content vs without_content)
         if context_key != "global":
             # With content section
-            with_frame = ttk.LabelFrame(tab_frame, text="When content exists", padding=10)
+            with_frame = ttk.Labelframe(tab_frame, text="When content exists", padding=10)
             with_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
             with_vars = create_suggestion_manager(with_frame, context_key, "with_content")
             suggestion_vars[f"{context_key}_with_content"] = with_vars
 
             # Without content section
-            without_frame = ttk.LabelFrame(tab_frame, text="When no content exists", padding=10)
+            without_frame = ttk.Labelframe(tab_frame, text="When no content exists", padding=10)
             without_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
             without_vars = create_suggestion_manager(without_frame, context_key, "without_content")

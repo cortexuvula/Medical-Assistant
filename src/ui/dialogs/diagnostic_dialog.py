@@ -70,7 +70,7 @@ class DiagnosticAnalysisDialog:
         title_label.pack(pady=(0, 20))
         
         # Source selection
-        source_frame = ttk.LabelFrame(main_frame, text="Analysis Source", padding=15)
+        source_frame = ttk.Labelframe(main_frame, text="Analysis Source", padding=15)
         source_frame.pack(fill=X, pady=(0, 20))
         
         self.source_var = tk.StringVar(value="transcript" if self.has_transcript else "custom")
@@ -119,7 +119,7 @@ class DiagnosticAnalysisDialog:
         custom_radio.pack(anchor=W, pady=5)
         
         # Custom findings input
-        custom_frame = ttk.LabelFrame(main_frame, text="Custom Clinical Findings", padding=15)
+        custom_frame = ttk.Labelframe(main_frame, text="Custom Clinical Findings", padding=15)
         custom_frame.pack(fill=BOTH, expand=True, pady=(0, 20))
         
         # Instructions

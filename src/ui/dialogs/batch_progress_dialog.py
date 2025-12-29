@@ -76,7 +76,7 @@ class BatchProgressDialog:
         title_label.pack(pady=(0, 20))
         
         # Progress section
-        progress_frame = ttk.LabelFrame(main_frame, text="Overall Progress", padding=15)
+        progress_frame = ttk.Labelframe(main_frame, text="Overall Progress", padding=15)
         progress_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Progress bar
@@ -98,7 +98,7 @@ class BatchProgressDialog:
         self.progress_label.pack()
         
         # Statistics frame
-        stats_frame = ttk.LabelFrame(main_frame, text="Statistics", padding=15)
+        stats_frame = ttk.Labelframe(main_frame, text="Statistics", padding=15)
         stats_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Create grid for statistics
@@ -131,7 +131,7 @@ class BatchProgressDialog:
         self.speed_label.grid(row=1, column=5, sticky=tk.W, pady=(10, 0))
         
         # Details frame with scrollable text
-        details_frame = ttk.LabelFrame(main_frame, text="Processing Details", padding=10)
+        details_frame = ttk.Labelframe(main_frame, text="Processing Details", padding=10)
         details_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
         # Scrollable text area for details

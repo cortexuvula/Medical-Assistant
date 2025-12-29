@@ -95,7 +95,7 @@ class DataExtractionDialog:
         title_label.pack(pady=(0, 20))
         
         # Source selection frame
-        source_frame = ttk.LabelFrame(main_frame, text="Select Source", padding="15")
+        source_frame = ttk.Labelframe(main_frame, text="Select Source", padding="15")
         source_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.source_var = tk.StringVar(value="transcript")
@@ -128,7 +128,7 @@ class DataExtractionDialog:
         self.context_radio.pack(anchor=tk.W, pady=5)
         
         # Extraction type frame
-        type_frame = ttk.LabelFrame(main_frame, text="Data Type to Extract", padding="15")
+        type_frame = ttk.Labelframe(main_frame, text="Data Type to Extract", padding="15")
         type_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.extraction_type_var = tk.StringVar(value="comprehensive")
@@ -151,7 +151,7 @@ class DataExtractionDialog:
             ).pack(anchor=tk.W, pady=5)
         
         # Output format frame
-        format_frame = ttk.LabelFrame(main_frame, text="Output Format", padding="15")
+        format_frame = ttk.Labelframe(main_frame, text="Output Format", padding="15")
         format_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.output_format_var = tk.StringVar(value="structured_text")

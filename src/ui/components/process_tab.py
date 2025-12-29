@@ -34,7 +34,7 @@ class ProcessTab:
         process_frame = ttk.Frame(self.parent)
         
         # Text processing tools
-        tools_frame = ttk.LabelFrame(process_frame, text="Text Processing Tools", padding=15)
+        tools_frame = ttk.Labelframe(process_frame, text="Text Processing Tools", padding=15)
         tools_frame.pack(fill=tk.X, padx=20, pady=20)
         
         # Create tool buttons in a grid
@@ -90,7 +90,7 @@ class ProcessTab:
         tools_frame.columnconfigure(1, weight=1)
         
         # File operations
-        file_frame = ttk.LabelFrame(process_frame, text="File Operations", padding=15)
+        file_frame = ttk.Labelframe(process_frame, text="File Operations", padding=15)
         file_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
         
         file_ops = [

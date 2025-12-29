@@ -56,7 +56,7 @@ class WorkflowDialog:
         title_label.pack(pady=(0, 20))
         
         # Workflow type selection
-        type_frame = ttk.LabelFrame(main_frame, text="Select Workflow Type", padding="15")
+        type_frame = ttk.Labelframe(main_frame, text="Select Workflow Type", padding="15")
         type_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.workflow_type_var = tk.StringVar(value="patient_intake")
@@ -90,7 +90,7 @@ class WorkflowDialog:
             desc_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # Patient/Clinical context
-        context_frame = ttk.LabelFrame(main_frame, text="Clinical Context", padding="15")
+        context_frame = ttk.Labelframe(main_frame, text="Clinical Context", padding="15")
         context_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
         # Patient info fields
@@ -170,7 +170,7 @@ class WorkflowDialog:
         scrollbar.config(command=self.clinical_text.yview)
         
         # Workflow options
-        options_frame = ttk.LabelFrame(main_frame, text="Workflow Options", padding="15")
+        options_frame = ttk.Labelframe(main_frame, text="Workflow Options", padding="15")
         options_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.include_forms_var = tk.BooleanVar(value=True)

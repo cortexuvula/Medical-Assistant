@@ -54,7 +54,7 @@ class FolderDialogManager:
         
         # Add current folder display
         if current_storage and os.path.exists(current_storage):
-            current_frame = ttk.LabelFrame(main_frame, text="Current Storage Folder", padding="10")
+            current_frame = ttk.Labelframe(main_frame, text="Current Storage Folder", padding="10")
             current_frame.pack(fill=tk.X, pady=(0, 10))
             
             current_label = ttk.Label(current_frame, text=current_storage, 
@@ -63,7 +63,7 @@ class FolderDialogManager:
             current_label.pack(anchor="w")
         else:
             # Show warning if no valid folder is set
-            warning_frame = ttk.LabelFrame(main_frame, text="Current Storage Folder", padding="10")
+            warning_frame = ttk.Labelframe(main_frame, text="Current Storage Folder", padding="10")
             warning_frame.pack(fill=tk.X, pady=(0, 10))
             
             warning_label = ttk.Label(warning_frame, 

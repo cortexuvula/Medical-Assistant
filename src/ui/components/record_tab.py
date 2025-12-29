@@ -231,7 +231,7 @@ class RecordTab:
         self._initialize_recording_ui_state()
         
         # Create text area in right column
-        text_frame = ttk.LabelFrame(right_column, text="Advanced Analysis Results", padding=10)
+        text_frame = ttk.Labelframe(right_column, text="Advanced Analysis Results", padding=10)
         text_frame.pack(fill=BOTH, expand=True)
         
         # Create header frame with clear button

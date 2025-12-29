@@ -114,17 +114,17 @@ class RecordingsTab:
         
         return recordings_frame
     
-    def _create_recordings_panel(self, parent_frame: ttk.Frame) -> ttk.LabelFrame:
+    def _create_recordings_panel(self, parent_frame: ttk.Frame) -> ttk.Labelframe:
         """Create a panel showing recent recordings.
         
         Args:
             parent_frame: Parent frame to place the panel in
             
         Returns:
-            ttk.LabelFrame: The recordings panel
+            ttk.Labelframe: The recordings panel
         """
         # Create the labeled frame
-        recordings_frame = ttk.LabelFrame(parent_frame, text="Recent Recordings", padding=5)
+        recordings_frame = ttk.Labelframe(parent_frame, text="Recent Recordings", padding=5)
         
         # Create controls frame at the top
         controls_frame = ttk.Frame(recordings_frame)

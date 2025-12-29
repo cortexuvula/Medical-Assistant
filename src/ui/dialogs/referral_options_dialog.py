@@ -167,7 +167,7 @@ class ReferralOptionsDialog:
         row1_frame.pack(fill=X, pady=(0, 10))
 
         # Source selection (left side)
-        source_frame = ttk.LabelFrame(row1_frame, text="Content Source", padding=10)
+        source_frame = ttk.Labelframe(row1_frame, text="Content Source", padding=10)
         source_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
 
         # Set default source
@@ -198,7 +198,7 @@ class ReferralOptionsDialog:
             radio.pack(anchor=W, pady=2)
 
         # Recipient Type (right side)
-        recipient_type_frame = ttk.LabelFrame(row1_frame, text="Recipient Type", padding=10)
+        recipient_type_frame = ttk.Labelframe(row1_frame, text="Recipient Type", padding=10)
         recipient_type_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(5, 0))
 
         self.recipient_type_var = tk.StringVar(value="specialist")
@@ -224,7 +224,7 @@ class ReferralOptionsDialog:
         row2_frame.pack(fill=X, pady=(0, 10))
 
         # Urgency selection (left side)
-        urgency_frame = ttk.LabelFrame(row2_frame, text="Urgency Level", padding=10)
+        urgency_frame = ttk.Labelframe(row2_frame, text="Urgency Level", padding=10)
         urgency_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
 
         self.urgency_var = tk.StringVar(value="routine")
@@ -245,7 +245,7 @@ class ReferralOptionsDialog:
             ).pack(anchor=W, pady=2)
 
         # Specialty selection (right side)
-        specialty_frame = ttk.LabelFrame(row2_frame, text="Target Specialty", padding=10)
+        specialty_frame = ttk.Labelframe(row2_frame, text="Target Specialty", padding=10)
         specialty_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(5, 0))
 
         ttk.Label(specialty_frame, text="Select specialty:").pack(anchor=W)
@@ -269,7 +269,7 @@ class ReferralOptionsDialog:
             ).pack(anchor=W, pady=(2, 0))
 
         # Row 3: Conditions selection
-        conditions_frame = ttk.LabelFrame(main_frame, text="Conditions to Include", padding=10)
+        conditions_frame = ttk.Labelframe(main_frame, text="Conditions to Include", padding=10)
         conditions_frame.pack(fill=X, pady=(0, 10))
 
         if self.conditions_list:
@@ -305,7 +305,7 @@ class ReferralOptionsDialog:
             ).pack(anchor=W)
 
         # Row 4: Saved Recipients with searchable selection
-        recipients_frame = ttk.LabelFrame(main_frame, text="Recipient Details (Optional)", padding=10)
+        recipients_frame = ttk.Labelframe(main_frame, text="Recipient Details (Optional)", padding=10)
         recipients_frame.pack(fill=X, pady=(0, 10))
 
         # Search row

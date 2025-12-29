@@ -340,7 +340,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         notebook.add(options_tab, text="Options")
 
         # ICD Code Version selector
-        icd_frame = ttk.LabelFrame(options_tab, text="ICD Code Version", padding=15)
+        icd_frame = ttk.Labelframe(options_tab, text="ICD Code Version", padding=15)
         icd_frame.pack(fill=tk.X, padx=20, pady=20)
 
         ttk.Label(icd_frame, text="Select which ICD code version to include in SOAP notes:",
@@ -359,7 +359,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                 row=i+1, column=1, sticky="w", padx=(20, 0), pady=5)
 
         # Temperature guidance note for SOAP
-        temp_note_frame = ttk.LabelFrame(options_tab, text="SOAP Note Quality Tips", padding=15)
+        temp_note_frame = ttk.Labelframe(options_tab, text="SOAP Note Quality Tips", padding=15)
         temp_note_frame.pack(fill=tk.X, padx=20, pady=10)
 
         ttk.Label(temp_note_frame,
@@ -1039,7 +1039,7 @@ Features advanced speech-to-text, AI-powered text processing, and SOAP note gene
     desc_label.pack()
     
     # Info section
-    info_frame = ttk.LabelFrame(main_frame, text="System Information", padding=15)
+    info_frame = ttk.Labelframe(main_frame, text="System Information", padding=15)
     info_frame.pack(fill=tk.X, pady=(0, 20))
     
     # System details
@@ -1057,7 +1057,7 @@ Features advanced speech-to-text, AI-powered text processing, and SOAP note gene
         ttk.Label(row_frame, text=value, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(10, 0))
     
     # Credits section
-    credits_frame = ttk.LabelFrame(main_frame, text="Credits", padding=10)
+    credits_frame = ttk.Labelframe(main_frame, text="Credits", padding=10)
     credits_frame.pack(fill=tk.X, pady=(0, 15))
     
     credits_text = """Developed with ❤️ by:

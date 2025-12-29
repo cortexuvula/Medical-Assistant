@@ -68,7 +68,7 @@ class BatchProcessingDialog:
         title_label.pack(pady=(0, 10))
         
         # Source selection frame
-        source_frame = ttk.LabelFrame(main_frame, text="Source Selection", padding=15)
+        source_frame = ttk.Labelframe(main_frame, text="Source Selection", padding=15)
         source_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Source type radio buttons
@@ -100,7 +100,7 @@ class BatchProcessingDialog:
         self._update_source_display()
         
         # Processing options frame
-        options_frame = ttk.LabelFrame(main_frame, text="Processing Options", padding=15)
+        options_frame = ttk.Labelframe(main_frame, text="Processing Options", padding=15)
         options_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
         
         # Processing type checkboxes
@@ -150,7 +150,7 @@ class BatchProcessingDialog:
         ToolTip(priority_combo, "Set priority for batch processing")
         
         # Advanced options
-        advanced_frame = ttk.LabelFrame(main_frame, text="Advanced Options", padding=10)
+        advanced_frame = ttk.Labelframe(main_frame, text="Advanced Options", padding=10)
         advanced_frame.pack(fill=tk.X, pady=(0, 20))
         
         self.skip_existing = tk.BooleanVar(value=True)

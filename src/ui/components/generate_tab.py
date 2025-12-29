@@ -68,7 +68,7 @@ class GenerateTab:
         canvas.bind("<Leave>", _unbind_mousewheel)
         
         # Document generation options
-        gen_frame = ttk.LabelFrame(scrollable_frame, text="Generate Documents", padding=Spacing.LG)
+        gen_frame = ttk.Labelframe(scrollable_frame, text="Generate Documents", padding=Spacing.LG)
         gen_frame.pack(fill=tk.BOTH, expand=True, padx=Spacing.XL, pady=Spacing.XL)
         
         # Create large buttons for each document type
@@ -172,7 +172,7 @@ class GenerateTab:
         center_container.columnconfigure(1, weight=1)
         
         # Smart suggestions frame (initially hidden)
-        suggestions_frame = ttk.LabelFrame(scrollable_frame, text="Suggestions", padding=Spacing.MD)
+        suggestions_frame = ttk.Labelframe(scrollable_frame, text="Suggestions", padding=Spacing.MD)
         self.components['suggestions_frame'] = suggestions_frame
         
         return generate_frame

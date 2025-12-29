@@ -125,12 +125,12 @@ class TranslationDialog:
         ttk.Separator(main_container, orient=HORIZONTAL).pack(fill=X, pady=(10, 15))
         
         # Create patient section (top)
-        patient_frame = ttk.LabelFrame(main_container, text="Patient", padding=10)
+        patient_frame = ttk.Labelframe(main_container, text="Patient", padding=10)
         patient_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
         self._create_patient_section(patient_frame)
         
         # Create doctor section (bottom)
-        doctor_frame = ttk.LabelFrame(main_container, text="Doctor", padding=10)
+        doctor_frame = ttk.Labelframe(main_container, text="Doctor", padding=10)
         doctor_frame.pack(fill=BOTH, expand=True)
         self._create_doctor_section(doctor_frame)
         
@@ -429,7 +429,7 @@ class TranslationDialog:
             parent: Parent widget
         """
         # Create canned responses frame
-        canned_frame = ttk.LabelFrame(parent, text="Quick Responses", padding=5)
+        canned_frame = ttk.Labelframe(parent, text="Quick Responses", padding=5)
         canned_frame.pack(fill=X, pady=(0, 10))
         self._create_canned_responses(canned_frame)
         

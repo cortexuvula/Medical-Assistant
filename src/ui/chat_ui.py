@@ -84,7 +84,7 @@ class ChatUI:
         title_label.pack(side=tk.LEFT)
         
         # Main chat frame with border
-        self.chat_frame = ttk.LabelFrame(
+        self.chat_frame = ttk.Labelframe(
             container_frame, 
             text="",  # No text since we have a separate title
             padding=(10, 10)

@@ -339,7 +339,7 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         row += 1
         
         # Performance metrics display
-        metrics_frame = ttk.LabelFrame(parent, text="Performance Metrics", padding=10)
+        metrics_frame = ttk.Labelframe(parent, text="Performance Metrics", padding=10)
         metrics_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=10)
         
         metrics_text = tk.Text(metrics_frame, height=6, width=60, state="disabled")

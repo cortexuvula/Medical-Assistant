@@ -113,7 +113,7 @@ class MedicationAnalysisDialog:
         title_label.pack(pady=(0, 10))
         
         # Analysis type selection
-        type_frame = ttk.LabelFrame(main_frame, text="Analysis Type", padding=10)
+        type_frame = ttk.Labelframe(main_frame, text="Analysis Type", padding=10)
         type_frame.pack(fill=X, pady=(0, 10))
         
         self.analysis_type_var = tk.StringVar(value="comprehensive")
@@ -147,7 +147,7 @@ class MedicationAnalysisDialog:
             ).pack(anchor=W, padx=(20, 0))
         
         # Source selection
-        source_frame = ttk.LabelFrame(main_frame, text="Content Source", padding=10)
+        source_frame = ttk.Labelframe(main_frame, text="Content Source", padding=10)
         source_frame.pack(fill=X, pady=(0, 10))
         
         # Set default source based on availability
@@ -222,7 +222,7 @@ class MedicationAnalysisDialog:
         custom_radio.pack(anchor=W, pady=5)
         
         # Custom medications input
-        custom_frame = ttk.LabelFrame(main_frame, text="Custom Input (Optional)", padding=10)
+        custom_frame = ttk.Labelframe(main_frame, text="Custom Input (Optional)", padding=10)
         custom_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
         
         # Instructions

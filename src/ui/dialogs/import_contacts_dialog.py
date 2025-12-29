@@ -71,7 +71,7 @@ class ImportContactsDialog:
         title_label.pack(pady=(0, 15))
 
         # File selection frame
-        file_frame = ttk.LabelFrame(main_container, text="Select CSV File", padding=10)
+        file_frame = ttk.Labelframe(main_container, text="Select CSV File", padding=10)
         file_frame.pack(fill=X, pady=(0, 10))
 
         file_row = ttk.Frame(file_frame)
@@ -99,7 +99,7 @@ class ImportContactsDialog:
         format_label.pack(anchor=W, pady=(10, 0))
 
         # Preview frame
-        preview_frame = ttk.LabelFrame(main_container, text="Preview (first 5 rows)", padding=10)
+        preview_frame = ttk.Labelframe(main_container, text="Preview (first 5 rows)", padding=10)
         preview_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
 
         # Create treeview for preview

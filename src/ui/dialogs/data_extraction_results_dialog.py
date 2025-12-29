@@ -144,7 +144,7 @@ class DataExtractionResultsDialog:
         # Summary statistics
         if 'counts' in self.metadata:
             counts = self.metadata['counts']
-            summary_frame = ttk.LabelFrame(main_frame, text="Summary", padding="10")
+            summary_frame = ttk.Labelframe(main_frame, text="Summary", padding="10")
             summary_frame.pack(fill=tk.X, pady=(0, 15))
             
             summary_text = []

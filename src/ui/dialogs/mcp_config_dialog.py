@@ -181,7 +181,7 @@ class MCPConfigDialog:
         instructions.pack(anchor=tk.W, pady=(10, 5))
         
         # Example
-        example_frame = ttk.LabelFrame(parent, text="Example", padding=10)
+        example_frame = ttk.Labelframe(parent, text="Example", padding=10)
         example_frame.pack(fill=tk.X, pady=(0, 10))
         
         example_text = """{
