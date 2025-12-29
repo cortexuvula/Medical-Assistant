@@ -53,7 +53,7 @@ class RecordTab:
         record_frame = ttk.Frame(self.parent)
         
         # Create a PanedWindow for two columns with proper sizing
-        columns_container = ttk.PanedWindow(record_frame, orient=tk.HORIZONTAL)
+        columns_container = ttk.Panedwindow(record_frame, orient=tk.HORIZONTAL)
         columns_container.pack(expand=True, fill=BOTH, padx=10, pady=5)
         
         # Left column for recording controls (1/3 width)

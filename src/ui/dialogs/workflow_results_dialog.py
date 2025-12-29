@@ -72,7 +72,7 @@ class WorkflowResultsDialog:
     def _create_widgets(self, patient_info: Dict[str, Any]):
         """Create dialog widgets."""
         # Main container with horizontal split
-        paned = ttk.PanedWindow(self.dialog, orient="horizontal")
+        paned = ttk.Panedwindow(self.dialog, orient="horizontal")
         paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Left panel - Workflow steps and checklist

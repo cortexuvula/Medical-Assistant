@@ -265,7 +265,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         }
         
         # Create main container with horizontal split
-        main_container = ttk.PanedWindow(self, orient="horizontal")
+        main_container = ttk.Panedwindow(self, orient="horizontal")
         main_container.pack(fill=tk.BOTH, expand=True)
         
         # Left side - main content area
