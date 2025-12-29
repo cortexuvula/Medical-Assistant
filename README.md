@@ -1,400 +1,295 @@
 # Medical Assistant
 
-Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Perplexity, Grok, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
+Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Anthropic/Claude, Google Gemini, Perplexity, Grok, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
 
 ## Features
 
 ### Core Features
-- **Workflow-Based Interface:** Modern task-oriented design with 4 main workflow tabs (Record, Process, Generate, Recordings) plus 6 text editor tabs
+- **Workflow-Based Interface:** Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Chat) plus 6 text editor tabs
 - **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
-- **RAG Document Search:** New RAG tab enables searching your document database via N8N webhook integration with markdown rendering
+- **RAG Document Search:** RAG tab enables searching your document database via N8N webhook integration with markdown rendering
 - **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
 - **Real-Time Analysis:** Optional periodic analysis during recording generates differential diagnoses every 2 minutes
 - **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
-- **Dedicated Recordings Manager:** New Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
-
+- **Dedicated Recordings Manager:** Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
 
 ### Medical Documentation
 - **Context-Aware SOAP Notes:** Side panel for adding previous medical information that automatically integrates into SOAP note generation
+- **ICD Code Options:** Choose between ICD-9, ICD-10, or both code versions in SOAP notes
 - **Smart Templates:** Pre-built and custom context templates for common scenarios (Follow-up, New Patient, Telehealth, etc.)
 - **Multi-Format Document Generation:** Create SOAP notes, referral letters, and custom medical documents
 - **Smart Context Preservation:** Context information is preserved during SOAP recordings and only cleared on new sessions or manual clearing
+
+### AI Agents
 - **Medication Analysis Agent:** Comprehensive medication analysis including extraction, interaction checking, dosing validation, and prescription generation
-- **Clinical Workflow Coordination:** Step-by-step guidance for patient intake, diagnostic workups, treatment protocols, and follow-up care
-- **Bidirectional Translation Assistant:** Real-time medical translation with STT/TTS support for multilingual patient consultations
+- **Diagnostic Agent:** Analyze symptoms and generate differential diagnoses with ICD codes
+- **Data Extraction Agent:** Extract structured clinical data (vitals, labs, medications, diagnoses) from unstructured text
+- **Clinical Workflow Agent:** Step-by-step guidance for patient intake, diagnostic workups, treatment protocols, and follow-up care
+- **Referral Agent:** Generate professional referral letters with address book integration
+- **Synopsis Agent:** Generate concise SOAP note summaries
+
+### Referral & Address Book
+- **Address Book Management:** Store and manage referral recipients (specialists, facilities, labs)
+- **CSV Contact Import:** Bulk import contacts from CSV files
+- **Searchable Recipients:** Quick search and selection when creating referrals
+- **Smart Specialty Inference:** Automatically suggests appropriate specialists based on clinical content
+
+### Bidirectional Translation Assistant
+- **Real-time Translation:** Automatic translation as user types with debouncing
+- **Speech-to-Text:** Record patient speech with automatic transcription
+- **Text-to-Speech:** Play translated responses for patients
+- **Language Support:** 100+ languages with automatic detection
+- **Canned Responses:** Customizable quick responses for common medical phrases
+- **Export:** Save conversation transcripts
 
 ### AI & Transcription
-- **Multiple STT Providers:** Deepgram, ElevenLabs, Groq, or local Whisper for speech-to-text conversion
-- **Multiple AI Providers:** OpenAI, Perplexity, Grok, or local Ollama models for text processing
+- **Multiple AI Providers:**
+  - OpenAI (GPT-4, GPT-4o, GPT-3.5)
+  - Anthropic (Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
+  - Google Gemini (Gemini Pro, Gemini Flash)
+  - Perplexity (Online models with web search)
+  - Grok (xAI models)
+  - Ollama (Local models - Llama, Mistral, etc.)
+- **Multiple STT Providers:**
+  - Deepgram (Nova-2 Medical model)
+  - ElevenLabs (Scribe v1)
+  - Groq (Whisper Large v3 Turbo - 216x real-time)
+  - Local Whisper (Turbo model)
+- **Text-to-Speech:** ElevenLabs integration with voice selection and Flash v2.5 model for ultra-low latency
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation
-- **Intelligent Text Processing:** Refine, improve clarity, and generate medical documentation with AI assistance
-- **Text-to-Speech (TTS):** ElevenLabs integration with voice selection and multiple language support
 
 ### Technical Features
-- **Database Storage:** Automatic saving and retrieval of recordings, transcripts, and generated documents
+- **Secure API Key Storage:** Encrypted storage with Fernet encryption and machine-specific key derivation
+- **Database Storage:** SQLite with FTS5 full-text search, automatic migrations, and connection pooling
 - **Export Functionality:** Export recordings and documents in various formats
-- **File Logging System:** Track application activity with a built-in logging system that maintains the last 1000 entries
+- **Performance Optimizations:** HTTP/2 support, connection pooling, and latency optimizations
 - **Cross-Platform Support:** Available for Windows, macOS, and Linux with platform-specific optimizations
 - **Modern UI/UX:** Built with Tkinter and ttkbootstrap featuring animations, visual indicators, and responsive design
 
 ## Installation
 
 ### Prerequisites
-- Python 3.10 or higher (required for Deepgram SDK compatibility)
+- Python 3.10 or higher (required for SDK compatibility)
 - FFmpeg (for audio processing)
 
 1. **Clone or Download the Repository**
-   ```
-   git clone <repository-url>
+   ```bash
+   git clone https://github.com/cortexuvula/Medical-Assistant.git
+   cd Medical-Assistant
    ```
 
-2. **Install Dependencies**  
-   Run the following command in the project directory:
-   ```
+2. **Install Dependencies**
+   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Configuration**  
-   - Create a `.env` file in the project root, or use the "API Keys" dialog in the application.
-   - Add your API keys and configuration settings:
-     - **LLM Services:** `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GROK_API_KEY`
+3. **Configuration**
+   - Use the "API Keys" dialog in the application (recommended - keys are encrypted)
+   - Or create a `.env` file in the project root:
+     - **LLM Services:** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY`, `GROK_API_KEY`
      - **Speech-to-Text Services:** `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`
      - **Local Models:** `OLLAMA_API_URL` (defaults to "http://localhost:11434")
-     - **Language Settings:** `RECOGNITION_LANGUAGE` (defaults to "en-US")
      - **RAG Integration:** `N8N_URL` and `N8N_AUTHORIZATION_SECRET` for document search
    - **Minimum Requirements:** You need at least one LLM provider and one STT provider to use the application.
 
-4. **Ollama Setup (Optional)**  
+4. **Ollama Setup (Optional)**
    To use local AI models:
    - Install Ollama from [ollama.ai](https://ollama.ai)
    - Pull models using `ollama pull <model_name>` (e.g., `ollama pull llama3`)
    - The application will automatically detect available models
 
-5. **FFmpeg Installation**  
-   FFmpeg is required for audio processing. Download FFmpeg from [ffmpeg.org](https://ffmpeg.org) and follow the instructions for Windows.  
-   For a step-by-step guide, watch this YouTube tutorial: [How to Install FFmpeg on Windows](https://youtu.be/JR36oH35Fgg?si=MoabHE-pi3NrJo4U).
+5. **FFmpeg Installation**
+   - **Windows:** Download from [ffmpeg.org](https://ffmpeg.org) or use `winget install FFmpeg`
+   - **macOS:** `brew install ffmpeg`
+   - **Linux:** `sudo apt install ffmpeg` (Ubuntu/Debian) or `sudo dnf install ffmpeg` (Fedora)
 
-## Building Standalone Executables
+## Pre-built Releases
 
-The application can be packaged as a standalone executable for Windows, macOS, and Linux using PyInstaller.
+Download pre-built executables from the [Releases](https://github.com/cortexuvula/Medical-Assistant/releases) page:
+
+- **Windows:** `MedicalAssistant.exe`
+- **macOS:** `MedicalAssistant-macOS.zip`
+- **Linux:** `MedicalAssistant`
+
+### Notes
+- The executable includes all Python dependencies
+- FFmpeg must be installed separately (except on macOS where it's bundled)
+- API keys can be configured via the application's settings dialog
+- First run may be slower as antivirus software scans the executable
+
+## Building from Source
 
 ### Prerequisites
-- Ensure all dependencies are installed: `pip install -r requirements.txt`
-- For Windows: Have Python and pip in your PATH
-- For macOS: May need to install Xcode command line tools
-- For Linux: Ensure python3-tk is installed system-wide
+- Python 3.10+ with pip
+- All dependencies installed: `pip install -r requirements.txt`
 
 ### Building
 
 **Windows:**
 ```batch
-build_windows.bat
+scripts\build_windows.bat
 ```
-The executable will be in `dist/MedicalAssistant.exe`
 
 **macOS:**
 ```bash
-./build_macos.sh
-```
-The app bundle will be in `dist/MedicalAssistant.app`
-
-**Linux:**
-```bash
-# First, ensure FFmpeg is installed:
-sudo apt-get install ffmpeg  # For Ubuntu/Debian
-# or
-sudo dnf install ffmpeg      # For Fedora
-# or
-sudo pacman -S ffmpeg        # For Arch
-
-# Then build:
-./build_linux.sh
-```
-The executable will be in `dist/MedicalAssistant`
-
-**Important for Linux:** Run the application using the launcher script:
-```bash
-./dist/linux_launcher.sh
-```
-This ensures system FFmpeg libraries are used correctly.
-
-### Distribution Notes
-- The executable includes all Python dependencies
-- Users still need to have FFmpeg installed separately
-- API keys can be configured via the application's settings dialog
-- First run may be slower as antivirus software scans the executable
-
-### Desktop Shortcuts (Optional)
-Create desktop shortcuts for easy access:
-
-**Windows:**
-```batch
-create_desktop_shortcut.bat
+./scripts/build_macos.sh
 ```
 
 **Linux:**
 ```bash
-./install_desktop_entry.sh
+./scripts/build_linux.sh
 ```
 
-**macOS:**
-Desktop shortcuts are automatically created during the build process.
+Executables are output to the `dist/` directory.
 
 ## Usage
 
-1. **Launching the Application**  
-   Execute the following command:
-   ```
-   python main.py
-   ```
+### Launching the Application
+```bash
+python main.py
+```
 
-2. **Setting Up AI Provider**
-   - Select your preferred AI provider from the dropdown (OpenAI, Perplexity, Grok, or Ollama)
-   - For cloud services, ensure you've entered valid API keys
-   - For Ollama, click "Test Ollama Connection" in settings to verify your setup
+### Main Workflow Tabs
 
-3. **Main Workflow Tabs**
-   - **Record Tab:** Start/stop recordings with visual feedback, timer display, and pause/resume controls
-     - Enable "Advanced Analysis" checkbox for real-time differential diagnosis every 2 minutes during recording
-     - Clear button to manually clear analysis results
-     - Analysis results automatically clear when starting a new recording
-   - **Process Tab:** Refine and improve transcribed text with AI assistance
-   - **Generate Tab:** Create SOAP notes, referrals, letters, and perform medication analysis
-   - **Recordings Tab:** View, search, and manage all saved recordings with document status indicators
+1. **Record Tab**
+   - Start/stop recordings with visual feedback and timer display
+   - Pause/resume capabilities
+   - Enable "Advanced Analysis" for real-time differential diagnosis every 2 minutes
+   - Select microphone and audio settings
 
-4. **Using the Chat Interface**
-   - Located at the bottom of the main content area
-   - Press `Ctrl+/` (or `Cmd+/` on Mac) to quickly focus the chat input
-   - Context-aware suggestions based on your current tab and content
-   - Interact with any text in the editor tabs
-   - Get intelligent suggestions for next steps
+2. **Process Tab**
+   - Refine and improve transcribed text with AI assistance
+   - Undo/redo functionality
+   - File operations (save, export)
 
-5. **Working with Context**
-   - Click the "Context" button to open the collapsible side panel
-   - Add previous medical information that will be automatically included in SOAP notes
-   - Use pre-built templates or create custom ones
-   - Context is preserved during SOAP recordings but cleared on new sessions
-   - Use the "Clear Context" button to manually clear information
+3. **Generate Tab**
+   - **SOAP Note:** Generate structured clinical notes with ICD-9/10 codes
+   - **Referral:** Create professional referral letters with address book integration
+   - **Letter:** Generate formal medical correspondence
+   - **Diagnostic Analysis:** Analyze symptoms and generate differential diagnoses
+   - **Medication Analysis:** Extract medications, check interactions, validate dosing
+   - **Extract Clinical Data:** Extract structured data (vitals, labs, medications)
+   - **Clinical Workflow:** Step-by-step clinical process guidance
 
-6. **Queue System and Quick Continue Mode**
-   - Enable "Quick Continue Mode" to queue recordings while starting new ones
-   - Monitor queue status in the status bar
-   - Perfect for busy clinics with back-to-back patients
-   - Background processing ensures smooth workflow
+4. **Recordings Tab**
+   - View, search, and manage all saved recordings
+   - Document status indicators: ✓ (generated), — (not generated), 🔄 (in progress), ❌ (error)
+   - Batch processing for multiple recordings
+   - Export and delete functionality
 
-7. **Managing Recordings**
-   - Access the Recordings tab to view all saved recordings
-   - Document status indicators show completion state:
-     - ✓ (green) = Document generated
-     - — (gray) = Not generated
-     - 🔄 (blue) = In progress
-     - ❌ (red) = Error
-   - Search and filter recordings by date or content
-   - Load recordings to continue working on them
-   - Export recordings and documents
+5. **Chat Tab**
+   - AI-powered chat interface for interacting with your notes
+   - Context-aware suggestions based on current content
+   - Press `Ctrl+/` (or `Cmd+/` on Mac) to quickly focus chat
 
-8. **Using Medication Analysis**
-   - Click the medication analysis button in the Generate tab
-   - Choose your content source (transcript, SOAP note, or context information)
-   - Select analysis type:
-     - Extract medications from text
-     - Check drug interactions
-     - Validate dosing
-     - Suggest alternatives
-     - Generate prescriptions
-     - Comprehensive analysis
-   - View detailed results with warnings and recommendations
+### Context Panel
+- Click "Context" button to open the collapsible side panel
+- Add previous medical information for SOAP note generation
+- Use pre-built templates or create custom ones
+- Context is preserved during recordings
 
-9. **Using Bidirectional Translation Assistant**
-   - Access via Tools → Translation Assistant menu
-   - Select patient and doctor languages from dropdown menus
-   - Features include:
-     - Real-time speech-to-text for patient input
-     - Automatic translation between languages
-     - Text-to-speech playback for patient responses
-     - Customizable canned responses for common medical phrases
-     - Export conversation transcripts
-   - Supports multiple languages including Chinese (Simplified/Traditional), Spanish, French, and more
+### Address Book
+- Access via Tools → Manage Address Book
+- Add, edit, and delete referral recipients
+- Import contacts from CSV files
+- Quick search when creating referrals
 
-10. **Using the RAG Document Search**
-    - Navigate to the RAG tab (next to Chat tab)
-    - Type your query in the AI Assistant chat box at the bottom
-    - The system will search your document database via N8N webhook
-    - Features include:
-      - Markdown-formatted responses with headers, bullets, and code blocks
-      - Copy button for each response to save important information
-      - Clear RAG History button to start fresh searches
-      - Session persistence for continuous conversations
-    - Configure N8N webhook URL and authorization in your .env file
+### Translation Assistant
+- Access via Tools → Translation Assistant
+- Select patient and doctor languages
+- Record patient speech for transcription
+- Play translated responses via TTS
+- Use canned responses for common phrases
 
-11. **Editing Prompts and Models**  
-   Use the "Prompt Settings" menu to modify and update prompts and models for:
-   - Refine text processing
-   - Improve text clarity
-   - SOAP note generation
-   - Referral letter creation
-   - Advanced Analysis (differential diagnosis during recording)
-   
-   Each provider can have different model selections and temperature settings.
+### RAG Document Search
+- Navigate to the RAG tab
+- Query your document database via N8N webhook
+- Markdown-formatted responses with copy functionality
+- Session persistence for continuous conversations
 
-12. **Viewing Application Logs**
-    - Access application logs through the "View Logs" option in the Help menu
-    - Choose between opening the logs directory or viewing logs directly in the application
-    - Logs automatically rotate to keep only the last 1000 entries, preventing excessive disk usage
+## Configuration
+
+### Settings Menu
+- **API Keys:** Securely store and manage API keys (encrypted)
+- **Prompt Settings:** Customize prompts for each document type
+- **Audio Settings:** Configure microphone, sample rate, and audio processing
+- **Provider Settings:** Configure individual STT/TTS provider options
+- **ICD Code Version:** Choose ICD-9, ICD-10, or both for SOAP notes
+
+### Keyboard Shortcuts
+- `Ctrl+/` / `Cmd+/` - Focus chat input
+- `Ctrl+Z` / `Cmd+Z` - Undo
+- `Ctrl+Y` / `Cmd+Shift+Z` - Redo
+- `Ctrl+S` / `Cmd+S` - Save
+- See [SHORTCUTS.md](SHORTCUTS.md) for complete list
 
 ## Troubleshooting
 
-### **Common Issues**
+### Common Issues
 
-- **API Keys**: If you need to update API keys after startup, use the "API Keys" option in the settings menu.
+- **API Connection Errors:** Verify API keys in Settings → API Keys
+- **Audio Issues:** Check microphone permissions and FFmpeg installation
+- **Ollama Timeouts:** Use smaller model variants or check system resources
+- **Queue Stuck:** Check logs via Help → View Logs
 
-- **Context Panel Issues**: 
-  - Context panel is accessed via the "Context" button, not a tab
-  - Context text is automatically preserved during SOAP recordings
-  - Use "New Session" or the "Clear Context" button to clear previous medical information
-  - Context is included as "Previous medical information" in SOAP note generation
-
-- **Chat Interface Issues**:
-  - If chat suggestions don't appear, ensure you have content in the active tab
-  - Use keyboard shortcut `Ctrl+/` (`Cmd+/` on Mac) to quickly access chat
-  - Chat context is based on the currently active tab
-
-- **Queue System Issues**:
-  - Monitor the status bar for queue progress
-  - If recordings are stuck in queue, check the logs for errors
-  - Disable "Quick Continue Mode" if you prefer sequential processing
-
-- **Ollama Connection Issues**: If you experience timeouts with Ollama models, try:
-  - Using a smaller model variant (e.g., `mistral:small` instead of `mistral:7b`)
-  - Ensuring your computer has adequate resources (CPU/RAM)
-  - Testing your connection with the "Test Ollama Connection" button
-
-- **Audio/Recording Issues**:
-  - Ensure FFmpeg is properly installed and accessible
-  - Check microphone permissions in your operating system
-  - Verify your selected audio device in the application settings
-
-- **Performance Issues**:
-  - Close unused tabs and applications to free up system resources
-  - For large context text, consider breaking it into smaller sections
-  - Use local Ollama models if experiencing cloud API rate limits
-
-### **Getting Help**
-
-- **Application Logs**: Check application logs through Help → View Logs for detailed error information
-- **Database Issues**: Use the migration tools if you encounter database errors after updates
-- **Settings Reset**: Delete the application's settings files to reset to defaults if needed
-
-## Recent Updates
-
-### Version 2.2.0 (Latest)
-- **Bidirectional Translation Assistant**: Real-time medical translation system for multilingual consultations
-  - Support for 100+ languages with automatic detection
-  - Speech-to-text input for patient responses
-  - Text-to-speech output for doctor communications
-  - Customizable canned responses for common medical phrases
-  - Fixed Chinese language parsing for Simplified/Traditional variants
-- **Enhanced TTS Integration**: 
-  - ElevenLabs voice selection with dropdown interface
-  - Support for ElevenLabs Turbo v2.5 model for lower latency
-  - Configurable speech rate and voice settings
-- **Batch Processing**: Process multiple recordings or audio files efficiently
-  - Dual source support (database recordings or computer files)
-  - Real-time progress tracking with ETA
-  - Continue on error capability
-- **Clinical Workflow Agent**: Step-by-step guidance for medical processes
-- **Periodic Analysis**: Real-time differential diagnosis during recordings (every 2 minutes)
-
-### Version 2.1.0
-- **Medication Analysis Agent**: New AI-powered medication agent with comprehensive analysis capabilities
-  - Extract medications from clinical text
-  - Check drug-drug interactions with severity levels
-  - Validate dosing appropriateness
-  - Suggest medication alternatives
-  - Generate prescriptions
-  - Comprehensive medication analysis with safety warnings
-- **Enhanced Generate Tab**: Added medication analysis button alongside existing document generation
-- **Context Support**: Medication analysis can now use context information as input source
-- **Agent Framework**: Extensible agent system for specialized medical AI tasks
-
-### Version 2.0.0
-- **New Recordings Tab**: Dedicated tab for managing all recordings with visual status indicators
-- **AI Chat Interface**: ChatGPT-style interface for intelligent interaction with medical notes
-- **Workflow-Based UI**: Completely redesigned interface organized by tasks (Record, Process, Generate)
-- **Queue System**: Background processing with "Quick Continue Mode" for efficient multi-patient workflows
-- **Context Panel Redesign**: Context moved from tab to collapsible side panel with template support
-- **Visual Enhancements**: Recording animations, timer display, and improved status indicators
-- **Document Status Tracking**: Visual indicators (✓, —, 🔄, ❌) show completion state of each document type
-
-### Version 1.0.27
-- **Context Feature**: Added previous medical information support for SOAP note generation
-- **Smart Context Preservation**: Context preserved during SOAP recordings
-- **Code Optimization**: Removed duplicate code and improved performance
-
-### Key Improvements
-- **Modern UI/UX**: Task-oriented workflow with visual feedback and animations
-- **Enhanced Recording**: Pause/resume capabilities with timer display
-- **Smart Templates**: Pre-built and custom context templates for common scenarios
-- **Export Functionality**: Export recordings and documents in various formats
-- **Multi-Provider STT Support**: Deepgram, ElevenLabs, Groq, and Whisper integration
-- **Performance Optimizations**: Reduced startup time and improved memory usage
+### Getting Help
+- **Application Logs:** Help → View Logs
+- **GitHub Issues:** [Report bugs or request features](https://github.com/cortexuvula/Medical-Assistant/issues)
 
 ## System Requirements
 
-- **Operating System**: Windows 10+, macOS 10.14+, or Linux (Ubuntu 18.04+)
-- **Python**: 3.8+ (for running from source)
-- **Memory**: 4GB RAM minimum, 8GB recommended
-- **Storage**: 500MB free space for application and dependencies
-- **Internet**: Required for cloud AI services (optional for local Ollama models)
-- **Audio**: Microphone for speech-to-text functionality
+- **Operating System:** Windows 10+, macOS 10.14+, or Linux (Ubuntu 20.04+)
+- **Python:** 3.10+ (for running from source)
+- **Memory:** 4GB RAM minimum, 8GB recommended
+- **Storage:** 500MB free space
+- **Internet:** Required for cloud AI services (optional for local Ollama models)
+- **Audio:** Microphone for speech-to-text functionality
 
 ## Documentation
 
-### User Documentation
-- [User Guide](docs/user_guide.md) - Comprehensive user documentation
-- [Keyboard Shortcuts](SHORTCUTS.md) - Quick reference for keyboard shortcuts
-- [Security Features](docs/security_features.md) - Security implementation details
-- [Database Schema](docs/database_improvements.md) - Database structure and improvements
+- [User Guide](docs/user_guide.md)
+- [Keyboard Shortcuts](SHORTCUTS.md)
+- [Security Features](docs/security_features.md)
+- [Testing Guide](docs/testing_guide.md)
+- [CLAUDE.md](CLAUDE.md) - Development guide
 
-### Development Documentation
-- [Testing Guide](docs/testing_guide.md) - Comprehensive testing documentation (80%+ coverage)
-- [Testing Quick Start](docs/testing_quickstart.md) - Quick reference for running tests
-- [UI Testing Setup](docs/ui_testing_setup.md) - Guide for UI testing with PyQt5
-- [CLAUDE.md](CLAUDE.md) - Development guide for AI-assisted development
+## Testing
 
-### Testing Infrastructure
-The project includes a comprehensive test suite with:
-- **352 total tests** (327 unit tests + 25 UI tests)
-- **80.68% code coverage** on core modules
-- Unit tests for all major components
-- Integration tests for the recording pipeline
-- UI tests demonstrating PyQt5 testing patterns
-- Pre-commit hooks for code quality
-- CI/CD pipeline for automated testing
-
-To run tests:
 ```bash
 # Install test dependencies
 pip install -r requirements-dev.txt
 
 # Run all tests
-python -m pytest
+pytest
 
 # Run with coverage
-python run_tests.py --cov
+pytest --cov=src
 
-# Run UI tests
-python tests/run_ui_tests.py
+# Run specific test suites
+pytest tests/unit/
+pytest tests/integration/
 ```
 
-## Contribution
+## Contributing
 
-Contributions to the Medical Dictation Assistant are welcome.  
-- Fork the repository.
-- Create a feature branch.
-- Submit a Pull Request with your enhancements.
-- Ensure all tests pass and maintain 80%+ coverage
+Contributions are welcome!
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests to ensure they pass
+5. Submit a Pull Request
 
 ## License
 
-Distributed under the MIT License.
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
+
+## Acknowledgments
+
+- [OpenAI](https://openai.com) - GPT models
+- [Anthropic](https://anthropic.com) - Claude models
+- [Google](https://ai.google.dev) - Gemini models
+- [Deepgram](https://deepgram.com) - Speech-to-text
+- [ElevenLabs](https://elevenlabs.io) - Text-to-speech and STT
+- [Groq](https://groq.com) - Fast inference
+- [Ollama](https://ollama.ai) - Local model hosting
