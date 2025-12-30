@@ -309,10 +309,10 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
     
     def _get_default_voice_for_language(self, language: str) -> Optional[str]:
         """Get a default voice for the given language.
-        
+
         Args:
             language: Language code
-            
+
         Returns:
             Voice ID or None
         """
@@ -320,15 +320,18 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         if self._default_voice_id:
             self.logger.info(f"Using default voice ID: {self._default_voice_id}")
             return self._default_voice_id
-        
+
         # Get voice from settings
         from settings.settings import SETTINGS
         tts_settings = SETTINGS.get("tts", {})
         voice_id = tts_settings.get("voice", None)
-        
+
         self.logger.info(f"Voice from settings: {voice_id}")
-        
-        if voice_id:
+
+        # Only use voice_id from settings if it looks like a valid ElevenLabs voice ID
+        # ElevenLabs voice IDs are typically 20+ characters (e.g., "21m00Tcm4TlvDq8ikWAM")
+        # Skip generic values like "default" which are not real voice IDs
+        if voice_id and len(voice_id) >= 20:
             return voice_id
         
         # Get all voices
