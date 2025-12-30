@@ -841,12 +841,14 @@ class AudioHandler:
 
         return stop_stream
 
-    def _create_audio_callback(self, phrase_time_limit: int) -> Tuple[Callable, Callable]:
+    def _create_audio_callback(self, phrase_time_limit: int, callback: Callable = None) -> Tuple[Callable, Callable]:
         """Create the audio callback function for sounddevice.
-        
+
         Args:
             phrase_time_limit: Maximum length of audio capture in seconds.
-            
+            callback: The callback function to call with accumulated audio data.
+                     If None, falls back to self.callback_function (legacy behavior).
+
         Returns:
             Tuple of (callback_function, flush_function).
         """
@@ -854,19 +856,23 @@ class AudioHandler:
         accumulated_data = []
         accumulated_frames = 0
         target_frames = int(self.sample_rate * phrase_time_limit)
-        
+
+        # Capture the callback in a closure variable to avoid race conditions
+        # when multiple streams are started/stopped
+        captured_callback = callback if callback is not None else self.callback_function
+
         logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
 
         def flush_accumulated_audio():
             """Flush any accumulated audio data."""
             nonlocal accumulated_data, accumulated_frames
-            if self.callback_function and accumulated_data and accumulated_frames > 0:
+            if captured_callback and accumulated_data and accumulated_frames > 0:
                 try:
                     # Combine all accumulated chunks
                     combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
                     logging.info(f"Flushing accumulated audio: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
                     # Call the callback with the combined data
-                    self.callback_function(combined_data)
+                    captured_callback(combined_data)
                 except Exception as e:
                     logging.error(f"Error flushing accumulated audio: {e}", exc_info=True)
                 finally:
@@ -894,18 +900,18 @@ class AudioHandler:
                 # Add to accumulated buffer
                 accumulated_data.append(audio_data_copy)
                 accumulated_frames += frames
-                
-                
+
+
                 # Only call the callback when we've accumulated enough data
                 if accumulated_frames >= target_frames:
-                    if self.callback_function and accumulated_data:
+                    if captured_callback and accumulated_data:
                         # Combine all accumulated chunks
                         combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
                         # Ensure data is in the right shape (flatten to 1D if needed)
                         if len(combined_data.shape) > 1 and combined_data.shape[1] == 1:
                             combined_data = combined_data.flatten()
-                        self.callback_function(combined_data)
-                        
+                        captured_callback(combined_data)
+
                         # Reset for next accumulation
                         accumulated_data = []
                         accumulated_frames = 0
@@ -914,7 +920,7 @@ class AudioHandler:
                 # Reset accumulation on error
                 accumulated_data = []
                 accumulated_frames = 0
-        
+
         return audio_callback_sd, flush_accumulated_audio
 
     def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None, stream_purpose: str = "default") -> Callable:
@@ -955,9 +961,10 @@ class AudioHandler:
             
             # Setup audio parameters
             self._setup_audio_parameters(device_id)
-            
-            # Create audio callback
-            audio_callback_sd, flush_callback = self._create_audio_callback(phrase_time_limit)
+
+            # Create audio callback with the callback captured in a closure
+            # to avoid race conditions when multiple streams are started/stopped
+            audio_callback_sd, flush_callback = self._create_audio_callback(phrase_time_limit, callback)
 
             # Get device info for logging
             device_info = sd.query_devices(device_id)
