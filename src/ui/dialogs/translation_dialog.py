@@ -851,17 +851,20 @@ class TranslationDialog:
             self.recording_timer_id = None
         self.recording_timer_label.pack_forget()
 
-        # Update UI immediately
-        self.is_recording = False
+        # Update UI immediately but keep is_recording=True until flush completes
         self.record_button.config(text="🎤 Record Patient", bootstyle="danger")
         self.recording_status.config(text="Processing...", foreground="blue")
-        
+
         # Stop recording in thread
         def stop_and_process():
             try:
-                # Stop recording first
+                # Stop recording - this will flush accumulated audio via callback
+                # Note: is_recording stays True during flush so _on_audio_data processes the data
                 self.stop_recording_func()
                 self.stop_recording_func = None
+
+                # NOW set is_recording to False after flush completes
+                self.is_recording = False
                 
                 # Play stop sound
                 if hasattr(self.parent, 'play_recording_sound'):
@@ -1124,16 +1127,19 @@ class TranslationDialog:
         if not self.is_dictating or not self.dictate_stop_func:
             return
 
-        # Update UI
-        self.is_dictating = False
+        # Update UI but keep is_dictating=True until flush completes
         self.dictate_button.config(text="🎙️ Dictate", bootstyle="outline-info")
         self.recording_status.config(text="Transcribing...", foreground="blue")
 
         def stop_and_transcribe():
             try:
-                # Stop recording
+                # Stop recording - this will flush accumulated audio via callback
+                # Note: is_dictating stays True during flush so _on_doctor_audio_data processes the data
                 self.dictate_stop_func()
                 self.dictate_stop_func = None
+
+                # NOW set is_dictating to False after flush completes
+                self.is_dictating = False
 
                 # Process accumulated audio
                 if hasattr(self, 'doctor_audio_segments') and self.doctor_audio_segments:
