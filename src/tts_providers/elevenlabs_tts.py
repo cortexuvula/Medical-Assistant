@@ -281,30 +281,41 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
     
     def _resolve_voice_id(self, voice_identifier: str) -> Optional[str]:
         """Resolve voice name or ID to voice ID.
-        
+
         Args:
             voice_identifier: Voice ID or name
-            
+
         Returns:
             Voice ID or None if not found
         """
-        # If it looks like an ID (long string), return as is
-        # ElevenLabs voice IDs are typically 20+ characters
-        if len(voice_identifier) >= 20:
+        # ElevenLabs voice IDs are alphanumeric strings (20+ chars, no spaces)
+        # e.g., "21m00Tcm4TlvDq8ikWAM" or "EXAVITQu4vr4xnSDxMaL"
+        # Display names contain spaces and special chars like "Roger - Laid-Back (premade)"
+        if len(voice_identifier) >= 20 and voice_identifier.isalnum():
+            self.logger.info(f"Voice identifier looks like a valid ID: {voice_identifier}")
             return voice_identifier
-        
-        # Otherwise, try to find by name
+
+        # Otherwise, try to find by name in available voices
+        self.logger.info(f"Resolving voice by name: {voice_identifier}")
         voices = self.get_available_voices()
-        
+
+        # Try exact match first
         for voice in voices:
             if voice["name"].lower() == voice_identifier.lower():
+                self.logger.info(f"Found exact match: {voice['name']} -> {voice['id']}")
                 return voice["id"]
-        
-        # Try partial match
+
+        # Try partial match (voice name contains identifier or vice versa)
         for voice in voices:
             if voice_identifier.lower() in voice["name"].lower():
+                self.logger.info(f"Found partial match: {voice['name']} -> {voice['id']}")
                 return voice["id"]
-        
+            # Also check if the identifier contains the voice name
+            if voice["name"].lower() in voice_identifier.lower():
+                self.logger.info(f"Found reverse partial match: {voice['name']} -> {voice['id']}")
+                return voice["id"]
+
+        self.logger.warning(f"Could not resolve voice identifier: {voice_identifier}")
         return None
     
     def _get_default_voice_for_language(self, language: str) -> Optional[str]:
@@ -329,9 +340,9 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         self.logger.info(f"Voice from settings: {voice_id}")
 
         # Only use voice_id from settings if it looks like a valid ElevenLabs voice ID
-        # ElevenLabs voice IDs are typically 20+ characters (e.g., "21m00Tcm4TlvDq8ikWAM")
-        # Skip generic values like "default" which are not real voice IDs
-        if voice_id and len(voice_id) >= 20:
+        # ElevenLabs voice IDs are alphanumeric strings (20+ chars, no spaces)
+        # Skip display names like "Roger - Laid-Back (premade)" or generic "default"
+        if voice_id and len(voice_id) >= 20 and voice_id.isalnum():
             return voice_id
         
         # Get all voices
