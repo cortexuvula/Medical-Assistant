@@ -49,6 +49,8 @@ class TranslationDialog:
         self.is_recording = False
         self.stop_recording_func = None
         self.audio_segments = []  # Store audio segments like SOAP recording
+        self.recording_start_time = None  # For recording timer
+        self.recording_timer_id = None  # Timer update ID
         
         # Get language and device settings
         translation_settings = SETTINGS.get("translation", {})
@@ -58,7 +60,41 @@ class TranslationDialog:
         self.output_device = translation_settings.get("output_device", "")
         
         self.logger = logging.getLogger(__name__)
-    
+
+        # Theme-aware colors
+        self._init_theme_colors()
+
+    def _init_theme_colors(self):
+        """Initialize colors based on current theme."""
+        # Detect if dark mode by checking current theme
+        try:
+            style = ttk.Style()
+            theme = style.theme_use()
+            is_dark = 'dark' in theme.lower() or theme in ['darkly', 'cyborg', 'vapor', 'solar']
+        except Exception:
+            is_dark = False
+
+        if is_dark:
+            # Dark mode colors
+            self.colors = {
+                'patient_original_bg': '#2b3e50',  # Dark blue
+                'patient_translated_bg': '#1e3a5f',  # Darker blue
+                'doctor_input_bg': '#2e4a3f',  # Dark green
+                'doctor_translated_bg': '#3d2e4a',  # Dark purple
+                'text_fg': '#e0e0e0',  # Light text
+                'highlight_fg': '#a0d0ff',  # Light blue highlight
+            }
+        else:
+            # Light mode colors
+            self.colors = {
+                'patient_original_bg': '#ffffff',  # White
+                'patient_translated_bg': '#f0f8ff',  # Light blue
+                'doctor_input_bg': '#f0fff0',  # Light green
+                'doctor_translated_bg': '#fff0f5',  # Light pink
+                'text_fg': '#000000',  # Black text
+                'highlight_fg': '#0066cc',  # Blue highlight
+            }
+
     def _hide_all_tooltips(self):
         """Hide all active tooltips in the application."""
         try:
@@ -178,6 +214,9 @@ class TranslationDialog:
         self.dialog.bind('<Control-p>', lambda e: self._play_doctor_response())
         self.dialog.bind('<Control-P>', lambda e: self._play_doctor_response())
 
+        # Send response without TTS (Ctrl+Enter)
+        self.dialog.bind('<Control-Return>', lambda e: self._send_doctor_response())
+
         # Export session (Ctrl+E)
         self.dialog.bind('<Control-e>', lambda e: self._export_session())
         self.dialog.bind('<Control-E>', lambda e: self._export_session())
@@ -222,8 +261,16 @@ class TranslationDialog:
 
         self.patient_combo.bind("<<ComboboxSelected>>", self._on_patient_language_change)
 
-        # Arrow indicator
-        ttk.Label(lang_frame, text="⟷", font=("", 16)).pack(side=LEFT, padx=20)
+        # Language swap button
+        swap_btn = ttk.Button(
+            lang_frame,
+            text="⇄",
+            command=self._swap_languages,
+            bootstyle="outline-secondary",
+            width=3
+        )
+        swap_btn.pack(side=LEFT, padx=10)
+        ToolTip(swap_btn, "Swap patient and doctor languages")
 
         # Doctor language selection
         ttk.Label(lang_frame, text="Doctor Language:", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 5))
@@ -246,7 +293,7 @@ class TranslationDialog:
             self.doctor_combo.set(self.doctor_language)
         
         self.doctor_combo.bind("<<ComboboxSelected>>", self._on_doctor_language_change)
-        
+
         # Auto-detect checkbox
         self.auto_detect_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
@@ -254,6 +301,20 @@ class TranslationDialog:
             text="Auto-detect patient language",
             variable=self.auto_detect_var
         ).pack(side=LEFT, padx=(30, 0))
+
+        # LLM refinement toggle
+        translation_settings = SETTINGS.get("translation", {})
+        self.llm_refinement_var = tk.BooleanVar(
+            value=translation_settings.get("llm_refinement_enabled", False)
+        )
+        llm_cb = ttk.Checkbutton(
+            lang_frame,
+            text="Medical term refinement",
+            variable=self.llm_refinement_var,
+            command=self._on_llm_refinement_toggle
+        )
+        llm_cb.pack(side=LEFT, padx=(20, 0))
+        ToolTip(llm_cb, "Use AI to refine medical terminology in translations")
     
     def _create_patient_section(self, parent):
         """Create patient input/output section.
@@ -302,9 +363,27 @@ class TranslationDialog:
             width=20
         )
         self.record_button.pack(side=LEFT, padx=(0, 10))
-        
+
+        # Recording timer display
+        self.recording_timer_label = ttk.Label(
+            control_frame,
+            text="00:00",
+            font=("", 11, "bold"),
+            foreground="red"
+        )
+        # Hidden initially
+
         self.recording_status = ttk.Label(control_frame, text="")
         self.recording_status.pack(side=LEFT)
+
+        # Translation indicator (initially hidden)
+        self.patient_translation_indicator = ttk.Label(
+            control_frame,
+            text="Translating...",
+            foreground="blue",
+            font=("", 9, "italic")
+        )
+        # Will be shown/hidden as needed
         
         # Create text areas side by side
         text_container = ttk.Frame(parent)
@@ -324,7 +403,10 @@ class TranslationDialog:
             wrap=WORD,
             height=10,
             yscrollcommand=scroll1.set,
-            font=("Consolas", 11)
+            font=("Consolas", 11),
+            background=self.colors['patient_original_bg'],
+            foreground=self.colors['text_fg'],
+            insertbackground=self.colors['text_fg']
         )
         self.patient_original_text.pack(fill=BOTH, expand=True)
         scroll1.config(command=self.patient_original_text.yview)
@@ -344,7 +426,9 @@ class TranslationDialog:
             height=10,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
-            background="#f0f8ff"  # Light blue background
+            background=self.colors['patient_translated_bg'],
+            foreground=self.colors['text_fg'],
+            insertbackground=self.colors['text_fg']
         )
         self.patient_translated_text.pack(fill=BOTH, expand=True)
         scroll2.config(command=self.patient_translated_text.yview)
@@ -354,18 +438,33 @@ class TranslationDialog:
     
     def _create_canned_responses(self, parent):
         """Create canned response buttons for common medical phrases.
-        
+
         Args:
             parent: Parent widget
         """
         # Container for responses and manage button
         container = ttk.Frame(parent)
         container.pack(fill=BOTH, expand=True)
-        
-        # Header with manage button
+
+        # Header with category filter and manage button
         header_frame = ttk.Frame(container)
         header_frame.pack(fill=X, pady=(0, 5))
-        
+
+        # Category filter
+        ttk.Label(header_frame, text="Category:").pack(side=LEFT, padx=(0, 5))
+
+        self.canned_category_var = tk.StringVar(value="All")
+        categories = ["All", "greeting", "symptom", "history", "instruction", "clarify", "general"]
+        self.canned_category_combo = ttk.Combobox(
+            header_frame,
+            textvariable=self.canned_category_var,
+            values=categories,
+            state="readonly",
+            width=12
+        )
+        self.canned_category_combo.pack(side=LEFT, padx=(0, 10))
+        self.canned_category_combo.bind("<<ComboboxSelected>>", lambda e: self._populate_canned_responses())
+
         # Manage button on the right
         manage_btn = ttk.Button(
             header_frame,
@@ -376,14 +475,14 @@ class TranslationDialog:
         )
         manage_btn.pack(side=RIGHT)
         ToolTip(manage_btn, "Add, edit, or delete quick responses")
-        
+
         # Responses frame
         responses_frame = ttk.Frame(container)
         responses_frame.pack(fill=BOTH, expand=True)
-        
+
         # Store reference for refresh
         self.canned_responses_frame = responses_frame
-        
+
         # Populate responses
         self._populate_canned_responses()
     
@@ -392,11 +491,11 @@ class TranslationDialog:
         # Clear existing buttons
         for widget in self.canned_responses_frame.winfo_children():
             widget.destroy()
-        
+
         # Get responses from settings
         canned_settings = SETTINGS.get("translation_canned_responses", {})
         responses = canned_settings.get("responses", {})
-        
+
         if not responses:
             # No responses configured
             ttk.Label(
@@ -405,13 +504,30 @@ class TranslationDialog:
                 foreground="gray"
             ).pack(pady=20)
             return
-        
+
+        # Get selected category filter
+        selected_category = self.canned_category_var.get() if hasattr(self, 'canned_category_var') else "All"
+
+        # Filter responses by category
+        filtered_responses = {}
+        for response_text, category in responses.items():
+            if selected_category == "All" or category == selected_category:
+                filtered_responses[response_text] = category
+
+        if not filtered_responses:
+            ttk.Label(
+                self.canned_responses_frame,
+                text=f"No responses in '{selected_category}' category.",
+                foreground="gray"
+            ).pack(pady=20)
+            return
+
         # Create buttons in a grid layout
         row = 0
         col = 0
         max_cols = 3
-        
-        for response_text, category in sorted(responses.items()):
+
+        for response_text, category in sorted(filtered_responses.items()):
             btn = ttk.Button(
                 self.canned_responses_frame,
                 text=response_text[:25] + "..." if len(response_text) > 25 else response_text,
@@ -485,8 +601,26 @@ class TranslationDialog:
         # Doctor response (English)
         left_frame = ttk.Frame(text_container)
         left_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 5))
-        
-        ttk.Label(left_frame, text="Doctor Response (Type here):", font=("", 9)).pack(anchor=W)
+
+        # Header with label and dictate button
+        header_frame = ttk.Frame(left_frame)
+        header_frame.pack(fill=X)
+
+        ttk.Label(header_frame, text="Doctor Response (Type or dictate):", font=("", 9)).pack(side=LEFT)
+
+        # Dictate button for voice input
+        self.dictate_button = ttk.Button(
+            header_frame,
+            text="🎙️ Dictate",
+            command=self._toggle_doctor_dictation,
+            bootstyle="outline-info",
+            width=10
+        )
+        self.dictate_button.pack(side=RIGHT, padx=(5, 0))
+        ToolTip(self.dictate_button, "Click to dictate your response")
+
+        self.is_dictating = False
+        self.dictate_stop_func = None
         
         scroll1 = ttk.Scrollbar(left_frame)
         scroll1.pack(side=RIGHT, fill=Y)
@@ -497,7 +631,9 @@ class TranslationDialog:
             height=8,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
-            background="#f0fff0"  # Light green background
+            background=self.colors['doctor_input_bg'],
+            foreground=self.colors['text_fg'],
+            insertbackground=self.colors['text_fg']
         )
         self.doctor_input_text.pack(fill=BOTH, expand=False)
         scroll1.config(command=self.doctor_input_text.yview)
@@ -520,7 +656,9 @@ class TranslationDialog:
             height=8,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
-            background="#fff0f5"  # Light pink background
+            background=self.colors['doctor_translated_bg'],
+            foreground=self.colors['text_fg'],
+            insertbackground=self.colors['text_fg']
         )
         self.doctor_translated_text.pack(fill=BOTH, expand=False)
         scroll2.config(command=self.doctor_translated_text.yview)
@@ -532,6 +670,17 @@ class TranslationDialog:
         tts_frame = ttk.Frame(parent)
         tts_frame.pack(fill=X)
         
+        # Send button (adds to history without TTS)
+        send_btn = ttk.Button(
+            tts_frame,
+            text="📤 Send",
+            command=self._send_doctor_response,
+            bootstyle="primary",
+            width=10
+        )
+        send_btn.pack(side=LEFT, padx=(0, 5))
+        ToolTip(send_btn, "Add response to history without playing audio (Ctrl+Enter)")
+
         self.play_button = ttk.Button(
             tts_frame,
             text="🔊 Play for Patient",
@@ -540,7 +689,7 @@ class TranslationDialog:
             width=20
         )
         self.play_button.pack(side=LEFT, padx=(0, 10))
-        
+
         ttk.Button(
             tts_frame,
             text="🛑 Stop",
@@ -556,6 +705,15 @@ class TranslationDialog:
             text="Real-time translation",
             variable=self.realtime_var
         ).pack(side=LEFT, padx=(20, 0))
+
+        # Doctor translation indicator (initially hidden)
+        self.doctor_translation_indicator = ttk.Label(
+            tts_frame,
+            text="Translating...",
+            foreground="blue",
+            font=("", 9, "italic")
+        )
+        # Will be shown/hidden as needed
         
         # Output device selection
         output_frame = ttk.Frame(parent)
@@ -643,12 +801,18 @@ class TranslationDialog:
         """Start recording patient speech."""
         if self.is_recording:
             return
-        
+
         try:
             # Update UI
             self.is_recording = True
             self.record_button.config(text="⏹ Stop Recording", bootstyle="secondary")
             self.recording_status.config(text="Recording...", foreground="red")
+
+            # Start recording timer
+            self.recording_start_time = datetime.now()
+            self.recording_timer_label.config(text="00:00")
+            self.recording_timer_label.pack(side=LEFT, padx=(10, 0))
+            self._update_recording_timer()
             
             # Get selected microphone from dropdown
             mic_name = self.selected_microphone.get()
@@ -680,7 +844,13 @@ class TranslationDialog:
         """Stop recording and process the audio."""
         if not self.is_recording or not self.stop_recording_func:
             return
-        
+
+        # Stop recording timer
+        if self.recording_timer_id:
+            self.dialog.after_cancel(self.recording_timer_id)
+            self.recording_timer_id = None
+        self.recording_timer_label.pack_forget()
+
         # Update UI immediately
         self.is_recording = False
         self.record_button.config(text="🎤 Record Patient", bootstyle="danger")
@@ -763,7 +933,23 @@ class TranslationDialog:
                 
         except Exception as e:
             self.logger.error(f"Error processing audio data: {e}")
-    
+
+    def _update_recording_timer(self):
+        """Update the recording timer display."""
+        if not self.is_recording or not self.recording_start_time:
+            return
+
+        # Calculate elapsed time
+        elapsed = datetime.now() - self.recording_start_time
+        minutes = int(elapsed.total_seconds() // 60)
+        seconds = int(elapsed.total_seconds() % 60)
+
+        # Update timer label
+        self.recording_timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
+
+        # Schedule next update
+        self.recording_timer_id = self.dialog.after(1000, self._update_recording_timer)
+
     def _process_patient_speech(self, transcript: str):
         """Process transcribed patient speech.
         
@@ -788,18 +974,23 @@ class TranslationDialog:
         
         # Translate to doctor's language
         self.recording_status.config(text="Translating...", foreground="blue")
-        
+        self.patient_translation_indicator.pack(side=LEFT, padx=(10, 0))
+
         def translate():
             try:
                 self.logger.debug(f"Translating from {self.patient_language} to {self.doctor_language}")
+                # Use LLM refinement if enabled
+                refine_medical = self.llm_refinement_var.get() if hasattr(self, 'llm_refinement_var') else None
                 translated = self.translation_manager.translate(
                     transcript,
                     source_lang=self.patient_language,
-                    target_lang=self.doctor_language
+                    target_lang=self.doctor_language,
+                    refine_medical=refine_medical
                 )
 
                 # Add entry to session history
                 def update_ui():
+                    self.patient_translation_indicator.pack_forget()
                     self.patient_translated_text.delete("1.0", tk.END)
                     self.patient_translated_text.insert("1.0", translated)
                     self.recording_status.config(text="Ready", foreground="green")
@@ -821,9 +1012,10 @@ class TranslationDialog:
 
             except Exception as e:
                 self.logger.error(f"Translation failed: {e}")
-                self.dialog.after(0, lambda: self.recording_status.config(
-                    text=f"Translation error: {str(e)}", foreground="red"
-                ))
+                self.dialog.after(0, lambda: [
+                    self.patient_translation_indicator.pack_forget(),
+                    self.recording_status.config(text=f"Translation error: {str(e)}", foreground="red")
+                ])
 
         # Start translation thread
         threading.Thread(target=translate, daemon=True).start()
@@ -849,31 +1041,189 @@ class TranslationDialog:
     
     def _translate_doctor_text(self, text: str):
         """Translate doctor's text to patient's language.
-        
+
         Args:
             text: Text to translate
         """
+        # Show translation indicator
+        self.doctor_translation_indicator.pack(side=LEFT, padx=(10, 0))
+
         def translate():
             try:
                 self.logger.debug(f"Translating from {self.doctor_language} to {self.patient_language}")
+                # Use LLM refinement if enabled
+                refine_medical = self.llm_refinement_var.get() if hasattr(self, 'llm_refinement_var') else None
                 translated = self.translation_manager.translate(
                     text,
                     source_lang=self.doctor_language,
-                    target_lang=self.patient_language
+                    target_lang=self.patient_language,
+                    refine_medical=refine_medical
                 )
-                
+
                 # Update UI on main thread
-                self.dialog.after(0, lambda: [
-                    self.doctor_translated_text.delete("1.0", tk.END),
+                def update_ui():
+                    self.doctor_translation_indicator.pack_forget()
+                    self.doctor_translated_text.delete("1.0", tk.END)
                     self.doctor_translated_text.insert("1.0", translated)
-                ])
-                
+
+                self.dialog.after(0, update_ui)
+
             except Exception as e:
                 self.logger.error(f"Translation failed: {e}")
-        
+                self.dialog.after(0, lambda: self.doctor_translation_indicator.pack_forget())
+
         # Start translation thread
         threading.Thread(target=translate, daemon=True).start()
-    
+
+    def _toggle_doctor_dictation(self):
+        """Toggle doctor voice dictation."""
+        if self.is_dictating:
+            self._stop_doctor_dictation()
+        else:
+            self._start_doctor_dictation()
+
+    def _start_doctor_dictation(self):
+        """Start recording doctor's voice for dictation."""
+        if self.is_dictating:
+            return
+
+        # Don't allow dictation while patient is recording
+        if self.is_recording:
+            self.recording_status.config(text="Stop patient recording first", foreground="orange")
+            return
+
+        try:
+            self.is_dictating = True
+            self.dictate_button.config(text="⏹ Stop", bootstyle="secondary")
+            self.recording_status.config(text="Dictating...", foreground="blue")
+
+            # Clear audio segments for doctor dictation
+            self.doctor_audio_segments = []
+
+            # Get microphone
+            mic_name = self.selected_microphone.get()
+            if not mic_name:
+                raise ValueError("No microphone selected")
+
+            # Start recording
+            self.dictate_stop_func = self.audio_handler.listen_in_background(
+                mic_name,
+                self._on_doctor_audio_data,
+                phrase_time_limit=5,
+                stream_purpose="doctor_dictation"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to start dictation: {e}")
+            self.is_dictating = False
+            self.dictate_button.config(text="🎙️ Dictate", bootstyle="outline-info")
+            self.recording_status.config(text=f"Dictation error: {str(e)}", foreground="red")
+
+    def _stop_doctor_dictation(self):
+        """Stop doctor dictation and transcribe."""
+        if not self.is_dictating or not self.dictate_stop_func:
+            return
+
+        # Update UI
+        self.is_dictating = False
+        self.dictate_button.config(text="🎙️ Dictate", bootstyle="outline-info")
+        self.recording_status.config(text="Transcribing...", foreground="blue")
+
+        def stop_and_transcribe():
+            try:
+                # Stop recording
+                self.dictate_stop_func()
+                self.dictate_stop_func = None
+
+                # Process accumulated audio
+                if hasattr(self, 'doctor_audio_segments') and self.doctor_audio_segments:
+                    combined = self.audio_handler.combine_audio_segments(self.doctor_audio_segments)
+
+                    if combined:
+                        transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+
+                        if transcript:
+                            def update_ui():
+                                # Append to existing text
+                                current = self.doctor_input_text.get("1.0", tk.END).strip()
+                                if current:
+                                    self.doctor_input_text.insert(tk.END, " " + transcript)
+                                else:
+                                    self.doctor_input_text.insert("1.0", transcript)
+                                self.recording_status.config(text="Dictation complete", foreground="green")
+                                # Trigger translation
+                                self._on_doctor_text_change()
+
+                            self.dialog.after(0, update_ui)
+                        else:
+                            self.dialog.after(0, lambda: self.recording_status.config(
+                                text="No speech detected", foreground="orange"
+                            ))
+                    else:
+                        self.dialog.after(0, lambda: self.recording_status.config(
+                            text="No audio captured", foreground="orange"
+                        ))
+                else:
+                    self.dialog.after(0, lambda: self.recording_status.config(
+                        text="No audio captured", foreground="orange"
+                    ))
+
+            except Exception as e:
+                self.logger.error(f"Dictation transcription failed: {e}")
+                self.dialog.after(0, lambda: self.recording_status.config(
+                    text=f"Error: {str(e)}", foreground="red"
+                ))
+
+        threading.Thread(target=stop_and_transcribe, daemon=True).start()
+
+    def _on_doctor_audio_data(self, audio_data):
+        """Handle incoming audio data during doctor dictation."""
+        if not self.is_dictating:
+            return
+
+        try:
+            segment, _ = self.audio_handler.process_audio_data(audio_data)
+            if segment:
+                if not hasattr(self, 'doctor_audio_segments'):
+                    self.doctor_audio_segments = []
+                self.doctor_audio_segments.append(segment)
+
+                total_duration = sum(seg.duration_seconds for seg in self.doctor_audio_segments)
+                self.dialog.after(0, lambda: self.recording_status.config(
+                    text=f"Dictating... {total_duration:.1f}s", foreground="blue"
+                ))
+        except Exception as e:
+            self.logger.error(f"Error processing doctor audio: {e}")
+
+    def _send_doctor_response(self):
+        """Send doctor response to history without TTS playback."""
+        # Get texts
+        original_text = self.doctor_input_text.get("1.0", tk.END).strip()
+        translated_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+
+        if not translated_text:
+            self.recording_status.config(text="No translation to send", foreground="orange")
+            return
+
+        # Add doctor entry to history
+        try:
+            entry = self.session_manager.add_doctor_entry(
+                original_text=original_text,
+                original_language=self.doctor_language,
+                translated_text=translated_text,
+                target_language=self.patient_language
+            )
+            self._add_history_entry(entry)
+
+            # Clear the doctor input for next response
+            self.doctor_input_text.delete("1.0", tk.END)
+            self.doctor_translated_text.delete("1.0", tk.END)
+
+            self.recording_status.config(text="Response sent", foreground="green")
+        except Exception as e:
+            self.logger.error(f"Failed to add doctor entry to history: {e}")
+            self.recording_status.config(text=f"Error: {str(e)}", foreground="red")
+
     def _play_doctor_response(self):
         """Play the translated doctor response using TTS."""
         # Get texts
@@ -902,7 +1252,7 @@ class TranslationDialog:
             try:
                 # Synthesize and play with selected output device
                 self.tts_manager.synthesize_and_play(
-                    text,
+                    translated_text,
                     language=self.patient_language,
                     blocking=True,  # Wait for completion
                     output_device=self.selected_output.get()  # Pass selected output device
@@ -1046,12 +1396,40 @@ class TranslationDialog:
             self.doctor_language = selected
         
         self.logger.debug(f"Doctor language changed to: {self.doctor_language} (from: {selected})")
-    
+
+    def _swap_languages(self):
+        """Swap patient and doctor languages."""
+        # Store current values
+        current_patient = self.patient_lang_var.get()
+        current_doctor = self.doctor_lang_var.get()
+        temp_patient_code = self.patient_language
+        temp_doctor_code = self.doctor_language
+
+        # Swap display values
+        self.patient_combo.set(current_doctor)
+        self.doctor_combo.set(current_patient)
+
+        # Swap language codes
+        self.patient_language = temp_doctor_code
+        self.doctor_language = temp_patient_code
+
+        self.logger.debug(f"Languages swapped: patient={self.patient_language}, doctor={self.doctor_language}")
+
+    def _on_llm_refinement_toggle(self):
+        """Handle LLM refinement toggle change."""
+        enabled = self.llm_refinement_var.get()
+        SETTINGS.setdefault("translation", {})["llm_refinement_enabled"] = enabled
+        self.logger.info(f"LLM refinement {'enabled' if enabled else 'disabled'}")
+
     def _on_close(self):
         """Handle dialog close."""
         # Stop any ongoing recording
         if self.is_recording:
             self._stop_recording()
+
+        # Stop any dictation
+        if hasattr(self, 'is_dictating') and self.is_dictating:
+            self._stop_doctor_dictation()
 
         # Stop any TTS playback
         self._stop_playback()
@@ -1089,7 +1467,7 @@ class TranslationDialog:
 
         # Header with controls
         header_frame = ttk.Frame(history_frame)
-        header_frame.pack(fill=X, pady=(0, 10))
+        header_frame.pack(fill=X, pady=(0, 5))
 
         ttk.Button(
             header_frame,
@@ -1106,6 +1484,15 @@ class TranslationDialog:
             bootstyle="outline-info",
             width=10
         ).pack(side=LEFT)
+
+        # Session statistics label
+        self.session_stats_label = ttk.Label(
+            history_frame,
+            text="Entries: 0 | Patient: 0 | Doctor: 0",
+            font=("", 8),
+            foreground="gray"
+        )
+        self.session_stats_label.pack(fill=X, pady=(0, 5))
 
         # Create canvas for scrollable history
         canvas_frame = ttk.Frame(history_frame)
@@ -1234,12 +1621,132 @@ class TranslationDialog:
             justify=LEFT
         ).pack(fill=X, anchor=W)
 
+        # Action buttons row
+        action_frame = ttk.Frame(entry_frame)
+        action_frame.pack(fill=X, pady=(3, 0))
+
+        # Copy button
+        copy_btn = ttk.Button(
+            action_frame,
+            text="📋",
+            command=lambda e=entry: self._copy_history_entry(e),
+            bootstyle="outline-secondary",
+            width=3
+        )
+        copy_btn.pack(side=LEFT, padx=(0, 3))
+        ToolTip(copy_btn, "Copy to clipboard")
+
+        # Replay button (for doctor entries - plays TTS, for patient - shows in patient area)
+        if entry.speaker == Speaker.DOCTOR:
+            replay_btn = ttk.Button(
+                action_frame,
+                text="🔊",
+                command=lambda e=entry: self._replay_doctor_entry(e),
+                bootstyle="outline-success",
+                width=3
+            )
+            replay_btn.pack(side=LEFT, padx=(0, 3))
+            ToolTip(replay_btn, "Play translation again")
+        else:
+            # For patient entries, allow loading back to input
+            load_btn = ttk.Button(
+                action_frame,
+                text="↗",
+                command=lambda e=entry: self._load_patient_entry(e),
+                bootstyle="outline-info",
+                width=3
+            )
+            load_btn.pack(side=LEFT, padx=(0, 3))
+            ToolTip(load_btn, "Load to current patient area")
+
         # Separator
         ttk.Separator(entry_frame, orient=HORIZONTAL).pack(fill=X, pady=(5, 0))
 
         # Auto-scroll to bottom
         self.history_canvas.update_idletasks()
         self.history_canvas.yview_moveto(1.0)
+
+        # Update statistics
+        self._update_session_stats()
+
+    def _copy_history_entry(self, entry: TranslationEntry):
+        """Copy a history entry to clipboard.
+
+        Args:
+            entry: TranslationEntry to copy
+        """
+        try:
+            display_translation = entry.llm_refined_text or entry.translated_text
+            text = f"[{entry.original_language}] {entry.original_text}\n[{entry.target_language}] {display_translation}"
+            self.dialog.clipboard_clear()
+            self.dialog.clipboard_append(text)
+            self.recording_status.config(text="Copied to clipboard", foreground="green")
+        except Exception as e:
+            self.logger.error(f"Copy failed: {e}")
+
+    def _replay_doctor_entry(self, entry: TranslationEntry):
+        """Replay a doctor entry via TTS.
+
+        Args:
+            entry: TranslationEntry to replay
+        """
+        display_translation = entry.llm_refined_text or entry.translated_text
+        if not display_translation:
+            return
+
+        # Disable play button during playback
+        self.play_button.config(state=DISABLED, text="Playing...")
+
+        def play_audio():
+            try:
+                self.tts_manager.synthesize_and_play(
+                    display_translation,
+                    language=entry.target_language,
+                    blocking=True,
+                    output_device=self.selected_output.get()
+                )
+                self.dialog.after(0, lambda: self.play_button.config(
+                    state=NORMAL, text="🔊 Play for Patient"
+                ))
+            except Exception as e:
+                self.logger.error(f"Replay failed: {e}")
+                self.dialog.after(0, lambda: [
+                    self.play_button.config(state=NORMAL, text="🔊 Play for Patient"),
+                    self.recording_status.config(text=f"Replay error: {str(e)}", foreground="red")
+                ])
+
+        threading.Thread(target=play_audio, daemon=True).start()
+
+    def _load_patient_entry(self, entry: TranslationEntry):
+        """Load a patient entry back to the patient text areas.
+
+        Args:
+            entry: TranslationEntry to load
+        """
+        # Load to patient text areas
+        self.patient_original_text.delete("1.0", tk.END)
+        self.patient_original_text.insert("1.0", entry.original_text)
+
+        display_translation = entry.llm_refined_text or entry.translated_text
+        self.patient_translated_text.delete("1.0", tk.END)
+        self.patient_translated_text.insert("1.0", display_translation)
+
+        self.recording_status.config(text="Entry loaded", foreground="green")
+
+    def _update_session_stats(self):
+        """Update the session statistics display."""
+        if not self.session_manager.current_session:
+            self.session_stats_label.config(text="No active session")
+            return
+
+        session = self.session_manager.current_session
+        total = len(session.entries)
+        patient_count = sum(1 for e in session.entries if e.speaker == Speaker.PATIENT)
+        doctor_count = sum(1 for e in session.entries if e.speaker == Speaker.DOCTOR)
+
+        self.session_stats_label.config(
+            text=f"Entries: {total} | Patient: {patient_count} | Doctor: {doctor_count}"
+        )
 
     def _start_new_session(self):
         """Start a new translation session."""
