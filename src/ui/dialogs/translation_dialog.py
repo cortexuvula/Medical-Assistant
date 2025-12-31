@@ -11,6 +11,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import threading
 import logging
+import time
 from typing import Optional, Callable
 from datetime import datetime
 
@@ -64,6 +65,67 @@ class TranslationDialog:
 
         # Theme-aware colors
         self._init_theme_colors()
+
+        # Rate limiting for API calls
+        self._last_translation_time = 0
+        self._min_translation_interval = 0.5  # 500ms minimum between translations
+
+        # Undo history
+        self._undo_stack = []
+
+    def _dialog_exists(self) -> bool:
+        """Check if dialog still exists and is valid.
+
+        Returns:
+            True if dialog exists and can be updated, False otherwise
+        """
+        try:
+            return self.dialog is not None and self.dialog.winfo_exists()
+        except tk.TclError:
+            return False
+
+    def _safe_after(self, delay: int, callback: Callable, *args):
+        """Schedule a callback only if dialog still exists.
+
+        Args:
+            delay: Delay in milliseconds
+            callback: Function to call
+            *args: Arguments to pass to callback
+        """
+        if self._dialog_exists():
+            try:
+                self.dialog.after(delay, callback, *args)
+            except tk.TclError:
+                pass  # Dialog was destroyed
+
+    def _safe_ui_update(self, callback: Callable):
+        """Execute UI update only if dialog still exists.
+
+        Args:
+            callback: Function that updates UI
+        """
+        if self._dialog_exists():
+            try:
+                callback()
+            except tk.TclError:
+                pass  # Widget was destroyed
+
+    def _update_send_play_buttons(self):
+        """Update Send and Play button states based on translated text availability."""
+        if not self._dialog_exists():
+            return
+
+        try:
+            # Check if there's translated text for the patient
+            translated_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+            state = NORMAL if translated_text else DISABLED
+
+            if hasattr(self, 'send_button'):
+                self.send_button.config(state=state)
+            if hasattr(self, 'play_button'):
+                self.play_button.config(state=state)
+        except tk.TclError:
+            pass  # Widgets not ready yet
 
     def _init_theme_colors(self):
         """Initialize colors based on current theme."""
@@ -225,7 +287,11 @@ class TranslationDialog:
         # New session (Ctrl+N)
         self.dialog.bind('<Control-n>', lambda e: self._start_new_session())
         self.dialog.bind('<Control-N>', lambda e: self._start_new_session())
-    
+
+        # Undo last entry (Ctrl+Z)
+        self.dialog.bind('<Control-z>', lambda e: self._undo_last_entry())
+        self.dialog.bind('<Control-Z>', lambda e: self._undo_last_entry())
+
     def _create_language_bar(self, parent):
         """Create language selection controls.
         
@@ -317,7 +383,61 @@ class TranslationDialog:
         )
         llm_cb.pack(side=LEFT, padx=(20, 0))
         ToolTip(llm_cb, "Use AI to refine medical terminology in translations")
-    
+
+        # Quick language pair presets
+        presets_frame = ttk.Frame(parent)
+        presets_frame.pack(fill=X, pady=(5, 0))
+
+        ttk.Label(presets_frame, text="Quick pairs:", font=("", 9)).pack(side=LEFT, padx=(0, 10))
+
+        # Common language pairs for medical settings
+        language_presets = [
+            ("🇪🇸 ES↔EN", "es", "en"),
+            ("🇨🇳 ZH↔EN", "zh", "en"),
+            ("🇻🇳 VI↔EN", "vi", "en"),
+            ("🇰🇷 KO↔EN", "ko", "en"),
+            ("🇫🇷 FR↔EN", "fr", "en"),
+            ("🇷🇺 RU↔EN", "ru", "en"),
+        ]
+
+        for label, patient_code, doctor_code in language_presets:
+            btn = ttk.Button(
+                presets_frame,
+                text=label,
+                command=lambda p=patient_code, d=doctor_code: self._apply_language_preset(p, d),
+                bootstyle="outline-secondary",
+                width=10
+            )
+            btn.pack(side=LEFT, padx=2)
+
+    def _apply_language_preset(self, patient_code: str, doctor_code: str):
+        """Apply a language pair preset.
+
+        Args:
+            patient_code: Language code for patient
+            doctor_code: Language code for doctor
+        """
+        # Update internal values
+        self.patient_language = patient_code
+        self.doctor_language = doctor_code
+
+        # Get language names for display
+        languages = self.translation_manager.get_supported_languages()
+        lang_dict = {lang[0]: f"{lang[1]} ({lang[0]})" for lang in languages}
+
+        # Update comboboxes
+        if patient_code in lang_dict:
+            self.patient_combo.set(lang_dict[patient_code])
+        else:
+            self.patient_combo.set(patient_code)
+
+        if doctor_code in lang_dict:
+            self.doctor_combo.set(lang_dict[doctor_code])
+        else:
+            self.doctor_combo.set(doctor_code)
+
+        self.logger.info(f"Applied language preset: patient={patient_code}, doctor={doctor_code}")
+
     def _create_patient_section(self, parent):
         """Create patient input/output section.
         
@@ -393,6 +513,16 @@ class TranslationDialog:
             width=20
         )
         self.record_button.pack(side=LEFT, padx=(0, 10))
+
+        # Audio level indicator (progress bar)
+        self.audio_level_bar = ttk.Progressbar(
+            control_frame,
+            mode='determinate',
+            length=80,
+            bootstyle="success-striped"
+        )
+        # Initially hidden - will be shown during recording
+        self._audio_level_visible = False
 
         # Recording timer display
         self.recording_timer_label = ttk.Label(
@@ -740,22 +870,24 @@ class TranslationDialog:
         tts_frame.pack(fill=X)
         
         # Send button (adds to history without TTS)
-        send_btn = ttk.Button(
+        self.send_button = ttk.Button(
             tts_frame,
             text="📤 Send",
             command=self._send_doctor_response,
             bootstyle="primary",
-            width=10
+            width=10,
+            state=DISABLED  # Initially disabled until translation is available
         )
-        send_btn.pack(side=LEFT, padx=(0, 5))
-        ToolTip(send_btn, "Add response to history without playing audio (Ctrl+Enter)")
+        self.send_button.pack(side=LEFT, padx=(0, 5))
+        ToolTip(self.send_button, "Add response to history without playing audio (Ctrl+Enter)")
 
         self.play_button = ttk.Button(
             tts_frame,
             text="🔊 Play for Patient",
             command=self._play_doctor_response,
             bootstyle="success",
-            width=20
+            width=20,
+            state=DISABLED  # Initially disabled until translation is available
         )
         self.play_button.pack(side=LEFT, padx=(0, 10))
 
@@ -828,8 +960,19 @@ class TranslationDialog:
             text="Clear All",
             command=self._clear_all,
             bootstyle="warning"
-        ).pack(side=LEFT, padx=(0, 10))
-        
+        ).pack(side=LEFT, padx=(0, 5))
+
+        # Undo button
+        self.undo_button = ttk.Button(
+            button_frame,
+            text="↶ Undo",
+            command=self._undo_last_entry,
+            bootstyle="secondary",
+            state=DISABLED
+        )
+        self.undo_button.pack(side=LEFT, padx=(0, 10))
+        ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
+
         # Copy buttons
         ttk.Button(
             button_frame,
@@ -882,6 +1025,11 @@ class TranslationDialog:
             self.recording_timer_label.config(text="00:00")
             self.recording_timer_label.pack(side=LEFT, padx=(10, 0))
             self._update_recording_timer()
+
+            # Show audio level indicator
+            self.audio_level_bar.pack(side=LEFT, padx=(5, 0))
+            self.audio_level_bar['value'] = 0
+            self._audio_level_visible = True
             
             # Get selected microphone from dropdown
             mic_name = self.selected_microphone.get()
@@ -920,6 +1068,11 @@ class TranslationDialog:
             self.recording_timer_id = None
         self.recording_timer_label.pack_forget()
 
+        # Hide audio level indicator
+        if self._audio_level_visible:
+            self.audio_level_bar.pack_forget()
+            self._audio_level_visible = False
+
         # Update UI immediately but keep is_recording=True until flush completes
         self.record_button.config(text="🎤 Record Patient", bootstyle="danger")
         self.recording_status.config(text="Processing...", foreground="blue")
@@ -945,9 +1098,9 @@ class TranslationDialog:
                     combined = self.audio_handler.combine_audio_segments(self.audio_segments)
                     
                     if combined:
-                        # Update status
-                        self.dialog.after(0, lambda: self.recording_status.config(
-                            text="Transcribing...", foreground="blue"
+                        # Update status (safe)
+                        self._safe_after(0, lambda: self._safe_ui_update(
+                            lambda: self.recording_status.config(text="Transcribing...", foreground="blue")
                         ))
 
                         # Use selected STT provider for transcription
@@ -976,27 +1129,27 @@ class TranslationDialog:
                             # Restore original diarization settings
                             SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
                             SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
-                        
+
                         if transcript:
-                            # Process the complete transcript
-                            self.dialog.after(0, lambda: self._process_patient_speech(transcript))
+                            # Process the complete transcript (safe)
+                            self._safe_after(0, lambda t=transcript: self._process_patient_speech(t))
                         else:
-                            self.dialog.after(0, lambda: self.recording_status.config(
-                                text="No speech detected", foreground="orange"
+                            self._safe_after(0, lambda: self._safe_ui_update(
+                                lambda: self.recording_status.config(text="No speech detected", foreground="orange")
                             ))
                     else:
-                        self.dialog.after(0, lambda: self.recording_status.config(
-                            text="No audio captured", foreground="orange"
+                        self._safe_after(0, lambda: self._safe_ui_update(
+                            lambda: self.recording_status.config(text="No audio captured", foreground="orange")
                         ))
                 else:
-                    self.dialog.after(0, lambda: self.recording_status.config(
-                        text="No audio captured", foreground="orange"
+                    self._safe_after(0, lambda: self._safe_ui_update(
+                        lambda: self.recording_status.config(text="No audio captured", foreground="orange")
                     ))
                     
             except Exception as e:
-                self.logger.error(f"Error processing recording: {e}")
-                self.dialog.after(0, lambda: self.recording_status.config(
-                    text=f"Error: {str(e)}", foreground="red"
+                self.logger.error(f"Error processing recording: {e}", exc_info=True)
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Recording error: {err[:50]}", foreground="red")
                 ))
         
         # Start processing thread
@@ -1020,15 +1173,46 @@ class TranslationDialog:
             if segment:
                 # Add to segments list
                 self.audio_segments.append(segment)
-                
+
+                # Update audio level indicator
+                # dBFS ranges from -inf to 0, normalize to 0-100 for progress bar
+                # Typical speech is around -20 to -10 dBFS
+                try:
+                    dbfs = segment.dBFS
+                    # Map -40 dBFS to 0 and -5 dBFS to 100
+                    level = max(0, min(100, (dbfs + 40) * (100 / 35)))
+                    self._safe_after(0, lambda l=level: self._update_audio_level(l))
+                except Exception:
+                    pass  # Ignore level calculation errors
+
                 # Update recording duration
                 total_duration = sum(seg.duration_seconds for seg in self.audio_segments)
-                self.dialog.after(0, lambda: self.recording_status.config(
-                    text=f"Recording... {total_duration:.1f}s", foreground="red"
+                self._safe_after(0, lambda d=total_duration: self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Recording... {d:.1f}s", foreground="red")
                 ))
-                
+
         except Exception as e:
             self.logger.error(f"Error processing audio data: {e}")
+
+    def _update_audio_level(self, level: float):
+        """Update the audio level indicator.
+
+        Args:
+            level: Audio level from 0-100
+        """
+        if not self._dialog_exists() or not self._audio_level_visible:
+            return
+        try:
+            self.audio_level_bar['value'] = level
+            # Change color based on level
+            if level > 80:
+                self.audio_level_bar.configure(bootstyle="danger-striped")
+            elif level > 50:
+                self.audio_level_bar.configure(bootstyle="warning-striped")
+            else:
+                self.audio_level_bar.configure(bootstyle="success-striped")
+        except tk.TclError:
+            pass
 
     def _update_recording_timer(self):
         """Update the recording timer display."""
@@ -1103,15 +1287,15 @@ class TranslationDialog:
                     except Exception as he:
                         self.logger.error(f"Failed to add history entry: {he}")
 
-                # Update UI on main thread
-                self.dialog.after(0, update_ui)
+                # Update UI on main thread (safe)
+                self._safe_after(0, update_ui)
 
             except Exception as e:
-                self.logger.error(f"Translation failed: {e}")
-                self.dialog.after(0, lambda: [
+                self.logger.error(f"Translation failed: {e}", exc_info=True)
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
                     self.patient_translation_indicator.pack_forget(),
-                    self.recording_status.config(text=f"Translation error: {str(e)}", foreground="red")
-                ])
+                    self.recording_status.config(text=f"Translation error: {err[:40]}", foreground="red")
+                ]))
 
         # Start translation thread
         threading.Thread(target=translate, daemon=True).start()
@@ -1128,12 +1312,17 @@ class TranslationDialog:
             self.doctor_translated_text.delete("1.0", tk.END)
             return
         
-        # Cancel previous translation timer if exists
-        if hasattr(self, '_translation_timer'):
-            self.dialog.after_cancel(self._translation_timer)
-        
+        # Cancel previous translation timer if exists (safe cleanup)
+        if hasattr(self, '_translation_timer') and self._translation_timer:
+            try:
+                self.dialog.after_cancel(self._translation_timer)
+            except (tk.TclError, ValueError):
+                pass  # Timer already expired or cancelled
+            self._translation_timer = None
+
         # Set new timer for translation (debounce - 300ms for responsive feel)
-        self._translation_timer = self.dialog.after(300, lambda: self._translate_doctor_text(text))
+        if self._dialog_exists():
+            self._translation_timer = self.dialog.after(300, lambda: self._translate_doctor_text(text))
     
     def _translate_doctor_text(self, text: str):
         """Translate doctor's text to patient's language.
@@ -1141,6 +1330,13 @@ class TranslationDialog:
         Args:
             text: Text to translate
         """
+        # Rate limiting - skip if too soon since last translation
+        current_time = time.time()
+        if current_time - self._last_translation_time < self._min_translation_interval:
+            self.logger.debug("Skipping translation - rate limited")
+            return
+        self._last_translation_time = current_time
+
         # Show translation indicator
         self.doctor_translation_indicator.pack(side=LEFT, padx=(10, 0))
 
@@ -1156,17 +1352,22 @@ class TranslationDialog:
                     refine_medical=refine_medical
                 )
 
-                # Update UI on main thread
+                # Update UI on main thread (safe)
                 def update_ui():
-                    self.doctor_translation_indicator.pack_forget()
-                    self.doctor_translated_text.delete("1.0", tk.END)
-                    self.doctor_translated_text.insert("1.0", translated)
+                    self._safe_ui_update(lambda: [
+                        self.doctor_translation_indicator.pack_forget(),
+                        self.doctor_translated_text.delete("1.0", tk.END),
+                        self.doctor_translated_text.insert("1.0", translated),
+                        self._update_send_play_buttons()  # Update button states
+                    ])
 
-                self.dialog.after(0, update_ui)
+                self._safe_after(0, update_ui)
 
             except Exception as e:
-                self.logger.error(f"Translation failed: {e}")
-                self.dialog.after(0, lambda: self.doctor_translation_indicator.pack_forget())
+                self.logger.error(f"Translation failed: {e}", exc_info=True)
+                self._safe_after(0, lambda: self._safe_ui_update(
+                    lambda: self.doctor_translation_indicator.pack_forget()
+                ))
 
         # Start translation thread
         threading.Thread(target=translate, daemon=True).start()
@@ -1254,34 +1455,35 @@ class TranslationDialog:
 
                         if transcript:
                             def update_ui():
-                                # Append to existing text
-                                current = self.doctor_input_text.get("1.0", tk.END).strip()
-                                if current:
-                                    self.doctor_input_text.insert(tk.END, " " + transcript)
-                                else:
-                                    self.doctor_input_text.insert("1.0", transcript)
-                                self.recording_status.config(text="Dictation complete", foreground="green")
+                                self._safe_ui_update(lambda: [
+                                    # Append to existing text
+                                    self.doctor_input_text.insert(
+                                        tk.END, " " + transcript
+                                    ) if self.doctor_input_text.get("1.0", tk.END).strip() else
+                                    self.doctor_input_text.insert("1.0", transcript),
+                                    self.recording_status.config(text="Dictation complete", foreground="green")
+                                ])
                                 # Trigger translation
                                 self._on_doctor_text_change()
 
-                            self.dialog.after(0, update_ui)
+                            self._safe_after(0, update_ui)
                         else:
-                            self.dialog.after(0, lambda: self.recording_status.config(
-                                text="No speech detected", foreground="orange"
+                            self._safe_after(0, lambda: self._safe_ui_update(
+                                lambda: self.recording_status.config(text="No speech detected", foreground="orange")
                             ))
                     else:
-                        self.dialog.after(0, lambda: self.recording_status.config(
-                            text="No audio captured", foreground="orange"
+                        self._safe_after(0, lambda: self._safe_ui_update(
+                            lambda: self.recording_status.config(text="No audio captured", foreground="orange")
                         ))
                 else:
-                    self.dialog.after(0, lambda: self.recording_status.config(
-                        text="No audio captured", foreground="orange"
+                    self._safe_after(0, lambda: self._safe_ui_update(
+                        lambda: self.recording_status.config(text="No audio captured", foreground="orange")
                     ))
 
             except Exception as e:
-                self.logger.error(f"Dictation transcription failed: {e}")
-                self.dialog.after(0, lambda: self.recording_status.config(
-                    text=f"Error: {str(e)}", foreground="red"
+                self.logger.error(f"Dictation transcription failed: {e}", exc_info=True)
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Dictation error: {err[:40]}", foreground="red")
                 ))
 
         threading.Thread(target=stop_and_transcribe, daemon=True).start()
@@ -1299,8 +1501,8 @@ class TranslationDialog:
                 self.doctor_audio_segments.append(segment)
 
                 total_duration = sum(seg.duration_seconds for seg in self.doctor_audio_segments)
-                self.dialog.after(0, lambda: self.recording_status.config(
-                    text=f"Dictating... {total_duration:.1f}s", foreground="blue"
+                self._safe_after(0, lambda d=total_duration: self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Dictating... {d:.1f}s", foreground="blue")
                 ))
         except Exception as e:
             self.logger.error(f"Error processing doctor audio: {e}")
@@ -1367,20 +1569,18 @@ class TranslationDialog:
                     blocking=True,  # Wait for completion
                     output_device=self.selected_output.get()  # Pass selected output device
                 )
-                
-                # Re-enable button on main thread
-                self.dialog.after(0, lambda: self.play_button.config(
-                    state=NORMAL, text="🔊 Play for Patient"
+
+                # Re-enable button on main thread (safe)
+                self._safe_after(0, lambda: self._safe_ui_update(
+                    lambda: self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
                 ))
-                
+
             except Exception as e:
-                self.logger.error(f"TTS playback failed: {e}")
-                self.dialog.after(0, lambda: [
+                self.logger.error(f"TTS playback failed: {e}", exc_info=True)
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
                     self.play_button.config(state=NORMAL, text="🔊 Play for Patient"),
-                    self.recording_status.config(
-                        text=f"Playback error: {str(e)}", foreground="red"
-                    )
-                ])
+                    self.recording_status.config(text=f"Playback error: {err[:40]}", foreground="red")
+                ]))
         
         # Start TTS thread
         threading.Thread(target=synthesize_and_play, daemon=True).start()
@@ -1786,6 +1986,13 @@ class TranslationDialog:
         self.history_canvas.update_idletasks()
         self.history_canvas.yview_moveto(1.0)
 
+        # Save to undo stack
+        self._undo_stack.append({
+            'frame': entry_frame,
+            'entry': entry
+        })
+        self._update_undo_button_state()
+
         # Update statistics
         self._update_session_stats()
 
@@ -1825,15 +2032,15 @@ class TranslationDialog:
                     blocking=True,
                     output_device=self.selected_output.get()
                 )
-                self.dialog.after(0, lambda: self.play_button.config(
-                    state=NORMAL, text="🔊 Play for Patient"
+                self._safe_after(0, lambda: self._safe_ui_update(
+                    lambda: self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
                 ))
             except Exception as e:
-                self.logger.error(f"Replay failed: {e}")
-                self.dialog.after(0, lambda: [
+                self.logger.error(f"Replay failed: {e}", exc_info=True)
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
                     self.play_button.config(state=NORMAL, text="🔊 Play for Patient"),
-                    self.recording_status.config(text=f"Replay error: {str(e)}", foreground="red")
-                ])
+                    self.recording_status.config(text=f"Replay error: {err[:40]}", foreground="red")
+                ]))
 
         threading.Thread(target=play_audio, daemon=True).start()
 
@@ -1852,6 +2059,49 @@ class TranslationDialog:
         self.patient_translated_text.insert("1.0", display_translation)
 
         self.recording_status.config(text="Entry loaded", foreground="green")
+
+    def _update_undo_button_state(self):
+        """Update the undo button state based on stack contents."""
+        if not self._dialog_exists():
+            return
+        try:
+            if hasattr(self, 'undo_button'):
+                state = NORMAL if self._undo_stack else DISABLED
+                self.undo_button.config(state=state)
+        except tk.TclError:
+            pass
+
+    def _undo_last_entry(self):
+        """Undo the last history entry."""
+        if not self._undo_stack:
+            return
+
+        try:
+            # Pop last entry from stack
+            last_item = self._undo_stack.pop()
+            entry_frame = last_item['frame']
+            entry = last_item['entry']
+
+            # Destroy the UI frame
+            if entry_frame and entry_frame.winfo_exists():
+                entry_frame.destroy()
+
+            # Remove from session entries
+            session = self.session_manager.current_session
+            if session and entry in session.entries:
+                session.entries.remove(entry)
+
+            # Update UI
+            self._update_undo_button_state()
+            self._update_session_stats()
+            self.recording_status.config(text="Entry undone", foreground="green")
+
+            # Update canvas
+            self.history_canvas.update_idletasks()
+
+        except Exception as e:
+            self.logger.error(f"Undo failed: {e}", exc_info=True)
+            self.recording_status.config(text=f"Undo error: {str(e)[:40]}", foreground="red")
 
     def _update_session_stats(self):
         """Update the session statistics display."""
@@ -1877,6 +2127,10 @@ class TranslationDialog:
         # Clear history display
         for widget in self.history_entries_frame.winfo_children():
             widget.destroy()
+
+        # Clear undo stack
+        self._undo_stack.clear()
+        self._update_undo_button_state()
 
         # Start new session
         self.session_manager.start_session(
