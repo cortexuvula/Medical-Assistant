@@ -19,7 +19,7 @@ from managers.tts_manager import get_tts_manager
 from managers.translation_session_manager import get_translation_session_manager
 from audio.audio import AudioHandler
 from ui.tooltip import ToolTip
-from settings.settings import SETTINGS
+from settings.settings import SETTINGS, save_settings
 from models.translation_session import TranslationEntry, Speaker
 
 
@@ -1457,6 +1457,13 @@ class TranslationDialog:
         SETTINGS["translation"]["doctor_language"] = self.doctor_language
         SETTINGS["translation"]["input_device"] = self.selected_microphone.get()
         SETTINGS["translation"]["output_device"] = self.selected_output.get()
+
+        # Persist settings to disk
+        try:
+            save_settings(SETTINGS)
+            self.logger.info("Translation settings saved")
+        except Exception as e:
+            self.logger.error(f"Error saving translation settings: {e}")
 
         # Destroy dialog
         self.dialog.destroy()
