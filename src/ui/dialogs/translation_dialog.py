@@ -58,6 +58,7 @@ class TranslationDialog:
         self.doctor_language = translation_settings.get("doctor_language", "en")
         self.input_device = translation_settings.get("input_device", "")
         self.output_device = translation_settings.get("output_device", "")
+        self.stt_provider = translation_settings.get("stt_provider", "")  # Empty = use main setting
         
         self.logger = logging.getLogger(__name__)
 
@@ -354,7 +355,35 @@ class TranslationDialog:
             state="readonly"
         )
         self.mic_combo.pack(side=LEFT)
-        
+
+        # STT Provider selection
+        stt_frame = ttk.Frame(control_frame)
+        stt_frame.pack(side=LEFT, padx=(0, 20))
+
+        ttk.Label(stt_frame, text="STT:").pack(side=LEFT, padx=(0, 5))
+
+        # Available STT providers
+        stt_providers = ["Use Main Setting", "Groq", "Deepgram", "ElevenLabs", "Whisper"]
+        stt_provider_map = {"Use Main Setting": "", "Groq": "groq", "Deepgram": "deepgram",
+                           "ElevenLabs": "elevenlabs", "Whisper": "whisper"}
+        self._stt_provider_map = stt_provider_map
+        self._stt_provider_reverse_map = {v: k for k, v in stt_provider_map.items()}
+
+        self.selected_stt_provider = tk.StringVar()
+        # Set current value from saved setting
+        display_name = self._stt_provider_reverse_map.get(self.stt_provider, "Use Main Setting")
+        self.selected_stt_provider.set(display_name)
+
+        self.stt_combo = ttk.Combobox(
+            stt_frame,
+            textvariable=self.selected_stt_provider,
+            values=stt_providers,
+            width=15,
+            state="readonly"
+        )
+        self.stt_combo.pack(side=LEFT)
+        ToolTip(self.stt_combo, "Select STT provider for patient speech recognition")
+
         self.record_button = ttk.Button(
             control_frame,
             text="🎤 Record Patient",
@@ -919,9 +948,24 @@ class TranslationDialog:
                         self.dialog.after(0, lambda: self.recording_status.config(
                             text="Transcribing...", foreground="blue"
                         ))
-                        
-                        # Transcribe without prefix
-                        transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+
+                        # Use selected STT provider for transcription
+                        selected_stt_display = self.selected_stt_provider.get()
+                        selected_provider = self._stt_provider_map.get(selected_stt_display, "")
+
+                        # Save current provider and switch if needed
+                        original_provider = SETTINGS.get("stt_provider", "groq")
+                        if selected_provider:
+                            SETTINGS["stt_provider"] = selected_provider
+                            self.logger.info(f"Using STT provider: {selected_provider}")
+
+                        try:
+                            # Transcribe without prefix
+                            transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                        finally:
+                            # Restore original provider
+                            if selected_provider:
+                                SETTINGS["stt_provider"] = original_provider
                         
                         if transcript:
                             # Process the complete transcript
@@ -1496,6 +1540,9 @@ class TranslationDialog:
         SETTINGS["translation"]["doctor_language"] = self.doctor_language
         SETTINGS["translation"]["input_device"] = self.selected_microphone.get()
         SETTINGS["translation"]["output_device"] = self.selected_output.get()
+        # Save STT provider selection
+        selected_stt_display = self.selected_stt_provider.get()
+        SETTINGS["translation"]["stt_provider"] = self._stt_provider_map.get(selected_stt_display, "")
 
         # Persist settings to disk
         try:
