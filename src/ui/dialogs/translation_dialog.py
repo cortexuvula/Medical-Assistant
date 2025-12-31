@@ -238,8 +238,9 @@ class TranslationDialog:
         # Patient language selection
         ttk.Label(lang_frame, text="Patient Language:", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 5))
         
-        # Get supported languages
+        # Get supported languages and sort alphabetically by name
         languages = self.translation_manager.get_supported_languages()
+        languages = sorted(languages, key=lambda x: x[1].lower())  # Sort by language name
         lang_names = [f"{lang[1]} ({lang[0]})" for lang in languages]
         lang_codes = [lang[0] for lang in languages]
         
