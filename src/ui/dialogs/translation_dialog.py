@@ -442,9 +442,9 @@ class TranslationDialog:
         Args:
             parent: Parent widget
         """
-        # Container for responses and manage button
+        # Container for responses and manage button - don't expand to prevent pushing content off screen
         container = ttk.Frame(parent)
-        container.pack(fill=BOTH, expand=True)
+        container.pack(fill=X)
 
         # Header with category filter and manage button
         header_frame = ttk.Frame(container)
@@ -476,12 +476,51 @@ class TranslationDialog:
         manage_btn.pack(side=RIGHT)
         ToolTip(manage_btn, "Add, edit, or delete quick responses")
 
-        # Responses frame
-        responses_frame = ttk.Frame(container)
-        responses_frame.pack(fill=BOTH, expand=True)
+        # Create scrollable container for responses with fixed max height
+        scroll_container = ttk.Frame(container, height=120)
+        scroll_container.pack(fill=X)
+        scroll_container.pack_propagate(False)  # Prevent frame from shrinking to fit contents
+
+        # Canvas for scrolling
+        self.canned_canvas = tk.Canvas(scroll_container, highlightthickness=0)
+        self.canned_canvas.pack(side=LEFT, fill=BOTH, expand=True)
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=self.canned_canvas.yview)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.canned_canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Responses frame inside canvas
+        responses_frame = ttk.Frame(self.canned_canvas)
+        self.canned_canvas_window = self.canned_canvas.create_window((0, 0), window=responses_frame, anchor="nw")
 
         # Store reference for refresh
         self.canned_responses_frame = responses_frame
+
+        # Bind canvas resize to update scroll region
+        def on_frame_configure(event):
+            self.canned_canvas.configure(scrollregion=self.canned_canvas.bbox("all"))
+
+        def on_canvas_configure(event):
+            # Update the width of the inner frame to match the canvas
+            self.canned_canvas.itemconfig(self.canned_canvas_window, width=event.width)
+
+        responses_frame.bind("<Configure>", on_frame_configure)
+        self.canned_canvas.bind("<Configure>", on_canvas_configure)
+
+        # Enable mouse wheel scrolling
+        def on_mousewheel(event):
+            self.canned_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def on_mousewheel_linux(event):
+            if event.num == 4:
+                self.canned_canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                self.canned_canvas.yview_scroll(1, "units")
+
+        self.canned_canvas.bind("<MouseWheel>", on_mousewheel)  # Windows/macOS
+        self.canned_canvas.bind("<Button-4>", on_mousewheel_linux)  # Linux scroll up
+        self.canned_canvas.bind("<Button-5>", on_mousewheel_linux)  # Linux scroll down
 
         # Populate responses
         self._populate_canned_responses()
