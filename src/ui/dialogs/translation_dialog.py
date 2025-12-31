@@ -1337,6 +1337,10 @@ class TranslationDialog:
                         SETTINGS.setdefault("deepgram", {})["diarize"] = False
                         SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
 
+                        # Disable audio event tagging (no "[keyboard clicking]" etc.)
+                        original_tag_audio_events = SETTINGS.get("elevenlabs", {}).get("tag_audio_events", True)
+                        SETTINGS.setdefault("elevenlabs", {})["tag_audio_events"] = False
+
                         try:
                             # Transcribe without prefix
                             transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
@@ -1347,6 +1351,8 @@ class TranslationDialog:
                             # Restore original diarization settings
                             SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
                             SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
+                            # Restore audio event tagging setting
+                            SETTINGS["elevenlabs"]["tag_audio_events"] = original_tag_audio_events
 
                         if transcript:
                             # Process the complete transcript (safe)
@@ -1668,12 +1674,18 @@ class TranslationDialog:
                         SETTINGS.setdefault("deepgram", {})["diarize"] = False
                         SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
 
+                        # Disable audio event tagging (no "[keyboard clicking]" etc.)
+                        original_tag_audio_events = SETTINGS.get("elevenlabs", {}).get("tag_audio_events", True)
+                        SETTINGS.setdefault("elevenlabs", {})["tag_audio_events"] = False
+
                         try:
                             transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
                         finally:
                             # Restore original diarization settings
                             SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
                             SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
+                            # Restore audio event tagging setting
+                            SETTINGS["elevenlabs"]["tag_audio_events"] = original_tag_audio_events
 
                         if transcript:
                             def update_ui():

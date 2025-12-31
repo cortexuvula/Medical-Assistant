@@ -171,6 +171,11 @@ class ElevenLabsProvider(BaseSTTProvider):
                 if diarization_threshold is not None:
                     data['diarization_threshold'] = diarization_threshold
 
+            # Add audio event tagging setting (controls ambient sound descriptions)
+            # When False, transcription won't include things like "[keyboard clicking]"
+            tag_audio_events = elevenlabs_settings.get("tag_audio_events", True)
+            data['tag_audio_events'] = tag_audio_events
+
             # Print API call details to terminal
             logging.debug("\n===== ELEVENLABS API CALL =====")
             logging.debug(f"URL: {url}")
