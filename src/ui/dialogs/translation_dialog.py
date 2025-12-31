@@ -1023,20 +1023,8 @@ class TranslationDialog:
             width=6,
             state=DISABLED  # Initially disabled until playing
         )
-        self.stop_button.pack(side=LEFT, padx=(0, 3))
+        self.stop_button.pack(side=LEFT, padx=(0, 5))
         ToolTip(self.stop_button, "Stop audio playback")
-
-        # Undo button near action buttons for easy access
-        self.undo_button = ttk.Button(
-            tts_frame,
-            text="↶ Undo",
-            command=self._undo_last_entry,
-            bootstyle="outline-warning",
-            width=6,
-            state=DISABLED
-        )
-        self.undo_button.pack(side=LEFT, padx=(0, 5))
-        ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
 
         # Checkboxes
         self.realtime_var = tk.BooleanVar(value=True)
@@ -1121,9 +1109,21 @@ class TranslationDialog:
         font_spin.pack(side=LEFT, padx=(0, 10))
         ToolTip(font_spin, "Adjust text size in all text areas")
 
-        # Service status indicators
+        # Service status indicators (pack RIGHT first so they appear rightmost)
         self.service_status_frame = ttk.Frame(output_frame)
         self.service_status_frame.pack(side=RIGHT)
+
+        # Undo button - placed on right side of output frame
+        self.undo_button = ttk.Button(
+            output_frame,
+            text="↶ Undo",
+            command=self._undo_last_entry,
+            bootstyle="outline-warning",
+            width=7,
+            state=DISABLED
+        )
+        self.undo_button.pack(side=RIGHT, padx=(0, 10))
+        ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
 
         self.translation_status = ttk.Label(
             self.service_status_frame,
@@ -1834,7 +1834,7 @@ class TranslationDialog:
     
     def _copy_text(self, text_widget):
         """Copy text from widget to clipboard.
-        
+
         Args:
             text_widget: Text widget to copy from
         """
@@ -1844,8 +1844,11 @@ class TranslationDialog:
                 self.dialog.clipboard_clear()
                 self.dialog.clipboard_append(text)
                 self.recording_status.config(text="Copied to clipboard", foreground="green")
+            else:
+                self.recording_status.config(text="Nothing to copy", foreground="orange")
         except Exception as e:
             self.logger.error(f"Copy failed: {e}")
+            self.recording_status.config(text=f"Copy failed: {str(e)[:30]}", foreground="red")
     
     def _export_conversation(self):
         """Export the conversation to a file."""
