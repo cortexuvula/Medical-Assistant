@@ -812,9 +812,13 @@ class TranslationDialog:
         Args:
             parent: Parent widget
         """
-        # Collapsible Quick Responses section
-        quick_header_frame = ttk.Frame(parent)
-        quick_header_frame.pack(fill=X, pady=(0, 5))
+        # Collapsible Quick Responses section - use container to maintain position
+        self._quick_container = ttk.Frame(parent)
+        self._quick_container.pack(fill=X, pady=(0, 10))
+
+        # Header with toggle button
+        quick_header_frame = ttk.Frame(self._quick_container)
+        quick_header_frame.pack(fill=X)
 
         self._quick_responses_visible = tk.BooleanVar(value=True)
         self._quick_toggle_btn = ttk.Checkbutton(
@@ -826,9 +830,9 @@ class TranslationDialog:
         )
         self._quick_toggle_btn.pack(side=LEFT)
 
-        # Create canned responses frame (collapsible)
-        self.canned_frame = ttk.Frame(parent, padding=5)
-        self.canned_frame.pack(fill=X, pady=(0, 10))
+        # Content frame inside container (this gets shown/hidden)
+        self.canned_frame = ttk.Frame(self._quick_container, padding=5)
+        self.canned_frame.pack(fill=X)
         self._create_canned_responses(self.canned_frame)
         
         # Create text areas side by side
@@ -1788,11 +1792,11 @@ class TranslationDialog:
     def _toggle_quick_responses(self):
         """Toggle visibility of Quick Responses section."""
         if self._quick_responses_visible.get():
-            # Show
-            self.canned_frame.pack(fill=X, pady=(0, 10))
+            # Show content frame inside container
+            self.canned_frame.pack(fill=X)
             self._quick_toggle_btn.config(text="▼ Quick Responses")
         else:
-            # Hide
+            # Hide content frame (container stays in place)
             self.canned_frame.pack_forget()
             self._quick_toggle_btn.config(text="▶ Quick Responses")
 
