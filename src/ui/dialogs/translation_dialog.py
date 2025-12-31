@@ -329,16 +329,16 @@ class TranslationDialog:
 
         self.patient_combo.bind("<<ComboboxSelected>>", self._on_patient_language_change)
 
-        # Language swap button
+        # Language swap button - more prominent
         swap_btn = ttk.Button(
             lang_frame,
-            text="⇄",
+            text="⇄ Swap",
             command=self._swap_languages,
-            bootstyle="outline-secondary",
-            width=3
+            bootstyle="info-outline",
+            width=8
         )
         swap_btn.pack(side=LEFT, padx=10)
-        ToolTip(swap_btn, "Swap patient and doctor languages")
+        ToolTip(swap_btn, "Swap patient and doctor languages (exchanges the two languages)")
 
         # Doctor language selection
         ttk.Label(lang_frame, text="Doctor Language:", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 5))
@@ -391,24 +391,29 @@ class TranslationDialog:
         ttk.Label(presets_frame, text="Quick pairs:", font=("", 9)).pack(side=LEFT, padx=(0, 10))
 
         # Common language pairs for medical settings
-        language_presets = [
-            ("🇪🇸 ES↔EN", "es", "en"),
-            ("🇨🇳 ZH↔EN", "zh", "en"),
-            ("🇻🇳 VI↔EN", "vi", "en"),
-            ("🇰🇷 KO↔EN", "ko", "en"),
-            ("🇫🇷 FR↔EN", "fr", "en"),
-            ("🇷🇺 RU↔EN", "ru", "en"),
+        self._language_presets = [
+            ("ES", "es", "en", "Spanish ↔ English"),
+            ("CN", "zh", "en", "Chinese ↔ English"),
+            ("VN", "vi", "en", "Vietnamese ↔ English"),
+            ("KR", "ko", "en", "Korean ↔ English"),
+            ("FR", "fr", "en", "French ↔ English"),
+            ("RU", "ru", "en", "Russian ↔ English"),
         ]
 
-        for label, patient_code, doctor_code in language_presets:
+        # Store button references for highlighting
+        self._preset_buttons = {}
+
+        for label, patient_code, doctor_code, tooltip in self._language_presets:
             btn = ttk.Button(
                 presets_frame,
-                text=label,
+                text=f"{label}↔EN",
                 command=lambda p=patient_code, d=doctor_code: self._apply_language_preset(p, d),
                 bootstyle="outline-secondary",
-                width=10
+                width=8
             )
             btn.pack(side=LEFT, padx=2)
+            ToolTip(btn, tooltip)
+            self._preset_buttons[(patient_code, doctor_code)] = btn
 
     def _apply_language_preset(self, patient_code: str, doctor_code: str):
         """Apply a language pair preset.
@@ -436,7 +441,26 @@ class TranslationDialog:
         else:
             self.doctor_combo.set(doctor_code)
 
+        # Update preset button highlighting
+        self._update_preset_highlighting()
+
         self.logger.info(f"Applied language preset: patient={patient_code}, doctor={doctor_code}")
+
+    def _update_preset_highlighting(self):
+        """Update the visual highlighting of preset buttons based on current language selection."""
+        if not hasattr(self, '_preset_buttons'):
+            return
+
+        current_pair = (self.patient_language, self.doctor_language)
+
+        for pair, btn in self._preset_buttons.items():
+            try:
+                if pair == current_pair:
+                    btn.configure(bootstyle="info")  # Highlighted
+                else:
+                    btn.configure(bootstyle="outline-secondary")  # Normal
+            except tk.TclError:
+                pass
 
     def _create_patient_section(self, parent):
         """Create patient input/output section.
@@ -788,10 +812,24 @@ class TranslationDialog:
         Args:
             parent: Parent widget
         """
-        # Create canned responses frame
-        canned_frame = ttk.Labelframe(parent, text="Quick Responses", padding=5)
-        canned_frame.pack(fill=X, pady=(0, 10))
-        self._create_canned_responses(canned_frame)
+        # Collapsible Quick Responses section
+        quick_header_frame = ttk.Frame(parent)
+        quick_header_frame.pack(fill=X, pady=(0, 5))
+
+        self._quick_responses_visible = tk.BooleanVar(value=True)
+        self._quick_toggle_btn = ttk.Checkbutton(
+            quick_header_frame,
+            text="▼ Quick Responses",
+            variable=self._quick_responses_visible,
+            command=self._toggle_quick_responses,
+            bootstyle="toolbutton"
+        )
+        self._quick_toggle_btn.pack(side=LEFT)
+
+        # Create canned responses frame (collapsible)
+        self.canned_frame = ttk.Frame(parent, padding=5)
+        self.canned_frame.pack(fill=X, pady=(0, 10))
+        self._create_canned_responses(self.canned_frame)
         
         # Create text areas side by side
         text_container = ttk.Frame(parent)
@@ -889,16 +927,32 @@ class TranslationDialog:
             width=20,
             state=DISABLED  # Initially disabled until translation is available
         )
-        self.play_button.pack(side=LEFT, padx=(0, 10))
+        self.play_button.pack(side=LEFT, padx=(0, 5))
+        ToolTip(self.play_button, "Play translation for patient (Ctrl+P)")
 
-        ttk.Button(
+        self.stop_button = ttk.Button(
             tts_frame,
             text="🛑 Stop",
             command=self._stop_playback,
             bootstyle="secondary",
-            width=10
-        ).pack(side=LEFT, padx=(0, 10))
-        
+            width=8,
+            state=DISABLED  # Initially disabled until playing
+        )
+        self.stop_button.pack(side=LEFT, padx=(0, 5))
+        ToolTip(self.stop_button, "Stop audio playback")
+
+        # Undo button near action buttons for easy access
+        self.undo_button = ttk.Button(
+            tts_frame,
+            text="↶ Undo",
+            command=self._undo_last_entry,
+            bootstyle="outline-warning",
+            width=8,
+            state=DISABLED
+        )
+        self.undo_button.pack(side=LEFT, padx=(0, 10))
+        ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
+
         # Real-time translation checkbox
         self.realtime_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
@@ -960,18 +1014,7 @@ class TranslationDialog:
             text="Clear All",
             command=self._clear_all,
             bootstyle="warning"
-        ).pack(side=LEFT, padx=(0, 5))
-
-        # Undo button
-        self.undo_button = ttk.Button(
-            button_frame,
-            text="↶ Undo",
-            command=self._undo_last_entry,
-            bootstyle="secondary",
-            state=DISABLED
-        )
-        self.undo_button.pack(side=LEFT, padx=(0, 10))
-        ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
+        ).pack(side=LEFT, padx=(0, 10))
 
         # Copy buttons
         ttk.Button(
@@ -1557,9 +1600,11 @@ class TranslationDialog:
         except Exception as e:
             self.logger.error(f"Failed to add doctor entry to history: {e}")
 
-        # Disable play button
-        self.play_button.config(state=DISABLED, text="Playing...")
-        
+        # Update button states for playback
+        self.play_button.config(state=DISABLED, text="🔊 Playing...")
+        self.stop_button.config(state=NORMAL)  # Enable stop button
+        self.recording_status.config(text="Playing audio...", foreground="blue")
+
         def synthesize_and_play():
             try:
                 # Synthesize and play with selected output device
@@ -1570,25 +1615,35 @@ class TranslationDialog:
                     output_device=self.selected_output.get()  # Pass selected output device
                 )
 
-                # Re-enable button on main thread (safe)
+                # Re-enable buttons on main thread (safe)
                 self._safe_after(0, lambda: self._safe_ui_update(
-                    lambda: self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+                    lambda: self._on_playback_complete()
                 ))
 
             except Exception as e:
                 self.logger.error(f"TTS playback failed: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
-                    self.play_button.config(state=NORMAL, text="🔊 Play for Patient"),
-                    self.recording_status.config(text=f"Playback error: {err[:40]}", foreground="red")
-                ]))
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: self._on_playback_error(err)))
         
         # Start TTS thread
         threading.Thread(target=synthesize_and_play, daemon=True).start()
     
+    def _on_playback_complete(self):
+        """Handle playback completion - reset button states."""
+        self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+        self.stop_button.config(state=DISABLED)
+        self.recording_status.config(text="Playback complete", foreground="green")
+
+    def _on_playback_error(self, error: str):
+        """Handle playback error - reset button states and show error."""
+        self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+        self.stop_button.config(state=DISABLED)
+        self.recording_status.config(text=f"Playback error: {error[:40]}", foreground="red")
+
     def _stop_playback(self):
         """Stop any ongoing TTS playback."""
         try:
             self.tts_manager.stop_playback()
+            self._on_playback_complete()
         except Exception as e:
             self.logger.error(f"Failed to stop playback: {e}")
     
@@ -1687,7 +1742,8 @@ class TranslationDialog:
             self.patient_language = selected
         
         self.logger.debug(f"Patient language changed to: {self.patient_language} (from: {selected})")
-    
+        self._update_preset_highlighting()
+
     def _on_doctor_language_change(self, event=None):
         """Handle doctor language selection change."""
         # Extract language code from display value
@@ -1706,6 +1762,7 @@ class TranslationDialog:
             self.doctor_language = selected
         
         self.logger.debug(f"Doctor language changed to: {self.doctor_language} (from: {selected})")
+        self._update_preset_highlighting()
 
     def _swap_languages(self):
         """Swap patient and doctor languages."""
@@ -1723,7 +1780,21 @@ class TranslationDialog:
         self.patient_language = temp_doctor_code
         self.doctor_language = temp_patient_code
 
+        # Update preset highlighting
+        self._update_preset_highlighting()
+
         self.logger.debug(f"Languages swapped: patient={self.patient_language}, doctor={self.doctor_language}")
+
+    def _toggle_quick_responses(self):
+        """Toggle visibility of Quick Responses section."""
+        if self._quick_responses_visible.get():
+            # Show
+            self.canned_frame.pack(fill=X, pady=(0, 10))
+            self._quick_toggle_btn.config(text="▼ Quick Responses")
+        else:
+            # Hide
+            self.canned_frame.pack_forget()
+            self._quick_toggle_btn.config(text="▶ Quick Responses")
 
     def _on_llm_refinement_toggle(self):
         """Handle LLM refinement toggle change."""
@@ -2021,8 +2092,10 @@ class TranslationDialog:
         if not display_translation:
             return
 
-        # Disable play button during playback
-        self.play_button.config(state=DISABLED, text="Playing...")
+        # Update button states for playback
+        self.play_button.config(state=DISABLED, text="🔊 Playing...")
+        self.stop_button.config(state=NORMAL)
+        self.recording_status.config(text="Replaying...", foreground="blue")
 
         def play_audio():
             try:
@@ -2033,14 +2106,13 @@ class TranslationDialog:
                     output_device=self.selected_output.get()
                 )
                 self._safe_after(0, lambda: self._safe_ui_update(
-                    lambda: self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+                    lambda: self._on_playback_complete()
                 ))
             except Exception as e:
                 self.logger.error(f"Replay failed: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
-                    self.play_button.config(state=NORMAL, text="🔊 Play for Patient"),
-                    self.recording_status.config(text=f"Replay error: {err[:40]}", foreground="red")
-                ]))
+                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
+                    lambda: self._on_playback_error(err)
+                ))
 
         threading.Thread(target=play_audio, daemon=True).start()
 
