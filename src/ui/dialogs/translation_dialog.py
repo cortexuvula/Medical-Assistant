@@ -959,6 +959,12 @@ class TranslationDialog:
                             SETTINGS["stt_provider"] = selected_provider
                             self.logger.info(f"Using STT provider: {selected_provider}")
 
+                        # Disable diarization for Translation Assistant (cleaner output)
+                        original_deepgram_diarize = SETTINGS.get("deepgram", {}).get("diarize", False)
+                        original_elevenlabs_diarize = SETTINGS.get("elevenlabs", {}).get("diarize", True)
+                        SETTINGS.setdefault("deepgram", {})["diarize"] = False
+                        SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
+
                         try:
                             # Transcribe without prefix
                             transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
@@ -966,6 +972,9 @@ class TranslationDialog:
                             # Restore original provider
                             if selected_provider:
                                 SETTINGS["stt_provider"] = original_provider
+                            # Restore original diarization settings
+                            SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
+                            SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
                         
                         if transcript:
                             # Process the complete transcript
@@ -1229,7 +1238,18 @@ class TranslationDialog:
                     combined = self.audio_handler.combine_audio_segments(self.doctor_audio_segments)
 
                     if combined:
-                        transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                        # Disable diarization for Translation Assistant (cleaner output)
+                        original_deepgram_diarize = SETTINGS.get("deepgram", {}).get("diarize", False)
+                        original_elevenlabs_diarize = SETTINGS.get("elevenlabs", {}).get("diarize", True)
+                        SETTINGS.setdefault("deepgram", {})["diarize"] = False
+                        SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
+
+                        try:
+                            transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                        finally:
+                            # Restore original diarization settings
+                            SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
+                            SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
 
                         if transcript:
                             def update_ui():
