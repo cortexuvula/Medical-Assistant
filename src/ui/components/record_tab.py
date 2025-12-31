@@ -10,6 +10,7 @@ import logging
 import time
 import threading
 import numpy as np
+from datetime import datetime
 from typing import Dict, Callable, Optional
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
@@ -201,10 +202,10 @@ class RecordTab:
         
         self.components['quick_actions'] = quick_actions
         
-        # Advanced Analysis checkbox
+        # Advanced Analysis checkbox with interval selector
         analysis_frame = ttk.Frame(center_frame)
         analysis_frame.pack(pady=(10, 5))
-        
+
         self.advanced_analysis_var = tk.BooleanVar(value=False)
         self.components['advanced_analysis_checkbox'] = ttk.Checkbutton(
             analysis_frame,
@@ -212,9 +213,24 @@ class RecordTab:
             variable=self.advanced_analysis_var,
             bootstyle="primary"
         )
-        self.components['advanced_analysis_checkbox'].pack()
-        ToolTip(self.components['advanced_analysis_checkbox'], 
-                "Enable real-time differential diagnosis during recording (every 2 minutes)")
+        self.components['advanced_analysis_checkbox'].pack(side=LEFT)
+        ToolTip(self.components['advanced_analysis_checkbox'],
+                "Enable real-time differential diagnosis during recording")
+
+        # Interval selector
+        ttk.Label(analysis_frame, text="every").pack(side=LEFT, padx=(10, 5))
+        self.analysis_interval_var = tk.StringVar(value="2 min")
+        self.interval_combo = ttk.Combobox(
+            analysis_frame,
+            textvariable=self.analysis_interval_var,
+            values=["1 min", "2 min", "5 min"],
+            width=6,
+            state="readonly"
+        )
+        self.interval_combo.pack(side=LEFT)
+        self.interval_combo.bind("<<ComboboxSelected>>", self._on_interval_change)
+        ToolTip(self.interval_combo, "How often to run differential diagnosis analysis")
+        self.components['analysis_interval_combo'] = self.interval_combo
         
         # Translation Assistant button
         translation_btn = ttk.Button(
@@ -233,30 +249,60 @@ class RecordTab:
         # Create text area in right column
         text_frame = ttk.Labelframe(right_column, text="Advanced Analysis Results", padding=10)
         text_frame.pack(fill=BOTH, expand=True)
-        
-        # Create header frame with clear button
+
+        # Create header frame with countdown and buttons
         header_frame = ttk.Frame(text_frame)
         header_frame.pack(fill=X, pady=(0, 5))
-        
-        # Clear button aligned to the right
-        clear_btn = ttk.Button(
-            header_frame,
-            text="Clear",
-            command=command_map.get("clear_advanced_analysis"),
-            bootstyle="secondary",
-            width=ui_scaler.get_button_width(8)
+
+        # Countdown label on the left
+        self.countdown_label = ttk.Label(header_frame, text="", width=14, anchor="w")
+        self.countdown_label.pack(side=LEFT)
+        self.components['countdown_label'] = self.countdown_label
+
+        # Button row on the right
+        button_frame = ttk.Frame(header_frame)
+        button_frame.pack(side=RIGHT)
+
+        copy_btn = ttk.Button(
+            button_frame,
+            text="Copy",
+            command=self._copy_analysis,
+            bootstyle="secondary-outline",
+            width=6
         )
-        clear_btn.pack(side=RIGHT)
+        copy_btn.pack(side=LEFT, padx=2)
+        ToolTip(copy_btn, "Copy analysis to clipboard")
+        self.components['copy_analysis_button'] = copy_btn
+
+        soap_btn = ttk.Button(
+            button_frame,
+            text="→ SOAP",
+            command=self._add_analysis_to_soap,
+            bootstyle="info-outline",
+            width=7
+        )
+        soap_btn.pack(side=LEFT, padx=2)
+        ToolTip(soap_btn, "Add analysis to SOAP note")
+        self.components['soap_analysis_button'] = soap_btn
+
+        clear_btn = ttk.Button(
+            button_frame,
+            text="Clear",
+            command=self._clear_analysis,
+            bootstyle="secondary-outline",
+            width=6
+        )
+        clear_btn.pack(side=LEFT, padx=2)
         ToolTip(clear_btn, "Clear analysis results")
         self.components['clear_analysis_button'] = clear_btn
         
         # Create text widget with scrollbar
         text_container = ttk.Frame(text_frame)
         text_container.pack(fill=BOTH, expand=True)
-        
+
         text_scroll = ttk.Scrollbar(text_container)
         text_scroll.pack(side=RIGHT, fill=Y)
-        
+
         self.components['record_notes_text'] = tk.Text(
             text_container,
             wrap=tk.WORD,
@@ -264,10 +310,15 @@ class RecordTab:
         )
         self.components['record_notes_text'].pack(fill=BOTH, expand=True)
         text_scroll.config(command=self.components['record_notes_text'].yview)
-        
+
+        # Add empty state hint
+        self._show_empty_state_hint()
+
         # Store reference to advanced analysis var in parent
         self.parent_ui.advanced_analysis_var = self.advanced_analysis_var
-        
+        # Store reference to interval var
+        self.parent_ui.analysis_interval_var = self.analysis_interval_var
+
         return record_frame
     
     def _initialize_recording_ui_state(self):
@@ -604,6 +655,170 @@ class RecordTab:
             # Schedule next frame only if still active
             if self.animation_active:
                 self.pulse_animation_id = self.parent.after(50, self._animate_pulse)
-            
+
         except Exception as e:
             logging.error(f"Error in pulse animation: {e}")
+
+    # ==================== Advanced Analysis Methods ====================
+
+    def _show_empty_state_hint(self):
+        """Show the empty state hint in the analysis text area."""
+        text_widget = self.components.get('record_notes_text')
+        if text_widget:
+            text_widget.delete("1.0", tk.END)
+            hint_text = (
+                "Advanced Analysis will appear here during recording.\n\n"
+                "Enable the checkbox on the left and start recording to see "
+                "real-time differential diagnosis suggestions.\n\n"
+                "Analysis runs at the interval you select (1, 2, or 5 minutes) "
+                "and results accumulate here with timestamps."
+            )
+            text_widget.insert("1.0", hint_text)
+            text_widget.config(foreground="gray")
+
+    def _on_interval_change(self, event=None):
+        """Handle interval change from combobox."""
+        interval_str = self.analysis_interval_var.get()
+        try:
+            minutes = int(interval_str.split()[0])
+            seconds = minutes * 60
+            logging.info(f"Analysis interval changed to {minutes} minute(s)")
+
+            # Update the periodic analyzer if it's running
+            if hasattr(self.parent_ui, 'parent') and hasattr(self.parent_ui.parent, 'periodic_analyzer'):
+                analyzer = self.parent_ui.parent.periodic_analyzer
+                if analyzer and analyzer.is_running:
+                    analyzer.set_interval(seconds)
+                    logging.info(f"Updated running analyzer interval to {seconds}s")
+        except (ValueError, IndexError) as e:
+            logging.error(f"Error parsing interval: {e}")
+
+    def _copy_analysis(self):
+        """Copy analysis results to clipboard."""
+        text_widget = self.components.get('record_notes_text')
+        if not text_widget:
+            return
+
+        text = text_widget.get("1.0", "end-1c").strip()
+
+        # Don't copy the empty state hint
+        if not text or "will appear here" in text:
+            self._show_feedback("Nothing to copy")
+            return
+
+        try:
+            self.parent.clipboard_clear()
+            self.parent.clipboard_append(text)
+            self._show_feedback("Copied to clipboard")
+        except Exception as e:
+            logging.error(f"Error copying analysis: {e}")
+            self._show_feedback("Copy failed")
+
+    def _add_analysis_to_soap(self):
+        """Add analysis results to SOAP note."""
+        text_widget = self.components.get('record_notes_text')
+        if not text_widget:
+            return
+
+        text = text_widget.get("1.0", "end-1c").strip()
+
+        # Don't add the empty state hint
+        if not text or "will appear here" in text:
+            self._show_feedback("No analysis to add")
+            return
+
+        try:
+            # Find the SOAP text widget in parent
+            soap_text = None
+            if hasattr(self.parent_ui, 'parent') and hasattr(self.parent_ui.parent, 'ui'):
+                ui = self.parent_ui.parent.ui
+                if hasattr(ui, 'components') and 'soap_text' in ui.components:
+                    soap_text = ui.components['soap_text']
+
+            if soap_text:
+                # Append to SOAP note with separator
+                soap_text.insert(tk.END, f"\n\n{'─' * 40}\nAdvanced Analysis:\n{'─' * 40}\n{text}")
+                soap_text.see(tk.END)
+                self._show_feedback("Added to SOAP note")
+            else:
+                self._show_feedback("SOAP note not available")
+        except Exception as e:
+            logging.error(f"Error adding to SOAP: {e}")
+            self._show_feedback("Failed to add")
+
+    def _clear_analysis(self):
+        """Clear the analysis text and show empty state."""
+        self._show_empty_state_hint()
+        self.update_countdown(0, clear=True)
+        self._show_feedback("Cleared")
+
+    def _show_feedback(self, message: str):
+        """Show brief feedback in the countdown label."""
+        if hasattr(self, 'countdown_label'):
+            original_text = self.countdown_label.cget('text')
+            self.countdown_label.config(text=message)
+            # Restore after 2 seconds
+            self.parent.after(2000, lambda: self.countdown_label.config(text=original_text))
+
+    def update_countdown(self, seconds: int, clear: bool = False):
+        """Update the countdown display.
+
+        Args:
+            seconds: Seconds remaining until next analysis
+            clear: If True, clear the countdown display
+        """
+        if not hasattr(self, 'countdown_label'):
+            return
+
+        if clear:
+            self.countdown_label.config(text="")
+        elif seconds <= 0:
+            self.countdown_label.config(text="Analyzing...")
+        else:
+            mins, secs = divmod(seconds, 60)
+            self.countdown_label.config(text=f"Next: {mins}:{secs:02d}")
+
+    def update_analysis_display(self, text: str):
+        """Update analysis display with accumulated results.
+
+        Args:
+            text: New analysis text to append
+        """
+        text_widget = self.components.get('record_notes_text')
+        if not text_widget:
+            return
+
+        try:
+            # Get current content
+            current = text_widget.get("1.0", "end-1c")
+
+            # Clear empty state hint if present
+            if "will appear here" in current:
+                text_widget.delete("1.0", tk.END)
+                text_widget.config(foreground="")  # Reset to default color
+                current = ""
+
+            # Add separator if not first entry
+            if current.strip():
+                text_widget.insert(tk.END, "\n\n" + "─" * 50 + "\n\n")
+
+            # Add timestamped entry
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            text_widget.insert(tk.END, f"[{timestamp}]\n{text}")
+            text_widget.see(tk.END)
+
+        except Exception as e:
+            logging.error(f"Error updating analysis display: {e}")
+
+    def get_analysis_interval_seconds(self) -> int:
+        """Get the current analysis interval in seconds.
+
+        Returns:
+            Interval in seconds (60, 120, or 300)
+        """
+        try:
+            interval_str = self.analysis_interval_var.get()
+            minutes = int(interval_str.split()[0])
+            return minutes * 60
+        except (ValueError, IndexError):
+            return 120  # Default to 2 minutes

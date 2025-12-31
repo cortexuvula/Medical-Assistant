@@ -37,10 +37,13 @@ class PeriodicAnalyzer:
 
         # Protected by _lock
         self._timer: Optional[threading.Timer] = None
+        self._countdown_thread: Optional[threading.Thread] = None
         self._is_running = False
         self._start_time: Optional[float] = None
         self._analysis_count = 0
         self._callback: Optional[Callable] = None
+        self._countdown_callback: Optional[Callable[[int], None]] = None
+        self._seconds_remaining = 0
 
     @property
     def is_running(self) -> bool:
@@ -53,6 +56,25 @@ class PeriodicAnalyzer:
         """Thread-safe access to analysis count."""
         with self._lock:
             return self._analysis_count
+
+    def set_interval(self, seconds: int) -> None:
+        """Set the analysis interval.
+
+        Args:
+            seconds: New interval in seconds (takes effect on next cycle)
+        """
+        with self._lock:
+            self.interval_seconds = seconds
+            logging.info(f"Analysis interval set to {seconds}s")
+
+    def set_countdown_callback(self, callback: Optional[Callable[[int], None]]) -> None:
+        """Set a callback to receive countdown updates.
+
+        Args:
+            callback: Function that receives seconds remaining, or None to disable
+        """
+        with self._lock:
+            self._countdown_callback = callback
 
     def start(self, callback: Callable):
         """Start periodic analysis.
@@ -88,8 +110,9 @@ class PeriodicAnalyzer:
 
             self._is_running = False
             self._stop_event.set()
+            self._seconds_remaining = 0  # Stop countdown
 
-            # Cancel pending timer
+            # Cancel pending timer (legacy support)
             if self._timer:
                 self._timer.cancel()
                 timer = self._timer
@@ -97,29 +120,84 @@ class PeriodicAnalyzer:
             else:
                 timer = None
 
+            # Get reference to countdown thread
+            countdown_thread = self._countdown_thread
+            self._countdown_thread = None
+
             analysis_count = self._analysis_count
 
-        # Wait for timer thread to finish if it was running
+        # Wait for timer thread to finish if it was running (legacy)
         if timer and timer.is_alive():
             timer.join(timeout=2.0)
+
+        # Wait for countdown thread to finish
+        if countdown_thread and countdown_thread.is_alive():
+            countdown_thread.join(timeout=2.0)
 
         # Wait for callback to complete using Event (thread-safe, no busy-wait)
         if wait_for_callback:
             if not self._callback_complete.wait(timeout=timeout):
                 logging.warning("Callback did not complete within timeout")
 
+        # Clear countdown display
+        with self._lock:
+            callback = self._countdown_callback
+        if callback:
+            try:
+                callback(-1)  # Signal stop (negative = hide countdown)
+            except Exception:
+                pass
+
         logging.info(f"Stopped periodic analysis after {analysis_count} analyses")
 
     def _schedule_next_analysis(self):
-        """Schedule the next analysis."""
+        """Schedule the next analysis with countdown updates."""
         with self._lock:
             if not self._is_running:
                 return
 
-            self._timer = threading.Timer(self.interval_seconds, self._perform_analysis)
-            self._timer.daemon = True  # Make timer thread daemon so it doesn't prevent shutdown
-            self._timer.name = f"PeriodicAnalysis-{self._analysis_count + 1}"
-            self._timer.start()
+            self._seconds_remaining = self.interval_seconds
+
+            # Start countdown thread for per-second updates
+            self._countdown_thread = threading.Thread(
+                target=self._countdown_loop,
+                daemon=True,
+                name=f"PeriodicAnalysisCountdown-{self._analysis_count + 1}"
+            )
+            self._countdown_thread.start()
+
+    def _countdown_loop(self):
+        """Countdown loop that updates every second and triggers analysis."""
+        try:
+            while self._seconds_remaining > 0 and not self._stop_event.is_set():
+                # Send countdown update if callback is set
+                with self._lock:
+                    callback = self._countdown_callback
+
+                if callback:
+                    try:
+                        callback(self._seconds_remaining)
+                    except Exception as e:
+                        logging.error(f"Error in countdown callback: {e}")
+
+                time.sleep(1)
+                self._seconds_remaining -= 1
+
+            # Time's up - perform analysis if not stopped
+            if not self._stop_event.is_set():
+                # Signal "Analyzing..." (0 seconds)
+                with self._lock:
+                    callback = self._countdown_callback
+                if callback:
+                    try:
+                        callback(0)
+                    except Exception:
+                        pass
+
+                self._perform_analysis()
+
+        except Exception as e:
+            logging.error(f"Error in countdown loop: {e}")
 
     def _perform_analysis(self):
         """Perform the periodic analysis."""
