@@ -1200,8 +1200,18 @@ class TranslationDialog:
             text="Export",
             command=self._export_conversation,
             bootstyle="info"
-        ).pack(side=LEFT)
-        
+        ).pack(side=LEFT, padx=(0, 3))
+
+        # Add to Context button
+        add_context_btn = ttk.Button(
+            button_frame,
+            text="→ Context",
+            command=self._add_to_context,
+            bootstyle="success"
+        )
+        add_context_btn.pack(side=LEFT)
+        ToolTip(add_context_btn, "Add conversation to Context Information on main screen")
+
         # Close button
         ttk.Button(
             button_frame,
@@ -2086,6 +2096,76 @@ class TranslationDialog:
             self.recording_status.config(text="Both languages copied!", foreground="green")
         except Exception as e:
             self.logger.error(f"Copy both failed: {e}")
+
+    def _add_to_context(self):
+        """Add conversation to Context Information on main screen."""
+        try:
+            # Check if parent has context_text widget
+            if not hasattr(self.parent, 'context_text') or self.parent.context_text is None:
+                self.recording_status.config(text="Context panel not available", foreground="orange")
+                return
+
+            # Build conversation summary
+            lines = []
+            notes = self.session_notes_var.get().strip() if hasattr(self, 'session_notes_var') else ""
+
+            # Add header
+            lines.append("--- Translation Session ---")
+            if notes:
+                lines.append(f"Notes: {notes}")
+            lines.append(f"Languages: Patient ({self.patient_language}) ↔ Doctor ({self.doctor_language})")
+            lines.append("")
+
+            # Get current text fields content
+            patient_original = self.patient_original_text.get("1.0", tk.END).strip()
+            patient_translated = self.patient_translated_text.get("1.0", tk.END).strip()
+            doctor_input = self.doctor_input_text.get("1.0", tk.END).strip()
+            doctor_translated = self.doctor_translated_text.get("1.0", tk.END).strip()
+
+            # Add current exchange if present
+            if patient_original:
+                lines.append(f"Patient [{self.patient_language}]: {patient_original}")
+                if patient_translated:
+                    lines.append(f"  → [{self.doctor_language}]: {patient_translated}")
+                lines.append("")
+
+            if doctor_input:
+                lines.append(f"Doctor [{self.doctor_language}]: {doctor_input}")
+                if doctor_translated:
+                    lines.append(f"  → [{self.patient_language}]: {doctor_translated}")
+                lines.append("")
+
+            # Also include history entries if available
+            if self.session_manager.current_session and self.session_manager.current_session.entries:
+                lines.append("Conversation History:")
+                for entry in self.session_manager.current_session.entries:
+                    speaker = entry.speaker.value.title()
+                    lines.append(f"  {speaker}: {entry.original_text}")
+                    display_trans = entry.llm_refined_text or entry.translated_text
+                    lines.append(f"    → {display_trans}")
+                lines.append("")
+
+            lines.append("--- End Translation ---")
+
+            # Get existing context and append
+            existing = self.parent.context_text.get("1.0", tk.END).strip()
+            new_content = "\n".join(lines)
+
+            if existing:
+                combined = f"{existing}\n\n{new_content}"
+            else:
+                combined = new_content
+
+            # Update context text widget
+            self.parent.context_text.delete("1.0", tk.END)
+            self.parent.context_text.insert("1.0", combined)
+
+            self.recording_status.config(text="Added to Context!", foreground="green")
+            self.logger.info("Translation conversation added to context")
+
+        except Exception as e:
+            self.logger.error(f"Add to context failed: {e}")
+            self.recording_status.config(text=f"Error: {str(e)[:30]}", foreground="red")
 
     def _update_service_status(self, translation_ok: bool = None, tts_ok: bool = None):
         """Update service status indicators."""
