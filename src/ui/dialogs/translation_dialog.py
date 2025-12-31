@@ -143,7 +143,7 @@ class TranslationDialog:
         dialog_height = int(screen_height * 0.80)  # Use 80% of screen height
         
         self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-        self.dialog.minsize(1200, 700)
+        self.dialog.minsize(1200, 750)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
         
