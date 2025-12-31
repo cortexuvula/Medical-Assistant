@@ -60,7 +60,14 @@ class TranslationDialog:
         self.input_device = translation_settings.get("input_device", "")
         self.output_device = translation_settings.get("output_device", "")
         self.stt_provider = translation_settings.get("stt_provider", "")  # Empty = use main setting
-        
+
+        # New settings
+        self.auto_clear_after_send = translation_settings.get("auto_clear_after_send", False)
+        self.tts_speed = translation_settings.get("tts_speed", 1.0)  # 0.5 to 2.0
+        self.font_size = translation_settings.get("font_size", 11)  # Default font size
+        self.recent_languages = translation_settings.get("recent_languages", [])  # Recently used language pairs
+        self.favorite_responses = translation_settings.get("favorite_responses", [])  # Favorite canned response IDs
+
         self.logger = logging.getLogger(__name__)
 
         # Theme-aware colors
@@ -72,6 +79,10 @@ class TranslationDialog:
 
         # Undo history
         self._undo_stack = []
+
+        # Service status
+        self._translation_service_online = True
+        self._tts_service_online = True
 
     def _dialog_exists(self) -> bool:
         """Check if dialog still exists and is valid.
@@ -111,7 +122,7 @@ class TranslationDialog:
                 pass  # Widget was destroyed
 
     def _update_send_play_buttons(self):
-        """Update Send and Play button states based on translated text availability."""
+        """Update Send, Play, and Preview button states based on translated text availability."""
         if not self._dialog_exists():
             return
 
@@ -124,6 +135,11 @@ class TranslationDialog:
                 self.send_button.config(state=state)
             if hasattr(self, 'play_button'):
                 self.play_button.config(state=state)
+            if hasattr(self, 'preview_button'):
+                self.preview_button.config(state=state)
+
+            # Update character counts
+            self._update_char_counts()
         except tk.TclError:
             pass  # Widgets not ready yet
 
@@ -630,15 +646,15 @@ class TranslationDialog:
         container = ttk.Frame(parent)
         container.pack(fill=X)
 
-        # Header with category filter and manage button
+        # Header with category filter, search, and manage button
         header_frame = ttk.Frame(container)
         header_frame.pack(fill=X, pady=(0, 5))
 
         # Category filter
-        ttk.Label(header_frame, text="Category:").pack(side=LEFT, padx=(0, 5))
+        ttk.Label(header_frame, text="Category:").pack(side=LEFT, padx=(0, 3))
 
         self.canned_category_var = tk.StringVar(value="All")
-        categories = ["All", "greeting", "symptom", "history", "instruction", "clarify", "general"]
+        categories = ["All", "★ Favorites", "greeting", "symptom", "history", "instruction", "clarify", "general"]
         self.canned_category_combo = ttk.Combobox(
             header_frame,
             textvariable=self.canned_category_var,
@@ -646,8 +662,30 @@ class TranslationDialog:
             state="readonly",
             width=12
         )
-        self.canned_category_combo.pack(side=LEFT, padx=(0, 10))
+        self.canned_category_combo.pack(side=LEFT, padx=(0, 8))
         self.canned_category_combo.bind("<<ComboboxSelected>>", lambda e: self._populate_canned_responses())
+
+        # Search filter
+        ttk.Label(header_frame, text="Search:").pack(side=LEFT, padx=(0, 3))
+        self.canned_search_var = tk.StringVar()
+        self.canned_search_entry = ttk.Entry(
+            header_frame,
+            textvariable=self.canned_search_var,
+            width=15
+        )
+        self.canned_search_entry.pack(side=LEFT, padx=(0, 5))
+        self.canned_search_var.trace_add("write", lambda *args: self._populate_canned_responses())
+        ToolTip(self.canned_search_entry, "Filter responses by text")
+
+        # Clear search button
+        clear_search_btn = ttk.Button(
+            header_frame,
+            text="✕",
+            command=lambda: self.canned_search_var.set(""),
+            bootstyle="secondary",
+            width=2
+        )
+        clear_search_btn.pack(side=LEFT, padx=(0, 10))
 
         # Manage button on the right
         manage_btn = ttk.Button(
@@ -731,16 +769,30 @@ class TranslationDialog:
         # Get selected category filter
         selected_category = self.canned_category_var.get() if hasattr(self, 'canned_category_var') else "All"
 
-        # Filter responses by category
+        # Get search text
+        search_text = self.canned_search_var.get().lower() if hasattr(self, 'canned_search_var') else ""
+
+        # Filter responses by category and search
         filtered_responses = {}
         for response_text, category in responses.items():
-            if selected_category == "All" or category == selected_category:
-                filtered_responses[response_text] = category
+            # Check category
+            if selected_category == "★ Favorites":
+                if response_text not in self.favorite_responses:
+                    continue
+            elif selected_category != "All" and category != selected_category:
+                continue
+
+            # Check search filter
+            if search_text and search_text not in response_text.lower():
+                continue
+
+            filtered_responses[response_text] = category
 
         if not filtered_responses:
+            msg = "No matching responses found." if search_text else f"No responses in '{selected_category}' category."
             ttk.Label(
                 self.canned_responses_frame,
-                text=f"No responses in '{selected_category}' category.",
+                text=msg,
                 foreground="gray"
             ).pack(pady=20)
             return
@@ -751,23 +803,31 @@ class TranslationDialog:
         max_cols = 3
 
         for response_text, category in sorted(filtered_responses.items()):
+            # Check if this is a favorite
+            is_favorite = response_text in self.favorite_responses
+            btn_style = "info" if is_favorite else "outline-primary"
+
             btn = ttk.Button(
                 self.canned_responses_frame,
-                text=response_text[:25] + "..." if len(response_text) > 25 else response_text,
+                text=("★ " if is_favorite else "") + (response_text[:22] + "..." if len(response_text) > 25 else response_text),
                 command=lambda text=response_text: self._insert_canned_response(text),
-                bootstyle="outline-primary",
+                bootstyle=btn_style,
                 width=30
             )
             btn.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
-            
-            # Add tooltip with full text
-            ToolTip(btn, response_text)
-            
+
+            # Right-click to toggle favorite
+            btn.bind("<Button-3>", lambda e, text=response_text: self._toggle_favorite_response(text))
+
+            # Add tooltip with full text and favorite hint
+            tooltip = f"{response_text}\n(Right-click to {'remove from' if is_favorite else 'add to'} favorites)"
+            ToolTip(btn, tooltip)
+
             col += 1
             if col >= max_cols:
                 col = 0
                 row += 1
-        
+
         # Configure grid weights for responsive layout
         for i in range(max_cols):
             self.canned_responses_frame.columnconfigure(i, weight=1)
@@ -849,6 +909,10 @@ class TranslationDialog:
 
         ttk.Label(header_frame, text="Doctor Response (Type or dictate):", font=("", 9)).pack(side=LEFT)
 
+        # Character count for doctor input
+        self.doctor_char_count = ttk.Label(header_frame, text="0 chars", font=("", 8), foreground="gray")
+        self.doctor_char_count.pack(side=RIGHT, padx=(5, 0))
+
         # Dictate button for voice input
         self.dictate_button = ttk.Button(
             header_frame,
@@ -885,8 +949,13 @@ class TranslationDialog:
         # Translation (Patient's language)
         right_frame = ttk.Frame(text_container)
         right_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(5, 0))
-        
-        ttk.Label(right_frame, text="Translation (for Patient):", font=("", 9)).pack(anchor=W)
+
+        # Header with character count
+        trans_header = ttk.Frame(right_frame)
+        trans_header.pack(fill=X)
+        ttk.Label(trans_header, text="Translation (for Patient):", font=("", 9)).pack(side=LEFT)
+        self.trans_char_count = ttk.Label(trans_header, text="0 chars", font=("", 8), foreground="gray")
+        self.trans_char_count.pack(side=RIGHT)
         
         scroll2 = ttk.Scrollbar(right_frame)
         scroll2.pack(side=RIGHT, fill=Y)
@@ -910,28 +979,40 @@ class TranslationDialog:
         # TTS controls
         tts_frame = ttk.Frame(parent)
         tts_frame.pack(fill=X)
-        
+
         # Send button (adds to history without TTS)
         self.send_button = ttk.Button(
             tts_frame,
             text="📤 Send",
             command=self._send_doctor_response,
             bootstyle="primary",
-            width=10,
+            width=8,
             state=DISABLED  # Initially disabled until translation is available
         )
-        self.send_button.pack(side=LEFT, padx=(0, 5))
+        self.send_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.send_button, "Add response to history without playing audio (Ctrl+Enter)")
+
+        # Preview button - hear translation yourself first
+        self.preview_button = ttk.Button(
+            tts_frame,
+            text="👂 Preview",
+            command=self._preview_translation,
+            bootstyle="info",
+            width=10,
+            state=DISABLED
+        )
+        self.preview_button.pack(side=LEFT, padx=(0, 3))
+        ToolTip(self.preview_button, "Preview translation audio (hear it yourself before playing for patient)")
 
         self.play_button = ttk.Button(
             tts_frame,
-            text="🔊 Play for Patient",
+            text="🔊 Play",
             command=self._play_doctor_response,
             bootstyle="success",
-            width=20,
+            width=8,
             state=DISABLED  # Initially disabled until translation is available
         )
-        self.play_button.pack(side=LEFT, padx=(0, 5))
+        self.play_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.play_button, "Play translation for patient (Ctrl+P)")
 
         self.stop_button = ttk.Button(
@@ -939,10 +1020,10 @@ class TranslationDialog:
             text="🛑 Stop",
             command=self._stop_playback,
             bootstyle="secondary",
-            width=8,
+            width=6,
             state=DISABLED  # Initially disabled until playing
         )
-        self.stop_button.pack(side=LEFT, padx=(0, 5))
+        self.stop_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.stop_button, "Stop audio playback")
 
         # Undo button near action buttons for easy access
@@ -951,19 +1032,28 @@ class TranslationDialog:
             text="↶ Undo",
             command=self._undo_last_entry,
             bootstyle="outline-warning",
-            width=8,
+            width=6,
             state=DISABLED
         )
-        self.undo_button.pack(side=LEFT, padx=(0, 10))
+        self.undo_button.pack(side=LEFT, padx=(0, 5))
         ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")
 
-        # Real-time translation checkbox
+        # Checkboxes
         self.realtime_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             tts_frame,
-            text="Real-time translation",
+            text="Real-time",
             variable=self.realtime_var
-        ).pack(side=LEFT, padx=(20, 0))
+        ).pack(side=LEFT, padx=(10, 0))
+
+        self.auto_clear_var = tk.BooleanVar(value=self.auto_clear_after_send)
+        ttk.Checkbutton(
+            tts_frame,
+            text="Auto-clear",
+            variable=self.auto_clear_var,
+            command=self._on_auto_clear_toggle
+        ).pack(side=LEFT, padx=(5, 0))
+        ToolTip(tts_frame.winfo_children()[-1], "Clear doctor input after sending")
 
         # Doctor translation indicator (initially hidden)
         self.doctor_translation_indicator = ttk.Label(
@@ -974,34 +1064,84 @@ class TranslationDialog:
         )
         # Will be shown/hidden as needed
         
-        # Output device selection
+        # Output device and settings row
         output_frame = ttk.Frame(parent)
         output_frame.pack(fill=X, pady=(10, 0))
-        
-        ttk.Label(output_frame, text="Output Device:").pack(side=LEFT, padx=(0, 5))
-        
+
+        ttk.Label(output_frame, text="Output:").pack(side=LEFT, padx=(0, 3))
+
         # Get available output devices
         from utils.utils import get_valid_output_devices
         output_devices = get_valid_output_devices()
-        
+
         self.selected_output = tk.StringVar()
         if self.output_device and self.output_device in output_devices:
-            # Use saved preference if available
             self.selected_output.set(self.output_device)
         elif output_devices:
-            # Default to first available
             if self.output_device:
                 self.logger.warning(f"Saved output device '{self.output_device}' not found, using default")
             self.selected_output.set(output_devices[0])
-        
+
         self.output_combo = ttk.Combobox(
             output_frame,
             textvariable=self.selected_output,
             values=output_devices,
-            width=30,
+            width=25,
             state="readonly"
         )
-        self.output_combo.pack(side=LEFT)
+        self.output_combo.pack(side=LEFT, padx=(0, 10))
+
+        # TTS Speed control
+        ttk.Label(output_frame, text="Speed:").pack(side=LEFT, padx=(0, 3))
+        self.speed_var = tk.DoubleVar(value=self.tts_speed)
+        self.speed_scale = ttk.Scale(
+            output_frame,
+            from_=0.5,
+            to=1.5,
+            variable=self.speed_var,
+            length=80,
+            command=self._on_speed_change
+        )
+        self.speed_scale.pack(side=LEFT, padx=(0, 3))
+        self.speed_label = ttk.Label(output_frame, text=f"{self.tts_speed:.1f}x", width=4)
+        self.speed_label.pack(side=LEFT, padx=(0, 10))
+        ToolTip(self.speed_scale, "Adjust TTS speech speed (0.5x slower - 1.5x faster)")
+
+        # Font size control
+        ttk.Label(output_frame, text="Font:").pack(side=LEFT, padx=(0, 3))
+        self.font_size_var = tk.IntVar(value=self.font_size)
+        font_spin = ttk.Spinbox(
+            output_frame,
+            from_=9,
+            to=18,
+            width=3,
+            textvariable=self.font_size_var,
+            command=self._on_font_size_change
+        )
+        font_spin.pack(side=LEFT, padx=(0, 10))
+        ToolTip(font_spin, "Adjust text size in all text areas")
+
+        # Service status indicators
+        self.service_status_frame = ttk.Frame(output_frame)
+        self.service_status_frame.pack(side=RIGHT)
+
+        self.translation_status = ttk.Label(
+            self.service_status_frame,
+            text="●",
+            foreground="green",
+            font=("", 10)
+        )
+        self.translation_status.pack(side=LEFT, padx=(0, 2))
+        ToolTip(self.translation_status, "Translation service status")
+
+        self.tts_status = ttk.Label(
+            self.service_status_frame,
+            text="●",
+            foreground="green",
+            font=("", 10)
+        )
+        self.tts_status.pack(side=LEFT)
+        ToolTip(self.tts_status, "TTS service status")
     
     def _create_button_bar(self, parent):
         """Create bottom button bar.
@@ -1023,20 +1163,41 @@ class TranslationDialog:
         # Copy buttons
         ttk.Button(
             button_frame,
-            text="Copy Patient Original",
+            text="Copy Patient",
             command=lambda: self._copy_text(self.patient_original_text)
-        ).pack(side=LEFT, padx=(0, 5))
-        
+        ).pack(side=LEFT, padx=(0, 3))
+
         ttk.Button(
             button_frame,
-            text="Copy Doctor Response",
+            text="Copy Doctor",
             command=lambda: self._copy_text(self.doctor_input_text)
-        ).pack(side=LEFT, padx=(0, 20))
-        
+        ).pack(side=LEFT, padx=(0, 3))
+
+        # Copy Both button
+        copy_both_btn = ttk.Button(
+            button_frame,
+            text="Copy Both",
+            command=self._copy_both_languages,
+            bootstyle="outline-primary"
+        )
+        copy_both_btn.pack(side=LEFT, padx=(0, 10))
+        ToolTip(copy_both_btn, "Copy original + translation together")
+
+        # Session notes
+        ttk.Label(button_frame, text="Notes:").pack(side=LEFT, padx=(0, 3))
+        self.session_notes_var = tk.StringVar()
+        self.session_notes_entry = ttk.Entry(
+            button_frame,
+            textvariable=self.session_notes_var,
+            width=20
+        )
+        self.session_notes_entry.pack(side=LEFT, padx=(0, 10))
+        ToolTip(self.session_notes_entry, "Add notes about this session (patient name, context)")
+
         # Export button
         ttk.Button(
             button_frame,
-            text="Export Conversation",
+            text="Export",
             command=self._export_conversation,
             bootstyle="info"
         ).pack(side=LEFT)
@@ -1349,14 +1510,18 @@ class TranslationDialog:
     
     def _on_doctor_text_change(self, event=None):
         """Handle doctor text input change for real-time translation."""
+        # Always update character counts
+        self._update_char_counts()
+
         if not self.realtime_var.get():
             return
-        
+
         # Get current text
         text = self.doctor_input_text.get("1.0", tk.END).strip()
-        
+
         if not text:
             self.doctor_translated_text.delete("1.0", tk.END)
+            self._update_send_play_buttons()
             return
         
         # Cancel previous translation timer if exists (safe cleanup)
@@ -1574,9 +1739,11 @@ class TranslationDialog:
             )
             self._add_history_entry(entry)
 
-            # Clear the doctor input for next response
-            self.doctor_input_text.delete("1.0", tk.END)
-            self.doctor_translated_text.delete("1.0", tk.END)
+            # Clear the doctor input only if auto-clear is enabled
+            if self.auto_clear_var.get():
+                self.doctor_input_text.delete("1.0", tk.END)
+                self.doctor_translated_text.delete("1.0", tk.END)
+                self._update_send_play_buttons()
 
             self.recording_status.config(text="Response sent", foreground="green")
         except Exception as e:
@@ -1632,14 +1799,20 @@ class TranslationDialog:
         threading.Thread(target=synthesize_and_play, daemon=True).start()
     
     def _on_playback_complete(self):
-        """Handle playback completion - reset button states."""
-        self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+        """Handle playback completion - reset button states and optionally clear."""
+        self.play_button.config(state=NORMAL, text="🔊 Play")
         self.stop_button.config(state=DISABLED)
         self.recording_status.config(text="Playback complete", foreground="green")
 
+        # Clear the doctor input only if auto-clear is enabled
+        if self.auto_clear_var.get():
+            self.doctor_input_text.delete("1.0", tk.END)
+            self.doctor_translated_text.delete("1.0", tk.END)
+            self._update_send_play_buttons()
+
     def _on_playback_error(self, error: str):
         """Handle playback error - reset button states and show error."""
-        self.play_button.config(state=NORMAL, text="🔊 Play for Patient")
+        self.play_button.config(state=NORMAL, text="🔊 Play")
         self.stop_button.config(state=DISABLED)
         self.recording_status.config(text=f"Playback error: {error[:40]}", foreground="red")
 
@@ -1800,6 +1973,135 @@ class TranslationDialog:
             self.canned_frame.pack_forget()
             self._quick_toggle_btn.config(text="▶ Quick Responses")
 
+    def _preview_translation(self):
+        """Preview the translation audio for the doctor (at lower volume)."""
+        translated_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+        if not translated_text:
+            return
+
+        self.preview_button.config(state=DISABLED, text="👂 Previewing...")
+        self.stop_button.config(state=NORMAL)
+        self.recording_status.config(text="Previewing translation...", foreground="blue")
+
+        def preview_audio():
+            try:
+                self.tts_manager.synthesize_and_play(
+                    translated_text,
+                    language=self.patient_language,
+                    blocking=True,
+                    output_device=self.selected_output.get()
+                )
+                self._safe_after(0, lambda: self._safe_ui_update(
+                    lambda: self._on_preview_complete()
+                ))
+            except Exception as e:
+                self.logger.error(f"Preview failed: {e}", exc_info=True)
+                self._safe_after(0, lambda: self._safe_ui_update(
+                    lambda: self._on_preview_error(str(e))
+                ))
+
+        threading.Thread(target=preview_audio, daemon=True).start()
+
+    def _on_preview_complete(self):
+        """Handle preview completion."""
+        self.preview_button.config(state=NORMAL, text="👂 Preview")
+        self.stop_button.config(state=DISABLED)
+        self.recording_status.config(text="Preview complete", foreground="green")
+
+    def _on_preview_error(self, error: str):
+        """Handle preview error."""
+        self.preview_button.config(state=NORMAL, text="👂 Preview")
+        self.stop_button.config(state=DISABLED)
+        self.recording_status.config(text=f"Preview error: {error[:40]}", foreground="red")
+
+    def _on_auto_clear_toggle(self):
+        """Handle auto-clear checkbox toggle."""
+        self.auto_clear_after_send = self.auto_clear_var.get()
+        SETTINGS.setdefault("translation", {})["auto_clear_after_send"] = self.auto_clear_after_send
+
+    def _on_speed_change(self, value):
+        """Handle TTS speed change."""
+        speed = float(value)
+        self.tts_speed = speed
+        self.speed_label.config(text=f"{speed:.1f}x")
+        SETTINGS.setdefault("translation", {})["tts_speed"] = speed
+
+    def _on_font_size_change(self):
+        """Handle font size change."""
+        size = self.font_size_var.get()
+        self.font_size = size
+        SETTINGS.setdefault("translation", {})["font_size"] = size
+
+        # Update all text widgets
+        font = ("Consolas", size)
+        for widget in [self.patient_original_text, self.patient_translated_text,
+                       self.doctor_input_text, self.doctor_translated_text]:
+            try:
+                widget.config(font=font)
+            except tk.TclError:
+                pass
+
+    def _toggle_favorite_response(self, response_text: str):
+        """Toggle a canned response as favorite."""
+        if response_text in self.favorite_responses:
+            self.favorite_responses.remove(response_text)
+        else:
+            self.favorite_responses.append(response_text)
+
+        # Save to settings
+        SETTINGS.setdefault("translation", {})["favorite_responses"] = self.favorite_responses
+        save_settings(SETTINGS)
+
+        # Refresh display
+        self._populate_canned_responses()
+
+    def _update_char_counts(self):
+        """Update character count displays."""
+        if not self._dialog_exists():
+            return
+
+        try:
+            # Doctor input count
+            doctor_text = self.doctor_input_text.get("1.0", tk.END).strip()
+            self.doctor_char_count.config(text=f"{len(doctor_text)} chars")
+
+            # Translation count
+            trans_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+            self.trans_char_count.config(text=f"{len(trans_text)} chars")
+        except tk.TclError:
+            pass
+
+    def _copy_both_languages(self):
+        """Copy both original and translated text to clipboard."""
+        try:
+            doctor_text = self.doctor_input_text.get("1.0", tk.END).strip()
+            trans_text = self.doctor_translated_text.get("1.0", tk.END).strip()
+
+            combined = f"[{self.doctor_language}] {doctor_text}\n[{self.patient_language}] {trans_text}"
+            self.dialog.clipboard_clear()
+            self.dialog.clipboard_append(combined)
+            self.recording_status.config(text="Both languages copied!", foreground="green")
+        except Exception as e:
+            self.logger.error(f"Copy both failed: {e}")
+
+    def _update_service_status(self, translation_ok: bool = None, tts_ok: bool = None):
+        """Update service status indicators."""
+        if not self._dialog_exists():
+            return
+
+        try:
+            if translation_ok is not None:
+                self._translation_service_online = translation_ok
+                color = "green" if translation_ok else "red"
+                self.translation_status.config(foreground=color)
+
+            if tts_ok is not None:
+                self._tts_service_online = tts_ok
+                color = "green" if tts_ok else "red"
+                self.tts_status.config(foreground=color)
+        except tk.TclError:
+            pass
+
     def _on_llm_refinement_toggle(self):
         """Handle LLM refinement toggle change."""
         enabled = self.llm_refinement_var.get()
@@ -1818,6 +2120,12 @@ class TranslationDialog:
 
         # Stop any TTS playback
         self._stop_playback()
+
+        # Update session notes before ending
+        if self.session_manager.current_session and hasattr(self, 'session_notes_var'):
+            notes = self.session_notes_var.get().strip()
+            if notes:
+                self.session_manager.current_session.notes = notes
 
         # End the current session
         try:
