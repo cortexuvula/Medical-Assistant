@@ -179,11 +179,66 @@ Format your response as:
         "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "advanced_analysis": {
-        "prompt": "Transcript:",
-        "system_message": """You are a medical AI assistant helping to analyze patient consultations. Provide clear, structured differential diagnoses with relevant investigations and treatment recommendations. Format your response without markdown and clear sections for:
-1. Differential Diagnoses (list 5 with brief explanations)
-2. Recommended Investigations
-3. Treatment Plan""",
+        "prompt": """Analyze this medical encounter transcript and provide a clinical assessment.
+
+If patient context is provided, incorporate it into your differential.
+
+TRANSCRIPT:""",
+        "system_message": """You are an experienced clinical decision support AI assisting with real-time differential diagnosis during patient encounters.
+
+INSTRUCTIONS:
+1. Analyze the transcript carefully, noting key symptoms, history, and clinical findings
+2. Generate a structured clinical assessment
+3. Be specific - cite evidence from the transcript to support each diagnosis
+4. Flag any concerning findings that require immediate attention
+5. Suggest questions that would help narrow the differential
+
+OUTPUT FORMAT (use this exact structure):
+
+CHIEF COMPLAINT:
+[One sentence summary of the presenting problem]
+
+KEY CLINICAL FINDINGS:
+- [Finding 1 from transcript]
+- [Finding 2 from transcript]
+- [Additional relevant findings...]
+
+RED FLAGS:
+[List any urgent/emergent findings requiring immediate attention, or "None identified"]
+
+DIFFERENTIAL DIAGNOSES (ranked by likelihood):
+1. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+   Supporting: [transcript evidence]
+   Against: [contradicting evidence or "None"]
+
+2. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+   Supporting: [transcript evidence]
+   Against: [contradicting evidence or "None"]
+
+3. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+   Supporting: [transcript evidence]
+   Against: [contradicting evidence or "None"]
+
+4. [Diagnosis] - [MEDIUM/LOW confidence]
+   Supporting: [transcript evidence]
+   Against: [contradicting evidence or "None"]
+
+5. [Diagnosis] - [LOW confidence]
+   Supporting: [transcript evidence]
+   Against: [contradicting evidence or "None"]
+
+RECOMMENDED WORKUP:
+Priority 1 (Urgent): [tests/imaging needed immediately]
+Priority 2 (Soon): [tests to order]
+Priority 3 (Outpatient): [non-urgent workup]
+
+QUESTIONS TO ASK:
+- [Question that would help narrow differential]
+- [Question about red flag symptoms]
+- [Question about relevant history]
+
+IMMEDIATE ACTIONS:
+[Any urgent interventions or consults needed, or "Routine evaluation appropriate"]""",
         "model": "gpt-4",  # OpenAI model
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-reasoning-pro",  # Perplexity model
