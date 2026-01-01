@@ -406,6 +406,10 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             # For referral, use defaults from the default dictionary
             default_prompt = default.get("prompt", "Write a referral paragraph using the SOAP Note given to you")
             default_system = default.get("system_message", "")
+        elif "Advanced Analysis" in title:
+            # For advanced analysis, use defaults from the default dictionary
+            default_prompt = default.get("prompt", "")
+            default_system = default.get("system_message", "")
         
         # Insert defaults
         prompt_text.insert("1.0", default_prompt)
