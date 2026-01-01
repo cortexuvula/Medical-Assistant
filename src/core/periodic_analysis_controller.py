@@ -152,19 +152,21 @@ class PeriodicAnalysisController:
             self.app.status_manager.info("Generating differential diagnosis...")
             result = self.app.ai_processor.generate_differential_diagnosis(enhanced_transcript)
 
-            if result.get('success'):
+            # OperationResult: check .success and access .value for data
+            if result.success:
                 # Format analysis text (simpler format - timestamp added by UI)
                 formatted_time = f"{int(elapsed_time // 60)}:{int(elapsed_time % 60):02d}"
+                result_text = result.value.get('text', '') if result.value else ''
                 analysis_text = (
                     f"Analysis #{analysis_count} (recording time: {formatted_time})\n"
-                    f"{result['text']}"
+                    f"{result_text}"
                 )
 
                 # Update UI on main thread using accumulated display
                 self.app.after(0, lambda: self.update_analysis_display(analysis_text))
                 self.app.status_manager.success(f"Analysis #{analysis_count} completed")
             else:
-                error_msg = result.get('error', 'Unknown error')
+                error_msg = result.error or 'Unknown error'
                 logging.error(f"Failed to generate analysis: {error_msg}")
                 self.app.status_manager.error("Failed to generate analysis")
 
