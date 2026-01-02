@@ -266,8 +266,11 @@ class AudioStateManager:
                 combined = self._combined_chunks[0]
                 for chunk in self._combined_chunks[1:]:
                     combined += chunk
-                
-                logging.info(f"Combined audio: duration={len(combined)}ms")
+
+                # Log comprehensive audio details for debugging truncation issues
+                logging.info(f"Combined audio: duration={len(combined)}ms, "
+                           f"frame_rate={combined.frame_rate}, channels={combined.channels}, "
+                           f"sample_width={combined.sample_width}, frame_count={combined.frame_count()}")
                 return combined
                 
             except Exception as e:

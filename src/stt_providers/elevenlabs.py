@@ -96,6 +96,38 @@ class ElevenLabsProvider(BaseSTTProvider):
         except Exception as e:
             raise APIError(f"ElevenLabs API error: {e}")
 
+    def _validate_and_log_audio(self, segment: AudioSegment) -> dict:
+        """Validate audio segment and log its details.
+
+        Args:
+            segment: AudioSegment to validate
+
+        Returns:
+            Dictionary with audio details
+        """
+        details = {
+            'duration_ms': len(segment),
+            'duration_seconds': len(segment) / 1000,
+            'frame_rate': segment.frame_rate,
+            'channels': segment.channels,
+            'sample_width': segment.sample_width,
+            'frame_count': segment.frame_count()
+        }
+
+        self.logger.info(f"Audio segment details: duration_ms={details['duration_ms']}, "
+                        f"frame_rate={details['frame_rate']}, channels={details['channels']}, "
+                        f"sample_width={details['sample_width']}, frame_count={details['frame_count']}")
+
+        # Warn if parameters seem unusual
+        if details['frame_rate'] not in [16000, 22050, 44100, 48000]:
+            self.logger.warning(f"Unusual sample rate: {details['frame_rate']}")
+        if details['channels'] not in [1, 2]:
+            self.logger.warning(f"Unusual channel count: {details['channels']}")
+        if details['sample_width'] not in [1, 2, 4]:
+            self.logger.warning(f"Unusual sample width: {details['sample_width']}")
+
+        return details
+
     def transcribe(self, segment: AudioSegment) -> str:
         """Transcribe audio using ElevenLabs API.
 
@@ -111,8 +143,11 @@ class ElevenLabsProvider(BaseSTTProvider):
             return ""
 
         transcript = ""
+        # Validate and log audio segment details before processing (outside try for access in truncation check)
+        audio_details = self._validate_and_log_audio(segment)
 
         try:
+
             # Export audio to BytesIO buffer instead of temp file (saves 2-5 seconds)
             audio_buffer = BytesIO()
             segment.export(audio_buffer, format="wav")
@@ -311,9 +346,86 @@ class ElevenLabsProvider(BaseSTTProvider):
             logging.debug(f"Traceback: {traceback.format_exc()}")
             logging.debug("================================\n")
 
+        # Check for possible truncation
+        if transcript and audio_details:
+            duration_seconds = audio_details.get('duration_seconds', 0)
+            # Expect at least 3 characters per second of speech (very conservative)
+            expected_chars_min = duration_seconds * 3
+            if len(transcript) < expected_chars_min and duration_seconds > 10:
+                self.logger.warning(
+                    f"Possible transcription truncation detected: got {len(transcript)} chars "
+                    f"for {duration_seconds:.1f}s audio (expected at least {expected_chars_min:.0f}). "
+                    f"Audio params: frame_rate={audio_details.get('frame_rate')}, "
+                    f"channels={audio_details.get('channels')}, sample_width={audio_details.get('sample_width')}"
+                )
+                # Try file-based fallback if enabled
+                elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+                if elevenlabs_settings.get("retry_with_file", False):
+                    self.logger.info("Attempting file-based transcription fallback...")
+                    fallback_transcript = self._transcribe_via_temp_file(segment)
+                    if fallback_transcript and len(fallback_transcript) > len(transcript):
+                        self.logger.info(f"File fallback succeeded: {len(fallback_transcript)} chars vs {len(transcript)}")
+                        transcript = fallback_transcript
+
         # Return whatever transcript we got, empty string if we failed
         # No temp file cleanup needed with BytesIO
         return transcript
+
+    def _transcribe_via_temp_file(self, segment: AudioSegment) -> str:
+        """Fallback transcription using temp file instead of BytesIO.
+
+        This can help when BytesIO export produces corrupted audio.
+
+        Args:
+            segment: AudioSegment to transcribe
+
+        Returns:
+            Transcription text or empty string if failed
+        """
+        import tempfile
+        import os
+
+        temp_path = None
+        try:
+            # Create temp file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                temp_path = f.name
+                segment.export(temp_path, format="wav")
+
+            self.logger.info(f"Created temp file for fallback: {temp_path} ({os.path.getsize(temp_path)} bytes)")
+
+            # Read file and send to API
+            url = "https://api.elevenlabs.io/v1/speech-to-text"
+            headers = {'xi-api-key': self.api_key}
+
+            elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+            data = {
+                'model_id': elevenlabs_settings.get("model_id", "scribe_v1"),
+                'diarize': elevenlabs_settings.get("diarize", True),
+                'num_speakers': elevenlabs_settings.get("num_speakers", 2),
+            }
+
+            with open(temp_path, 'rb') as audio_file:
+                files = {'file': ('audio.wav', audio_file, 'audio/wav')}
+                response = self._make_api_call(url, headers=headers, files=files, data=data, timeout=300)
+
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("text", "")
+            else:
+                self.logger.error(f"File fallback failed: {response.status_code} - {response.text}")
+                return ""
+
+        except Exception as e:
+            self.logger.error(f"File fallback error: {e}", exc_info=True)
+            return ""
+        finally:
+            # Clean up temp file
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
 
     def _format_diarized_transcript(self, words: list) -> str:
         """Format diarized words from ElevenLabs into a readable transcript with speaker labels.

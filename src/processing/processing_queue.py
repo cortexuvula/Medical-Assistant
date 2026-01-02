@@ -362,10 +362,17 @@ class ProcessingQueue:
                         logging.error(f"[Queue] Error saving audio file: {str(e)}", exc_info=True)
                         # Continue with transcription even if audio save fails
                     
-                    # Log audio data info
+                    # Log comprehensive audio data info for debugging
                     if hasattr(audio_data, 'duration_seconds'):
                         logging.info(f"Audio duration: {audio_data.duration_seconds} seconds")
-                    
+                    # Log additional audio parameters to help diagnose truncation issues
+                    if hasattr(audio_data, 'frame_rate'):
+                        logging.info(f"[Queue] Audio params before transcription: "
+                                   f"duration_ms={len(audio_data) if hasattr(audio_data, '__len__') else 'N/A'}, "
+                                   f"frame_rate={audio_data.frame_rate}, "
+                                   f"channels={audio_data.channels}, "
+                                   f"sample_width={audio_data.sample_width}")
+
                     # Use the app's audio handler to transcribe
                     if hasattr(self.app, 'audio_handler'):
                         try:
@@ -685,7 +692,54 @@ class ProcessingQueue:
                         logging.info(f"Task {task_id} cancelled")
                         return True
         return False
-    
+
+    def cancel_batch(self, batch_id: str) -> int:
+        """Cancel all pending tasks in a batch.
+
+        Args:
+            batch_id: The batch identifier
+
+        Returns:
+            Number of tasks successfully cancelled
+        """
+        cancelled_count = 0
+        with self.lock:
+            batch = self.batch_tasks.get(batch_id)
+            if not batch:
+                logging.warning(f"Batch {batch_id} not found for cancellation")
+                return 0
+
+            task_ids = batch.get("task_ids", [])
+            logging.info(f"Attempting to cancel batch {batch_id} with {len(task_ids)} tasks")
+
+            for task_id in task_ids:
+                # Only cancel if task is still in active_tasks
+                if task_id in self.active_tasks:
+                    task = self.active_tasks[task_id]
+                    if task.get("status") == "queued":
+                        # Can cancel queued tasks
+                        recording_id = task.get("recording_id")
+                        task["status"] = "cancelled"
+                        self.active_tasks.pop(task_id)
+                        if recording_id is not None and recording_id in self._recording_to_task:
+                            del self._recording_to_task[recording_id]
+                        cancelled_count += 1
+                        logging.info(f"Cancelled queued task {task_id} in batch {batch_id}")
+                    elif "future" in task:
+                        # Try to cancel running task
+                        future: Future = task["future"]
+                        if future.cancel():
+                            recording_id = task.get("recording_id")
+                            self.active_tasks.pop(task_id)
+                            if recording_id is not None and recording_id in self._recording_to_task:
+                                del self._recording_to_task[recording_id]
+                            cancelled_count += 1
+                            logging.info(f"Cancelled running task {task_id} in batch {batch_id}")
+
+            logging.info(f"Cancelled {cancelled_count} tasks in batch {batch_id}")
+
+        return cancelled_count
+
     def shutdown(self, wait: bool = True):
         """Shutdown the processing queue gracefully."""
         logging.info("Shutting down processing queue...")
