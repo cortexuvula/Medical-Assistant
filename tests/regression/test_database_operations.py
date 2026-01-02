@@ -73,10 +73,16 @@ class TestDatabaseInitialization:
         db.create_tables()
 
         connections = []
+        lock = threading.Lock()
+        # Use a barrier to ensure all threads acquire connections simultaneously
+        barrier = threading.Barrier(3)
 
         def get_conn():
             conn = db._get_connection()
-            connections.append(id(conn))
+            with lock:
+                connections.append(id(conn))
+            # Wait for all threads to have acquired their connections
+            barrier.wait()
 
         # Create connections from multiple threads
         threads = [threading.Thread(target=get_conn) for _ in range(3)]
