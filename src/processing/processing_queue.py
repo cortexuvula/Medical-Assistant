@@ -73,6 +73,9 @@ class ProcessingQueue:
         self.failed_tasks: Dict[str, Dict] = {}
         self.batch_tasks: Dict[str, Dict] = {}  # Track batch processing
 
+        # Memory management: limit completed/failed task history
+        self.MAX_COMPLETED_TASKS = 1000
+
         # Deduplication: track recording_id -> task_id for active recordings
         self._recording_to_task: Dict[int, str] = {}
 
@@ -213,6 +216,20 @@ class ProcessingQueue:
                 "started_at": datetime.now(),
                 "options": batch_options or {}
             }
+
+        # Persist batch to database for durability
+        if self.app and hasattr(self.app, 'db'):
+            try:
+                import json
+                options_json = json.dumps(batch_options) if batch_options else None
+                self.app.db.execute_query("""
+                    INSERT OR REPLACE INTO batch_processing
+                    (batch_id, total_count, completed_count, failed_count, created_at, started_at, options, status)
+                    VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'processing')
+                """, (batch_id, len(recordings), options_json))
+                logging.info(f"Persisted batch {batch_id} to database")
+            except Exception as e:
+                logging.warning(f"Failed to persist batch to database: {e}")
         
         # Add each recording with batch info
         task_ids = []
@@ -400,7 +417,11 @@ class ProcessingQueue:
                 if process_options.get("generate_soap", True):
                     if transcript:
                         logging.info(f"Generating SOAP note for recording {recording_id}")
-                        soap_result = self._generate_soap_note(transcript)
+                        # Get context from recording_data (passed from UI)
+                        context = recording_data.get("context", "")
+                        if context:
+                            logging.info(f"Including context ({len(context)} chars) in SOAP generation")
+                        soap_result = self._generate_soap_note(transcript, context)
                         if soap_result:
                             results["soap_note"] = soap_result
                             # Update database
@@ -505,7 +526,37 @@ class ProcessingQueue:
         self._notify_status_update(task_id, "completed", len(self.active_tasks))
         
         logging.info(f"Task {task_id} completed in {processing_time:.2f} seconds")
-    
+
+        # Prune old tasks to prevent memory growth
+        self._prune_completed_tasks()
+
+    def _prune_completed_tasks(self):
+        """Remove oldest completed/failed tasks if over the limit to prevent memory leaks."""
+        with self.lock:
+            # Prune completed tasks
+            if len(self.completed_tasks) > self.MAX_COMPLETED_TASKS:
+                # Sort by completed_at time and remove oldest
+                sorted_tasks = sorted(
+                    self.completed_tasks.items(),
+                    key=lambda x: x[1].get("completed_at", datetime.min)
+                )
+                # Remove oldest tasks (keep most recent MAX_COMPLETED_TASKS)
+                tasks_to_remove = len(self.completed_tasks) - self.MAX_COMPLETED_TASKS
+                for task_id, _ in sorted_tasks[:tasks_to_remove]:
+                    del self.completed_tasks[task_id]
+                logging.debug(f"Pruned {tasks_to_remove} old completed tasks")
+
+            # Prune failed tasks (use same limit)
+            if len(self.failed_tasks) > self.MAX_COMPLETED_TASKS:
+                sorted_tasks = sorted(
+                    self.failed_tasks.items(),
+                    key=lambda x: x[1].get("failed_at", datetime.min)
+                )
+                tasks_to_remove = len(self.failed_tasks) - self.MAX_COMPLETED_TASKS
+                for task_id, _ in sorted_tasks[:tasks_to_remove]:
+                    del self.failed_tasks[task_id]
+                logging.debug(f"Pruned {tasks_to_remove} old failed tasks")
+
     def _mark_failed(self, task_id: str, recording_data: Dict, error_msg: str):
         """Mark a task as failed."""
         with self.lock:
@@ -545,7 +596,10 @@ class ProcessingQueue:
         self._notify_status_update(task_id, "failed", len(self.active_tasks))
         
         logging.error(f"Task {task_id} failed: {error_msg}")
-    
+
+        # Prune old tasks to prevent memory growth
+        self._prune_completed_tasks()
+
     def _should_retry(self, recording_data: Dict) -> bool:
         """Check if a task should be retried."""
         if not SETTINGS.get("auto_retry_failed", True):
@@ -761,11 +815,22 @@ class ProcessingQueue:
         batch = self.batch_tasks.get(batch_id)
         if not batch:
             return
-            
+
         total = batch["total"]
         completed = batch["completed"]
         failed = batch["failed"]
-        
+
+        # Update batch progress in database
+        if self.app and hasattr(self.app, 'db'):
+            try:
+                self.app.db.execute_query("""
+                    UPDATE batch_processing
+                    SET completed_count = ?, failed_count = ?
+                    WHERE batch_id = ?
+                """, (completed, failed, batch_id))
+            except Exception as e:
+                logging.warning(f"Failed to update batch progress in database: {e}")
+
         # Notify progress
         if self.batch_callback:
             try:
@@ -789,6 +854,18 @@ class ProcessingQueue:
             # Calculate duration
             duration = (batch["completed_at"] - batch["started_at"]).total_seconds()
             batch["duration"] = duration
+
+            # Mark batch as completed in database
+            if self.app and hasattr(self.app, 'db'):
+                try:
+                    self.app.db.execute_query("""
+                        UPDATE batch_processing
+                        SET completed_count = ?, failed_count = ?, completed_at = CURRENT_TIMESTAMP, status = 'completed'
+                        WHERE batch_id = ?
+                    """, (completed, failed, batch_id))
+                    logging.info(f"Marked batch {batch_id} as completed in database")
+                except Exception as e:
+                    logging.warning(f"Failed to mark batch as completed in database: {e}")
 
             # Notify completion
             if self.batch_callback:
@@ -842,24 +919,25 @@ class ProcessingQueue:
         """
         self.batch_callback = callback
     
-    def _generate_soap_note(self, transcript: str) -> Optional[str]:
-        """Generate SOAP note from transcript.
-        
+    def _generate_soap_note(self, transcript: str, context: str = "") -> Optional[str]:
+        """Generate SOAP note from transcript with optional context.
+
         Args:
             transcript: The transcript text
-            
+            context: Optional context/background information to include
+
         Returns:
             Generated SOAP note or None if failed
         """
         try:
             from ai.ai import create_soap_note_with_openai
             from settings.settings import SETTINGS
-            
+
             provider = SETTINGS.get("ai_provider", "openai")
             model = SETTINGS.get(f"{provider}_model", "gpt-4")
-            
-            # Generate SOAP note
-            soap_note = create_soap_note_with_openai(transcript)
+
+            # Generate SOAP note with context if provided
+            soap_note = create_soap_note_with_openai(transcript, context)
             return soap_note
         except Exception as e:
             logging.error(f"Error generating SOAP note: {str(e)}")

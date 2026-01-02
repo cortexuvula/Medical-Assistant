@@ -197,9 +197,9 @@ class BatchProgressDialog:
         
         # Update progress bar
         self.progress_bar['value'] = total_processed
-        
-        # Update progress label
-        percentage = int((total_processed / self.total_count) * 100)
+
+        # Update progress label (guard against division by zero)
+        percentage = int((total_processed / self.total_count) * 100) if self.total_count > 0 else 0
         self.progress_label.config(
             text=f"{total_processed} of {self.total_count} completed ({percentage}%)"
         )
@@ -234,10 +234,10 @@ class BatchProgressDialog:
             elapsed_str = str(elapsed).split('.')[0]
             self.elapsed_label.config(text=elapsed_str)
             
-            # Calculate speed and ETA
+            # Calculate speed and ETA (guard against division by zero)
             total_processed = self.completed_count + self.failed_count
-            if total_processed > 0:
-                seconds_elapsed = elapsed.total_seconds()
+            seconds_elapsed = elapsed.total_seconds()
+            if total_processed > 0 and seconds_elapsed > 0:
                 speed = (total_processed / seconds_elapsed) * 60  # records per minute
                 self.speed_label.config(text=f"{speed:.1f} rec/min")
                 

@@ -981,10 +981,13 @@ class RecordingsTab:
         # Show completion message
         self.parent.status_manager.success("Batch processing completed!")
 
-        # Close progress dialog if it exists
+        # Clean up progress dialog reference to prevent memory leaks
+        # The dialog handles its own UI state, but we need to clear the reference
         if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
-            # Dialog will handle its own completion state
-            pass
+            self.batch_progress_dialog = None
+
+        # Reset batch failed count for next batch
+        self.batch_failed_count = 0
     
     def _on_selection_change(self, event):
         """Handle selection change in recordings tree."""
