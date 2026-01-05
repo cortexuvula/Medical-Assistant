@@ -38,6 +38,9 @@ class AppChatMixin:
                     self.chat_ui.set_processing(False)
                 return
 
+            # Switch to RAG tab so user can see the response
+            self.notebook.select(5)  # RAG tab index
+
             # Update status
             self.status_manager.info("Searching documents...")
 
@@ -56,6 +59,9 @@ class AppChatMixin:
                 if hasattr(self, 'chat_ui') and self.chat_ui:
                     self.chat_ui.set_processing(False)
                 return
+
+            # Switch to Chat tab so user can see the response
+            self.notebook.select(4)  # Chat tab index
 
             # Update status
             self.status_manager.info("Processing your request...")

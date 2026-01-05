@@ -42,9 +42,13 @@ class BatchProcessingDialog:
         x = (self.dialog.winfo_screenwidth() // 2) - (600 // 2)
         y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
         self.dialog.geometry(f"+{x}+{y}")
-        
-        # Make modal
-        self.dialog.grab_set()
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create UI
         self._create_ui()

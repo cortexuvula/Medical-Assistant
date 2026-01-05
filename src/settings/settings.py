@@ -179,6 +179,7 @@ Format your response as:
         "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "advanced_analysis": {
+        "provider": "",  # Empty = use global ai_provider, or "openai", "anthropic", etc.
         "prompt": """Analyze this medical encounter transcript and provide a clinical assessment.
 
 If patient context is provided, incorporate it into your differential.

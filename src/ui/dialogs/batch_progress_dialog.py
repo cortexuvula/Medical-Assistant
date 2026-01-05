@@ -48,9 +48,13 @@ class BatchProgressDialog:
         x = (self.dialog.winfo_screenwidth() // 2) - (800 // 2)
         y = (self.dialog.winfo_screenheight() // 2) - (600 // 2)
         self.dialog.geometry(f"+{x}+{y}")
-        
-        # Make modal
-        self.dialog.grab_set()
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Start time tracking (must be before _create_ui which calls _update_timer)
         self.start_time = datetime.now()

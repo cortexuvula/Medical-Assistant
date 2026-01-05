@@ -22,8 +22,7 @@ def show_temperature_settings_dialog(parent):
     
     # Make it modal
     dialog.transient(parent)
-    dialog.grab_set()
-    
+
     # Configure the grid
     dialog.rowconfigure(0, weight=1)
     dialog.columnconfigure(0, weight=1)
@@ -166,6 +165,13 @@ def show_temperature_settings_dialog(parent):
     x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2
     y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
     dialog.geometry(f"{width}x{height}+{x}+{y}")
-    
+
+    # Grab focus after window is visible
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
+
     # Wait for the dialog to be closed
     dialog.wait_window()

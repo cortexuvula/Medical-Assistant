@@ -73,7 +73,8 @@ class TextProcessingController:
 
         # Show progress
         self.app.status_manager.progress("Refining text...")
-        self.app.refine_button.config(state=DISABLED)
+        if self.app.refine_button:
+            self.app.refine_button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
         self.app.progress_bar.start()
 
@@ -97,7 +98,8 @@ class TextProcessingController:
 
         # Show progress
         self.app.status_manager.progress("Improving text...")
-        self.app.improve_button.config(state=DISABLED)
+        if self.app.improve_button:
+            self.app.improve_button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
         self.app.progress_bar.start()
 
@@ -111,29 +113,29 @@ class TextProcessingController:
         # Run in background
         self.app.io_executor.submit(task)
 
-    def _handle_ai_result(self, result: dict, operation: str, widget: tk.Widget) -> None:
+    def _handle_ai_result(self, result, operation: str, widget: tk.Widget) -> None:
         """Handle AI processing result.
 
         Args:
-            result: Result dictionary from AI processor
+            result: OperationResult from AI processor
             operation: Operation type ('refine' or 'improve')
             widget: Target text widget
         """
         self.app.progress_bar.stop()
         self.app.progress_bar.pack_forget()
 
-        if result["success"]:
-            # Update text widget
+        if result.success:
+            # Update text widget - result.value contains {"text": ...}
             widget.delete("1.0", tk.END)
-            widget.insert("1.0", result["text"])
+            widget.insert("1.0", result.value.get("text", ""))
             self.app.status_manager.success(f"Text {operation}d successfully")
         else:
-            self.app.status_manager.error(f"Failed to {operation} text: {result['error']}")
+            self.app.status_manager.error(f"Failed to {operation} text: {result.error}")
 
         # Re-enable button
-        if operation == "refine":
+        if operation == "refine" and self.app.refine_button:
             self.app.refine_button.config(state=NORMAL)
-        elif operation == "improve":
+        elif operation == "improve" and self.app.improve_button:
             self.app.improve_button.config(state=NORMAL)
 
     def process_text_with_ai(
@@ -159,7 +161,8 @@ class TextProcessingController:
             return
 
         self.app.status_manager.progress("Processing text...")
-        button.config(state=DISABLED)
+        if button:
+            button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
         self.app.progress_bar.start()
 
@@ -175,20 +178,22 @@ class TextProcessingController:
                     result, success_message, button, target_widget
                 ))
             except concurrent.futures.TimeoutError:
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(f"Timeout processing {processor_type}"),
-                    button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
+                def handle_timeout():
+                    self.app.status_manager.error(f"Timeout processing {processor_type}")
+                    if button:
+                        button.config(state=NORMAL)
+                    self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()
-                ])
+                self.app.after(0, handle_timeout)
             except Exception as e:
                 logging.error(f"Error processing text: {str(e)}", exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(f"Error processing {processor_type}: {str(e)}"),
-                    button.config(state=NORMAL),
-                    self.app.progress_bar.stop(),
+                def handle_error():
+                    self.app.status_manager.error(f"Error processing {processor_type}: {str(e)}")
+                    if button:
+                        button.config(state=NORMAL)
+                    self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()
-                ])
+                self.app.after(0, handle_error)
 
         # Use executor for the task since it involves UI coordination
         self.app.executor.submit(task)
@@ -231,7 +236,8 @@ class TextProcessingController:
                 logging.error(f"Error updating database: {str(e)}", exc_info=True)
 
         self.app.status_manager.success(success_message)
-        button.config(state=NORMAL)
+        if button:
+            button.config(state=NORMAL)
         self.app.status_manager.show_progress(False)
 
         # Trigger document generated event for auto-save

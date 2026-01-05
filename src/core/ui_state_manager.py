@@ -182,6 +182,10 @@ class UIStateManager:
             # Delegate to workflow UI's record tab for timer and visual updates
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'set_recording_state'):
                 self.app.ui.set_recording_state(recording, paused)
+
+            # Update recording header controls (Pause, Cancel, Timer)
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'recording_header'):
+                self.app.ui.recording_header.set_recording_state(recording, paused)
         except tk.TclError as e:
             logger.warning(f"Error updating record tab state: {e}")
 

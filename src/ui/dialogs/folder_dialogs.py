@@ -37,12 +37,18 @@ class FolderDialogManager:
         dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 500)
         dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.transient(self.app)
-        dialog.grab_set()
-        
+
         # Center the dialog on the parent window
         x = self.app.winfo_x() + (self.app.winfo_width() // 2) - (600 // 2)
         y = self.app.winfo_y() + (self.app.winfo_height() // 2) - (500 // 2)
         dialog.geometry(f"+{x}+{y}")
+
+        # Grab focus after window is visible
+        dialog.deiconify()
+        try:
+            dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create main frame with padding
         main_frame = ttk.Frame(dialog, padding="10")

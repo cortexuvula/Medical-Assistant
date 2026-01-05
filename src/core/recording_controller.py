@@ -124,6 +124,10 @@ class RecordingController:
             # Start periodic analysis if enabled
             if hasattr(self.app.ui, 'advanced_analysis_var') and self.app.ui.advanced_analysis_var.get():
                 self.app._start_periodic_analysis()
+                # Show the analysis panel in the shared panel area
+                if hasattr(self.app.ui, 'shared_panel_manager') and self.app.ui.shared_panel_manager:
+                    from ui.components.shared_panel_manager import SharedPanelManager
+                    self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
         else:
             self.app.status_manager.error("Failed to start recording")
             self.app.ui_state_manager.set_recording_state(
@@ -203,7 +207,9 @@ class RecordingController:
         Thread-safe: Uses lock to prevent race conditions during state transitions.
         """
         with self._state_lock:
-            if self.is_recording:
+            # Check for both recording and paused states
+            # (is_recording returns False when paused, so we need to check both)
+            if self.is_recording or self.is_paused:
                 if self._soap_stop_listening_function:
                     self._pause_internal()
                 else:
@@ -279,7 +285,8 @@ class RecordingController:
         Thread-safe: Uses lock to prevent race conditions during state transitions.
         """
         # Check state before showing dialog (don't hold lock during dialog)
-        if not self.is_recording:
+        # Need to check both recording and paused states
+        if not (self.is_recording or self.is_paused):
             return
 
         # Show confirmation dialog

@@ -61,13 +61,19 @@ class VocabularyDialog:
         self.dialog.geometry("1100x700")
         self.dialog.minsize(900, 600)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
 
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - 1100) // 2
         y = (self.dialog.winfo_screenheight() - 700) // 2
         self.dialog.geometry(f"1100x700+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
 
         # Create main container
         main_container = ttk.Frame(self.dialog)
@@ -717,13 +723,19 @@ class VocabularyEntryDialog:
         self.dialog.geometry("500x450")
         self.dialog.resizable(True, True)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
 
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - 500) // 2
         y = (self.dialog.winfo_screenheight() - 450) // 2
         self.dialog.geometry(f"500x450+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
 
         # Create form
         form_frame = ttk.Frame(self.dialog, padding=20)

@@ -825,10 +825,9 @@ class SubAgentDialog:
         """Show the dialog and return the result."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Configure Sub-Agent")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 350)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 350)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
         
         # Create UI
         frame = ttk.Frame(self.dialog, padding=20)
@@ -930,7 +929,14 @@ class SubAgentDialog:
         x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
         y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
         self.dialog.geometry(f"+{x}+{y}")
-        
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
+
         self.dialog.wait_window()
         return self.result
         
@@ -969,10 +975,22 @@ class TemplateSelectionDialog:
         """Show the dialog and return selected template."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Select Template")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 400)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 400)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
+
+        # Center the dialog
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() - dialog_width) // 2
+        y = (self.dialog.winfo_screenheight() - dialog_height) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create UI
         frame = ttk.Frame(self.dialog, padding=10)
@@ -1041,10 +1059,22 @@ class SaveTemplateDialog:
         """Show the dialog and return template info."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Save as Template")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 300)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 300)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
+
+        # Center the dialog
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() - dialog_width) // 2
+        y = (self.dialog.winfo_screenheight() - dialog_height) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create UI
         frame = ttk.Frame(self.dialog, padding=20)

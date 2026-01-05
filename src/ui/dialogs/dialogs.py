@@ -73,8 +73,20 @@ def prompt_for_api_key(provider: str = "Grok") -> str:
     dialog.title(f"{provider} API Key Required")
     dialog_width, dialog_height = ui_scaler.get_dialog_size(450, 200)
     dialog.geometry(f"{dialog_width}x{dialog_height}")
-    dialog.grab_set()
-    
+
+    # Center the dialog
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (dialog_width // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog_height // 2)
+    dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+    # Grab focus after window is visible
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
+
     env_var_name = {
         "Grok": "GROK_API_KEY",
         "OpenAI": "OPENAI_API_KEY",
@@ -284,7 +296,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          current_prompt: str, current_model: str, current_perplexity: str, current_grok: str,
                          save_callback: callable, current_ollama: str = "", current_system_prompt: str = "",
                          current_anthropic: str = "", current_gemini: str = "",
-                         current_icd_version: str = "ICD-9", is_soap_settings: bool = False) -> None:
+                         current_icd_version: str = "ICD-9", is_soap_settings: bool = False,
+                         current_provider: str = "", is_advanced_analysis: bool = False) -> None:
     """Show settings dialog for configuring prompt and model.
 
     Args:
@@ -303,6 +316,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         current_gemini: Current Gemini model
         current_icd_version: Current ICD code version (ICD-9, ICD-10, or both)
         is_soap_settings: Whether this is the SOAP settings dialog (shows ICD selector)
+        current_provider: Current AI provider for Advanced Analysis (empty = use global)
+        is_advanced_analysis: Whether this is the Advanced Analysis settings dialog
     """
     # Create dialog
     dialog = tk.Toplevel(parent)
@@ -310,8 +325,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     dialog_width, dialog_height = ui_scaler.get_dialog_size(950, 700)
     dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.transient(parent)
-    dialog.grab_set()
-    
+
     # Center the dialog on the screen
     dialog.update_idletasks()
     screen_width = dialog.winfo_screenwidth()
@@ -319,7 +333,58 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     x = (screen_width // 2) - (dialog_width // 2)
     y = (screen_height // 2) - (dialog_height // 2)
     dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
-    
+
+    # Grab focus after window is visible
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
+
+    # Add provider selector for Advanced Analysis settings
+    provider_var = tk.StringVar(value=current_provider if current_provider else "")
+    if is_advanced_analysis:
+        provider_frame = ttk.Labelframe(dialog, text="AI Provider", padding=10)
+        provider_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        ttk.Label(provider_frame, text="Provider for Advanced Analysis:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        provider_options = [
+            ("", "Use Global Setting"),
+            ("openai", "OpenAI"),
+            ("anthropic", "Anthropic"),
+            ("perplexity", "Perplexity"),
+            ("grok", "Grok"),
+            ("ollama", "Ollama"),
+            ("gemini", "Gemini")
+        ]
+
+        # Create combobox with display names
+        provider_display_names = [name for _, name in provider_options]
+        provider_combo = ttk.Combobox(provider_frame, values=provider_display_names, state="readonly", width=25)
+        provider_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # Set initial value based on current_provider
+        provider_map = {value: name for value, name in provider_options}
+        initial_display = provider_map.get(current_provider, "Use Global Setting")
+        provider_combo.set(initial_display)
+
+        # Reverse map for getting value from display name
+        display_to_value = {name: value for value, name in provider_options}
+
+        def on_provider_change(event=None):
+            display_name = provider_combo.get()
+            provider_var.set(display_to_value.get(display_name, ""))
+
+        provider_combo.bind("<<ComboboxSelected>>", on_provider_change)
+
+        # Set initial value in provider_var
+        provider_var.set(current_provider if current_provider else "")
+
+        ttk.Label(provider_frame,
+                 text="Select a specific provider or use the global setting from the main app.",
+                 foreground="gray").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+
     # Create notebook for tabs
     notebook = ttk.Notebook(dialog)
     notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -431,6 +496,11 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         if is_soap_settings:
             icd_version_var.set("ICD-9")
 
+        # Reset provider for Advanced Analysis settings
+        if is_advanced_analysis:
+            provider_var.set("")
+            provider_combo.set("Use Global Setting")
+
         # Set focus
         prompt_text.focus_set()
     
@@ -454,6 +524,10 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         # Add ICD version for SOAP settings
         if is_soap_settings:
             save_args.append(icd_version_var.get())
+
+        # Add provider for Advanced Analysis settings
+        if is_advanced_analysis:
+            save_args.append(provider_var.get())
 
         save_callback(*save_args)
         dialog.destroy()
@@ -959,10 +1033,14 @@ def show_shortcuts_dialog(parent: tk.Tk) -> None:
     # Update and focus on the dialog
     dialog.update_idletasks()
     dialog.focus_set()
-    
+
     # Set modal behavior after dialog is fully created
-    dialog.grab_set()
-    
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
+
     # Bring dialog to front and then allow normal window behavior
     dialog.lift()
     dialog.after(500, lambda: dialog.attributes('-topmost', False))  # Remove topmost after the dialog is established
@@ -1126,11 +1204,15 @@ ElevenLabs, Deepgram, Groq APIs"""
             dialog.after(20, lambda: fade_in(alpha))
     
     fade_in()
-    
+
     # Make dialog modal
     dialog.transient(parent)
-    dialog.grab_set()
-    
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
+
     # Bind ESC key to close dialog
     dialog.bind('<Escape>', lambda e: dialog.destroy())
     

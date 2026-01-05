@@ -13,12 +13,13 @@ import logging
 
 # Import UI components
 from ui.components.record_tab import RecordTab
-from ui.components.process_tab import ProcessTab
-from ui.components.generate_tab import GenerateTab
 from ui.components.recordings_tab import RecordingsTab
 from ui.components.context_panel import ContextPanel
 from ui.components.status_bar import StatusBar
 from ui.components.notebook_tabs import NotebookTabs
+from ui.components.sidebar_navigation import SidebarNavigation
+from ui.components.recording_header import RecordingHeader
+from ui.components.shared_panel_manager import SharedPanelManager
 
 
 class WorkflowUI:
@@ -36,50 +37,100 @@ class WorkflowUI:
         
         # Initialize component handlers
         self.record_tab = RecordTab(self)
-        self.process_tab = ProcessTab(self)
-        self.generate_tab = GenerateTab(self)
         self.recordings_tab = RecordingsTab(self)
         self.context_panel = ContextPanel(self)
         self.status_bar = StatusBar(self)
         self.notebook_tabs = NotebookTabs(self)
-        
+        self.sidebar_navigation = SidebarNavigation(self)
+        self.recording_header = RecordingHeader(self)
+        self.shared_panel_manager = None  # Initialized in create_shared_panel()
+
         # Advanced analysis variable (will be set by RecordTab)
         self.advanced_analysis_var = None
         
     def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
-        """Create the main workflow tabs (Record, Process, Generate).
-        
+        """Create the main workflow tabs.
+
+        DEPRECATED: Use create_shared_panel() instead for the new single-panel UI.
+        This method is kept for backwards compatibility only.
+
         Args:
             command_map: Dictionary mapping button names to their command functions
-            
+
         Returns:
             ttk.Notebook: The workflow notebook widget
         """
-        # Create main workflow notebook
-        workflow_notebook = ttk.Notebook(self.parent, style="Workflow.TNotebook")
-        
-        # Create Record tab
+        logging.warning("create_workflow_tabs is deprecated. Use create_shared_panel() instead.")
+
+        # Create main workflow notebook with hidden tabs
+        style = ttk.Style()
+        style.layout("HiddenWorkflow.TNotebook.Tab", [])
+
+        workflow_notebook = ttk.Notebook(self.parent, style="HiddenWorkflow.TNotebook")
+
+        # Create Record tab (index 0) - uses analysis panel
         record_frame = self.record_tab.create_record_tab(command_map)
         workflow_notebook.add(record_frame, text="Record")
-        
-        # Create Process tab
-        process_frame = self.process_tab.create_process_tab(command_map)
-        workflow_notebook.add(process_frame, text="Process")
-        
-        # Create Generate tab
-        generate_frame = self.generate_tab.create_generate_tab(command_map)
-        workflow_notebook.add(generate_frame, text="Generate")
-        
-        # Create Recordings tab
+
+        # Create placeholder tabs for backwards compatibility
+        placeholder1 = ttk.Frame(workflow_notebook)
+        workflow_notebook.add(placeholder1, text="Process")
+
+        placeholder2 = ttk.Frame(workflow_notebook)
+        workflow_notebook.add(placeholder2, text="Generate")
+
+        # Create Recordings tab (index 3)
         recordings_frame = self.recordings_tab.create_recordings_tab(command_map)
         workflow_notebook.add(recordings_frame, text="Recordings")
-        
+
         # Bind tab change event
         workflow_notebook.bind("<<NotebookTabChanged>>", self._on_workflow_tab_changed)
-        
+
         self.components['workflow_notebook'] = workflow_notebook
         return workflow_notebook
     
+    def create_shared_panel(self, command_map: Dict[str, Callable]) -> ttk.Frame:
+        """Create the single shared panel area.
+
+        This replaces the old workflow tabs with a single panel that can
+        dynamically switch between Analysis and Recordings views.
+
+        Args:
+            command_map: Dictionary mapping command names to callable functions
+
+        Returns:
+            ttk.Frame: The shared panel container
+        """
+        # Create shared panel manager
+        self.shared_panel_manager = SharedPanelManager(self)
+        container = self.shared_panel_manager.create_container(self.parent)
+
+        # Create and register panels
+        analysis_panel = self.record_tab.create_analysis_panel(container, command_map)
+        recordings_panel = self.recordings_tab.create_recordings_panel(container)
+
+        self.shared_panel_manager.register_panel(
+            SharedPanelManager.PANEL_ANALYSIS, analysis_panel
+        )
+        self.shared_panel_manager.register_panel(
+            SharedPanelManager.PANEL_RECORDINGS, recordings_panel
+        )
+
+        # Link record tab components to header controls
+        self.record_tab.link_to_header_controls()
+
+        # Link advanced analysis variables from header
+        if hasattr(self.recording_header, 'advanced_analysis_var'):
+            self.advanced_analysis_var = self.recording_header.advanced_analysis_var
+        if hasattr(self.recording_header, 'analysis_interval_var'):
+            self.analysis_interval_var = self.recording_header.analysis_interval_var
+
+        # Default to analysis panel
+        self.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
+
+        self.components['shared_panel'] = container
+        return container
+
     def _on_workflow_tab_changed(self, event):
         """Handle workflow tab change event with debouncing.
 
@@ -118,9 +169,43 @@ class WorkflowUI:
             # Ignore errors during shutdown
             logging.debug(f"Tab change error (likely during shutdown): {e}")
     
+    def create_sidebar(self, command_map: Dict[str, Callable]) -> ttk.Frame:
+        """Create the left sidebar navigation panel.
+
+        Args:
+            command_map: Dictionary mapping command names to callable functions
+
+        Returns:
+            ttk.Frame: The sidebar frame
+        """
+        return self.sidebar_navigation.create_sidebar(command_map)
+
+    def create_recording_header(self, command_map: Dict[str, Callable], parent=None) -> ttk.Frame:
+        """Create the prominent recording header at the top.
+
+        Args:
+            command_map: Dictionary mapping command names to callable functions
+            parent: Optional parent widget for the header
+
+        Returns:
+            ttk.Frame: The recording header frame
+        """
+        header = self.recording_header.create_recording_header(command_map, parent)
+
+        # Link record tab components to header controls
+        self.record_tab.link_to_header_controls()
+
+        # Link advanced analysis variables from header
+        if hasattr(self.recording_header, 'advanced_analysis_var'):
+            self.advanced_analysis_var = self.recording_header.advanced_analysis_var
+        if hasattr(self.recording_header, 'analysis_interval_var'):
+            self.analysis_interval_var = self.recording_header.analysis_interval_var
+
+        return header
+
     def create_context_panel(self) -> ttk.Frame:
         """Create the persistent context side panel.
-        
+
         Returns:
             ttk.Frame: The context panel frame
         """
@@ -177,46 +262,56 @@ class WorkflowUI:
     
     def update_timer(self, time_str: str):
         """Update the timer display.
-        
+
         Args:
             time_str: Time string to display (e.g., "01:23")
         """
-        self.record_tab.update_timer(time_str)
-    
+        # Timer is now in the recording header
+        if hasattr(self.recording_header, '_timer_label') and self.recording_header._timer_label:
+            self.recording_header._timer_label.config(text=time_str)
+
     def set_recording_state(self, recording: bool, paused: bool = False):
         """Update UI elements based on recording state.
-        
+
         Args:
             recording: Whether recording is active
             paused: Whether recording is paused
         """
         self.record_tab.set_recording_state(recording, paused)
-    
+
     def update_recording_progress(self, progress_text: str):
         """Update recording progress/status text.
-        
+
         Args:
             progress_text: Status text to display
         """
         status_label = self.components.get('recording_status')
         if status_label:
             status_label.config(text=progress_text)
-    
+
     def start_timer(self):
         """Start the recording timer."""
-        self.record_tab.start_timer()
-    
+        # Timer is now managed by the recording header
+        if hasattr(self.recording_header, '_start_timer'):
+            self.recording_header._start_timer()
+
     def pause_timer(self):
         """Pause the recording timer."""
-        self.record_tab.pause_timer()
-    
+        # Timer is now managed by the recording header
+        if hasattr(self.recording_header, '_pause_timer'):
+            self.recording_header._pause_timer()
+
     def resume_timer(self):
         """Resume the recording timer."""
-        self.record_tab.resume_timer()
-    
+        # Timer is now managed by the recording header
+        if hasattr(self.recording_header, '_resume_timer'):
+            self.recording_header._resume_timer()
+
     def stop_timer(self):
         """Stop and reset the recording timer."""
-        self.record_tab.stop_timer()
+        # Timer is now managed by the recording header
+        if hasattr(self.recording_header, '_stop_timer'):
+            self.recording_header._stop_timer()
     
     def create_status_bar(self) -> tuple:
         """Create the status bar at the bottom of the application.

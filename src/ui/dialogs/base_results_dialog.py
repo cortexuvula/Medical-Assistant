@@ -197,13 +197,19 @@ class BaseResultsDialog(ABC):
 
         # Make dialog modal
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
 
         # Center dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
         y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
         self.dialog.geometry(f"+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
 
         # Create main frame
         self.main_frame = ttk.Frame(self.dialog, padding=20)

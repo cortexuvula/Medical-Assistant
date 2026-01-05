@@ -13,6 +13,7 @@ import tkinter as tk
 from typing import TYPE_CHECKING, Optional
 
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
+from utils.differential_tracker import DifferentialTracker
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -40,10 +41,14 @@ class PeriodicAnalysisController:
         """
         self.app = app
         self.patient_context: str = ""
+        self.differential_tracker = DifferentialTracker()
 
     def start_periodic_analysis(self) -> None:
         """Start periodic analysis during recording."""
         try:
+            # Clear differential tracker for fresh analysis session
+            self.differential_tracker.clear()
+
             # Get interval from UI (default 2 minutes = 120 seconds)
             interval_seconds = 120
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
@@ -157,9 +162,35 @@ class PeriodicAnalysisController:
                 # Format analysis text (simpler format - timestamp added by UI)
                 formatted_time = f"{int(elapsed_time // 60)}:{int(elapsed_time % 60):02d}"
                 result_text = result.value.get('text', '') if result.value else ''
+
+                # Track differential evolution
+                evolution_text = ""
+                try:
+                    # Parse differentials from the result
+                    current_differentials = self.differential_tracker.parse_differentials(result_text)
+
+                    if current_differentials:
+                        # Compare with previous
+                        evolutions, removed = self.differential_tracker.compare_differentials(current_differentials)
+
+                        # Format evolution text
+                        evolution_text = self.differential_tracker.format_evolution_text(
+                            evolutions, removed, analysis_count
+                        )
+
+                        # Update tracker for next comparison
+                        self.differential_tracker.update(current_differentials)
+
+                        logger.info(f"Tracked {len(current_differentials)} differentials, "
+                                   f"{len([e for e in evolutions if e.status.value == 'new'])} new, "
+                                   f"{len(removed)} removed")
+                except Exception as e:
+                    logger.error(f"Error tracking differential evolution: {e}")
+
                 analysis_text = (
                     f"Analysis #{analysis_count} (recording time: {formatted_time})\n"
                     f"{result_text}"
+                    f"{evolution_text}"
                 )
 
                 # Update UI on main thread using accumulated display
@@ -205,17 +236,20 @@ class PeriodicAnalysisController:
     def clear_advanced_analysis_text(self) -> None:
         """Clear the Advanced Analysis Results text area and show empty state."""
         try:
+            # Clear differential tracker
+            self.differential_tracker.clear()
+
             # Use RecordTab's clear method which shows empty state hint
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
                 record_tab = self.app.ui.record_tab
                 if hasattr(record_tab, '_clear_analysis'):
                     record_tab._clear_analysis()
-                    logging.info("Cleared advanced analysis text")
+                    logging.info("Cleared advanced analysis text and differential tracker")
                     return
 
             # Fallback to direct clear
             if 'record_notes_text' in self.app.ui.components:
                 self.app.ui.components['record_notes_text'].delete('1.0', tk.END)
-                logging.info("Cleared advanced analysis text")
+                logging.info("Cleared advanced analysis text and differential tracker")
         except Exception as e:
             logging.error(f"Error clearing advanced analysis text: {e}")

@@ -50,13 +50,19 @@ class DiagnosticResultsDialog:
         dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.minsize(850, 650)  # Set minimum size
         dialog.transient(self.parent)
-        dialog.grab_set()
-        
+
         # Center the dialog
         dialog.update_idletasks()
         x = (dialog.winfo_screenwidth() - dialog.winfo_width()) // 2
         y = (dialog.winfo_screenheight() - dialog.winfo_height()) // 2
         dialog.geometry(f"+{x}+{y}")
+
+        # Grab focus after window is visible
+        dialog.deiconify()
+        try:
+            dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Main container
         main_frame = ttk.Frame(dialog, padding=20)

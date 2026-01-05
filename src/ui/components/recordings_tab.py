@@ -97,21 +97,36 @@ class RecordingsTab:
         self._data_provider = provider
         
     def create_recordings_tab(self, command_map: Dict[str, Callable]) -> ttk.Frame:
-        """Create the Recordings workflow tab.
-        
+        """Create the Recordings workflow tab (legacy - for backwards compatibility).
+
         Args:
             command_map: Dictionary mapping button names to their command functions
-            
+
         Returns:
             ttk.Frame: The recordings tab frame
         """
-        recordings_frame = ttk.Frame(self.parent)
-        
-        # Create the recordings panel that fills the entire tab
+        # Delegate to create_recordings_panel for backwards compatibility
+        return self.create_recordings_panel(self.parent)
+
+    def create_recordings_panel(self, parent) -> ttk.Frame:
+        """Create the recordings panel for the shared panel area.
+
+        This is the main panel showing the recordings tree view and controls.
+        It takes full width in the shared panel area.
+
+        Args:
+            parent: Parent widget for the panel
+
+        Returns:
+            ttk.Frame: The recordings panel frame
+        """
+        recordings_frame = ttk.Frame(parent)
+
+        # Create the recordings panel that fills the entire frame
         recordings_panel = self._create_recordings_panel(recordings_frame)
         recordings_panel.pack(fill=BOTH, expand=True, padx=10, pady=10)
         self.components['recordings_panel'] = recordings_panel
-        
+
         return recordings_frame
     
     def _create_recordings_panel(self, parent_frame: ttk.Frame) -> ttk.Labelframe:
@@ -374,7 +389,9 @@ class RecordingsTab:
                 # Check if parent and label still exist before updating
                 if self.parent and hasattr(self.parent, 'after') and hasattr(self, 'recording_count_label'):
                     try:
-                        self.parent.after(0, lambda: self._show_error_state(str(e)))
+                        # Capture error message immediately (exception var deleted after except block)
+                        error_msg = str(e)
+                        self.parent.after(0, lambda msg=error_msg: self._show_error_state(msg))
                     except RuntimeError:
                         # Window might be closing
                         pass

@@ -28,7 +28,6 @@ def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500")
     dialog.title(title)
     dialog.geometry(geometry)
     dialog.transient(parent)
-    dialog.grab_set()
 
     # Center the dialog on the screen
     dialog.update_idletasks()
@@ -38,6 +37,13 @@ def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500")
     x = (screen_width // 2) - (size[0] // 2)
     y = (screen_height // 2) - (size[1] // 2)
     dialog.geometry(f"{size[0]}x{size[1]}+{x}+{y}")
+
+    # Grab focus after window is visible
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
 
     return dialog
 
@@ -209,7 +215,11 @@ def create_model_selection_dialog(parent, title: str, models_list: List[str],
 
     # Make dialog modal
     dialog.transient(parent)
-    dialog.grab_set()
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
     parent.wait_window(dialog)
 
     return result[0]

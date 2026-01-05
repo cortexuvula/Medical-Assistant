@@ -53,16 +53,23 @@ class DataExtractionResultsDialog:
         # Create dialog
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Data Extraction Results")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 750)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
+        self.dialog.minsize(800, 600)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Center the dialog
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - 900) // 2
-        y = (self.dialog.winfo_screenheight() - 700) // 2
-        self.dialog.geometry(f"900x700+{x}+{y}")
+        x = (self.dialog.winfo_screenwidth() - dialog_width) // 2
+        y = (self.dialog.winfo_screenheight() - dialog_height) // 2
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         self._create_widgets(extraction_type, source)
         

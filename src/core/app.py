@@ -43,6 +43,7 @@ import time
 from core.app_initializer import AppInitializer
 from core.app_settings_mixin import AppSettingsMixin
 from core.app_chat_mixin import AppChatMixin
+from core.navigation_controller import NavigationController
 from audio.ffmpeg_utils import configure_pydub
 from ui.menu_manager import MenuManager
 from audio.soap_audio_processor import SOAPAudioProcessor
@@ -122,13 +123,19 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         
         # Update UI components based on API availability
         if openai.api_key:
-            self.refine_button.config(state=NORMAL)
-            self.improve_button.config(state=NORMAL)
-            self.soap_button.config(state=NORMAL)
+            if self.refine_button:
+                self.refine_button.config(state=NORMAL)
+            if self.improve_button:
+                self.improve_button.config(state=NORMAL)
+            if self.soap_button:
+                self.soap_button.config(state=NORMAL)
         else:
-            self.refine_button.config(state=DISABLED)
-            self.improve_button.config(state=DISABLED)
-            self.soap_button.config(state=DISABLED)
+            if self.refine_button:
+                self.refine_button.config(state=DISABLED)
+            if self.improve_button:
+                self.improve_button.config(state=DISABLED)
+            if self.soap_button:
+                self.soap_button.config(state=DISABLED)
             
         # Reinitialize audio handler with new API keys
         self.audio_handler = AudioHandler(
@@ -264,49 +271,30 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             "clear_advanced_analysis": self.clear_advanced_analysis_text
         }
         
-        # Create main container with horizontal split
+        # Create status bar at the bottom FIRST (so it stays at bottom)
+        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
+        status_frame.pack(side=BOTTOM, fill=tk.X)
+
+        # Create main container with horizontal split (3-pane: sidebar | content | context)
         main_container = ttk.Panedwindow(self, orient="horizontal")
         main_container.pack(fill=tk.BOTH, expand=True)
-        
-        # Left side - main content area
+
+        # Initialize navigation controller
+        self.navigation_controller = NavigationController(self)
+
+        # Left sidebar - navigation panel
+        self.sidebar = self.ui.create_sidebar(command_map)
+        main_container.add(self.sidebar, weight=0)
+
+        # Center - main content area
         left_frame = ttk.Frame(main_container)
         main_container.add(left_frame, weight=3)
         
-        # Create status bar at the bottom
-        status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
-        status_frame.pack(side=BOTTOM, fill=tk.X)
-        
-        # Top bar with microphone and provider settings
+        # Top bar with provider settings
         top_bar = ttk.Frame(left_frame)
         top_bar.pack(side=TOP, fill=tk.X, padx=10, pady=5)
-        
-        # Microphone selection
-        mic_frame = ttk.Frame(top_bar)
-        mic_frame.pack(side=LEFT, fill=tk.X, expand=True)
-        
-        ttk.Label(mic_frame, text="Microphone:").pack(side=LEFT, padx=(0, 5))
-        
-        # Get available microphones and populate dropdown
-        mic_names = get_valid_microphones() or []
-        self.mic_combobox = ttk.Combobox(mic_frame, values=mic_names, state="readonly", width=40)
-        self.mic_combobox.pack(side=LEFT, padx=(0, 10))
-        self.mic_combobox.bind("<<ComboboxSelected>>", self._on_microphone_change)
-        
-        # Set initial selection if microphones are available
-        if len(mic_names) > 0:
-            saved_mic = SETTINGS.get("selected_microphone", "")
-            if saved_mic and saved_mic in mic_names:
-                self.mic_combobox.set(saved_mic)
-            else:
-                self.mic_combobox.current(0)
-        
-        # Refresh button
-        refresh_btn = ttk.Button(mic_frame, text="⟳", width=3, command=self.refresh_microphones)
-        refresh_btn.pack(side=LEFT)
-        self.ui.components['refresh_btn'] = refresh_btn
-        ToolTip(refresh_btn, "Refresh microphone list")
-        
-        # Provider selection
+
+        # Provider selection frame
         provider_frame = ttk.Frame(top_bar)
         provider_frame.pack(side=LEFT)
 
@@ -368,23 +356,39 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.restore_btn.pack_forget()  # Initially hidden
         ToolTip(self.restore_btn, "Restore from auto-saved session")
         
-        # Create workflow tabs
-        self.workflow_notebook = self.ui.create_workflow_tabs(command_map)
-        self.workflow_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 2))
-        
+        # Create prominent recording header at top (matches reference design)
+        self.recording_header = self.ui.create_recording_header(command_map, parent=left_frame)
+        self.recording_header.pack(fill=tk.X)
+
+        # Redirect mic_combobox to use recording header's device selector
+        # This maintains compatibility with existing code that uses self.mic_combobox
+        self.mic_combobox = self.ui.components.get('header_device_combo')
+
+        # Create a vertical PanedWindow for resizable layout
+        self.content_paned = ttk.Panedwindow(left_frame, orient=tk.VERTICAL)
+        self.content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
+
         # Create the text notebook (for transcripts, SOAP, etc.)
         self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.chat_text, self.rag_text, _ = self.ui.create_notebook()
-        self.notebook.pack(in_=left_frame, fill=tk.BOTH, expand=True, padx=10, pady=(2, 0))
-        
-        # Create chat interface below the notebook
-        self.chat_ui = ChatUI(left_frame, self)
+        self.content_paned.add(self.notebook, weight=2)
+
+        # Bottom section frame for chat and shared panel
+        bottom_section = ttk.Frame(self.content_paned)
+        self.content_paned.add(bottom_section, weight=1)
+
+        # Create chat interface in bottom section
+        self.chat_ui = ChatUI(bottom_section, self)
         self.chat_ui.set_send_callback(self._handle_chat_message)
-        
+
         # Apply initial theme to chat UI
         self.after(50, lambda: self.chat_ui.update_theme())
-        
+
         # Set initial chat suggestions
         self.after(100, self._update_chat_suggestions)
+
+        # Create shared panel (Analysis/Recordings) in bottom section
+        self.shared_panel = self.ui.create_shared_panel(command_map)
+        self.shared_panel.pack(in_=bottom_section, fill=tk.BOTH, expand=True, pady=(2, 0))
         
         # Right side - context panel
         self.context_panel = self.ui.create_context_panel()
@@ -965,7 +969,15 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def on_tab_changed(self, event=None) -> None:
         """Handle tab changes. Delegates to WindowStateController."""
         self.window_state_controller.on_tab_changed(event)
-            
+
+        # Sync sidebar navigation with the current tab
+        try:
+            current_tab = self.notebook.index(self.notebook.select())
+            if hasattr(self, 'navigation_controller'):
+                self.navigation_controller.sync_with_notebook(current_tab)
+        except Exception as e:
+            logging.debug(f"Error syncing navigation: {e}")
+
         # Update chat UI context indicator
         if hasattr(self, 'chat_ui') and self.chat_ui:
             self.chat_ui.update_context_indicator()

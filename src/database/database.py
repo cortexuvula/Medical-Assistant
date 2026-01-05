@@ -108,6 +108,55 @@ class Database:
         with Database._instances_lock:
             Database._instances.append(self)
 
+        # Ensure migrations are applied
+        self._ensure_migrations()
+
+    def _ensure_migrations(self):
+        """Ensure all database migrations are applied."""
+        try:
+            from database.db_migrations import get_migration_manager, DatabaseError
+            migration_manager = get_migration_manager()
+            pending = migration_manager.get_pending_migrations()
+            if pending:
+                logging.info(f"Found {len(pending)} pending database migrations")
+                migration_manager.migrate()
+                logging.info("Database migrations applied successfully")
+        except Exception as e:
+            logging.error(f"Failed to apply database migrations: {e}")
+            # Don't raise - allow app to continue even if migrations fail
+
+        # Ensure critical columns exist (fixes cases where migration recorded but column missing)
+        self._ensure_critical_columns()
+
+    def _ensure_critical_columns(self):
+        """Ensure critical columns exist in the recordings table."""
+        critical_columns = [
+            ("chat", "TEXT"),
+            ("duration_seconds", "REAL"),
+            ("file_size_bytes", "INTEGER"),
+            ("stt_provider", "TEXT"),
+            ("ai_provider", "TEXT"),
+            ("tags", "TEXT"),
+        ]
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.execute("PRAGMA table_info(recordings)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+
+            for column_name, column_type in critical_columns:
+                if column_name not in existing_columns:
+                    logging.info(f"Adding missing column '{column_name}' to recordings table")
+                    try:
+                        conn.execute(f"ALTER TABLE recordings ADD COLUMN {column_name} {column_type}")
+                        conn.commit()
+                        logging.info(f"Successfully added column '{column_name}'")
+                    except sqlite3.OperationalError as e:
+                        if "duplicate column" not in str(e).lower():
+                            logging.error(f"Failed to add column '{column_name}': {e}")
+        except Exception as e:
+            logging.error(f"Error checking/adding critical columns: {e}")
+
     def __del__(self):
         """Destructor to clean up connections when Database instance is garbage collected.
 

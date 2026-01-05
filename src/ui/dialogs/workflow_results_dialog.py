@@ -56,13 +56,19 @@ class WorkflowResultsDialog:
         self.dialog_width, self.dialog_height = ui_scaler.get_dialog_size(1000, 800)
         self.dialog.geometry(f"{self.dialog_width}x{self.dialog_height}")
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - 1000) // 2
         y = (self.dialog.winfo_screenheight() - 800) // 2
         self.dialog.geometry(f"1000x800+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         self._create_widgets(patient_info)
         

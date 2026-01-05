@@ -30,7 +30,7 @@ from ai.agents.models import AgentTask, AgentType
 from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, sanitize_error_for_user
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA
+    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 
 logger = logging.getLogger(__name__)
@@ -72,15 +72,8 @@ class AIProcessor:
             else:
                 full_prompt = refine_prompt
 
-            # Get temperature setting
-            temperature = SETTINGS.get("refine_temperature", 0.1)
-
-            # Process text
-            refined_text = adjust_text_with_openai(
-                text,
-                full_prompt,
-                temperature=temperature
-            )
+            # Process text (function reads temperature from SETTINGS internally)
+            refined_text = adjust_text_with_openai(text)
 
             logger.info("Text refined successfully")
             return OperationResult.success({"text": refined_text})
@@ -115,15 +108,8 @@ class AIProcessor:
             else:
                 full_prompt = improve_prompt
 
-            # Get temperature setting
-            temperature = SETTINGS.get("improve_temperature", 0.3)
-
-            # Process text
-            improved_text = improve_text_with_openai(
-                text,
-                full_prompt,
-                temperature=temperature
-            )
+            # Process text (function reads temperature from SETTINGS internally)
+            improved_text = improve_text_with_openai(text)
 
             logger.info("Text improved successfully")
             return OperationResult.success({"text": improved_text})
@@ -455,8 +441,12 @@ class AIProcessor:
             if not transcript.strip():
                 return OperationResult.failure("No transcript to analyze", error_code="EMPTY_INPUT")
 
+            # Force reload settings to get latest provider selection
+            from settings.settings import load_settings
+            current_settings = load_settings(force_refresh=True)
+
             # Get advanced analysis settings
-            analysis_settings = SETTINGS.get("advanced_analysis", {})
+            analysis_settings = current_settings.get("advanced_analysis", {})
 
             # Get prompt and system message from settings
             prompt_template = analysis_settings.get("prompt",
@@ -483,8 +473,15 @@ class AIProcessor:
             # doesn't support custom system messages or temperature
             from ai.ai import call_ai
 
-            # Get the model based on current AI provider
-            ai_provider = SETTINGS.get("ai_provider", "openai")
+            # Get the model based on AI provider
+            # Use Advanced Analysis-specific provider if set, otherwise fall back to global
+            analysis_provider = analysis_settings.get("provider", "")
+            if analysis_provider:
+                ai_provider = analysis_provider
+                logger.info(f"Advanced Analysis using specific provider: {ai_provider}")
+            else:
+                ai_provider = current_settings.get("ai_provider", "openai")
+                logger.info(f"Advanced Analysis using global provider: {ai_provider}")
 
             # Select the appropriate model based on provider
             if ai_provider == PROVIDER_OPENAI:
@@ -497,6 +494,8 @@ class AIProcessor:
                 model = analysis_settings.get("ollama_model", "llama3")
             elif ai_provider == PROVIDER_ANTHROPIC:
                 model = analysis_settings.get("anthropic_model", "claude-3-sonnet-20240229")
+            elif ai_provider == PROVIDER_GEMINI:
+                model = analysis_settings.get("gemini_model", "gemini-1.5-pro")
             else:
                 # Fallback to OpenAI model
                 model = analysis_settings.get("model", "gpt-4")
@@ -506,10 +505,10 @@ class AIProcessor:
             if temp_key in analysis_settings:
                 temperature = analysis_settings[temp_key]
 
-            # Generate analysis
-            analysis = call_ai(model, system_message, prompt, temperature)
+            # Generate analysis - pass the provider to override global setting
+            analysis = call_ai(model, system_message, prompt, temperature, provider=ai_provider)
 
-            logger.info("Generated differential diagnosis successfully")
+            logger.info(f"Generated differential diagnosis successfully using provider: {ai_provider}")
             return OperationResult.success({"text": analysis})
 
         except Exception as e:

@@ -51,13 +51,19 @@ class CannedResponsesDialog:
         self.dialog.geometry(f"{self.dialog_width}x{dialog_height}")
         self.dialog.minsize(900, 600)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - 1000) // 2
         y = (self.dialog.winfo_screenheight() - 700) // 2
         self.dialog.geometry(f"1000x700+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create main container
         main_container = ttk.Frame(self.dialog)
@@ -404,13 +410,19 @@ class ResponseEditDialog:
         self.dialog.geometry(f"{self.dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() - 600) // 2
         y = (self.dialog.winfo_screenheight() - 400) // 2
         self.dialog.geometry(f"600x400+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
         
         # Create form
         form_frame = ttk.Frame(self.dialog, padding=20)

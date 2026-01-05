@@ -133,7 +133,9 @@ class AppSettingsMixin:
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229")),
-            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash"))
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash")),
+            current_provider=cfg.get("provider", ""),
+            is_advanced_analysis=True
         )
 
     def show_temperature_settings(self) -> None:
@@ -256,8 +258,21 @@ class AppSettingsMixin:
 
     def save_advanced_analysis_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                                         grok_model: str, ollama_model: str, system_prompt: str,
-                                        anthropic_model: str, gemini_model: str = "") -> None:
-        """Save advanced analysis settings."""
+                                        anthropic_model: str, gemini_model: str = "",
+                                        provider: str = "") -> None:
+        """Save advanced analysis settings.
+
+        Args:
+            prompt: The analysis prompt
+            openai_model: OpenAI model to use
+            perplexity_model: Perplexity model to use
+            grok_model: Grok model to use
+            ollama_model: Ollama model to use
+            system_prompt: System message for the AI
+            anthropic_model: Anthropic model to use
+            gemini_model: Gemini model to use
+            provider: AI provider to use (empty = use global setting)
+        """
         from settings.settings import save_settings, SETTINGS
         # Preserve existing temperature settings
         SETTINGS["advanced_analysis"]["prompt"] = prompt
@@ -268,5 +283,6 @@ class AppSettingsMixin:
         SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
         SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
         SETTINGS["advanced_analysis"]["gemini_model"] = gemini_model
+        SETTINGS["advanced_analysis"]["provider"] = provider
         save_settings(SETTINGS)
         self.status_manager.success("Advanced analysis settings saved successfully")

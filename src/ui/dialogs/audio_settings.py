@@ -898,13 +898,19 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
     dialog.geometry(f"{dialog_width}x{dialog_height}")
     dialog.resizable(True, True)
     dialog.transient(parent)
-    dialog.grab_set()
 
     # Center the dialog
     dialog.update_idletasks()
     x = (dialog.winfo_screenwidth() // 2) - (dialog_width // 2)
     y = (dialog.winfo_screenheight() // 2) - (dialog_height // 2)
     dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+    # Grab focus after window is visible
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass  # Window not viewable yet
 
     # Main frame with padding
     main_frame = ttk.Frame(dialog, padding=15)

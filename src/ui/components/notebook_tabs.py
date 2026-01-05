@@ -23,11 +23,30 @@ class NotebookTabs:
         
     def create_notebook(self) -> tuple:
         """Create the notebook with tabs for transcript, soap note, referral, letter, chat, and RAG.
-        
+
+        Note: Tab headers are hidden since sidebar navigation provides access to each section.
+
         Returns:
             tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text, rag_text, context_text)
         """
-        notebook = ttk.Notebook(self.parent, style="Green.TNotebook")
+        # Create a style that hides the notebook tabs
+        style = ttk.Style()
+        # Hide tabs by making them zero height and removing all visual elements
+        style.configure("Hidden.TNotebook", tabmargins=[0, 0, 0, 0], padding=[0, 0])
+        style.configure("Hidden.TNotebook.Tab",
+                        padding=[0, 0, 0, 0],
+                        width=0,
+                        font=('', 1))
+        style.map("Hidden.TNotebook.Tab",
+                  width=[("selected", 0), ("!selected", 0)],
+                  padding=[("selected", [0, 0, 0, 0]), ("!selected", [0, 0, 0, 0])])
+        # Override the layout to remove tab content
+        try:
+            style.layout("Hidden.TNotebook.Tab", [])
+        except Exception:
+            pass  # Some themes may not support empty layout
+
+        notebook = ttk.Notebook(self.parent, style="Hidden.TNotebook")
         
         # Create tabs
         tabs = [

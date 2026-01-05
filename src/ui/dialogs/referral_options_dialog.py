@@ -112,13 +112,19 @@ class ReferralOptionsDialog:
         self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.minsize(700, 500)
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
 
         # Center the dialog
         self.dialog.update_idletasks()
         x = (screen_width - dialog_width) // 2
         y = (screen_height - dialog_height) // 2
         self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
 
         # Create main container
         main_container = ttk.Frame(self.dialog)

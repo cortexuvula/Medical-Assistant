@@ -343,6 +343,40 @@ class Icons:
     CROSS = "❌"
     SPINNER = "🔄"
 
+    # Sidebar Navigation Icons (simple text-based)
+    NAV_RECORD = "●"
+    NAV_SOAP = "◎"
+    NAV_REFERRAL = "□"
+    NAV_LETTER = "✉"
+    NAV_CHAT = "◉"
+    NAV_RAG = "◈"
+    NAV_RECORDINGS = "▤"
+    NAV_SETTINGS = "⚙"
+
+    # Sidebar Tool Icons (simple text-based)
+    TOOL_TRANSLATION = "⊕"
+    TOOL_MEDICATION = "◆"
+    TOOL_DIAGNOSTIC = "⊛"
+    TOOL_WORKFLOW = "⊞"
+    TOOL_DATA = "⊟"
+    TOOL_REFINE = "✎"
+    TOOL_IMPROVE = "★"
+    TOOL_ANALYTICS = "⊙"
+    TOOL_ADMIN = "⊠"
+    TOOL_FEEDBACK = "✦"
+
+    # File operation icons
+    FILE_NEW = "○"
+    FILE_SAVE = "◇"
+    FILE_LOAD = "◁"
+    FILE_EXPORT = "▷"
+
+    # Sidebar Toggle
+    SIDEBAR_COLLAPSE = "◂"
+    SIDEBAR_EXPAND = "▸"
+    SECTION_OPEN = "▾"
+    SECTION_CLOSED = "▸"
+
 
 # =============================================================================
 # DIALOG CONSTANTS
@@ -410,3 +444,50 @@ class Animation:
     # Transition durations
     HOVER_TRANSITION = 150
     FADE_DURATION = 200
+
+
+# =============================================================================
+# SIDEBAR CONSTANTS
+# =============================================================================
+
+class SidebarConfig:
+    """Sidebar navigation configuration constants."""
+
+    # Dimensions
+    WIDTH_EXPANDED = 200
+    WIDTH_COLLAPSED = 50
+    ITEM_HEIGHT = 40
+    SECTION_HEADER_HEIGHT = 30
+    ICON_SIZE = 20
+
+    # Padding
+    ITEM_PADDING_X = 12
+    ITEM_PADDING_Y = 8
+    SECTION_PADDING = 5
+
+    # Colors for sidebar (extends theme colors)
+    @classmethod
+    def get_sidebar_colors(cls, is_dark: bool) -> dict:
+        """Get sidebar-specific colors for current theme."""
+        if is_dark:
+            return {
+                "bg": "#1a1d21",
+                "bg_hover": "#2d3138",
+                "bg_active": "#0d6efd",
+                "fg": "#f8f9fa",
+                "fg_active": "#ffffff",
+                "fg_muted": "#adb5bd",
+                "border": "#343a40",
+                "section_bg": "#212529",
+            }
+        else:
+            return {
+                "bg": "#f8f9fa",
+                "bg_hover": "#e9ecef",
+                "bg_active": "#0d6efd",
+                "fg": "#212529",
+                "fg_active": "#ffffff",
+                "fg_muted": "#6c757d",
+                "border": "#dee2e6",
+                "section_bg": "#ffffff",
+            }

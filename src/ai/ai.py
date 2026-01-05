@@ -1411,16 +1411,18 @@ def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str =
     # Clean up any markdown formatting and citations from the result
     return clean_text(result)
 
-def call_ai(model: str, system_message: str, prompt: str, temperature: float) -> str:
+def call_ai(model: str, system_message: str, prompt: str, temperature: float,
+            provider: str = None) -> str:
     """
     Route API calls to the appropriate provider based on the selected AI provider in settings
-    
+
     Args:
         model: Model to use (may be overridden by provider-specific settings)
         system_message: System message to guide the AI's response
         prompt: Content to send to the model
         temperature: Temperature parameter to control randomness (may be overridden by settings)
-        
+        provider: Optional override for AI provider (if None, uses global ai_provider setting)
+
     Returns:
         AI-generated response as a string
     """
@@ -1456,7 +1458,14 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
     # Validate provider against allowed list to prevent arbitrary key access
     VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_PERPLEXITY, PROVIDER_GROK,
                        PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI}
-    provider = current_settings.get("ai_provider", "openai")
+
+    # Track if provider was explicitly passed (affects model selection)
+    provider_explicitly_set = provider is not None and provider != ""
+
+    # Use passed-in provider if specified, otherwise use global setting
+    if not provider_explicitly_set:
+        provider = current_settings.get("ai_provider", "openai")
+
     if provider not in VALID_PROVIDERS:
         logging.warning(f"Invalid AI provider '{provider}', falling back to OpenAI")
         provider = PROVIDER_OPENAI
@@ -1477,12 +1486,16 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
             temperature = generic_temp
     
     # Handle different providers and get appropriate model
+    # When provider is explicitly set, use the passed-in model; otherwise look it up from settings
     if provider == PROVIDER_PERPLEXITY:
         logging.info(f"Using provider: Perplexity for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_perplexity(system_message, prompt, temperature)
     elif provider == PROVIDER_GROK:
-        actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
         logging.info(f"Using provider: Grok with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_grok(actual_model, system_message, prompt, temperature)
@@ -1491,17 +1504,26 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float) ->
         # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)
     elif provider == PROVIDER_ANTHROPIC:
-        actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
         logging.info(f"Using provider: Anthropic with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_anthropic(actual_model, system_message, prompt, temperature)
     elif provider == PROVIDER_GEMINI:
-        actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
         logging.info(f"Using provider: Gemini with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_gemini(actual_model, system_message, prompt, temperature)
     else:  # OpenAI is the default
-        actual_model = current_settings.get(model_key, {}).get("model", model)
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("model", model)
         logging.info(f"Using provider: OpenAI with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_openai(actual_model, system_message, prompt, temperature)

@@ -109,6 +109,12 @@ class RecordingSchema:
         ColumnDefinition("audio_path", ColumnType.TEXT, nullable=True),
         ColumnDefinition("duration", ColumnType.REAL, nullable=True),
         ColumnDefinition("metadata", ColumnType.TEXT, nullable=True),
+        # Added by migration 4
+        ColumnDefinition("duration_seconds", ColumnType.REAL, nullable=True),
+        ColumnDefinition("file_size_bytes", ColumnType.INTEGER, nullable=True),
+        ColumnDefinition("stt_provider", ColumnType.TEXT, nullable=True),
+        ColumnDefinition("ai_provider", ColumnType.TEXT, nullable=True),
+        ColumnDefinition("tags", ColumnType.TEXT, nullable=True),
     )
 
     # Column name list for SELECT queries (most common use case)
@@ -127,12 +133,13 @@ class RecordingSchema:
         'timestamp', 'processing_status', 'patient_name'
     )
 
-    # Full column set for comprehensive queries (17 columns with chat)
+    # Full column set for comprehensive queries (22 columns with all migration 4 additions)
     FULL_COLUMNS: Tuple[str, ...] = (
         'id', 'filename', 'transcript', 'soap_note', 'referral', 'letter',
         'chat', 'timestamp', 'processing_status', 'processing_started_at',
         'processing_completed_at', 'error_message', 'retry_count',
-        'patient_name', 'audio_path', 'duration', 'metadata'
+        'patient_name', 'audio_path', 'duration', 'metadata',
+        'duration_seconds', 'file_size_bytes', 'stt_provider', 'ai_provider', 'tags'
     )
 
     # Database columns without chat field (16 columns - legacy databases)
@@ -146,14 +153,16 @@ class RecordingSchema:
     # Fields allowed for INSERT operations
     INSERT_FIELDS: FrozenSet[str] = frozenset({
         'filename', 'transcript', 'soap_note', 'referral', 'letter', 'timestamp',
-        'processing_status', 'patient_name', 'audio_path', 'duration', 'metadata'
+        'processing_status', 'patient_name', 'audio_path', 'duration', 'metadata',
+        'duration_seconds', 'file_size_bytes', 'stt_provider', 'ai_provider', 'tags'
     })
 
     # Fields allowed for UPDATE operations
     UPDATE_FIELDS: FrozenSet[str] = frozenset({
         'filename', 'transcript', 'soap_note', 'referral', 'letter', 'chat',
         'processing_status', 'processing_started_at', 'processing_completed_at',
-        'error_message', 'retry_count', 'patient_name', 'audio_path', 'duration', 'metadata'
+        'error_message', 'retry_count', 'patient_name', 'audio_path', 'duration', 'metadata',
+        'duration_seconds', 'file_size_bytes', 'stt_provider', 'ai_provider', 'tags'
     })
 
     # All valid field names
@@ -191,7 +200,7 @@ class RecordingSchema:
             raise ValueError(
                 f"Row length ({row_len}) doesn't match any known column set. "
                 f"Known lengths: {len(cls.BASIC_COLUMNS)}, {len(cls.SELECT_COLUMNS)}, "
-                f"{len(cls.DB_COLUMNS_16)}, {len(cls.FULL_COLUMNS)}"
+                f"{len(cls.DB_COLUMNS_16)}, {len(cls.FULL_COLUMNS)}, {len(cls.COLUMN_NAMES)}"
             )
 
         return dict(zip(columns, row))

@@ -75,6 +75,7 @@ class ThemeManager:
         self._update_theme_button(is_dark, new_theme)
         self._update_refresh_buttons(is_dark)
         self._update_chat_ui(is_dark)
+        self._update_sidebar(is_dark)
 
         # Update menu styling for new theme
         if hasattr(self.app, 'menu_manager') and self.app.menu_manager:
@@ -119,6 +120,8 @@ class ThemeManager:
                 
         # Update all button frames specifically - handle tk vs ttk frames differently
         for _, btn in self.app.buttons.items():
+            if btn is None:
+                continue
             btn_frame = btn.master
             if isinstance(btn_frame, tk.Frame):  # Only standard tk frames support 'background'
                 btn_frame.configure(background=control_bg)
@@ -126,7 +129,25 @@ class ThemeManager:
         # Set specific components that need explicit styling
         if hasattr(self.app, 'control_frame') and isinstance(self.app.control_frame, tk.Frame):
             self.app.control_frame.configure(background=control_bg)
-    
+
+        # Update context panel search entry for theme
+        if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
+            search_entry = self.app.ui.components.get('context_search_entry')
+            if search_entry:
+                entry_bg = colors["bg"] if is_dark else "#ffffff"
+                entry_fg = colors["fg"]
+                entry_muted = colors["fg_muted"] if "fg_muted" in colors else "#6c757d"
+                search_entry.configure(bg=entry_bg, fg=entry_fg, insertbackground=entry_fg)
+
+            # Update templates canvas background for theme
+            context_panel = self.app.ui.context_panel
+            if hasattr(context_panel, '_templates_canvas'):
+                canvas_bg = colors["bg"]
+                context_panel._templates_canvas.configure(bg=canvas_bg)
+                # Also update the inner frame background
+                if hasattr(context_panel, 'templates_frame'):
+                    context_panel.templates_frame.configure(bg=canvas_bg)
+
     def _update_notebook_style(self, is_dark: bool):
         """Update notebook and general component styling."""
         colors = Colors.get_theme_colors(is_dark)
@@ -225,3 +246,12 @@ class ThemeManager:
                 logging.debug(f"Updated chat UI for {'dark' if is_dark else 'light'} theme")
             except Exception as e:
                 logging.error(f"Error updating chat UI theme: {e}")
+
+    def _update_sidebar(self, is_dark: bool):
+        """Update sidebar colors for theme changes."""
+        if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'sidebar_navigation'):
+            try:
+                self.app.ui.sidebar_navigation.update_theme(is_dark)
+                logging.debug(f"Updated sidebar for {'dark' if is_dark else 'light'} theme")
+            except Exception as e:
+                logging.error(f"Error updating sidebar theme: {e}")

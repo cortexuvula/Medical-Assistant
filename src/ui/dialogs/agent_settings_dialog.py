@@ -126,8 +126,7 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         
         # Make it modal
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Configure grid
         self.dialog.rowconfigure(0, weight=1)
         self.dialog.columnconfigure(0, weight=1)
@@ -156,7 +155,14 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         x = self.parent.winfo_rootx() + (self.parent.winfo_width() - width) // 2
         y = self.parent.winfo_rooty() + (self.parent.winfo_height() - height) // 2
         self.dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
+
         # Wait for dialog to close
         self.dialog.wait_window()
         

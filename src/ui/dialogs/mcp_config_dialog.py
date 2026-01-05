@@ -30,26 +30,32 @@ class MCPConfigDialog:
         """Show the MCP configuration dialog"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("MCP Tool Configuration")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(800, 600)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
         self.dialog.resizable(True, True)
-        
+
         # Make dialog modal
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Create UI
         self._create_ui()
-        
+
         # Load current configuration
         self._load_config()
-        
+
         # Center dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() // 2) - (self.dialog.winfo_width() // 2)
         y = (self.dialog.winfo_screenheight() // 2) - (self.dialog.winfo_height() // 2)
         self.dialog.geometry(f"+{x}+{y}")
-        
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
+
         # Wait for dialog to close
         self.dialog.wait_window()
         
@@ -495,25 +501,31 @@ class ServerEditDialog:
         """Show the edit dialog"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Edit MCP Server" if self.original_name else "Add MCP Server")
-        self.dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 500)
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
-        
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 500)
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
+
         # Make modal
         self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
+
         # Create UI
         self._create_ui()
-        
+
         # Load environment variables
         self._load_env()
-        
+
         # Center dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() // 2) - (self.dialog.winfo_width() // 2)
         y = (self.dialog.winfo_screenheight() // 2) - (self.dialog.winfo_height() // 2)
         self.dialog.geometry(f"+{x}+{y}")
-        
+
+        # Grab focus after window is visible
+        self.dialog.deiconify()
+        try:
+            self.dialog.grab_set()
+        except tk.TclError:
+            pass  # Window not viewable yet
+
         # Wait for dialog
         self.dialog.wait_window()
         
