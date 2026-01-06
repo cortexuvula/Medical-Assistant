@@ -1,121 +1,204 @@
 #!/usr/bin/env python3
 """
-Test script to verify service layer implementation
+Tests for application services and managers.
+
+These tests verify that the application's manager classes and service-like
+components work correctly.
 """
 
-import asyncio
 import sys
-import os
 from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
 
-# Add current directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from infrastructure import configure_services, shutdown_services, ServiceLocator
-from models import Recording
+import pytest
 
 
-async def test_services():
-    """Test basic service functionality."""
-    print("Testing Medical Assistant Service Layer")
-    print("=" * 50)
-    
-    try:
-        # Configure services
-        print("1. Configuring services...")
-        configure_services()
-        print("   ✓ Services configured successfully")
-        
-        # Get service instances
-        print("\n2. Getting service instances...")
-        audio_service = ServiceLocator.get_audio_service()
-        ai_service = ServiceLocator.get_ai_service()
-        database_service = ServiceLocator.get_database_service()
-        security_service = ServiceLocator.get_security_service()
-        print("   ✓ All services retrieved successfully")
-        
-        # Test audio service
-        print("\n3. Testing Audio Service...")
-        providers = audio_service.get_available_providers()
-        print(f"   Available STT providers: {[p['name'] for p in providers if p['available']]}")
-        
-        # Test AI service
-        print("\n4. Testing AI Service...")
-        ai_providers = ai_service.get_available_providers()
-        print(f"   Available AI providers: {[p['name'] for p in ai_providers if p['available']]}")
-        
-        # Test simple text processing
-        test_text = "This is a test transcription"
-        command_result = await ai_service.process_command(test_text)
-        if command_result.success:
-            print(f"   ✓ Command processing works: {command_result.data}")
-        
-        # Test database service
-        print("\n5. Testing Database Service...")
-        
-        # Create a test recording
-        test_recording = await database_service.create_recording(
-            filename="test_recording.wav",
-            transcript="Test transcript",
-            soap_note="Test SOAP note"
+class TestAgentManager:
+    """Test the AgentManager singleton."""
+
+    def test_agent_manager_import(self):
+        """Test AgentManager can be imported."""
+        from managers.agent_manager import AgentManager
+        assert AgentManager is not None
+
+    def test_agent_manager_singleton(self):
+        """Test AgentManager follows singleton pattern."""
+        from managers.agent_manager import agent_manager
+        assert agent_manager is not None
+
+
+class TestAPIKeyManager:
+    """Test the API Key Manager."""
+
+    def test_api_key_manager_import(self):
+        """Test APIKeyManager can be imported."""
+        from managers.api_key_manager import APIKeyManager
+        assert APIKeyManager is not None
+
+    def test_api_key_manager_providers(self):
+        """Test APIKeyManager knows about providers."""
+        from managers.api_key_manager import APIKeyManager
+
+        manager = APIKeyManager()
+        # Should have provider keys configuration
+        assert hasattr(manager, 'PROVIDER_KEYS')
+        assert len(manager.PROVIDER_KEYS) > 0
+
+
+class TestSettingsManager:
+    """Test settings management."""
+
+    def test_settings_load(self):
+        """Test settings can be loaded."""
+        from settings.settings import SETTINGS, load_settings
+
+        settings = load_settings()
+        assert settings is not None
+        assert isinstance(settings, dict)
+
+    def test_settings_has_required_keys(self):
+        """Test settings contains required configuration keys."""
+        from settings.settings import SETTINGS
+
+        # Check for some expected keys
+        expected_keys = ['theme', 'soap_note']
+        for key in expected_keys:
+            assert key in SETTINGS, f"Missing settings key: {key}"
+
+
+@pytest.mark.requires_audio
+class TestAudioStateManager:
+    """Test the AudioStateManager."""
+
+    @pytest.fixture(autouse=True)
+    def check_dependencies(self):
+        """Skip tests if audio dependencies are missing."""
+        pytest.importorskip("pydub")
+        pytest.importorskip("numpy")
+
+    def test_audio_state_manager_creation(self):
+        """Test AudioStateManager can be created."""
+        from audio.audio_state_manager import AudioStateManager
+
+        manager = AudioStateManager()
+        assert manager is not None
+
+    def test_audio_state_manager_initial_state(self):
+        """Test AudioStateManager starts in IDLE state."""
+        from audio.audio_state_manager import AudioStateManager, RecordingState
+
+        manager = AudioStateManager()
+        assert manager.get_state() == RecordingState.IDLE
+
+    def test_audio_state_manager_state_transitions(self):
+        """Test AudioStateManager handles state transitions."""
+        from audio.audio_state_manager import AudioStateManager, RecordingState
+
+        manager = AudioStateManager()
+
+        # Start recording
+        manager.start_recording()
+        assert manager.get_state() == RecordingState.RECORDING
+
+        # Pause
+        manager.pause_recording()
+        assert manager.get_state() == RecordingState.PAUSED
+
+        # Resume
+        manager.resume_recording()
+        assert manager.get_state() == RecordingState.RECORDING
+
+        # Stop
+        manager.stop_recording()
+        assert manager.get_state() == RecordingState.PROCESSING
+
+    def test_audio_state_manager_invalid_transitions(self):
+        """Test AudioStateManager rejects invalid state transitions."""
+        from audio.audio_state_manager import AudioStateManager
+
+        manager = AudioStateManager()
+
+        # Can't pause when not recording
+        with pytest.raises(RuntimeError):
+            manager.pause_recording()
+
+        # Can't resume when not paused
+        with pytest.raises(RuntimeError):
+            manager.resume_recording()
+
+    def test_audio_state_manager_clear(self):
+        """Test AudioStateManager can be cleared."""
+        from audio.audio_state_manager import AudioStateManager, RecordingState
+
+        manager = AudioStateManager()
+        manager.start_recording()
+        manager.clear_all()
+
+        assert manager.get_state() == RecordingState.IDLE
+        assert not manager.has_audio()
+
+
+class TestDocumentGenerators:
+    """Test document generator functions."""
+
+    @pytest.mark.requires_audio
+    def test_document_generators_import(self):
+        """Test document generators can be imported."""
+        pytest.importorskip("pydub")
+        pytest.importorskip("numpy")
+        from processing.document_generators import (
+            create_soap_note,
+            create_referral,
+            create_letter,
         )
-        
-        if test_recording.success:
-            recording_id = test_recording.data.id
-            print(f"   ✓ Created test recording with ID: {recording_id}")
-            
-            # Retrieve the recording
-            retrieved = await database_service.get_recording(recording_id)
-            if retrieved.success:
-                print(f"   ✓ Retrieved recording: {retrieved.data.filename}")
-            
-            # Delete the test recording
-            deleted = await database_service.delete_recording(recording_id)
-            if deleted.success:
-                print("   ✓ Deleted test recording")
-        
-        # Test security service
-        print("\n6. Testing Security Service...")
-        
-        # Test input sanitization
-        dirty_input = "Test <script>alert('xss')</script> input"
-        sanitized = await security_service.sanitize_input(dirty_input)
-        if sanitized.success:
-            print(f"   ✓ Input sanitization works: '{sanitized.data}'")
-        
-        # Test rate limiting
-        rate_check = await security_service.check_rate_limit("openai")
-        if rate_check.success:
-            print(f"   ✓ Rate limiting works: allowed={rate_check.data['allowed']}")
-        
-        print("\n✅ All services are working correctly!")
-        
-    except Exception as e:
-        print(f"\n❌ Error testing services: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Shutdown services
-        print("\n7. Shutting down services...")
-        shutdown_services()
-        print("   ✓ Services shut down successfully")
+        assert callable(create_soap_note)
+        assert callable(create_referral)
+        assert callable(create_letter)
 
 
-def main():
-    """Main test function."""
-    # Create test recording file if it doesn't exist
-    test_file = Path("test_recording.wav")
-    if not test_file.exists():
-        test_file.touch()
-    
-    try:
-        # Run async tests
-        asyncio.run(test_services())
-    finally:
-        # Clean up test file
-        if test_file.exists():
-            test_file.unlink()
+class TestAgentModels:
+    """Test agent data models."""
+
+    def test_agent_config_model(self):
+        """Test AgentConfig model."""
+        from ai.agents.models import AgentConfig
+
+        config = AgentConfig(
+            name="TestAgent",
+            description="A test agent",
+            system_prompt="You are a test agent.",
+        )
+
+        assert config.name == "TestAgent"
+        assert config.description == "A test agent"
+
+    def test_agent_task_model(self):
+        """Test AgentTask model."""
+        from ai.agents.models import AgentTask
+
+        task = AgentTask(
+            task_description="Generate synopsis",
+            input_data={"text": "test input"},
+        )
+
+        assert task.task_description == "Generate synopsis"
+        assert task.input_data["text"] == "test input"
+
+    def test_agent_response_model(self):
+        """Test AgentResponse model."""
+        from ai.agents.models import AgentResponse
+
+        response = AgentResponse(
+            success=True,
+            result="Test result",
+        )
+
+        assert response.success is True
+        assert response.result == "Test result"
 
 
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__, "-v"])
