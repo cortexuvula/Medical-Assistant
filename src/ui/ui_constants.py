@@ -351,6 +351,7 @@ class Icons:
     NAV_CHAT = "◉"
     NAV_RAG = "◈"
     NAV_RECORDINGS = "▤"
+    NAV_ADVANCED_ANALYSIS = "◇"
     NAV_SETTINGS = "⚙"
 
     # Sidebar Tool Icons (simple text-based)

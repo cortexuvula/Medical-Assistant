@@ -378,10 +378,11 @@ class RecordingHeader:
                     bg=self.COLORS["button_recording"]
                 )
                 self._pause_btn.config(text="⏸ Pause", bg="#FF9800")  # Orange
-                if not self._timer_running:
-                    self._start_timer()
-                else:
+                # Check if resuming from pause (has accumulated time) vs fresh start
+                if self._timer_paused_time > 0:
                     self._resume_timer()
+                elif not self._timer_running:
+                    self._start_timer()
 
             # Start waveform animation
             self._start_waveform_animation()

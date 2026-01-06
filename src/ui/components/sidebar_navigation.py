@@ -7,6 +7,7 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Callable, Optional, List
 import logging
+import platform
 
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
@@ -26,6 +27,7 @@ class SidebarNavigation:
         {"id": "chat", "label": "Chat", "icon": Icons.NAV_CHAT},
         {"id": "rag", "label": "RAG", "icon": Icons.NAV_RAG},
         {"id": "recordings", "label": "Recordings", "icon": Icons.NAV_RECORDINGS},
+        {"id": "advanced_analysis", "label": "Analysis", "icon": Icons.NAV_ADVANCED_ANALYSIS},
     ]
 
     # File operation items
@@ -78,6 +80,10 @@ class SidebarNavigation:
         self._file_items: Dict[str, tk.Frame] = {}
         self._sidebar_frame: Optional[ttk.Frame] = None
         self._content_frame: Optional[tk.Frame] = None
+        self._scroll_canvas: Optional[tk.Canvas] = None
+        self._scrollable_frame: Optional[tk.Frame] = None
+        self._header_frame: Optional[tk.Frame] = None
+        self._footer_frame: Optional[tk.Frame] = None
         self._toggle_btn: Optional[ttk.Button] = None
         self._tools_header: Optional[tk.Frame] = None
         self._tools_container: Optional[tk.Frame] = None
@@ -116,38 +122,40 @@ class SidebarNavigation:
         self._content_frame.pack(fill=tk.BOTH, expand=True)
         self._content_frame.pack_propagate(False)
 
-        # Create header with toggle button
+        # Create header with toggle button (fixed at top)
+        self._header_frame = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._header_frame.pack(fill=tk.X, side=tk.TOP)
         self._create_header(colors)
+        self._create_separator(colors, parent=self._header_frame)
 
-        # Create separator
-        self._create_separator(colors)
+        # Create footer (fixed at bottom)
+        self._footer_frame = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        self._create_settings_footer(colors)
 
-        # Create navigation section
+        # Create scrollable middle section
+        self._create_scrollable_section(colors)
+
+        # Create navigation section (in scrollable area)
         self._create_nav_section(colors)
 
         # Create separator
-        self._create_separator(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
 
         # Create file section
         self._create_file_section(colors)
 
         # Create separator
-        self._create_separator(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
 
         # Create generate section
         self._create_generate_section(colors)
 
         # Create separator
-        self._create_separator(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
 
         # Create tools section
         self._create_tools_section(colors)
-
-        # Create separator
-        self._create_separator(colors)
-
-        # Create settings footer
-        self._create_settings_footer(colors)
 
         # Store reference
         self.components['sidebar'] = self._sidebar_frame
@@ -159,6 +167,78 @@ class SidebarNavigation:
 
         return self._sidebar_frame
 
+    def _create_scrollable_section(self, colors: dict):
+        """Create the scrollable middle section of the sidebar."""
+        # Create canvas for scrolling
+        self._scroll_canvas = tk.Canvas(
+            self._content_frame,
+            bg=colors["bg"],
+            highlightthickness=0,
+            borderwidth=0
+        )
+        self._scroll_canvas.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
+
+        # Create interior frame for scrollable content
+        self._scrollable_frame = tk.Frame(self._scroll_canvas, bg=colors["bg"])
+        self._scroll_window_id = self._scroll_canvas.create_window(
+            (0, 0),
+            window=self._scrollable_frame,
+            anchor="nw"
+        )
+
+        # Bind events for scroll region
+        self._scrollable_frame.bind("<Configure>", self._on_scrollable_configure)
+        self._scroll_canvas.bind("<Configure>", self._on_canvas_configure)
+
+        # Bind mouse wheel for scrolling
+        self._bind_mousewheel()
+
+    def _on_scrollable_configure(self, event: tk.Event):
+        """Update scroll region when scrollable frame is resized."""
+        self._scroll_canvas.configure(scrollregion=self._scroll_canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event: tk.Event):
+        """Update scrollable frame width when canvas is resized."""
+        self._scroll_canvas.itemconfig(self._scroll_window_id, width=event.width)
+
+    def _bind_mousewheel(self):
+        """Bind mouse wheel events for scrolling."""
+        self._scroll_canvas.bind("<Enter>", self._on_scroll_enter)
+        self._scroll_canvas.bind("<Leave>", self._on_scroll_leave)
+
+    def _on_scroll_enter(self, event: tk.Event):
+        """Bind mousewheel when entering the scrollable area."""
+        system = platform.system()
+        if system == "Linux":
+            self._scroll_canvas.bind_all("<Button-4>", self._on_mousewheel_linux)
+            self._scroll_canvas.bind_all("<Button-5>", self._on_mousewheel_linux)
+        else:
+            self._scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _on_scroll_leave(self, event: tk.Event):
+        """Unbind mousewheel when leaving the scrollable area."""
+        system = platform.system()
+        if system == "Linux":
+            self._scroll_canvas.unbind_all("<Button-4>")
+            self._scroll_canvas.unbind_all("<Button-5>")
+        else:
+            self._scroll_canvas.unbind_all("<MouseWheel>")
+
+    def _on_mousewheel(self, event: tk.Event):
+        """Handle mouse wheel scrolling (Windows/macOS)."""
+        if platform.system() == "Darwin":
+            delta = -event.delta
+        else:
+            delta = -event.delta // 120
+        self._scroll_canvas.yview_scroll(delta * 3, "units")
+
+    def _on_mousewheel_linux(self, event: tk.Event):
+        """Handle mouse wheel scrolling (Linux)."""
+        if event.num == 4:
+            self._scroll_canvas.yview_scroll(-3, "units")
+        elif event.num == 5:
+            self._scroll_canvas.yview_scroll(3, "units")
+
     def _detect_dark_theme(self) -> bool:
         """Detect if dark theme is currently active."""
         current_theme = SETTINGS.get("theme", "darkly")
@@ -167,7 +247,7 @@ class SidebarNavigation:
 
     def _create_header(self, colors: dict):
         """Create the sidebar header with toggle button."""
-        header = tk.Frame(self._content_frame, bg=colors["bg"])
+        header = tk.Frame(self._header_frame, bg=colors["bg"])
         header.pack(fill=tk.X, padx=5, pady=8)
 
         # Toggle button (collapse/expand sidebar)
@@ -191,9 +271,15 @@ class SidebarNavigation:
         # Title label removed - window title already shows app name
         self._title_label = None
 
-    def _create_separator(self, colors: dict):
-        """Create a horizontal separator line."""
-        sep = tk.Frame(self._content_frame, bg=colors["border"], height=1)
+    def _create_separator(self, colors: dict, parent=None):
+        """Create a horizontal separator line.
+
+        Args:
+            colors: Color scheme dict
+            parent: Optional parent frame (defaults to scrollable frame)
+        """
+        container = parent if parent else self._scrollable_frame
+        sep = tk.Frame(container, bg=colors["border"], height=1)
         sep.pack(fill=tk.X, padx=10, pady=5)
 
     def _create_nav_section(self, colors: dict):
@@ -201,7 +287,7 @@ class SidebarNavigation:
         # Section header
         if not self._collapsed:
             section_header = tk.Label(
-                self._content_frame,
+                self._scrollable_frame,
                 text="NAVIGATE",
                 font=(Fonts.FAMILY[0], 9),
                 bg=colors["bg"],
@@ -223,7 +309,7 @@ class SidebarNavigation:
     def _create_file_section(self, colors: dict):
         """Create the collapsible file operations section."""
         # File header (clickable to expand/collapse)
-        self._file_header = tk.Frame(self._content_frame, bg=colors["bg"], cursor="hand2")
+        self._file_header = tk.Frame(self._scrollable_frame, bg=colors["bg"], cursor="hand2")
         self._file_header.pack(fill=tk.X, padx=10, pady=2)
 
         # Toggle icon
@@ -255,7 +341,7 @@ class SidebarNavigation:
             self._file_title_label.bind("<Button-1>", lambda e: self._toggle_file_section())
 
         # File container
-        self._file_container = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._file_container = tk.Frame(self._scrollable_frame, bg=colors["bg"])
         if self._file_expanded and not self._collapsed:
             self._file_container.pack(fill=tk.X)
 
@@ -297,7 +383,7 @@ class SidebarNavigation:
     def _create_generate_section(self, colors: dict):
         """Create the collapsible generate documents section."""
         # Generate header (clickable to expand/collapse)
-        self._generate_header = tk.Frame(self._content_frame, bg=colors["bg"], cursor="hand2")
+        self._generate_header = tk.Frame(self._scrollable_frame, bg=colors["bg"], cursor="hand2")
         self._generate_header.pack(fill=tk.X, padx=10, pady=2)
 
         # Toggle icon
@@ -329,7 +415,7 @@ class SidebarNavigation:
             self._generate_title_label.bind("<Button-1>", lambda e: self._toggle_generate_section())
 
         # Generate container
-        self._generate_container = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._generate_container = tk.Frame(self._scrollable_frame, bg=colors["bg"])
         if self._generate_expanded and not self._collapsed:
             self._generate_container.pack(fill=tk.X)
 
@@ -371,7 +457,7 @@ class SidebarNavigation:
     def _create_tools_section(self, colors: dict):
         """Create the collapsible tools section."""
         # Tools header (clickable to expand/collapse)
-        self._tools_header = tk.Frame(self._content_frame, bg=colors["bg"], cursor="hand2")
+        self._tools_header = tk.Frame(self._scrollable_frame, bg=colors["bg"], cursor="hand2")
         self._tools_header.pack(fill=tk.X, padx=10, pady=2)
 
         # Toggle icon
@@ -403,7 +489,7 @@ class SidebarNavigation:
             self._tools_title_label.bind("<Button-1>", lambda e: self._toggle_tools_section())
 
         # Tools container
-        self._tools_container = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._tools_container = tk.Frame(self._scrollable_frame, bg=colors["bg"])
         if self._tools_expanded and not self._collapsed:
             self._tools_container.pack(fill=tk.X)
 
@@ -434,7 +520,7 @@ class SidebarNavigation:
         fg_color = colors["fg_active"] if is_active else colors["fg"]
 
         item_frame = tk.Frame(
-            self._content_frame,
+            self._scrollable_frame,
             bg=bg_color,
             cursor="hand2"
         )
@@ -543,13 +629,13 @@ class SidebarNavigation:
 
     def _create_settings_footer(self, colors: dict):
         """Create the settings shortcut at the bottom."""
-        # Spacer to push settings to bottom
-        spacer = tk.Frame(self._content_frame, bg=colors["bg"])
-        spacer.pack(fill=tk.BOTH, expand=True)
+        # Separator above footer
+        sep = tk.Frame(self._footer_frame, bg=colors["border"], height=1)
+        sep.pack(fill=tk.X, padx=10, pady=5)
 
         # Credentials item
-        credentials_frame = tk.Frame(self._content_frame, bg=colors["bg"], cursor="hand2")
-        credentials_frame.pack(fill=tk.X, padx=5, pady=10, side=tk.BOTTOM)
+        credentials_frame = tk.Frame(self._footer_frame, bg=colors["bg"], cursor="hand2")
+        credentials_frame.pack(fill=tk.X, padx=5, pady=10)
 
         icon_label = tk.Label(
             credentials_frame,
@@ -698,6 +784,10 @@ class SidebarNavigation:
         self._tool_items.clear()
         self._generate_items.clear()
         self._file_items.clear()
+        self._header_frame = None
+        self._footer_frame = None
+        self._scroll_canvas = None
+        self._scrollable_frame = None
 
         # Get colors
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
@@ -706,18 +796,28 @@ class SidebarNavigation:
         new_width = SidebarConfig.WIDTH_COLLAPSED if self._collapsed else SidebarConfig.WIDTH_EXPANDED
         self._content_frame.config(width=new_width, bg=colors["bg"])
 
-        # Recreate all sections
+        # Create header with toggle button (fixed at top)
+        self._header_frame = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._header_frame.pack(fill=tk.X, side=tk.TOP)
         self._create_header(colors)
-        self._create_separator(colors)
-        self._create_nav_section(colors)
-        self._create_separator(colors)
-        self._create_file_section(colors)
-        self._create_separator(colors)
-        self._create_generate_section(colors)
-        self._create_separator(colors)
-        self._create_tools_section(colors)
-        self._create_separator(colors)
+        self._create_separator(colors, parent=self._header_frame)
+
+        # Create footer (fixed at bottom)
+        self._footer_frame = tk.Frame(self._content_frame, bg=colors["bg"])
+        self._footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self._create_settings_footer(colors)
+
+        # Create scrollable middle section
+        self._create_scrollable_section(colors)
+
+        # Create navigation section (in scrollable area)
+        self._create_nav_section(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
+        self._create_file_section(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
+        self._create_generate_section(colors)
+        self._create_separator(colors, parent=self._scrollable_frame)
+        self._create_tools_section(colors)
 
         # Restore active item
         self._active_item = current_active

@@ -72,8 +72,13 @@ Before writing each section, carefully review the transcript to extract ALL of t
 
 ### Assessment Section - Include:
 - Primary diagnosis with {ICD_CODE_INSTRUCTION}
-- Differential diagnoses (2-5 alternatives) with clinical reasoning
+- Clinical reasoning for the primary diagnosis
 - Severity assessment when applicable
+
+### Differential Diagnosis Section - Include:
+- 2-5 alternative diagnoses to consider
+- Supporting and refuting evidence for each differential
+- Clinical reasoning for ranking
 
 ### Plan Section - Document:
 - Medications prescribed (name, dose, frequency, duration, quantity)
@@ -81,9 +86,13 @@ Before writing each section, carefully review the transcript to extract ALL of t
 - Investigations ordered (labs, imaging)
 - Patient education provided
 - Lifestyle modifications discussed
+- Side effects discussed (if medications prescribed, state that side effects were discussed and patient advised to consult pharmacist for full medicine review)
+
+### Follow up Section - Document:
 - Follow-up timing and instructions
 - Safety netting advice (when to seek urgent care)
-- Side effects discussed (if medications prescribed, state that side effects were discussed and patient advised to consult pharmacist for full medicine review)
+- Red flag symptoms to watch for
+- When to return sooner
 
 ## CONSULTATION TYPE HANDLING
 
@@ -118,28 +127,39 @@ Before finalizing your SOAP note, verify:
 - All symptoms mentioned in the transcript are documented
 - All medications discussed appear in the note (current meds and new prescriptions)
 - Physical examination findings are addressed (documented, unremarkable, deferred, or not performed)
-- Assessment includes differential diagnoses with reasoning
-- Plan is actionable with specific follow-up instructions
+- Assessment includes primary diagnosis with clinical reasoning
+- Differential Diagnosis section lists 2-5 alternatives with evidence
+- Plan is actionable with specific treatment details
+- Follow up section includes timing and safety netting
+- All 7 sections are present (ICD Codes, Subjective, Objective, Assessment, Differential Diagnosis, Plan, Follow up)
 - No information from the transcript was overlooked
 
 ## OUTPUT FORMAT
 
-SOAP Note:
+You MUST use this exact structure with all sections in this order:
+
 {ICD_CODE_LABEL}
 
 Subjective:
-[Comprehensive subjective findings]
+[Comprehensive subjective findings including chief complaint, HPI, PMH, medications, allergies, social/family history]
 
 Objective:
-[Physical exam, vitals, and investigation results]
+[Physical exam findings, vitals, and investigation results]
 
 Assessment:
-[Primary and differential diagnoses with reasoning]
+[Primary diagnosis with clinical reasoning and severity]
+
+Differential Diagnosis:
+[2-5 alternative diagnoses with supporting/refuting evidence]
 
 Plan:
-[Detailed treatment plan with follow-up]
+[Medications, referrals, investigations, patient education, lifestyle modifications]
+
+Follow up:
+[Timing, instructions, safety netting advice, red flags]
 
 ** Always return your response in plain text without markdown **
+** Always include ALL sections even if information is limited **
 """
 
 # ICD code instruction variants

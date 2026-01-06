@@ -27,7 +27,7 @@ class NavigationController:
     }
 
     # Special views that need custom handling
-    SPECIAL_VIEWS = ["record", "recordings"]
+    SPECIAL_VIEWS = ["record", "recordings", "advanced_analysis"]
 
     def __init__(self, app):
         """Initialize the NavigationController.
@@ -105,6 +105,8 @@ class NavigationController:
                 return self._show_record_view()
             elif view_id == "recordings":
                 return self._show_recordings_view()
+            elif view_id == "advanced_analysis":
+                return self._show_advanced_analysis_view()
             elif view_id in self.TAB_MAPPING:
                 return self._show_document_view(view_id)
             else:
@@ -152,6 +154,28 @@ class NavigationController:
             return True
         except Exception as e:
             logging.error(f"Error showing recordings view: {e}")
+            return False
+
+    def _show_advanced_analysis_view(self) -> bool:
+        """Show the advanced analysis panel directly.
+
+        Unlike the record view, this only shows the analysis panel
+        without changing the document notebook tab.
+        """
+        logging.debug("Showing advanced analysis view")
+
+        try:
+            # Show analysis panel in shared panel area
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'shared_panel_manager'):
+                from ui.components.shared_panel_manager import SharedPanelManager
+                self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
+            elif hasattr(self.app, 'workflow_notebook'):
+                # Fallback for backwards compatibility
+                self.app.workflow_notebook.select(0)  # Record tab
+
+            return True
+        except Exception as e:
+            logging.error(f"Error showing advanced analysis view: {e}")
             return False
 
     def _show_document_view(self, view_id: str) -> bool:
