@@ -343,6 +343,8 @@ IMMEDIATE ACTIONS:
     "auto_update_ui_on_completion": True,  # Auto-populate tabs when processing completes
     "autosave_enabled": True,  # Enable auto-save by default
     "autosave_interval": 300,  # Auto-save every 5 minutes (300 seconds)
+    "recording_autosave_enabled": True,  # Enable recording auto-save during recordings
+    "recording_autosave_interval": 60,   # Save recording every 60 seconds
     "translation": {
         "provider": "deep_translator",  # Translation provider (deep_translator)
         "sub_provider": "google",       # Sub-provider (google, deepl, microsoft)

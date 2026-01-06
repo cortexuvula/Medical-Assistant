@@ -50,6 +50,7 @@ from core.document_export_controller import DocumentExportController
 from core.provider_config_controller import ProviderConfigController
 from core.periodic_analysis_controller import PeriodicAnalysisController
 from core.autosave_controller import AutoSaveController
+from core.recording_recovery_controller import RecordingRecoveryController
 from core.window_state_controller import WindowStateController
 from core.keyboard_shortcuts_controller import KeyboardShortcutsController
 from core.logs_viewer_controller import LogsViewerController
@@ -325,6 +326,9 @@ class AppInitializer:
         # Initialize autosave controller
         self.app.autosave_controller = AutoSaveController(self.app)
 
+        # Initialize recording recovery controller (for auto-save during recordings)
+        self.app.recording_recovery_controller = RecordingRecoveryController(self.app)
+
         # Initialize window state controller
         self.app.window_state_controller = WindowStateController(self.app)
 
@@ -376,10 +380,13 @@ class AppInitializer:
     def _finalize_setup(self):
         """Complete the application setup."""
         self.app.protocol("WM_DELETE_WINDOW", self.app.on_closing)
-        
+
         # Add a list to track all scheduled status updates
         self.app.status_timers = []
         self.app.status_timer = None
+
+        # Check for incomplete recording after UI is fully ready
+        self.app.after(1000, self.app.recording_recovery_controller.check_for_incomplete_recording)
     
     def _on_queue_status_update(self, task_id: str, status: str, queue_size: int):
         """Handle queue status updates.

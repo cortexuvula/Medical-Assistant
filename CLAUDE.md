@@ -170,6 +170,60 @@ The bidirectional translation assistant enables real-time medical translation fo
 - **Settings**: Voice ID, model, rate stored in `settings.json`
 - **API Integration**: Fetch available voices dynamically using ElevenLabs SDK v2
 
+## Unified Preferences Dialog
+
+The application features a comprehensive Preferences dialog accessible via Settings → Preferences (Ctrl+,):
+
+### Architecture
+- **UnifiedSettingsDialog**: Main dialog class in `src/ui/dialogs/unified_settings_dialog.py`
+- **Tabbed Interface**: 6 tabs organizing all settings logically
+- **Keyboard Shortcut**: Ctrl+, (bound in `src/core/keyboard_shortcuts_controller.py`)
+- **Menu Integration**: Primary entry point in Settings menu
+
+### Tab Structure
+| Tab | Content |
+|-----|---------|
+| **API Keys** | All LLM API keys (OpenAI, Anthropic, Grok, etc.) and STT keys (Deepgram, ElevenLabs, Groq) |
+| **Audio & STT** | Sub-tabs: ElevenLabs, Deepgram, Groq, TTS settings |
+| **AI Models** | Sub-tabs: Temperature settings, Translation provider configuration |
+| **Prompts** | Quick links to edit Refine, Improve, SOAP, Referral, Advanced Analysis prompts |
+| **Storage** | Default folder, Custom Vocabulary, Address Book, Prefix Audio |
+| **General** | Quick Continue Mode, Theme selection, Sidebar preferences, Keyboard shortcuts reference |
+
+### Key Features
+- **Scrollable API Keys**: Canvas-based scrollable list for many API keys
+- **Show/Hide Toggle**: Eye button to reveal/hide API key values
+- **Nested Notebooks**: Audio & STT and AI Models tabs use nested notebooks for sub-sections
+- **Tooltips**: All fields have descriptive tooltips on hover
+- **Reset Defaults**: Button to reset all settings to defaults
+- **Settings Persistence**: Uses `SETTINGS` dict and `save_settings()` function
+
+### Settings Menu Organization
+The Settings menu is organized into logical submenus:
+```
+Settings
+├── Preferences...              [Ctrl+,] - Opens unified dialog
+├── ─────────────
+├── Update API Keys             [Quick access]
+├── ─────────────
+├── Audio & Transcription ▸     [ElevenLabs, Deepgram, Groq, TTS]
+├── AI & Models ▸               [Temperature, Agent, Translation]
+├── Prompt Settings ▸           [Refine, Improve, SOAP, Referral, Advanced]
+├── Data & Storage ▸            [Vocabulary, Address Book, Storage, Prefix Audio]
+├── ─────────────
+├── Export Prompts
+├── Import Prompts
+├── ─────────────
+├── Quick Continue Mode         [Toggle]
+└── Toggle Theme                [Alt+T]
+```
+
+### Implementation Files
+- `src/ui/dialogs/unified_settings_dialog.py` - Main dialog implementation
+- `src/ui/menu_manager.py` - Settings menu organization with submenus
+- `src/core/keyboard_shortcuts_controller.py` - Ctrl+, shortcut binding
+- `src/core/app_settings_mixin.py` - `show_preferences()` method
+
 ## STT (Speech-to-Text) Providers
 
 All STT providers inherit from `src/stt_providers/base.BaseSTTProvider` and implement:
@@ -342,8 +396,10 @@ pip install -r requirements-dev.txt  # For development/testing
 - **Chat Interface**: `src/ui/chat_ui.py` - ChatGPT-style interface as 5th workflow tab
 - **Recording Dialog**: `src/audio/soap_audio_processor.py` - Handles SOAP recording workflow
 - **Settings Dialogs**: `src/ui/dialogs/dialogs.py` - API keys, prompts, models configuration
+- **Unified Settings**: `src/ui/dialogs/unified_settings_dialog.py` - Tabbed Preferences dialog (Ctrl+,)
+- **Menu Manager**: `src/ui/menu_manager.py` - Application menu bar with organized submenus
 - **Theme System**: `src/ui/theme_manager.py` - Dark/light theme support
-- **Medication Dialogs**: 
+- **Medication Dialogs**:
   - `src/ui/dialogs/medication_analysis_dialog.py` - Options for medication analysis
   - `src/ui/dialogs/medication_results_dialog.py` - Display medication analysis results
 - **Workflow Dialogs**:
@@ -401,6 +457,8 @@ pip install -r requirements-dev.txt  # For development/testing
 12. **src/managers/translation_manager.py**: Translation provider management
 13. **src/tts_providers/elevenlabs_tts.py**: ElevenLabs TTS with voice selection
 14. **src/ai/rag_processor.py**: RAG tab N8N webhook integration
+15. **src/ui/dialogs/unified_settings_dialog.py**: Unified Preferences dialog with 6 tabs
+16. **src/ui/menu_manager.py**: Settings menu organization and creation
 
 ## Common Development Tasks
 
@@ -484,7 +542,9 @@ All source code is now organized under the `src/` directory:
 - `src/settings/` - Settings management
 - `src/stt_providers/` - Speech-to-text providers
 - `src/ui/` - User interface components
+  - `menu_manager.py` - Application menu bar with organized submenus
   - `dialogs/` - All dialog windows
+    - `unified_settings_dialog.py` - Tabbed Preferences dialog (Ctrl+,)
     - `medication_analysis_dialog.py` - Medication analysis options
     - `medication_results_dialog.py` - Medication results display
     - `translation_dialog.py` - Bidirectional translation assistant

@@ -81,6 +81,11 @@ class SidebarNavigation:
         self._sidebar_frame: Optional[ttk.Frame] = None
         self._content_frame: Optional[tk.Frame] = None
         self._scroll_canvas: Optional[tk.Canvas] = None
+        self._scrollbar: Optional[tk.Canvas] = None
+        self._scrollbar_colors: Dict[str, str] = {}
+        self._scrollbar_dragging: bool = False
+        self._scrollbar_hover: bool = False
+        self._scrollbar_drag_start_y: int = 0
         self._scrollable_frame: Optional[tk.Frame] = None
         self._header_frame: Optional[tk.Frame] = None
         self._footer_frame: Optional[tk.Frame] = None
@@ -164,19 +169,52 @@ class SidebarNavigation:
         # Apply initial collapsed state
         if self._collapsed:
             self._apply_collapsed_state()
+            # Schedule deferred geometry update after widget is added to Panedwindow
+            self._sidebar_frame.after(100, lambda: self._update_parent_geometry(SidebarConfig.WIDTH_COLLAPSED))
 
         return self._sidebar_frame
 
     def _create_scrollable_section(self, colors: dict):
         """Create the scrollable middle section of the sidebar."""
+        # Create container frame for canvas and scrollbar
+        scroll_container = tk.Frame(self._content_frame, bg=colors["bg"])
+        scroll_container.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
+
         # Create canvas for scrolling
         self._scroll_canvas = tk.Canvas(
-            self._content_frame,
+            scroll_container,
             bg=colors["bg"],
             highlightthickness=0,
             borderwidth=0
         )
-        self._scroll_canvas.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
+        self._scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Create custom scrollbar - a thin canvas-based scrollbar for better theming
+        scrollbar_width = 6 if not self._collapsed else 4
+        self._scrollbar = tk.Canvas(
+            scroll_container,
+            width=scrollbar_width,
+            bg=colors["bg"],
+            highlightthickness=0,
+            borderwidth=0
+        )
+        # Don't pack scrollbar initially - will be shown when needed
+
+        # Scrollbar colors
+        self._scrollbar_colors = {
+            "track": colors["bg"],
+            "thumb": colors["fg_muted"],
+            "thumb_hover": colors["fg"]
+        }
+        self._scrollbar_dragging = False
+        self._scrollbar_hover = False
+
+        # Bind scrollbar events
+        self._scrollbar.bind("<Button-1>", self._on_scrollbar_click)
+        self._scrollbar.bind("<B1-Motion>", self._on_scrollbar_drag)
+        self._scrollbar.bind("<ButtonRelease-1>", self._on_scrollbar_release)
+        self._scrollbar.bind("<Enter>", self._on_scrollbar_enter)
+        self._scrollbar.bind("<Leave>", self._on_scrollbar_leave)
 
         # Create interior frame for scrollable content
         self._scrollable_frame = tk.Frame(self._scroll_canvas, bg=colors["bg"])
@@ -196,10 +234,153 @@ class SidebarNavigation:
     def _on_scrollable_configure(self, event: tk.Event):
         """Update scroll region when scrollable frame is resized."""
         self._scroll_canvas.configure(scrollregion=self._scroll_canvas.bbox("all"))
+        self._update_scrollbar_visibility()
+        self._draw_scrollbar()
 
     def _on_canvas_configure(self, event: tk.Event):
         """Update scrollable frame width when canvas is resized."""
         self._scroll_canvas.itemconfig(self._scroll_window_id, width=event.width)
+        self._update_scrollbar_visibility()
+        self._draw_scrollbar()
+
+    def _update_scrollbar_visibility(self):
+        """Show or hide scrollbar based on content size."""
+        if not self._scrollbar or not self._scroll_canvas:
+            return
+
+        try:
+            canvas_height = self._scroll_canvas.winfo_height()
+            bbox = self._scroll_canvas.bbox("all")
+            if bbox:
+                content_height = bbox[3] - bbox[1]
+            else:
+                content_height = 0
+
+            # Show scrollbar only if content exceeds canvas height
+            needs_scrollbar = content_height > canvas_height + 5  # 5px tolerance
+
+            if needs_scrollbar:
+                if not self._scrollbar.winfo_ismapped():
+                    self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 2), pady=2)
+            else:
+                if self._scrollbar.winfo_ismapped():
+                    self._scrollbar.pack_forget()
+        except tk.TclError:
+            pass  # Widget destroyed
+
+    def _draw_scrollbar(self):
+        """Draw the scrollbar thumb on the scrollbar canvas."""
+        if not self._scrollbar or not self._scroll_canvas:
+            return
+
+        try:
+            if not self._scrollbar.winfo_ismapped():
+                return
+
+            # Clear previous drawings
+            self._scrollbar.delete("all")
+
+            canvas_height = self._scroll_canvas.winfo_height()
+            bbox = self._scroll_canvas.bbox("all")
+            if not bbox:
+                return
+
+            content_height = bbox[3] - bbox[1]
+            if content_height <= canvas_height:
+                return
+
+            scrollbar_height = self._scrollbar.winfo_height()
+            scrollbar_width = self._scrollbar.winfo_width()
+
+            # Calculate thumb size and position
+            thumb_height = max(30, (canvas_height / content_height) * scrollbar_height)
+
+            # Get current scroll position
+            yview = self._scroll_canvas.yview()
+            thumb_top = yview[0] * (scrollbar_height - thumb_height)
+
+            # Choose thumb color based on state
+            if self._scrollbar_dragging or self._scrollbar_hover:
+                thumb_color = self._scrollbar_colors["thumb_hover"]
+            else:
+                thumb_color = self._scrollbar_colors["thumb"]
+
+            # Draw rounded rectangle thumb
+            padding = 1
+            self._scrollbar.create_oval(
+                padding, thumb_top + padding,
+                scrollbar_width - padding, thumb_top + 4 + padding,
+                fill=thumb_color, outline=thumb_color
+            )
+            self._scrollbar.create_rectangle(
+                padding, thumb_top + 2 + padding,
+                scrollbar_width - padding, thumb_top + thumb_height - 2 - padding,
+                fill=thumb_color, outline=thumb_color
+            )
+            self._scrollbar.create_oval(
+                padding, thumb_top + thumb_height - 4 - padding,
+                scrollbar_width - padding, thumb_top + thumb_height - padding,
+                fill=thumb_color, outline=thumb_color
+            )
+        except tk.TclError:
+            pass  # Widget destroyed
+
+    def _on_scrollbar_click(self, event: tk.Event):
+        """Handle click on scrollbar."""
+        self._scrollbar_dragging = True
+        self._scrollbar_drag_start_y = event.y
+        self._scroll_to_position(event.y)
+
+    def _on_scrollbar_drag(self, event: tk.Event):
+        """Handle drag on scrollbar."""
+        if self._scrollbar_dragging:
+            self._scroll_to_position(event.y)
+
+    def _on_scrollbar_release(self, event: tk.Event):
+        """Handle release of scrollbar."""
+        self._scrollbar_dragging = False
+        self._draw_scrollbar()
+
+    def _on_scrollbar_enter(self, event: tk.Event):
+        """Handle mouse entering scrollbar."""
+        self._scrollbar_hover = True
+        self._draw_scrollbar()
+
+    def _on_scrollbar_leave(self, event: tk.Event):
+        """Handle mouse leaving scrollbar."""
+        self._scrollbar_hover = False
+        if not self._scrollbar_dragging:
+            self._draw_scrollbar()
+
+    def _scroll_to_position(self, y: int):
+        """Scroll content to match scrollbar position."""
+        if not self._scrollbar:
+            return
+
+        try:
+            scrollbar_height = self._scrollbar.winfo_height()
+            canvas_height = self._scroll_canvas.winfo_height()
+            bbox = self._scroll_canvas.bbox("all")
+
+            if not bbox:
+                return
+
+            content_height = bbox[3] - bbox[1]
+            if content_height <= canvas_height:
+                return
+
+            thumb_height = max(30, (canvas_height / content_height) * scrollbar_height)
+
+            # Calculate scroll fraction
+            scroll_range = scrollbar_height - thumb_height
+            if scroll_range <= 0:
+                return
+
+            fraction = max(0, min(1, (y - thumb_height / 2) / scroll_range))
+            self._scroll_canvas.yview_moveto(fraction)
+            self._draw_scrollbar()
+        except tk.TclError:
+            pass  # Widget destroyed
 
     def _bind_mousewheel(self):
         """Bind mouse wheel events for scrolling."""
@@ -231,6 +412,7 @@ class SidebarNavigation:
         else:
             delta = -event.delta // 120
         self._scroll_canvas.yview_scroll(delta * 3, "units")
+        self._draw_scrollbar()
 
     def _on_mousewheel_linux(self, event: tk.Event):
         """Handle mouse wheel scrolling (Linux)."""
@@ -238,6 +420,7 @@ class SidebarNavigation:
             self._scroll_canvas.yview_scroll(-3, "units")
         elif event.num == 5:
             self._scroll_canvas.yview_scroll(3, "units")
+        self._draw_scrollbar()
 
     def _detect_dark_theme(self) -> bool:
         """Detect if dark theme is currently active."""
@@ -628,43 +811,10 @@ class SidebarNavigation:
         return item_frame
 
     def _create_settings_footer(self, colors: dict):
-        """Create the settings shortcut at the bottom."""
-        # Separator above footer
-        sep = tk.Frame(self._footer_frame, bg=colors["border"], height=1)
-        sep.pack(fill=tk.X, padx=10, pady=5)
-
-        # Credentials item
-        credentials_frame = tk.Frame(self._footer_frame, bg=colors["bg"], cursor="hand2")
-        credentials_frame.pack(fill=tk.X, padx=5, pady=10)
-
-        icon_label = tk.Label(
-            credentials_frame,
-            text=Icons.NAV_SETTINGS,
-            font=(Fonts.FAMILY[0], 14),
-            bg=colors["bg"],
-            fg=colors["fg_muted"],
-            width=2
-        )
-        icon_label.pack(side=tk.LEFT, padx=(10, 5), pady=8)
-
-        if not self._collapsed:
-            text_label = tk.Label(
-                credentials_frame,
-                text="Credentials",
-                font=(Fonts.FAMILY[0], 10),
-                bg=colors["bg"],
-                fg=colors["fg_muted"],
-                anchor=tk.W
-            )
-            text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=8)
-            text_label.bind("<Button-1>", lambda e: self._open_settings())
-
-        credentials_frame._icon_label = icon_label
-        credentials_frame.bind("<Button-1>", lambda e: self._open_settings())
-        icon_label.bind("<Button-1>", lambda e: self._open_settings())
-
-        ToolTip(credentials_frame, "Manage API Credentials")
-        ToolTip(icon_label, "Manage API Credentials")
+        """Create the footer section (placeholder for future items)."""
+        # Footer is now empty - credentials removed
+        # Keep this method for future footer items if needed
+        pass
 
     # =========================================================================
     # EVENT HANDLERS
@@ -721,11 +871,6 @@ class SidebarNavigation:
             else:
                 logging.warning(f"No handler found for tool: {tool_id}")
 
-    def _open_settings(self):
-        """Open the settings menu/dialog."""
-        from ui.dialogs.dialogs import show_api_keys_dialog
-        show_api_keys_dialog(self.parent)
-
     def _toggle_sidebar(self):
         """Toggle sidebar between expanded and collapsed states."""
         self._collapsed = not self._collapsed
@@ -768,7 +913,10 @@ class SidebarNavigation:
 
     def _apply_collapsed_state(self):
         """Apply the collapsed visual state."""
-        self._content_frame.config(width=SidebarConfig.WIDTH_COLLAPSED)
+        collapsed_width = SidebarConfig.WIDTH_COLLAPSED
+        self._content_frame.config(width=collapsed_width)
+        # Also update sidebar frame so Panedwindow gets correct initial size
+        self._sidebar_frame.configure(width=collapsed_width)
 
     def _rebuild_sidebar(self):
         """Rebuild the sidebar with current collapsed state."""
@@ -796,6 +944,9 @@ class SidebarNavigation:
         new_width = SidebarConfig.WIDTH_COLLAPSED if self._collapsed else SidebarConfig.WIDTH_EXPANDED
         self._content_frame.config(width=new_width, bg=colors["bg"])
 
+        # Update sidebar frame minimum width to force Panedwindow to resize
+        self._sidebar_frame.configure(width=new_width)
+
         # Create header with toggle button (fixed at top)
         self._header_frame = tk.Frame(self._content_frame, bg=colors["bg"])
         self._header_frame.pack(fill=tk.X, side=tk.TOP)
@@ -822,6 +973,54 @@ class SidebarNavigation:
         # Restore active item
         self._active_item = current_active
         self._update_active_visual()
+
+        # Force geometry update and notify parent Panedwindow
+        self._update_parent_geometry(new_width)
+
+    def _update_parent_geometry(self, new_width: int):
+        """Force parent Panedwindow to update sash position after sidebar resize.
+
+        Args:
+            new_width: The new sidebar width
+        """
+        try:
+            # Process pending geometry requests
+            self._sidebar_frame.update_idletasks()
+
+            # Find the Panedwindow that manages this sidebar
+            # The sidebar is added to a Panedwindow via .add(), which makes
+            # the Panedwindow the geometry manager (not the parent/master)
+            panedwindow = self._find_managing_panedwindow()
+            if panedwindow:
+                try:
+                    # Update sash position to match new sidebar width
+                    panedwindow.sashpos(0, new_width)
+                except tk.TclError:
+                    pass  # Sash position update not needed or failed
+        except Exception as e:
+            logging.debug(f"Could not update parent geometry: {e}")
+
+    def _find_managing_panedwindow(self):
+        """Find the Panedwindow that manages this sidebar.
+
+        Returns:
+            The Panedwindow widget or None if not found
+        """
+        # Walk up to find a Panedwindow that contains this sidebar
+        # Check parent_ui.parent which is the app window
+        if hasattr(self.parent, 'winfo_children'):
+            for child in self.parent.winfo_children():
+                # Check if this is a Panedwindow that contains our sidebar
+                if hasattr(child, 'panes'):
+                    try:
+                        panes = child.panes()
+                        # Check if our sidebar frame is one of the panes
+                        sidebar_name = str(self._sidebar_frame)
+                        if sidebar_name in panes or self._sidebar_frame in panes:
+                            return child
+                    except tk.TclError:
+                        continue
+        return None
 
     def set_active_item(self, item_id: str):
         """Set the active navigation item.

@@ -118,6 +118,14 @@ class RecordingController:
             # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
             logger.info("SOAP recording started successfully")
 
+            # Start recording auto-save for crash recovery
+            if hasattr(self.app, 'recording_recovery_controller'):
+                patient_context = self.app.context_text.get("1.0", "end-1c").strip() if hasattr(self.app, 'context_text') else ""
+                self.app.recording_recovery_controller.start_autosave({
+                    "patient_context": patient_context,
+                    "device_name": selected_device
+                })
+
             # Clear and initialize analysis text area
             self._initialize_analysis_display()
 
@@ -158,6 +166,10 @@ class RecordingController:
         # Reset audio handler settings
         self.app.audio_handler.soap_mode = False
         self.app.audio_handler.silence_threshold = 0.001
+
+        # Stop recording auto-save (completed successfully)
+        if hasattr(self.app, 'recording_recovery_controller'):
+            self.app.recording_recovery_controller.stop_autosave(completed_successfully=True)
 
         # Stop and get recording data - recording_manager handles state transition
         recording_data = self.app.recording_manager.stop_recording()
@@ -325,6 +337,10 @@ class RecordingController:
             self.app.audio_handler.soap_mode = False
             self.app.audio_handler.silence_threshold = 0.001
 
+            # Stop recording auto-save (not completed - cancelled)
+            if hasattr(self.app, 'recording_recovery_controller'):
+                self.app.recording_recovery_controller.stop_autosave(completed_successfully=False)
+
             # Cancel the recording in RecordingManager - handles state transition
             self.app.recording_manager.cancel_recording()
             # Note: No separate _soap_recording flag - recording_manager.is_recording is truth
@@ -381,5 +397,13 @@ class RecordingController:
                 except Exception as e:
                     logger.warning(f"Error stopping recording during cleanup: {e}")
                 self._soap_stop_listening_function = None
+
+            # Stop recording auto-save if running (mark as incomplete for potential recovery)
+            if hasattr(self.app, 'recording_recovery_controller'):
+                try:
+                    self.app.recording_recovery_controller.stop_autosave(completed_successfully=False)
+                except Exception as e:
+                    logger.warning(f"Error stopping recording auto-save during cleanup: {e}")
+
             # Note: No separate _soap_recording flag to clear
             # recording_manager handles its own state cleanup

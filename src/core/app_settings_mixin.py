@@ -184,6 +184,11 @@ class AppSettingsMixin:
         if dialog.show():
             self.status_manager.success("Vocabulary settings saved successfully")
 
+    def show_preferences(self) -> None:
+        """Show the unified Preferences dialog."""
+        from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
+        show_unified_settings_dialog(self)
+
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                              grok_model: str, ollama_model: str, system_prompt: str,
                              anthropic_model: str, gemini_model: str = "") -> None:

@@ -9,6 +9,7 @@ import tkinter as tk
 import os
 import openai
 from ui.dialogs.dialogs import show_api_keys_dialog
+from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
 
 
 class MenuManager:
@@ -120,55 +121,104 @@ class MenuManager:
         menubar.add_cascade(label="File", menu=filemenu)
     
     def _create_settings_menu(self, menubar: tk.Menu) -> None:
-        """Create the Settings menu with all submenus.
-        
+        """Create the Settings menu with organized submenus.
+
         Args:
             menubar: The main menu bar to add the Settings menu to
         """
         is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
         settings_menu = tk.Menu(menubar, tearoff=0)
         self._style_menu(settings_menu, is_dark)
-        
-        # Add API Keys option at the top of the settings menu
+
+        # Preferences (unified dialog) at top - primary entry point
+        settings_menu.add_command(
+            label="Preferences...",
+            command=self.show_preferences_dialog,
+            accelerator="Ctrl+,"
+        )
+        settings_menu.add_separator()
+
+        # API Keys - keep at top level for quick access
         settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
         settings_menu.add_separator()
-        
-        # Add STT provider settings menu options
-        settings_menu.add_command(label="ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
-        settings_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
-        settings_menu.add_command(label="Groq Settings", command=self.app.show_groq_settings)
-        settings_menu.add_command(label="Translation Settings", command=self.app.show_translation_settings)
-        settings_menu.add_command(label="TTS Settings", command=self.app.show_tts_settings)
-        settings_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
-        settings_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
-        settings_menu.add_command(label="Custom Vocabulary", command=self.app.show_vocabulary_settings)
 
-        # Create prompt settings submenu
+        # Organized submenus
+        self._create_audio_stt_submenu(settings_menu)
+        self._create_ai_models_submenu(settings_menu)
         self._create_prompt_settings_submenu(settings_menu)
-        
+        self._create_data_storage_submenu(settings_menu)
+
         settings_menu.add_separator()
-        
-        # Add other settings options
+
+        # Import/Export
         settings_menu.add_command(label="Export Prompts", command=self.app.export_prompts)
         settings_menu.add_command(label="Import Prompts", command=self.app.import_prompts)
         settings_menu.add_separator()
-        settings_menu.add_command(label="Import Contacts from CSV...", command=self.app.import_contacts_from_csv)
-        settings_menu.add_command(label="Manage Address Book...", command=self.app.manage_address_book)
-        settings_menu.add_separator()
-        settings_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
-        settings_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
-        settings_menu.add_separator()
-        
-        # Add quick continue mode toggle
+
+        # Quick toggles at bottom
         settings_menu.add_checkbutton(
             label="Quick Continue Mode",
             command=self.app.toggle_quick_continue_mode,
             variable=self.app.quick_continue_var if hasattr(self.app, 'quick_continue_var') else None
         )
-        
         settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
-        
+
         menubar.add_cascade(label="Settings", menu=settings_menu)
+
+    def _create_audio_stt_submenu(self, settings_menu: tk.Menu) -> None:
+        """Create the Audio & Transcription submenu.
+
+        Args:
+            settings_menu: The settings menu to add the submenu to
+        """
+        is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        audio_menu = tk.Menu(settings_menu, tearoff=0)
+        self._style_menu(audio_menu, is_dark)
+
+        audio_menu.add_command(label="ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
+        audio_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
+        audio_menu.add_command(label="Groq Settings", command=self.app.show_groq_settings)
+        audio_menu.add_separator()
+        audio_menu.add_command(label="TTS Settings", command=self.app.show_tts_settings)
+
+        settings_menu.add_cascade(label="Audio & Transcription", menu=audio_menu)
+
+    def _create_ai_models_submenu(self, settings_menu: tk.Menu) -> None:
+        """Create the AI & Models submenu.
+
+        Args:
+            settings_menu: The settings menu to add the submenu to
+        """
+        is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        ai_menu = tk.Menu(settings_menu, tearoff=0)
+        self._style_menu(ai_menu, is_dark)
+
+        ai_menu.add_command(label="Temperature Settings", command=self.app.show_temperature_settings)
+        ai_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
+        ai_menu.add_separator()
+        ai_menu.add_command(label="Translation Settings", command=self.app.show_translation_settings)
+
+        settings_menu.add_cascade(label="AI & Models", menu=ai_menu)
+
+    def _create_data_storage_submenu(self, settings_menu: tk.Menu) -> None:
+        """Create the Data & Storage submenu.
+
+        Args:
+            settings_menu: The settings menu to add the submenu to
+        """
+        is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        data_menu = tk.Menu(settings_menu, tearoff=0)
+        self._style_menu(data_menu, is_dark)
+
+        data_menu.add_command(label="Custom Vocabulary", command=self.app.show_vocabulary_settings)
+        data_menu.add_separator()
+        data_menu.add_command(label="Manage Address Book...", command=self.app.manage_address_book)
+        data_menu.add_command(label="Import Contacts from CSV...", command=self.app.import_contacts_from_csv)
+        data_menu.add_separator()
+        data_menu.add_command(label="Set Storage Folder", command=self.app.set_default_folder)
+        data_menu.add_command(label="Record Prefix Audio", command=self.app.record_prefix_audio)
+
+        settings_menu.add_cascade(label="Data & Storage", menu=data_menu)
     
     def _create_prompt_settings_submenu(self, settings_menu: tk.Menu) -> None:
         """Create the Prompt Settings submenu.
@@ -223,6 +273,10 @@ class MenuManager:
         
         helpmenu.add_cascade(label="View Logs", menu=logs_menu)
     
+    def show_preferences_dialog(self) -> None:
+        """Show the unified Preferences dialog."""
+        show_unified_settings_dialog(self.app)
+
     def show_api_keys_dialog(self) -> None:
         """Shows a dialog to update API keys and updates the .env file."""
         # Call the refactored function from dialogs.py
