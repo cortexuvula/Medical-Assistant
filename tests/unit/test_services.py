@@ -150,13 +150,13 @@ class TestDocumentGenerators:
         pytest.importorskip("pydub")
         pytest.importorskip("numpy")
         from processing.document_generators import (
-            create_soap_note,
-            create_referral,
-            create_letter,
+            create_soap_note_with_openai,
+            create_referral_with_openai,
+            create_letter_with_ai,
         )
-        assert callable(create_soap_note)
-        assert callable(create_referral)
-        assert callable(create_letter)
+        assert callable(create_soap_note_with_openai)
+        assert callable(create_referral_with_openai)
+        assert callable(create_letter_with_ai)
 
 
 class TestAgentModels:
