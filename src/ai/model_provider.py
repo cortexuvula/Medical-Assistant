@@ -162,9 +162,9 @@ class ModelProvider:
             "gpt-3.5-turbo-16k"
         ],
         PROVIDER_ANTHROPIC: [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
+            "claude-opus-4-20250514",
+            "claude-sonnet-4-20250514",
+            "claude-haiku-4-20250514",
             "claude-2.1",
             "claude-2.0",
             "claude-instant-1.2"

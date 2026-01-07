@@ -53,6 +53,10 @@ class PDFExporter:
         # Optional logo path
         self.logo_path = None
         self.logo_height = 0.5 * inch
+
+        # Simple letterhead settings
+        self.clinic_name = ""
+        self.doctor_name = ""
         
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for medical documents."""
@@ -124,17 +128,52 @@ class PDFExporter:
         
     def _create_header_footer(self, canvas, doc):
         """Add header and footer to each page.
-        
+
         Args:
             canvas: ReportLab canvas object
             doc: Document template object
         """
         canvas.saveState()
-        
+
         # Header
         if self.include_header:
-            if self.logo_path and os.path.exists(self.logo_path):
-                # Draw logo
+            header_y_offset = 0
+
+            # Simple letterhead (clinic name + doctor name)
+            if self.clinic_name or self.doctor_name:
+                center_x = doc.width / 2 + doc.leftMargin
+
+                if self.clinic_name:
+                    canvas.setFont('Helvetica-Bold', 14)
+                    canvas.setFillColor(colors.HexColor('#1a1a1a'))
+                    canvas.drawCentredString(
+                        center_x,
+                        doc.height + doc.topMargin - 15,
+                        self.clinic_name
+                    )
+                    header_y_offset = 18
+
+                if self.doctor_name:
+                    canvas.setFont('Helvetica', 11)
+                    canvas.setFillColor(colors.HexColor('#4a4a4a'))
+                    canvas.drawCentredString(
+                        center_x,
+                        doc.height + doc.topMargin - 15 - header_y_offset,
+                        self.doctor_name
+                    )
+                    header_y_offset += 15
+
+                # Letterhead separator line
+                canvas.setStrokeColor(colors.HexColor('#999999'))
+                canvas.line(
+                    doc.leftMargin,
+                    doc.height + doc.topMargin - 20 - header_y_offset,
+                    doc.width + doc.leftMargin,
+                    doc.height + doc.topMargin - 20 - header_y_offset
+                )
+
+            elif self.logo_path and os.path.exists(self.logo_path):
+                # Draw logo (if no simple letterhead)
                 canvas.drawImage(
                     self.logo_path,
                     doc.leftMargin,
@@ -143,24 +182,42 @@ class PDFExporter:
                     preserveAspectRatio=True,
                     mask='auto'
                 )
-            
-            # Header text
-            canvas.setFont('Helvetica', 10)
-            canvas.setFillColor(colors.HexColor('#666666'))
-            canvas.drawRightString(
-                doc.width + doc.leftMargin,
-                doc.height + doc.topMargin - 20,
-                self.header_text
-            )
-            
-            # Header line
-            canvas.setStrokeColor(colors.HexColor('#cccccc'))
-            canvas.line(
-                doc.leftMargin,
-                doc.height + doc.topMargin - 30,
-                doc.width + doc.leftMargin,
-                doc.height + doc.topMargin - 30
-            )
+
+                # Header text
+                canvas.setFont('Helvetica', 10)
+                canvas.setFillColor(colors.HexColor('#666666'))
+                canvas.drawRightString(
+                    doc.width + doc.leftMargin,
+                    doc.height + doc.topMargin - 20,
+                    self.header_text
+                )
+
+                # Header line
+                canvas.setStrokeColor(colors.HexColor('#cccccc'))
+                canvas.line(
+                    doc.leftMargin,
+                    doc.height + doc.topMargin - 30,
+                    doc.width + doc.leftMargin,
+                    doc.height + doc.topMargin - 30
+                )
+            else:
+                # Default header text only
+                canvas.setFont('Helvetica', 10)
+                canvas.setFillColor(colors.HexColor('#666666'))
+                canvas.drawRightString(
+                    doc.width + doc.leftMargin,
+                    doc.height + doc.topMargin - 20,
+                    self.header_text
+                )
+
+                # Header line
+                canvas.setStrokeColor(colors.HexColor('#cccccc'))
+                canvas.line(
+                    doc.leftMargin,
+                    doc.height + doc.topMargin - 30,
+                    doc.width + doc.leftMargin,
+                    doc.height + doc.topMargin - 30
+                )
         
         # Footer
         if self.include_footer:
@@ -801,7 +858,7 @@ class PDFExporter:
                               footer_text: Optional[str] = None,
                               logo_path: Optional[str] = None):
         """Set custom header and footer information.
-        
+
         Args:
             header_text: Text for header
             footer_text: Text for footer
@@ -813,3 +870,16 @@ class PDFExporter:
             self.footer_text = footer_text
         if logo_path is not None:
             self.logo_path = logo_path
+
+    def set_simple_letterhead(self, clinic_name: str = "", doctor_name: str = "") -> None:
+        """Set simple letterhead information.
+
+        This provides a simple way to add clinic name and doctor name to
+        PDF documents without requiring a full logo or complex letterhead.
+
+        Args:
+            clinic_name: Name of the clinic for letterhead
+            doctor_name: Name of the doctor for letterhead
+        """
+        self.clinic_name = clinic_name
+        self.doctor_name = doctor_name

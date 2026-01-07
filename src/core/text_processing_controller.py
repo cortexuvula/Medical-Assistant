@@ -14,6 +14,8 @@ from tkinter import messagebox, DISABLED, NORMAL, RIGHT, END
 from typing import TYPE_CHECKING, Callable, Optional
 import concurrent.futures
 
+from ui.undo_history_manager import get_undo_history_manager
+
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
     import ttkbootstrap as ttk
@@ -62,6 +64,16 @@ class TextProcessingController:
         else:
             # Default to transcript text if we can't determine the active tab
             return self.app.transcript_text
+
+    def get_active_widget_name(self) -> str:
+        """Get the name of the currently active text widget.
+
+        Returns:
+            Name string for the active widget (transcript, soap, referral, letter)
+        """
+        selected_tab = self.app.notebook.index('current')
+        names = {0: "transcript", 1: "soap", 2: "referral", 3: "letter"}
+        return names.get(selected_tab, "transcript")
 
     def refine_text(self) -> None:
         """Refine text using AI processor."""
@@ -125,9 +137,20 @@ class TextProcessingController:
         self.app.progress_bar.pack_forget()
 
         if result.success:
+            # Record in undo history before making changes
+            widget_name = self.get_active_widget_name()
+            new_text = result.value.get("text", "")
+            history_manager = get_undo_history_manager()
+            history_manager.record_change(
+                widget_name,
+                f"ai_{operation}",
+                new_text[:100]
+            )
+
             # Update text widget - result.value contains {"text": ...}
             widget.delete("1.0", tk.END)
-            widget.insert("1.0", result.value.get("text", ""))
+            widget.insert("1.0", new_text)
+            widget.edit_separator()  # Mark as separate undo operation
             self.app.status_manager.success(f"Text {operation}d successfully")
         else:
             self.app.status_manager.error(f"Failed to {operation} text: {result.error}")
@@ -332,18 +355,36 @@ class TextProcessingController:
         widget.insert(tk.END, separator + text)
         widget.see(tk.END)
 
-    def undo_text(self) -> None:
-        """Undo the last text operation."""
+    def undo_text(self) -> bool:
+        """Undo the last text operation.
+
+        Returns:
+            True if undo was successful, False otherwise
+        """
         try:
             active_widget = self.get_active_text_widget()
             active_widget.edit_undo()
+            # Record undo in history manager
+            widget_name = self.get_active_widget_name()
+            get_undo_history_manager().record_undo(widget_name)
+            return True
         except tk.TclError:
             self.app.update_status("Nothing to undo.")
+            return False
 
-    def redo_text(self) -> None:
-        """Redo the last undone text operation."""
+    def redo_text(self) -> bool:
+        """Redo the last undone text operation.
+
+        Returns:
+            True if redo was successful, False otherwise
+        """
         try:
             active_widget = self.get_active_text_widget()
             active_widget.edit_redo()
+            # Record redo in history manager
+            widget_name = self.get_active_widget_name()
+            get_undo_history_manager().record_redo(widget_name)
+            return True
         except tk.TclError:
             self.app.update_status("Nothing to redo.")
+            return False

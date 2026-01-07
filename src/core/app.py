@@ -656,6 +656,22 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Print current document. Delegates to DocumentExportController."""
         self.document_export_controller.print_document()
 
+    def export_as_pdf_letterhead(self) -> None:
+        """Export current document as PDF with letterhead. Delegates to DocumentExportController."""
+        self.document_export_controller.export_as_pdf_letterhead()
+
+    def export_as_word(self) -> None:
+        """Export current document as Word document. Delegates to DocumentExportController."""
+        self.document_export_controller.export_as_word()
+
+    def export_as_fhir(self) -> None:
+        """Export current document as FHIR JSON. Delegates to DocumentExportController."""
+        self.document_export_controller.export_as_fhir()
+
+    def copy_fhir_to_clipboard(self) -> None:
+        """Copy current document as FHIR JSON to clipboard. Delegates to DocumentExportController."""
+        self.document_export_controller.copy_fhir_to_clipboard()
+
     def _parse_soap_sections(self, content: str) -> Dict[str, str]:
         """Parse SOAP note content into sections. Delegates to DocumentExportController."""
         return self.document_export_controller.parse_soap_sections(content)
@@ -961,6 +977,18 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def redo_text(self) -> None:
         """Redo text operation. Delegates to TextProcessingController."""
         self.text_processing_controller.redo_text()
+
+    def show_undo_history(self) -> None:
+        """Show the undo history dialog for the active text widget."""
+        from ui.dialogs.undo_history_dialog import show_undo_history_dialog
+
+        active_widget_name = self.text_processing_controller.get_active_widget_name()
+
+        def undo_callback() -> bool:
+            """Callback to perform a single undo operation."""
+            return self.text_processing_controller.undo_text()
+
+        show_undo_history_dialog(self, active_widget_name, undo_callback)
 
     def on_closing(self) -> None:
         """Clean up resources before closing. Delegates to WindowStateController."""

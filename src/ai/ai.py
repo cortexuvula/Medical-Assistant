@@ -327,7 +327,7 @@ def call_ai_streaming(
     # Only OpenAI and Anthropic support streaming currently
     if provider == PROVIDER_ANTHROPIC:
         model_key = get_model_key_for_task(system_message, prompt)
-        actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
+        actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
         return call_anthropic_streaming(actual_model, system_message, prompt, temperature, on_chunk)
     elif provider == PROVIDER_OPENAI:
         model_key = get_model_key_for_task(system_message, prompt)
@@ -705,7 +705,7 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     """Call Anthropic's Claude API with explicit timeout.
 
     Args:
-        model: Model to use (e.g., claude-3-opus-20240229)
+        model: Model to use (e.g., claude-opus-4-20250514)
         system_message: System message to guide the AI's response
         prompt: User prompt
         temperature: Temperature parameter (0.0 to 1.0)
@@ -1002,6 +1002,97 @@ def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool =
         text = re.sub(r'(\[\d+\])+', '', text)
     
     return text.strip()
+
+def create_soap_note_streaming(
+    text: str,
+    context: str = "",
+    on_chunk: Callable[[str], None] = None
+) -> str:
+    """Create a SOAP note with streaming display.
+
+    Displays response progressively instead of waiting for complete response.
+    Provides better user feedback during long generation operations.
+
+    Args:
+        text: Transcript text to convert to SOAP note
+        context: Optional additional medical context
+        on_chunk: Callback function called with each text chunk for progressive display
+
+    Returns:
+        Complete SOAP note text
+    """
+    from datetime import datetime
+    from settings.settings import load_settings
+
+    # Reload settings to get latest
+    current_settings = load_settings()
+
+    model = current_settings.get("soap_note", {}).get("model", "gpt-4")
+
+    # Get ICD code version from settings
+    icd_version = current_settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
+
+    # Get dynamic system message based on ICD code preference
+    system_message = get_soap_system_message(icd_version)
+
+    # Check if user has a custom system message override
+    custom_message = current_settings.get("soap_note", {}).get("system_message", "")
+    if custom_message and custom_message.strip():
+        system_message = custom_message
+
+    # Get temperature from settings
+    temperature = current_settings.get("soap_note", {}).get("temperature", 0.4)
+
+    # Get current time and date in the specified format
+    current_datetime = datetime.now()
+    time_date_str = current_datetime.strftime("Time %H:%M Date %d %b %Y")
+
+    # Build the transcript with time/date prepended
+    transcript_with_datetime = f"{time_date_str}\n\n{text}"
+
+    # If context is provided, prepend it to the prompt
+    if context and context.strip():
+        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
+    else:
+        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
+
+    # Use streaming API call
+    if on_chunk:
+        result = call_ai_streaming(model, system_message, full_prompt, temperature, on_chunk)
+    else:
+        # Fall back to non-streaming if no callback provided
+        result = call_ai(model, system_message, full_prompt, temperature)
+
+    # Clean both markdown and citations
+    cleaned_soap = clean_text(result)
+
+    # Check if synopsis generation is enabled through agent manager
+    try:
+        from managers.agent_manager import agent_manager
+
+        # Use agent manager to generate synopsis
+        synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+
+        if synopsis:
+            # Append synopsis to SOAP note
+            synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{synopsis}"
+            cleaned_soap += synopsis_section
+            # Also stream the synopsis if callback provided
+            if on_chunk:
+                on_chunk(synopsis_section)
+            logging.info("Added synopsis to SOAP note")
+        else:
+            from ai.agents.models import AgentType
+            if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
+                logging.info("Synopsis generation is disabled")
+            else:
+                logging.warning("Synopsis generation failed")
+
+    except Exception as e:
+        logging.error(f"Error with synopsis generation: {e}")
+
+    return cleaned_soap
+
 
 def create_soap_note_with_openai(text: str, context: str = "") -> str:
     from datetime import datetime
@@ -1411,6 +1502,43 @@ def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str =
     # Clean up any markdown formatting and citations from the result
     return clean_text(result)
 
+
+def create_letter_streaming(
+    text: str,
+    recipient_type: str = "other",
+    specs: str = "",
+    on_chunk: Callable[[str], None] = None
+) -> str:
+    """Generate a professional medical letter with streaming display.
+
+    Displays response progressively instead of waiting for complete response.
+    Provides better user feedback during long generation operations.
+
+    Args:
+        text: Content to base the letter on
+        recipient_type: Type of recipient (insurance, employer, specialist, patient, school, legal, government, other)
+        specs: Additional special instructions for letter formatting/content
+        on_chunk: Callback function called with each text chunk for progressive display
+
+    Returns:
+        Complete formatted letter
+    """
+    # Build the prompt with recipient-specific guidance
+    prompt = _build_letter_prompt(text, recipient_type, specs)
+
+    # Get recipient-specific system message
+    system_message = _get_letter_system_message(recipient_type)
+
+    # Use streaming API call
+    if on_chunk:
+        result = call_ai_streaming("gpt-4o", system_message, prompt, 0.7, on_chunk)
+    else:
+        # Fall back to non-streaming if no callback provided
+        result = call_ai("gpt-4o", system_message, prompt, 0.7)
+
+    # Clean up any markdown formatting and citations from the result
+    return clean_text(result)
+
 def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             provider: str = None) -> str:
     """
@@ -1507,7 +1635,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         if provider_explicitly_set and model:
             actual_model = model
         else:
-            actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-3-sonnet-20240229")
+            actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
         logging.info(f"Using provider: Anthropic with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_anthropic(actual_model, system_message, prompt, temperature)

@@ -78,7 +78,7 @@ class TestAnthropicProvider:
         from src.ai.ai import call_anthropic
 
         result = call_anthropic(
-            model="claude-3-sonnet-20240229",
+            model="claude-sonnet-4-20250514",
             system_message="You are a helpful assistant",
             prompt="Test prompt",
             temperature=0.7
@@ -95,7 +95,7 @@ class TestAnthropicProvider:
             mock_api_call.side_effect = Exception("API Error")
 
             result = call_anthropic(
-                model="claude-3-sonnet-20240229",
+                model="claude-sonnet-4-20250514",
                 system_message="Test",
                 prompt="Test",
                 temperature=0.7

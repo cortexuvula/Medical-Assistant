@@ -79,6 +79,10 @@ class RecordingsTab:
         self.batch_progress_dialog = None
         self.batch_failed_count = 0
 
+        # Auto-refresh timer state
+        self._auto_refresh_interval = 60000  # 60 seconds in milliseconds
+        self._auto_refresh_job = None  # Stores the after() job ID
+
     @property
     def data_provider(self) -> RecordingsDataProvider:
         """Get the data provider, falling back to parent.db if not set.
@@ -403,6 +407,44 @@ class RecordingsTab:
         """Invalidate the recordings cache to force refresh on next access."""
         self._recordings_cache = None
         self._recordings_cache_time = 0.0
+
+    def start_auto_refresh(self) -> None:
+        """Start periodic auto-refresh of recordings list."""
+        self.stop_auto_refresh()  # Cancel any existing job
+        self._schedule_auto_refresh()
+        logging.debug("Recordings auto-refresh started (60s interval)")
+
+    def _schedule_auto_refresh(self) -> None:
+        """Schedule the next auto-refresh."""
+        try:
+            if self.parent and hasattr(self.parent, 'after'):
+                self._auto_refresh_job = self.parent.after(
+                    self._auto_refresh_interval,
+                    self._perform_auto_refresh
+                )
+        except Exception as e:
+            logging.debug(f"Could not schedule auto-refresh: {e}")
+
+    def _perform_auto_refresh(self) -> None:
+        """Perform auto-refresh and schedule next one."""
+        try:
+            # Check if parent widget still exists
+            if self.parent and hasattr(self.parent, 'winfo_exists') and self.parent.winfo_exists():
+                self._refresh_recordings_list(force_refresh=True)
+                self._schedule_auto_refresh()
+        except Exception as e:
+            logging.debug(f"Auto-refresh skipped: {e}")
+
+    def stop_auto_refresh(self) -> None:
+        """Stop periodic auto-refresh."""
+        if self._auto_refresh_job:
+            try:
+                if self.parent and hasattr(self.parent, 'after_cancel'):
+                    self.parent.after_cancel(self._auto_refresh_job)
+            except Exception:
+                pass
+            self._auto_refresh_job = None
+            logging.debug("Recordings auto-refresh stopped")
 
     def _show_loading_state(self):
         """Show loading state in the recordings tree."""

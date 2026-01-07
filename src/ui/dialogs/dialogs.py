@@ -485,7 +485,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         model_vars['perplexity'].set(config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
         model_vars['grok'].set(config.get("grok_model", default.get("grok_model", "grok-1")))
         model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
-        model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-3-sonnet-20240229")))
+        model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-sonnet-4-20250514")))
         model_vars['gemini'].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
         
         # Reset temperature
@@ -1319,3 +1319,110 @@ def show_letter_options_dialog(parent: tk.Tk) -> tuple:
 
     dialog.wait_window()
     return result[0], result[1], result[2]
+
+
+def show_letterhead_dialog(parent: tk.Tk, clinic_name: str = "", doctor_name: str = "") -> tuple:
+    """Show dialog to get letterhead information (clinic name and doctor name).
+
+    Args:
+        parent: Parent window
+        clinic_name: Pre-filled clinic name
+        doctor_name: Pre-filled doctor name
+
+    Returns:
+        tuple: (clinic_name, doctor_name) or None if cancelled
+    """
+    dialog = create_toplevel_dialog(parent, "Letterhead Information", "450x280")
+
+    # Main frame
+    main_frame = ttk.Frame(dialog, padding=(20, 20, 20, 20))
+    main_frame.pack(fill=tk.BOTH, expand=True)
+
+    # Heading
+    ttk.Label(
+        main_frame,
+        text="Enter letterhead information:",
+        font=("Segoe UI", 11, "bold")
+    ).pack(anchor="w", pady=(0, 15))
+
+    ttk.Label(
+        main_frame,
+        text="This information will appear at the top of your PDF documents.",
+        font=("Segoe UI", 10),
+        wraplength=400
+    ).pack(anchor="w", pady=(0, 15))
+
+    # Clinic name
+    clinic_frame = ttk.Frame(main_frame)
+    clinic_frame.pack(fill="x", pady=5)
+    ttk.Label(clinic_frame, text="Clinic Name:", width=12).pack(side="left")
+    clinic_var = tk.StringVar(value=clinic_name)
+    clinic_entry = ttk.Entry(clinic_frame, textvariable=clinic_var, width=40)
+    clinic_entry.pack(side="left", padx=(10, 0), fill="x", expand=True)
+
+    # Doctor name
+    doctor_frame = ttk.Frame(main_frame)
+    doctor_frame.pack(fill="x", pady=5)
+    ttk.Label(doctor_frame, text="Doctor Name:", width=12).pack(side="left")
+    doctor_var = tk.StringVar(value=doctor_name)
+    doctor_entry = ttk.Entry(doctor_frame, textvariable=doctor_var, width=40)
+    doctor_entry.pack(side="left", padx=(10, 0), fill="x", expand=True)
+
+    # Save checkbox
+    save_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(
+        main_frame,
+        text="Save for future use",
+        variable=save_var
+    ).pack(anchor="w", pady=(15, 0))
+
+    result = [None]
+
+    def on_submit():
+        clinic = clinic_var.get().strip()
+        doctor = doctor_var.get().strip()
+
+        if not clinic and not doctor:
+            messagebox.showwarning("Input Required", "Please enter at least a clinic name or doctor name.")
+            return
+
+        # Save to settings if requested
+        if save_var.get():
+            try:
+                from settings.settings_manager import SETTINGS, save_settings
+                SETTINGS["clinic_name"] = clinic
+                SETTINGS["doctor_name"] = doctor
+                save_settings()
+            except Exception as e:
+                logging.warning(f"Could not save letterhead settings: {e}")
+
+        result[0] = (clinic, doctor)
+        dialog.destroy()
+
+    def on_cancel():
+        dialog.destroy()
+
+    # Buttons
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+    ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=12).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Continue", command=on_submit, bootstyle="success", width=12).pack(side="right", padx=5)
+
+    # Focus on first empty field
+    if not clinic_name:
+        clinic_entry.focus_set()
+    elif not doctor_name:
+        doctor_entry.focus_set()
+    else:
+        clinic_entry.focus_set()
+
+    # Center dialog
+    dialog.update_idletasks()
+    dialog.geometry("+{}+{}".format(
+        (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2),
+        (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+    ))
+
+    dialog.wait_window()
+    return result[0]

@@ -34,7 +34,10 @@ class MenuManager:
         
         # Create File menu
         self._create_file_menu(menubar)
-        
+
+        # Create Edit menu
+        self._create_edit_menu(menubar)
+
         # Create Settings menu
         self._create_settings_menu(menubar)
         
@@ -111,7 +114,13 @@ class MenuManager:
         export_menu = tk.Menu(filemenu, tearoff=0)
         self._style_menu(export_menu, is_dark)
         export_menu.add_command(label="Export as PDF...", command=self.app.export_as_pdf, accelerator="Ctrl+E")
-        export_menu.add_command(label="Export All Documents as PDF", command=self.app.export_all_as_pdf)
+        export_menu.add_command(label="Export as PDF (Letterhead)...", command=self.app.export_as_pdf_letterhead)
+        export_menu.add_command(label="Export as Word...", command=self.app.export_as_word, accelerator="Ctrl+Shift+W")
+        export_menu.add_separator()
+        export_menu.add_command(label="Export as FHIR...", command=self.app.export_as_fhir, accelerator="Ctrl+Shift+F")
+        export_menu.add_command(label="Export FHIR to Clipboard", command=self.app.copy_fhir_to_clipboard)
+        export_menu.add_separator()
+        export_menu.add_command(label="Export All Documents...", command=self.app.export_all_as_pdf)
         filemenu.add_cascade(label="Export", menu=export_menu)
         
         filemenu.add_separator()
@@ -119,7 +128,31 @@ class MenuManager:
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.app.on_closing)
         menubar.add_cascade(label="File", menu=filemenu)
-    
+
+    def _create_edit_menu(self, menubar: tk.Menu) -> None:
+        """Create the Edit menu with undo/redo controls.
+
+        Args:
+            menubar: The main menu bar to add the Edit menu to
+        """
+        is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        self._style_menu(edit_menu, is_dark)
+
+        # Undo/Redo
+        edit_menu.add_command(label="Undo", command=self.app.undo_text, accelerator="Ctrl+Z")
+        edit_menu.add_command(label="Redo", command=self.app.redo_text, accelerator="Ctrl+Y")
+        edit_menu.add_separator()
+
+        # Copy (already has Ctrl+C bound)
+        edit_menu.add_command(label="Copy", command=self.app.copy_text, accelerator="Ctrl+C")
+        edit_menu.add_separator()
+
+        # Undo History
+        edit_menu.add_command(label="Undo History...", command=self.app.show_undo_history)
+
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+
     def _create_settings_menu(self, menubar: tk.Menu) -> None:
         """Create the Settings menu with organized submenus.
 

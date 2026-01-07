@@ -323,3 +323,295 @@ class DocumentExportController:
             sections['subjective'] = content
 
         return sections
+
+    def export_as_pdf_letterhead(self) -> None:
+        """Export current document as PDF with simple letterhead."""
+        try:
+            from utils.pdf_exporter import PDFExporter
+            from settings.settings_manager import SETTINGS
+
+            # Get letterhead settings
+            clinic_name = SETTINGS.get("clinic_name", "")
+            doctor_name = SETTINGS.get("doctor_name", "")
+
+            if not clinic_name and not doctor_name:
+                # Prompt user to enter letterhead info
+                from ui.dialogs.dialogs import show_letterhead_dialog
+                result = show_letterhead_dialog(self.app, clinic_name, doctor_name)
+                if result is None:
+                    return  # User cancelled
+                clinic_name, doctor_name = result
+
+            # Get the currently active tab
+            selected_tab = self.app.notebook.index('current')
+
+            # Determine document type and get content
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            if selected_tab >= len(doc_types):
+                messagebox.showwarning("Export Error", "Invalid document tab selected.")
+                return
+
+            doc_type = doc_types[selected_tab]
+
+            # Get the content from the appropriate text widget
+            text_widgets = self._get_text_widgets()
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+
+            if not content:
+                messagebox.showwarning("Export Error", f"No {doc_type.replace('_', ' ')} content to export.")
+                return
+
+            # Generate default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{doc_type}_{timestamp}.pdf"
+
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title=f"Export {doc_type.replace('_', ' ').title()} as PDF (Letterhead)"
+            )
+
+            if not file_path:
+                return
+
+            # Create PDF exporter with letterhead
+            pdf_exporter = PDFExporter()
+            pdf_exporter.set_simple_letterhead(clinic_name, doctor_name)
+
+            # Export based on document type
+            success = self._export_document_as_pdf(pdf_exporter, doc_type, content, file_path)
+
+            if success:
+                self.app.status_manager.success(f"{doc_type.replace('_', ' ').title()} exported to PDF with letterhead")
+
+                # Ask if user wants to open the PDF
+                if messagebox.askyesno("Open PDF", "Would you like to open the PDF now?"):
+                    from utils.validation import open_file_or_folder_safely
+                    open_success, error = open_file_or_folder_safely(file_path, operation="open")
+                    if not open_success:
+                        logging.error(f"Failed to open PDF: {error}")
+                        messagebox.showerror("Error", f"Could not open PDF: {error}")
+            else:
+                messagebox.showerror("Export Failed", "Failed to export PDF. Check logs for details.")
+
+        except Exception as e:
+            logging.error(f"Error exporting to PDF with letterhead: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to export PDF: {str(e)}")
+
+    def export_as_word(self) -> None:
+        """Export current document as Word document (.docx)."""
+        try:
+            from exporters.docx_exporter import DocxExporter
+            from settings.settings_manager import SETTINGS
+            from pathlib import Path
+
+            # Get the currently active tab
+            selected_tab = self.app.notebook.index('current')
+
+            # Determine document type and get content
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            if selected_tab >= len(doc_types):
+                messagebox.showwarning("Export Error", "Invalid document tab selected.")
+                return
+
+            doc_type = doc_types[selected_tab]
+
+            # Get the content from the appropriate text widget
+            text_widgets = self._get_text_widgets()
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+
+            if not content:
+                messagebox.showwarning("Export Error", f"No {doc_type.replace('_', ' ')} content to export.")
+                return
+
+            # Generate default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{doc_type}_{timestamp}.docx"
+
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".docx",
+                filetypes=[("Word documents", "*.docx"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title=f"Export {doc_type.replace('_', ' ').title()} as Word Document"
+            )
+
+            if not file_path:
+                return
+
+            # Get letterhead settings (optional)
+            clinic_name = SETTINGS.get("clinic_name", "")
+            doctor_name = SETTINGS.get("doctor_name", "")
+
+            # Create Word exporter
+            docx_exporter = DocxExporter(clinic_name=clinic_name, doctor_name=doctor_name)
+
+            # Prepare content dictionary
+            export_content = {
+                "document_type": "soap" if doc_type == "soap_note" else "generic",
+                "content": content,
+                "title": doc_type.replace('_', ' ').title(),
+                "include_letterhead": bool(clinic_name or doctor_name)
+            }
+
+            # Export
+            success = docx_exporter.export(export_content, Path(file_path))
+
+            if success:
+                self.app.status_manager.success(f"{doc_type.replace('_', ' ').title()} exported to Word successfully")
+
+                # Ask if user wants to open the document
+                if messagebox.askyesno("Open Document", "Would you like to open the Word document now?"):
+                    from utils.validation import open_file_or_folder_safely
+                    open_success, error = open_file_or_folder_safely(file_path, operation="open")
+                    if not open_success:
+                        logging.error(f"Failed to open Word document: {error}")
+                        messagebox.showerror("Error", f"Could not open Word document: {error}")
+            else:
+                error_msg = docx_exporter.last_error or "Unknown error"
+                messagebox.showerror("Export Failed", f"Failed to export Word document: {error_msg}")
+
+        except Exception as e:
+            logging.error(f"Error exporting to Word: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to export Word document: {str(e)}")
+
+    def export_as_fhir(self) -> None:
+        """Export current document as FHIR R4 JSON for EHR/EMR import."""
+        try:
+            from exporters.fhir_exporter import FHIRExporter
+            from exporters.fhir_config import FHIRExportConfig
+            from settings.settings_manager import SETTINGS
+            from pathlib import Path
+
+            # Get the currently active tab
+            selected_tab = self.app.notebook.index('current')
+
+            # Determine document type and get content
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            if selected_tab >= len(doc_types):
+                messagebox.showwarning("Export Error", "Invalid document tab selected.")
+                return
+
+            doc_type = doc_types[selected_tab]
+
+            # Get the content from the appropriate text widget
+            text_widgets = self._get_text_widgets()
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+
+            if not content:
+                messagebox.showwarning("Export Error", f"No {doc_type.replace('_', ' ')} content to export.")
+                return
+
+            # Generate default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{doc_type}_fhir_{timestamp}.json"
+
+            # Ask user for save location
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                initialfile=default_filename,
+                title=f"Export {doc_type.replace('_', ' ').title()} as FHIR"
+            )
+
+            if not file_path:
+                return
+
+            # Create FHIR exporter with config
+            config = FHIRExportConfig(
+                organization_name=SETTINGS.get("clinic_name", ""),
+                practitioner_name=SETTINGS.get("doctor_name", ""),
+                include_patient=False,  # No patient info available
+                include_practitioner=bool(SETTINGS.get("doctor_name", "")),
+                include_organization=bool(SETTINGS.get("clinic_name", ""))
+            )
+            fhir_exporter = FHIRExporter(config)
+
+            # Prepare export content
+            export_content = {
+                "soap_data": content,
+                "title": doc_type.replace('_', ' ').title(),
+                "export_type": "bundle" if doc_type == "soap_note" else "document_reference",
+                "document_type": doc_type
+            }
+
+            # Export
+            success = fhir_exporter.export(export_content, Path(file_path))
+
+            if success:
+                self.app.status_manager.success(f"{doc_type.replace('_', ' ').title()} exported as FHIR successfully")
+
+                # Ask if user wants to open the JSON file
+                if messagebox.askyesno("Open File", "Would you like to open the FHIR JSON file now?"):
+                    from utils.validation import open_file_or_folder_safely
+                    open_success, error = open_file_or_folder_safely(file_path, operation="open")
+                    if not open_success:
+                        logging.error(f"Failed to open FHIR file: {error}")
+                        messagebox.showerror("Error", f"Could not open file: {error}")
+            else:
+                error_msg = fhir_exporter.last_error or "Unknown error"
+                messagebox.showerror("Export Failed", f"Failed to export FHIR: {error_msg}")
+
+        except Exception as e:
+            logging.error(f"Error exporting as FHIR: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to export FHIR: {str(e)}")
+
+    def copy_fhir_to_clipboard(self) -> None:
+        """Copy current document as FHIR JSON to clipboard."""
+        try:
+            from exporters.fhir_exporter import FHIRExporter
+            from exporters.fhir_config import FHIRExportConfig
+            from settings.settings_manager import SETTINGS
+
+            # Get the currently active tab
+            selected_tab = self.app.notebook.index('current')
+
+            # Determine document type and get content
+            doc_types = ['transcript', 'soap_note', 'referral', 'letter', 'chat']
+            if selected_tab >= len(doc_types):
+                messagebox.showwarning("Export Error", "Invalid document tab selected.")
+                return
+
+            doc_type = doc_types[selected_tab]
+
+            # Get the content from the appropriate text widget
+            text_widgets = self._get_text_widgets()
+            content = text_widgets[selected_tab].get("1.0", tk.END).strip()
+
+            if not content:
+                messagebox.showwarning("Export Error", f"No {doc_type.replace('_', ' ')} content to export.")
+                return
+
+            # Create FHIR exporter with config
+            config = FHIRExportConfig(
+                organization_name=SETTINGS.get("clinic_name", ""),
+                practitioner_name=SETTINGS.get("doctor_name", ""),
+                include_patient=False,
+                include_practitioner=bool(SETTINGS.get("doctor_name", "")),
+                include_organization=bool(SETTINGS.get("clinic_name", ""))
+            )
+            fhir_exporter = FHIRExporter(config)
+
+            # Prepare export content
+            export_content = {
+                "soap_data": content,
+                "title": doc_type.replace('_', ' ').title(),
+                "export_type": "bundle" if doc_type == "soap_note" else "document_reference",
+                "document_type": doc_type
+            }
+
+            # Export to clipboard
+            success = fhir_exporter.export_to_clipboard(export_content)
+
+            if success:
+                self.app.status_manager.success("FHIR JSON copied to clipboard")
+                messagebox.showinfo("Success", "FHIR JSON has been copied to clipboard.\n\nYou can now paste it into your EHR/EMR import field.")
+            else:
+                error_msg = fhir_exporter.last_error or "Unknown error"
+                messagebox.showerror("Export Failed", f"Failed to copy FHIR to clipboard: {error_msg}")
+
+        except Exception as e:
+            logging.error(f"Error copying FHIR to clipboard: {str(e)}")
+            messagebox.showerror("Export Error", f"Failed to copy FHIR: {str(e)}")

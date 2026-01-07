@@ -282,9 +282,9 @@ def get_fallback_anthropic_models() -> List[str]:
     """Return a fallback list of Anthropic models."""
     logging.info("Using fallback list of Anthropic models")
     return [
-        "claude-3-opus-20240229",      # Most capable model
-        "claude-3-sonnet-20240229",    # Balanced performance
-        "claude-3-haiku-20240307",     # Fastest model
+        "claude-opus-4-20250514",      # Most capable model
+        "claude-sonnet-4-20250514",    # Balanced performance
+        "claude-haiku-4-20250514",     # Fastest model
         "claude-2.1",                  # Previous generation
         "claude-2.0",                  # Legacy model
         "claude-instant-1.2"           # Fast, lightweight model

@@ -48,6 +48,12 @@ class KeyboardShortcutsController:
         self.app.bind("<Control-slash>", lambda _: self.app._focus_chat_input())
         self.app.bind("<Control-comma>", lambda _: self.app.show_preferences())
 
+        # Export shortcuts
+        self.app.bind("<Control-Shift-w>", lambda _: self.app.export_as_word())
+        self.app.bind("<Control-Shift-W>", lambda _: self.app.export_as_word())
+        self.app.bind("<Control-Shift-f>", lambda _: self.app.export_as_fhir())
+        self.app.bind("<Control-Shift-F>", lambda _: self.app.export_as_fhir())
+
         # Recording shortcuts - use bind_all for global access
         self.app.bind_all("<F5>", lambda _: self.app.toggle_soap_recording())
         self.app.bind_all("<Control-Shift-S>", lambda _: self.app.toggle_soap_recording())

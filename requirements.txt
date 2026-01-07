@@ -31,3 +31,5 @@ pyttsx3>=2.90  # For offline text-to-speech
 gtts>=2.5.0  # For Google text-to-speech
 pygame>=2.5.0  # For audio playback in TTS
 simpleeval>=0.9.13  # For safe expression evaluation (replaces unsafe eval)
+fhir.resources>=8.0.0  # For FHIR R4 resource models (healthcare interoperability)
+python-docx>=0.8.11  # For Word document (.docx) export

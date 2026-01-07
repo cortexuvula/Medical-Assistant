@@ -93,7 +93,7 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
     # This will be populated dynamically, but keep as fallback
     FALLBACK_MODELS = {
         "openai": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
-        "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+        "anthropic": ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-4-20250514"],
         "ollama": ["llama3", "mistral", "codellama"],
         "perplexity": ["sonar-medium-chat", "sonar-small-chat"],
         "grok": ["grok-1", "grok-2"],

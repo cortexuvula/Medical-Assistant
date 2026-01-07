@@ -190,7 +190,7 @@ class Config:
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-3-sonnet-20240229"
+                    "anthropic": "claude-sonnet-4-20250514"
                 }
             ),
             "improve_text": AITaskConfig(
@@ -201,7 +201,7 @@ class Config:
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-3-sonnet-20240229"
+                    "anthropic": "claude-sonnet-4-20250514"
                 }
             ),
             "soap_note": AITaskConfig(
@@ -213,7 +213,7 @@ class Config:
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-3-sonnet-20240229"
+                    "anthropic": "claude-sonnet-4-20250514"
                 }
             ),
             "referral": AITaskConfig(
@@ -224,7 +224,7 @@ class Config:
                     "grok": "grok-1",
                     "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-3-sonnet-20240229"
+                    "anthropic": "claude-sonnet-4-20250514"
                 }
             )
         }

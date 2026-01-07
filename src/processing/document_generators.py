@@ -13,7 +13,14 @@ from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import Dict, Any, List, Callable, Optional
 
-from ai.ai import create_soap_note_with_openai, create_referral_with_openai, get_possible_conditions, create_letter_with_ai
+from ai.ai import (
+    create_soap_note_with_openai,
+    create_soap_note_streaming,
+    create_referral_with_openai,
+    get_possible_conditions,
+    create_letter_with_ai,
+    create_letter_streaming
+)
 from ui.dialogs.dialogs import ask_conditions_dialog
 from ui.dialogs.referral_options_dialog import ReferralOptionsDialog
 from managers.recipient_manager import get_recipient_manager
@@ -48,6 +55,79 @@ class DocumentGenerators:
             self._batch_processor = BatchProcessor(self.app)
         return self._batch_processor
 
+    def _append_streaming_chunk(self, widget, chunk: str) -> None:
+        """Append a chunk of text to widget during streaming.
+
+        Thread-safe method to update text widget from streaming callback.
+
+        Args:
+            widget: The text widget to update
+            chunk: The text chunk to append
+        """
+        def update():
+            try:
+                # Enable editing temporarily
+                current_state = widget.cget('state')
+                widget.configure(state='normal')
+                # Insert chunk at end
+                widget.insert('end', chunk)
+                # Auto-scroll to show new content
+                widget.see('end')
+                # Restore state if it was disabled
+                if current_state == 'disabled':
+                    widget.configure(state='disabled')
+                # Force update to show changes immediately
+                widget.update_idletasks()
+            except Exception as e:
+                logging.debug(f"Error appending streaming chunk: {e}")
+
+        # Schedule UI update on main thread
+        self.app.after(0, update)
+
+    def _start_streaming_display(self, widget, status_msg: str) -> None:
+        """Prepare widget for streaming display.
+
+        Args:
+            widget: The text widget to prepare
+            status_msg: Status message to display
+        """
+        def setup():
+            try:
+                # Clear the widget
+                widget.configure(state='normal')
+                widget.delete('1.0', 'end')
+                widget.update_idletasks()
+            except Exception as e:
+                logging.debug(f"Error preparing streaming display: {e}")
+
+        self.app.after(0, setup)
+        self.app.status_manager.progress(status_msg)
+
+    def _finish_streaming_display(self, widget, success_msg: str, button=None) -> None:
+        """Finalize widget after streaming completes.
+
+        Args:
+            widget: The text widget that was updated
+            success_msg: Success message to display
+            button: Optional button to re-enable
+        """
+        def finish():
+            try:
+                # Add edit separator for undo history
+                widget.edit_separator()
+                # Stop progress
+                self.app.progress_bar.stop()
+                self.app.progress_bar.pack_forget()
+                # Re-enable button if provided
+                if button:
+                    button.config(state=NORMAL)
+                # Update status
+                self.app.status_manager.success(success_msg)
+            except Exception as e:
+                logging.debug(f"Error finishing streaming display: {e}")
+
+        self.app.after(0, finish)
+
     def process_batch_recordings(self, recording_ids: List[int], options: Dict[str, Any],
                                  on_complete: Callable = None, on_progress: Callable = None) -> None:
         """Process multiple recordings in batch. Delegates to BatchProcessor."""
@@ -59,66 +139,73 @@ class DocumentGenerators:
         self.batch_processor.process_batch_files(file_paths, options, on_complete, on_progress)
         
     def create_soap_note(self) -> None:
-        """Create a SOAP note from the selected text using AI with improved concurrency."""
+        """Create a SOAP note from the selected text using AI with streaming display.
+
+        Shows AI-generated text progressively as it's generated, providing
+        better user feedback during long generation operations.
+        """
         transcript = self.app.transcript_text.get("1.0", "end").strip()
         if not transcript:
             messagebox.showwarning("Create SOAP Note", "There is no transcript to process.")
             return
 
-        # Create error handler for this operation
-        error_handler = AsyncUIErrorHandler(
-            self.app,
-            button=self.app.soap_button,
-            progress_bar=self.app.progress_bar,
-            operation_name="Creating SOAP note"
-        )
-        error_handler.start()
+        # Get context before starting background task
+        context_text = self.app.context_text.get("1.0", "end").strip()
+
+        # Disable button and show progress
+        if self.app.soap_button:
+            self.app.soap_button.config(state=DISABLED)
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+
+        # Prepare SOAP text widget for streaming
+        self._start_streaming_display(self.app.soap_text, "Generating SOAP note...")
+
+        # Switch to SOAP tab to show streaming output
+        self.app.after(0, lambda: self.app.notebook.select(1))
+
+        # Create streaming callback
+        def on_chunk(chunk: str):
+            """Called for each chunk of streaming response."""
+            self._append_streaming_chunk(self.app.soap_text, chunk)
 
         def task() -> None:
             try:
-                # Create progress tracker
-                progress_callback = create_progress_callback(self.app.status_manager)
-                tracker = DocumentGenerationProgress.create_soap_tracker(progress_callback)
-
-                # Step 1: Prepare transcript
-                tracker.update("Preparing transcript...")
-                context_text = self.app.context_text.get("1.0", "end").strip()
-
-                # Step 2: Extract context
-                tracker.update("Extracting context...")
-
-                # Step 3: Generate SOAP sections
-                tracker.update("Generating SOAP sections...")
-
-                # Use IO executor for the AI API call (I/O-bound operation)
-                future = self.app.io_executor.submit(
-                    create_soap_note_with_openai,
+                # Use streaming API call
+                result = create_soap_note_streaming(
                     transcript,
-                    context_text
+                    context_text,
+                    on_chunk=on_chunk
                 )
-
-                # Get result with timeout to prevent hanging
-                result = future.result(timeout=120)
-
-                # Step 4: Format output
-                tracker.update("Formatting output...")
-
-                # Step 5: Finalize
-                tracker.update("Finalizing document...")
 
                 # Store the values we need for database operations
                 soap_note = result
                 filename = "Transcript"
 
-                # Schedule UI update on the main thread and save to database
-                def update_ui_and_save():
-                    self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text)
-                    self.app.notebook.select(1)  # Switch to SOAP tab
-                    self.app.soap_text.focus_set()  # Give focus to SOAP text widget
+                # Schedule UI finalization on main thread
+                def finalize():
+                    # Stop progress indicator
+                    self.app.progress_bar.stop()
+                    self.app.progress_bar.pack_forget()
 
-                    # Check if we have an existing recording from file upload
+                    # Re-enable button
+                    if self.app.soap_button:
+                        self.app.soap_button.config(state=NORMAL)
+
+                    # Add edit separator for undo support
+                    try:
+                        self.app.soap_text.edit_separator()
+                    except Exception:
+                        pass
+
+                    # Update status
+                    self.app.status_manager.success("SOAP note created")
+
+                    # Give focus to SOAP text widget
+                    self.app.soap_text.focus_set()
+
+                    # Save to database
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
-                        # Update existing recording with SOAP note
                         success = self.app.db.update_recording(
                             self.app.current_recording_id,
                             soap_note=soap_note
@@ -128,29 +215,29 @@ class DocumentGenerators:
                         else:
                             logging.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
                     else:
-                        # No existing recording, create a new one
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
 
                     # Check if diagnostic agent is enabled and offer to run analysis
                     if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
-                        # Ask user if they want to run diagnostic analysis
                         if messagebox.askyesno(
                             "Run Diagnostic Analysis?",
                             "SOAP note created successfully.\n\n"
                             "Would you like to run diagnostic analysis on this SOAP note?",
                             parent=self.app
                         ):
-                            # Run diagnostic analysis on the SOAP note
                             self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
 
-                # Mark progress as complete
-                tracker.complete("SOAP note created successfully")
+                self.app.after(0, finalize)
 
-                error_handler.complete(callback=update_ui_and_save)
-            except concurrent.futures.TimeoutError:
-                error_handler.fail("SOAP note creation timed out. Please try again.")
             except Exception as e:
-                error_handler.fail(e)
+                logging.error(f"SOAP note creation failed: {e}")
+                def handle_error():
+                    self.app.progress_bar.stop()
+                    self.app.progress_bar.pack_forget()
+                    if self.app.soap_button:
+                        self.app.soap_button.config(state=NORMAL)
+                    self.app.status_manager.error(f"SOAP note creation failed: {str(e)}")
+                self.app.after(0, handle_error)
 
         # Use I/O executor for task management since it involves UI coordination
         self.app.io_executor.submit(task)
@@ -173,7 +260,11 @@ class DocumentGenerators:
         self._create_referral_with_agent()
 
     def create_letter(self) -> None:
-        """Create a letter from transcript with improved concurrency."""
+        """Create a letter from transcript with streaming display.
+
+        Shows AI-generated text progressively as it's generated, providing
+        better user feedback during long generation operations.
+        """
         # Get source, recipient type, and specifications
         source, recipient_type, specs = self.app.show_letter_options_dialog()
 
@@ -205,55 +296,75 @@ class DocumentGenerators:
         }
         recipient_display = recipient_names.get(recipient_type, "recipient")
 
-        # Create error handler for this operation
-        error_handler = AsyncUIErrorHandler(
-            self.app,
-            button=self.app.letter_button,
-            progress_bar=self.app.progress_bar,
-            operation_name=f"Generating letter to {recipient_display}"
-        )
-        error_handler.start()
+        # Disable button and show progress
+        if self.app.letter_button:
+            self.app.letter_button.config(state=DISABLED)
+        self.app.progress_bar.pack(side=RIGHT, padx=10)
+        self.app.progress_bar.start()
+
+        # Prepare letter text widget for streaming
+        self._start_streaming_display(self.app.letter_text, f"Generating letter to {recipient_display}...")
+
+        # Switch to Letter tab to show streaming output
+        self.app.after(0, lambda: self.app.notebook.select(3))
+
+        # Create streaming callback
+        def on_chunk(chunk: str):
+            """Called for each chunk of streaming response."""
+            self._append_streaming_chunk(self.app.letter_text, chunk)
 
         def task() -> None:
             try:
-                # Use our custom scheduler for status updates
-                self.app.schedule_status_update(3000, f"Still generating letter to {recipient_display}...", "progress")
-                self.app.schedule_status_update(10000, f"Processing letter (this may take a moment)...", "progress")
-
                 # Log that we're starting letter generation
                 logging.info(f"Starting letter generation from {source_name} to {recipient_type} with specs: {specs}")
 
-                # Use IO executor for the AI processing
-                future = self.app.io_executor.submit(create_letter_with_ai, text, recipient_type, specs)
-
-                # Get result with a longer timeout to prevent hanging (5 minutes)
-                result = future.result(timeout=300)
+                # Use streaming API call
+                result = create_letter_streaming(
+                    text,
+                    recipient_type,
+                    specs,
+                    on_chunk=on_chunk
+                )
 
                 # Log the successful completion
                 logging.info(f"Successfully generated letter to {recipient_type}")
 
                 # Check if result contains error message
-                if result.startswith("Error creating letter:"):
+                if result.startswith("[Error"):
                     raise Exception(result)
 
-                # Schedule UI update on the main thread
-                def update_ui():
-                    self.app._update_text_area(
-                        result,
-                        f"Letter to {recipient_display} generated from {source_name}",
-                        self.app.letter_button,
-                        self.app.letter_text
-                    )
-                    self.app.notebook.select(3)  # Show letter in Letter tab (index 3)
+                # Schedule UI finalization on main thread
+                def finalize():
+                    # Stop progress indicator
+                    self.app.progress_bar.stop()
+                    self.app.progress_bar.pack_forget()
 
-                error_handler.complete(callback=update_ui, success_message=f"Letter to {recipient_display} generated")
+                    # Re-enable button
+                    if self.app.letter_button:
+                        self.app.letter_button.config(state=NORMAL)
 
-            except concurrent.futures.TimeoutError:
-                error_handler.fail("Letter creation timed out. Please try again.")
+                    # Add edit separator for undo support
+                    try:
+                        self.app.letter_text.edit_separator()
+                    except Exception:
+                        pass
+
+                    # Update status
+                    self.app.status_manager.success(f"Letter to {recipient_display} generated from {source_name}")
+
+                self.app.after(0, finalize)
+
             except Exception as e:
-                error_handler.fail(e)
+                logging.error(f"Letter creation failed: {e}")
+                def handle_error():
+                    self.app.progress_bar.stop()
+                    self.app.progress_bar.pack_forget()
+                    if self.app.letter_button:
+                        self.app.letter_button.config(state=NORMAL)
+                    self.app.status_manager.error(f"Letter creation failed: {str(e)}")
+                self.app.after(0, handle_error)
 
-        # Actually submit the task to be executed
+        # Submit the task to be executed
         self.app.io_executor.submit(task)
 
     def create_diagnostic_analysis(self) -> None:

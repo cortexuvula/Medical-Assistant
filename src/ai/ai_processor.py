@@ -493,7 +493,7 @@ class AIProcessor:
             elif ai_provider == PROVIDER_OLLAMA:
                 model = analysis_settings.get("ollama_model", "llama3")
             elif ai_provider == PROVIDER_ANTHROPIC:
-                model = analysis_settings.get("anthropic_model", "claude-3-sonnet-20240229")
+                model = analysis_settings.get("anthropic_model", "claude-sonnet-4-20250514")
             elif ai_provider == PROVIDER_GEMINI:
                 model = analysis_settings.get("gemini_model", "gemini-1.5-pro")
             else:

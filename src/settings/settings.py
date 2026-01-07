@@ -119,7 +119,7 @@ Format your response as:
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.0,  # Default temperature for refine_text
         "openai_temperature": 0.0,  # OpenAI-specific temperature
@@ -135,7 +135,7 @@ Format your response as:
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for improve_text
         "openai_temperature": 0.7,  # OpenAI-specific temperature
@@ -152,7 +152,7 @@ Format your response as:
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for SOAP notes)
         "temperature": 0.4,  # Default temperature for soap_note (lower for more consistent output)
         "openai_temperature": 0.4,  # OpenAI-specific temperature
@@ -168,7 +168,7 @@ Format your response as:
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for referral
         "openai_temperature": 0.7,  # OpenAI-specific temperature
@@ -244,7 +244,7 @@ IMMEDIATE ACTIONS:
         "grok_model": "grok-1",    # Grok model
         "perplexity_model": "sonar-reasoning-pro",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-3-sonnet-20240229",  # Anthropic model
+        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for advanced analysis)
         "temperature": 0.3,  # Default temperature for advanced analysis
         "openai_temperature": 0.3,  # OpenAI-specific temperature

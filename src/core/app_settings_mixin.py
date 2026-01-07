@@ -32,7 +32,7 @@ class AppSettingsMixin:
             save_callback=self.save_refine_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["refine_text"].get("gemini_model", "gemini-1.5-flash"))
         )
 
@@ -55,7 +55,7 @@ class AppSettingsMixin:
             save_callback=self.save_improve_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["improve_text"].get("gemini_model", "gemini-1.5-flash"))
         )
 
@@ -80,7 +80,7 @@ class AppSettingsMixin:
             save_callback=self.save_soap_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash")),
             current_icd_version=cfg.get("icd_code_version", "ICD-9"),
             is_soap_settings=True
@@ -107,7 +107,7 @@ class AppSettingsMixin:
             save_callback=self.save_referral_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["referral"].get("gemini_model", "gemini-1.5-flash"))
         )
 
@@ -132,7 +132,7 @@ class AppSettingsMixin:
             save_callback=self.save_advanced_analysis_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
-            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-3-sonnet-20240229")),
+            current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash")),
             current_provider=cfg.get("provider", ""),
             is_advanced_analysis=True

@@ -92,11 +92,19 @@ class SharedPanelManager:
         Args:
             panel_id: ID of the panel that was shown
         """
+        # Stop recordings auto-refresh when leaving recordings panel
+        if hasattr(self.parent_ui, 'recordings_tab'):
+            try:
+                self.parent_ui.recordings_tab.stop_auto_refresh()
+            except Exception as e:
+                logger.debug(f"Could not stop auto-refresh: {e}")
+
         if panel_id == self.PANEL_RECORDINGS:
-            # Refresh recordings list when shown
+            # Refresh recordings list and start auto-refresh when shown
             if hasattr(self.parent_ui, 'recordings_tab'):
                 try:
                     self.parent_ui.recordings_tab._refresh_recordings_list()
+                    self.parent_ui.recordings_tab.start_auto_refresh()
                 except Exception as e:
                     logger.debug(f"Could not refresh recordings: {e}")
 
