@@ -9,11 +9,11 @@ from io import BytesIO
 import numpy as np
 from pydub import AudioSegment
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from src.stt_providers.deepgram import DeepgramProvider
-from src.utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
+from stt_providers.deepgram import DeepgramProvider
+from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 
 
 class TestDeepgramProvider:
@@ -74,7 +74,7 @@ class TestDeepgramProvider:
     
     def test_initialization_with_api_key(self):
         """Test provider initialization with API key."""
-        with patch('src.stt_providers.deepgram.DeepgramClient') as mock_client_class:
+        with patch('stt_providers.deepgram.DeepgramClient') as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             
@@ -93,8 +93,8 @@ class TestDeepgramProvider:
         assert provider.language == "en-US"
         assert provider.client is None
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_transcribe_success(self, mock_settings, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
         """Test successful transcription."""
         # Mock settings
@@ -119,8 +119,8 @@ class TestDeepgramProvider:
         
         assert result == "This is a test transcription"
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_transcribe_with_diarization(self, mock_settings, mock_get_config, provider, mock_audio_segment):
         """Test transcription with diarization enabled."""
         # Mock settings with diarization
@@ -179,8 +179,8 @@ class TestDeepgramProvider:
         
         assert "client not initialized" in str(exc_info.value)
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_transcribe_api_error(self, mock_settings, mock_get_config, provider, mock_audio_segment):
         """Test handling of API errors."""
         # Mock settings
@@ -275,8 +275,8 @@ class TestDeepgramProvider:
         
         assert "Deepgram API error" in str(exc_info.value)
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_transcribe_empty_transcript(self, mock_settings, mock_get_config, provider, mock_audio_segment):
         """Test handling of empty transcript in response."""
         # Mock settings
@@ -311,8 +311,8 @@ class TestDeepgramProvider:
         
         assert "No transcript found" in str(exc_info.value)
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_transcribe_invalid_response_structure(self, mock_settings, mock_get_config, provider, mock_audio_segment):
         """Test handling of invalid response structure."""
         # Mock settings
@@ -376,9 +376,9 @@ class TestDeepgramProvider:
         result = provider._format_diarized_transcript(words)
         assert result == ""  # Should skip words without speaker info
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
-    @patch('src.stt_providers.deepgram._DEFAULT_SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram._DEFAULT_SETTINGS')
     def test_transcribe_with_custom_settings(self, mock_default_settings, mock_settings, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
         """Test transcription with custom settings."""
         # Mock custom settings
@@ -429,8 +429,8 @@ class TestDeepgramProvider:
         assert captured_options.redact is True
         assert captured_options.alternatives == 3
     
-    @patch('src.stt_providers.deepgram.get_config')
-    @patch('src.stt_providers.deepgram.SETTINGS')
+    @patch('stt_providers.deepgram.get_config')
+    @patch('stt_providers.deepgram.SETTINGS')
     def test_buffer_cleanup_on_error(self, mock_settings, mock_get_config, provider, mock_audio_segment):
         """Test that buffer is cleaned up even on error."""
         # Mock settings
@@ -459,7 +459,7 @@ class TestDeepgramProvider:
                 buffer_closed = True
                 super().close()
         
-        with patch('src.stt_providers.deepgram.BytesIO', TrackingBytesIO):
+        with patch('stt_providers.deepgram.BytesIO', TrackingBytesIO):
             with patch.object(provider, '_make_api_call', side_effect=APIError("Test error")):
                 with pytest.raises(TranscriptionError):
                     provider.transcribe(mock_audio_segment)

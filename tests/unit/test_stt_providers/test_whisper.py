@@ -9,10 +9,10 @@ from unittest.mock import Mock, patch, MagicMock
 import numpy as np
 from pydub import AudioSegment
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from src.stt_providers.whisper import WhisperProvider
+from stt_providers.whisper import WhisperProvider
 
 
 class TestWhisperProvider:
@@ -133,8 +133,8 @@ class TestWhisperProvider:
             
             assert result == "This is a test transcription"
             
-            # Verify model loading
-            mock_whisper_module.load_model.assert_called_once_with("small")
+            # Verify model loading (default model is now "turbo")
+            mock_whisper_module.load_model.assert_called_once_with("turbo")
             
             # Verify transcription call
             mock_model.transcribe.assert_called_once()
@@ -429,7 +429,7 @@ class TestWhisperProvider:
     
     def test_provider_inheritance(self, provider_with_whisper):
         """Test that provider properly inherits from base."""
-        from src.stt_providers.base import BaseSTTProvider
+        from stt_providers.base import BaseSTTProvider
         
         assert isinstance(provider_with_whisper, BaseSTTProvider)
         assert hasattr(provider_with_whisper, 'transcribe')

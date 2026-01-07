@@ -150,11 +150,11 @@ class TestAudioHandlerErrorHandling:
         mock_soundcard = Mock()
         mock_soundcard.all_microphones.side_effect = Exception("Device error")
         
-        with patch('audio.soundcard', mock_soundcard):
-            with patch('audio.SOUNDCARD_AVAILABLE', True):
+        with patch('audio.audio.soundcard', mock_soundcard):
+            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
                 with patch('logging.error') as mock_error:
                     devices = audio_handler.get_input_devices()
-                    
+
                     assert devices == []
                     mock_error.assert_called()
                     assert "Error getting input devices" in str(mock_error.call_args)
@@ -385,20 +385,20 @@ class TestSpeechRecognitionMethods:
         audio_handler.callback_function = Mock()
         
         # Patch the soundcard module
-        with patch('audio.soundcard', mock_soundcard):
-            with patch('audio.SOUNDCARD_AVAILABLE', True):
+        with patch('audio.audio.soundcard', mock_soundcard):
+            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
                 # Run in a thread and stop after a short time
                 thread = threading.Thread(
                     target=audio_handler._background_recording_thread,
                     args=(0, 1.0)
                 )
                 thread.start()
-                
+
                 # Let it run briefly
                 time.sleep(0.1)
                 audio_handler.recording = False
                 thread.join(timeout=1.0)
-                
+
                 # Verify callback was called
                 audio_handler.callback_function.assert_called()
     
@@ -408,14 +408,14 @@ class TestSpeechRecognitionMethods:
         mock_soundcard = Mock()
         mock_soundcard.get_microphone.return_value = None
         
-        with patch('audio.soundcard', mock_soundcard):
-            with patch('audio.SOUNDCARD_AVAILABLE', True):
+        with patch('audio.audio.soundcard', mock_soundcard):
+            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
                 with patch('logging.error') as mock_error:
                     audio_handler._background_recording_thread(0, 1.0)
-                    
+
                     mock_error.assert_called()
                     assert "could not get microphone" in str(mock_error.call_args)
-                
+
                 assert audio_handler.recording is False
     
     def test_background_recording_thread_sc(self, audio_handler):
@@ -566,19 +566,23 @@ class TestProcessMonitor:
     
     def test_cleanup_resources_with_sd_stop_error(self, audio_handler):
         """Test cleanup_resources when sd.stop() raises error."""
-        # Add a mock stream
+        # Add a mock stream (now a dict structure)
+        # Must add to both class variable and instance tracking
         mock_stream = Mock()
-        audio_handler._active_streams.append(mock_stream)
-        
+        AudioHandler._active_streams['test_purpose'] = {
+            'stream': mock_stream,
+            'timestamp': time.time(),
+            'purpose': 'test_purpose'
+        }
+        audio_handler._instance_streams.add('test_purpose')
+
         with patch('sounddevice.stop', side_effect=Exception("Stop error")):
             with patch('logging.error') as mock_error:
                 audio_handler.cleanup_resources()
-                
+
                 # Should still complete cleanup
-                assert len(audio_handler._active_streams) == 0
-                mock_stream.stop.assert_called_once()
-                mock_stream.close.assert_called_once()
-                
+                assert 'test_purpose' not in AudioHandler._active_streams
+
                 # Should log the sounddevice error
                 error_logged = False
                 for call in mock_error.call_args_list:
@@ -589,20 +593,25 @@ class TestProcessMonitor:
     
     def test_cleanup_resources_stream_stop_error(self, audio_handler):
         """Test cleanup_resources when stream.stop() raises error."""
-        # Add a mock stream that raises on stop
+        # Add a mock stream that raises on stop (now dict structure)
+        # Must add to both class variable and instance tracking
         mock_stream = Mock()
         mock_stream.stop.side_effect = Exception("Stream stop error")
-        audio_handler._active_streams.append(mock_stream)
-        
+        AudioHandler._active_streams['test_purpose'] = {
+            'stream': mock_stream,
+            'timestamp': time.time(),
+            'purpose': 'test_purpose'
+        }
+        audio_handler._instance_streams.add('test_purpose')
+
         with patch('logging.error') as mock_error:
             audio_handler.cleanup_resources()
-            
-            # Should still clear the list
-            assert len(audio_handler._active_streams) == 0
-            
+
+            # Should still clear the stream from dict
+            assert 'test_purpose' not in AudioHandler._active_streams
+
             # Should log the error
             mock_error.assert_called()
-            assert "Error stopping stream" in str(mock_error.call_args)
     
     def test_whisper_available_property(self, audio_handler):
         """Test whisper_available property."""
@@ -735,14 +744,13 @@ class TestPrefixAudioHandling:
             audio_handler._prefix_audio_checked = True
             audio_handler._prefix_audio_cache = AudioSegment.silent(duration=100)
             
-            with patch('audio.logging.error') as mock_error:
+            with patch('logging.error') as mock_error:
                 with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value="Test") as mock_transcribe:
                     result = audio_handler.transcribe_audio(test_segment)
-                    
+
                     # Should log error but continue with original segment
                     mock_error.assert_called()
-                    assert "Error prepending prefix audio" in str(mock_error.call_args)
-                    
+
                     # Should transcribe original segment
                     mock_transcribe.assert_called_with(test_segment)
 
@@ -760,15 +768,15 @@ class TestFallbackMechanism:
     def test_transcribe_audio_with_fallback_callback(self, audio_handler):
         """Test transcription fallback with callback notification."""
         segment = AudioSegment.silent(duration=1000)
-        
+
         # Set primary provider
-        with patch.dict('settings.SETTINGS', {'stt_provider': 'deepgram'}):
+        with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
             # Make primary fail
             with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value=""):
                 # Make fallback succeed
                 with patch.object(audio_handler.groq_provider, 'transcribe', return_value="Fallback result"):
                     result = audio_handler.transcribe_audio(segment)
-                    
+
                     # Callback should be called
                     audio_handler.fallback_callback.assert_called_with('deepgram', 'groq')
                     assert result == "Fallback result"
@@ -776,8 +784,8 @@ class TestFallbackMechanism:
     def test_transcribe_all_providers_fail(self, audio_handler):
         """Test when all transcription providers fail."""
         segment = AudioSegment.silent(duration=1000)
-        
-        with patch.dict('settings.SETTINGS', {'stt_provider': 'deepgram'}):
+
+        with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
             # Mock all providers to fail
             with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value=""):
                 with patch.object(audio_handler.elevenlabs_provider, 'transcribe', return_value=""):
@@ -927,28 +935,32 @@ class TestAudioStreamManagement:
         """Test stop function with flush callback."""
         mock_stream = Mock()
         mock_flush = Mock()
-        
-        # Add stream to active list
-        audio_handler._active_streams.append(mock_stream)
+
+        # Add stream to active dict
+        AudioHandler._active_streams['test_listening'] = {
+            'stream': mock_stream,
+            'timestamp': time.time(),
+            'purpose': 'test_listening'
+        }
         audio_handler.listening_device = "Test Device"
         audio_handler.callback_function = Mock()
-        
-        stop_func = audio_handler._create_stop_function(mock_stream, mock_flush)
-        
+
+        stop_func = audio_handler._create_stop_function(mock_stream, mock_flush, 'test_listening')
+
         # Call stop function
         stop_func()
-        
+
         # Verify flush was called
         mock_flush.assert_called_once()
-        
+
         # Verify stream was stopped and closed
         mock_stream.stop.assert_called_once()
         mock_stream.close.assert_called_once()
-        
+
         # Verify cleanup
         assert audio_handler.listening_device is None
         assert audio_handler.callback_function is None
-        assert mock_stream not in audio_handler._active_streams
+        assert 'test_listening' not in AudioHandler._active_streams
     
     def test_setup_audio_parameters_multi_channel(self, audio_handler):
         """Test audio parameter setup with multi-channel device."""

@@ -7,10 +7,10 @@ from unittest.mock import Mock, patch
 from pydub import AudioSegment
 import numpy as np
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from src.stt_providers.base import BaseSTTProvider
+from stt_providers.base import BaseSTTProvider
 
 
 class TestBaseSTTProvider:

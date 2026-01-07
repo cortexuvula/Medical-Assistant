@@ -8,11 +8,31 @@ import time
 from typing import Optional, Callable, Any, List, Union
 
 
+def _cleanup_ttkbootstrap_state():
+    """Helper to clean up ttkbootstrap cached state."""
+    # Reset ttkbootstrap Publisher subscriptions
+    try:
+        from ttkbootstrap.publisher import Publisher
+        Publisher.clear_subscribers()
+    except (ImportError, AttributeError):
+        pass
+
+    # Reset ttkbootstrap Style singleton
+    try:
+        import ttkbootstrap.style as ttkbs_style
+        ttkbs_style.Style.instance = None
+    except (ImportError, AttributeError):
+        pass
+
+
 class TkinterTestCase:
     """Base class for tkinter UI tests."""
-    
+
     def setup_method(self):
         """Set up test environment before each test."""
+        # Clean up ttkbootstrap state BEFORE creating new Tk root
+        _cleanup_ttkbootstrap_state()
+
         # Use regular tk.Tk() instead of ttk_bs.Window to avoid theme conflicts
         self.root = tk.Tk()
         self.root.withdraw()  # Hide window during tests
@@ -29,16 +49,16 @@ class TkinterTestCase:
                     widget.destroy()
             except tk.TclError:
                 pass
-        
+
         # Clear the list
         self.widgets_to_destroy.clear()
-        
+
         # Process remaining events
         try:
             self.root.update_idletasks()
         except tk.TclError:
             pass
-        
+
         # Destroy root window
         try:
             if hasattr(self.root, 'winfo_exists') and self.root.winfo_exists():
@@ -46,9 +66,13 @@ class TkinterTestCase:
                 self.root.destroy()
         except tk.TclError:
             pass
-        
+
         # Clear any reference to root
         self.root = None
+
+        # Reset ttkbootstrap's cached state to avoid
+        # "application has been destroyed" errors in subsequent tests
+        _cleanup_ttkbootstrap_state()
     
     def create_widget(self, widget_class, parent=None, **kwargs):
         """Create a widget and track it for cleanup."""

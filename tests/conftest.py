@@ -15,12 +15,24 @@ sys.path.insert(0, str(project_root))
 # Add src directory to path (matches main.py behavior for internal imports)
 sys.path.insert(0, str(project_root / 'src'))
 
-# Import test utilities after path setup
-try:
-    from tests.unit.tkinter_test_utils import TkinterTestCase, create_mock_workflow_ui
-except ImportError:
-    TkinterTestCase = None
-    create_mock_workflow_ui = None
+# Delay import of test utilities to avoid triggering ttkbootstrap early
+# These will be imported lazily in fixtures that need them
+TkinterTestCase = None
+create_mock_workflow_ui = None
+
+
+def _lazy_import_tkinter_utils():
+    """Lazily import tkinter test utilities."""
+    global TkinterTestCase, create_mock_workflow_ui
+    if TkinterTestCase is None:
+        try:
+            from tests.unit.tkinter_test_utils import TkinterTestCase as _TkinterTestCase
+            from tests.unit.tkinter_test_utils import create_mock_workflow_ui as _create_mock_workflow_ui
+            TkinterTestCase = _TkinterTestCase
+            create_mock_workflow_ui = _create_mock_workflow_ui
+        except ImportError:
+            pass
+    return TkinterTestCase, create_mock_workflow_ui
 
 # Set testing environment
 os.environ['MEDICAL_ASSISTANT_ENV'] = 'testing'
@@ -184,6 +196,65 @@ def tk_root():
         pass
 
 
+@pytest.fixture(autouse=True)
+def cleanup_audio_handler_class_state():
+    """Clean up AudioHandler class-level state before and after each test."""
+    # Import here to avoid import errors if audio module isn't loaded
+    try:
+        from audio.audio import AudioHandler
+        # Clear class-level state before test
+        AudioHandler._active_streams.clear()
+    except (ImportError, AttributeError):
+        pass
+
+    yield
+
+    # Clear class-level state after test
+    try:
+        from audio.audio import AudioHandler
+        AudioHandler._active_streams.clear()
+    except (ImportError, AttributeError):
+        pass
+
+
+def _cleanup_ttkbootstrap_state():
+    """Helper to clean up ttkbootstrap cached state."""
+    # Reset ttkbootstrap Publisher subscriptions
+    try:
+        from ttkbootstrap.publisher import Publisher
+        Publisher.clear_subscribers()
+    except (ImportError, AttributeError):
+        pass
+
+    # Reset ttkbootstrap Style singleton
+    try:
+        import ttkbootstrap.style as ttkbs_style
+        ttkbs_style.Style.instance = None
+    except (ImportError, AttributeError):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def cleanup_ttkbootstrap_style():
+    """Clean up ttkbootstrap cached state before and after each test.
+
+    ttkbootstrap caches its Style instance and maintains widget subscriptions
+    via Publisher. When a Tk root window is destroyed, these caches still
+    reference the old window, causing errors when creating new widgets in
+    subsequent tests.
+
+    We clean up BEFORE each test to ensure a fresh state, and AFTER each test
+    for good hygiene.
+    """
+    # Clean up before test to ensure fresh state
+    _cleanup_ttkbootstrap_state()
+
+    yield
+
+    # Clean up after test
+    _cleanup_ttkbootstrap_state()
+
+
 @pytest.fixture
 def mock_audio_handler():
     """Mock audio handler for testing."""
@@ -193,7 +264,7 @@ def mock_audio_handler():
     handler.is_recording = False
     handler.soap_mode = False
     handler.silence_threshold = 0.001
-    
+
     return handler
 
 
@@ -249,7 +320,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
         elif "ui" in str(item.fspath) or "tkinter" in str(item.fspath):
             item.add_marker(pytest.mark.ui)
-            
+
         # Skip UI tests if no display is available (Linux only)
         if ("ui" in str(item.fspath) or "tkinter" in str(item.fspath)):
             if sys.platform.startswith('linux') and not os.environ.get('DISPLAY'):
@@ -275,24 +346,26 @@ def tkinter_app():
 @pytest.fixture
 def mock_workflow_ui(tkinter_app):
     """Create a mock WorkflowUI instance for testing."""
-    if create_mock_workflow_ui is None:
+    _, create_mock_workflow_ui_func = _lazy_import_tkinter_utils()
+    if create_mock_workflow_ui_func is None:
         pytest.skip("tkinter_test_utils not available")
-    
-    return create_mock_workflow_ui()
+
+    return create_mock_workflow_ui_func()
 
 
 @pytest.fixture
 def tkinter_test_case():
     """Provide TkinterTestCase functionality as a fixture."""
-    if TkinterTestCase is None:
+    TkinterTestCaseClass, _ = _lazy_import_tkinter_utils()
+    if TkinterTestCaseClass is None:
         pytest.skip("tkinter_test_utils not available")
-    
-    class TestHelper(TkinterTestCase):
+
+    class TestHelper(TkinterTestCaseClass):
         def __init__(self):
             pass
-    
+
     helper = TestHelper()
     yield helper
-    
+
     if hasattr(helper, 'teardown_method'):
         helper.teardown_method(None)
