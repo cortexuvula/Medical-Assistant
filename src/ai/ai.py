@@ -1032,8 +1032,11 @@ def create_soap_note_streaming(
     # Get ICD code version from settings
     icd_version = current_settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
 
-    # Get dynamic system message based on ICD code preference
-    system_message = get_soap_system_message(icd_version)
+    # Get current AI provider for provider-specific prompt
+    current_provider = current_settings.get("ai_provider", "openai")
+
+    # Get dynamic system message based on ICD code preference and provider
+    system_message = get_soap_system_message(icd_version, provider=current_provider)
 
     # Check if user has a custom system message override
     custom_message = current_settings.get("soap_note", {}).get("system_message", "")
@@ -1104,8 +1107,11 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     # Get ICD code version from settings (default to ICD-9 for backwards compatibility)
     icd_version = SETTINGS.get("soap_note", {}).get("icd_code_version", "ICD-9")
 
-    # Get dynamic system message based on ICD code preference
-    system_message = get_soap_system_message(icd_version)
+    # Get current AI provider for provider-specific prompt
+    current_provider = SETTINGS.get("ai_provider", "openai")
+
+    # Get dynamic system message based on ICD code preference and provider
+    system_message = get_soap_system_message(icd_version, provider=current_provider)
 
     # Check if user has a custom system message override
     custom_message = SETTINGS.get("soap_note", {}).get("system_message", "")

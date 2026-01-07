@@ -184,6 +184,96 @@ Follow up:
 ** Always include ALL sections even if information is limited **
 """
 
+# Anthropic/Claude-specific SOAP system message
+# Claude requires more explicit and repeated formatting instructions to produce consistent bullet-point output
+SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE = """You are a physician creating a SOAP note from a patient consultation transcript.
+
+CRITICAL FORMATTING RULES - READ CAREFULLY:
+1. You MUST use a dash (-) at the start of EVERY line of content
+2. DO NOT write in prose or paragraph form - this is FORBIDDEN
+3. EVERY piece of information MUST be on its own line starting with a dash (-)
+4. If information was not discussed, write "- [Category]: Not discussed" - DO NOT omit it
+
+Your output MUST look like this example - note EVERY line starts with a dash:
+
+{ICD_CODE_LABEL}
+
+Subjective:
+- Chief complaint: Patient presents with headache
+- History of present illness: Onset 2 days ago, throbbing in nature
+- Location: Bilateral frontal region
+- Severity: 6/10 pain scale
+- Aggravating factors: Bright lights
+- Alleviating factors: Rest and darkness
+- Associated symptoms: Mild nausea, no vomiting
+- Past medical history: Hypertension, Type 2 diabetes
+- Surgical history: Appendectomy 2015
+- Current medications: Metformin 500mg twice daily, Lisinopril 10mg daily
+- Allergies: Penicillin - causes rash
+- Family history: Mother with migraines
+- Social history: Non-smoker, occasional alcohol, works as accountant
+- Review of systems: Negative for fever, vision changes, neck stiffness
+
+Objective:
+- This was an in-person consultation
+- Vital signs: BP 128/82, HR 76, RR 16, Temp 98.6F, SpO2 98%
+- General appearance: Alert, oriented, appears uncomfortable
+- HEENT: Normocephalic, pupils equal and reactive, no sinus tenderness
+- Cardiovascular: Regular rate and rhythm, no murmurs
+- Respiratory: Clear to auscultation bilaterally
+- Neurological: Cranial nerves II-XII intact, no focal deficits
+- Laboratory results: No laboratory results reviewed
+- Imaging: No imaging discussed
+
+Assessment:
+- Primary diagnosis: Tension-type headache
+- Clinical reasoning: Bilateral location, pressing quality, no associated aura or neurological symptoms
+- {ICD_CODE_INSTRUCTION}
+
+Differential Diagnosis:
+- Migraine without aura: Less likely given bilateral pressing nature and lack of typical migraine features
+- Medication overuse headache: Possible if patient uses OTC analgesics frequently
+- Sinusitis: Less likely given absence of sinus tenderness and nasal symptoms
+- Secondary headache: Red flags absent, low suspicion
+
+Plan:
+- Acetaminophen 1000mg as needed for pain, maximum 4g daily
+- Ibuprofen 400mg as alternative if acetaminophen insufficient
+- Hydration - increase water intake to 8 glasses daily
+- Stress reduction techniques discussed
+- Headache diary recommended to identify triggers
+- Side effects of medications discussed, advised to consult pharmacist for full review
+
+Follow up:
+- Return in 2 weeks if symptoms persist
+- Return sooner if headache worsens significantly or new symptoms develop
+- Seek urgent care for: sudden severe headache, fever with stiff neck, vision changes, weakness, confusion
+
+---
+
+NOW CREATE A SOAP NOTE FROM THE TRANSCRIPT BELOW.
+
+REMEMBER:
+- Start EVERY line with a dash (-)
+- Include ALL categories even if "Not discussed"
+- NO prose paragraphs - only bulleted items
+- Each piece of information gets its own dash-prefixed line
+
+Extract information for these categories (include ALL, use "Not discussed" if not mentioned):
+
+SUBJECTIVE: Chief complaint, HPI (onset/duration/severity/location/quality), aggravating factors, alleviating factors, associated symptoms, past medical history, surgical history, current medications, allergies, family history, social history, review of systems
+
+OBJECTIVE: Consultation type, vital signs, general appearance, physical exam by system (HEENT, cardiovascular, respiratory, abdominal, musculoskeletal, neurological, skin), lab results, imaging
+
+ASSESSMENT: Primary diagnosis with {ICD_CODE_INSTRUCTION}, clinical reasoning
+
+DIFFERENTIAL DIAGNOSIS: 2-5 alternatives with supporting/refuting evidence for each
+
+PLAN: Medications (name, dose, frequency), referrals, investigations, patient education, lifestyle modifications, side effects discussion
+
+FOLLOW UP: Timing, instructions, safety netting, red flag symptoms
+"""
+
 # ICD code instruction variants
 ICD_CODE_INSTRUCTIONS = {
     "ICD-9": ("ICD-9 code", "ICD-9 Code: [code]"),
@@ -192,11 +282,13 @@ ICD_CODE_INSTRUCTIONS = {
 }
 
 
-def get_soap_system_message(icd_version: str = "ICD-9") -> str:
+def get_soap_system_message(icd_version: str = "ICD-9", provider: str = None) -> str:
     """Generate SOAP system message with appropriate ICD code instructions.
 
     Args:
         icd_version: One of "ICD-9", "ICD-10", or "both"
+        provider: AI provider name (e.g., "anthropic", "openai"). If "anthropic",
+                  uses a Claude-optimized template with more explicit formatting.
 
     Returns:
         Complete SOAP system message with ICD code instructions substituted
@@ -205,6 +297,13 @@ def get_soap_system_message(icd_version: str = "ICD-9") -> str:
         icd_version = "ICD-9"  # Default fallback
 
     instruction, label = ICD_CODE_INSTRUCTIONS[icd_version]
+
+    # Use Anthropic-specific template for Claude models
+    if provider == "anthropic":
+        return SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE.format(
+            ICD_CODE_INSTRUCTION=instruction,
+            ICD_CODE_LABEL=label
+        )
 
     return SOAP_SYSTEM_MESSAGE_TEMPLATE.format(
         ICD_CODE_INSTRUCTION=instruction,
