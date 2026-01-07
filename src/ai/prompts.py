@@ -40,25 +40,28 @@ Your task is to extract ALL clinically relevant information from the transcript 
 
 ## CRITICAL EXTRACTION REQUIREMENTS
 
-Before writing each section, carefully review the transcript to extract ALL of the following information when mentioned:
+IMPORTANT: For EVERY category listed below, you MUST include an entry in your SOAP note. If information was not discussed or mentioned in the transcript, explicitly state "Not discussed during the visit" or "Not mentioned" for that item. DO NOT omit any category.
 
-### Subjective Section - Extract ALL of:
+Before writing each section, carefully review the transcript to extract ALL of the following information:
+
+### Subjective Section - Include ALL of these categories:
 - Chief complaint and presenting symptoms
-- Onset, duration, timing, and progression of symptoms
+- History of present illness (onset, duration, timing, progression)
 - Location, quality, and severity (pain scale 1-10 if mentioned)
 - Aggravating and alleviating factors
 - Associated symptoms (document both positive AND pertinent negatives mentioned)
-- Past medical history and surgical history
-- Current medications with dosages when mentioned
-- Allergies (drug and non-drug)
-- Family history relevant to presenting complaint
-- Social history (smoking, alcohol, occupation, living situation if mentioned)
-- Review of systems findings discussed
+- Past medical history (state "Not discussed" if not mentioned)
+- Surgical history (state "Not mentioned" if not discussed)
+- Current medications with dosages (state "No medications discussed" if not mentioned)
+- Allergies - drug and non-drug (state "Allergies not discussed" if not mentioned)
+- Family history (state "Not discussed during the visit" if not mentioned)
+- Social history - smoking, alcohol, occupation, living situation (state "Not discussed" if not mentioned)
+- Review of systems findings discussed (state "No review of systems performed" if not discussed)
 
-### Objective Section - Extract ALL of:
-- Vital signs: BP, HR, RR, Temperature, SpO2, Weight (include all that are mentioned)
+### Objective Section - Include ALL of these categories:
+- Vital signs: BP, HR, RR, Temperature, SpO2, Weight (state which were measured; "Vital signs not recorded" if none)
 - General appearance and demeanor
-- Physical examination findings by system:
+- Physical examination findings by system (include each system examined OR state "not examined"):
   - HEENT (Head, Eyes, Ears, Nose, Throat)
   - Cardiovascular (heart sounds, peripheral pulses, edema)
   - Respiratory (breath sounds, chest expansion, respiratory effort)
@@ -66,8 +69,8 @@ Before writing each section, carefully review the transcript to extract ALL of t
   - Musculoskeletal (range of motion, tenderness, swelling)
   - Neurological (mental status, cranial nerves, motor, sensory, reflexes)
   - Skin (rashes, lesions, color changes)
-- Laboratory results with values and units
-- Imaging findings
+- Laboratory results with values and units (state "No laboratory results reviewed" if none)
+- Imaging findings (state "No imaging discussed" if none)
 - Other investigation results
 
 ### Assessment Section - Include:
@@ -114,12 +117,13 @@ Before writing each section, carefully review the transcript to extract ALL of t
 ## FORMATTING REQUIREMENTS
 
 1. Write from a first-person physician perspective
-2. Use plain text only - no markdown, headers, or special formatting
-3. Use dash notation (-) for listing items
-4. Replace "VML" with "Valley Medical Laboratories"
-5. Refer to "the patient" - never use patient names
-6. Use "during the visit" rather than "transcript"
-7. Each section should flow as professional medical documentation
+2. Use plain text only - no markdown headers (no #, ##, **bold**, etc.)
+3. Use dash/bullet notation (-) for EVERY item within each section - this is MANDATORY
+4. Each category must be on its own line with a dash prefix
+5. Replace "VML" with "Valley Medical Laboratories"
+6. Refer to "the patient" - never use patient names
+7. Use "during the visit" rather than "transcript"
+8. Keep sections clearly separated with the section name followed by a colon
 
 ## QUALITY VERIFICATION
 
@@ -133,30 +137,48 @@ Before finalizing your SOAP note, verify:
 - Follow up section includes timing and safety netting
 - All 7 sections are present (ICD Codes, Subjective, Objective, Assessment, Differential Diagnosis, Plan, Follow up)
 - No information from the transcript was overlooked
+- EVERY section uses dash/bullet format for items
 
 ## OUTPUT FORMAT
 
-You MUST use this exact structure with all sections in this order:
+You MUST use this exact structure with bullet points (-) for all items:
 
 {ICD_CODE_LABEL}
 
 Subjective:
-[Comprehensive subjective findings including chief complaint, HPI, PMH, medications, allergies, social/family history]
+- Chief complaint: [complaint]
+- History of present illness: [details]
+- Past medical history: [history or "Not discussed"]
+- Surgical history: [history or "Not mentioned"]
+- Current medications: [list or "No medications discussed"]
+- Allergies: [allergies or "Not discussed"]
+- Family history: [history or "Not discussed during the visit"]
+- Social history: [details or "Not discussed"]
+- Review of systems: [findings or "No review of systems performed"]
 
 Objective:
-[Physical exam findings, vitals, and investigation results]
+- This was a [in-person/telehealth] consultation
+- Vital signs: [values or "Not recorded"]
+- General appearance: [description]
+- Physical examination: [findings by system or limitations stated]
+- Laboratory results: [results or "No laboratory results reviewed"]
+- Imaging: [findings or "No imaging discussed"]
 
 Assessment:
-[Primary diagnosis with clinical reasoning and severity]
+- [Primary diagnosis with clinical reasoning]
 
 Differential Diagnosis:
-[2-5 alternative diagnoses with supporting/refuting evidence]
+- [Diagnosis 1]: [supporting and refuting evidence]
+- [Diagnosis 2]: [supporting and refuting evidence]
+- [Additional diagnoses as appropriate]
 
 Plan:
-[Medications, referrals, investigations, patient education, lifestyle modifications]
+- [Each item on its own line with dash]
 
 Follow up:
-[Timing, instructions, safety netting advice, red flags]
+- [Timing and instructions]
+- [Safety netting advice]
+- [Red flag symptoms]
 
 ** Always return your response in plain text without markdown **
 ** Always include ALL sections even if information is limited **

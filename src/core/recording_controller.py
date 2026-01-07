@@ -183,6 +183,32 @@ class RecordingController:
                 recording=False, caller="recording_controller_stop_no_data"
             )
 
+    def on_advanced_analysis_toggled(self, enabled: bool) -> None:
+        """Handle advanced analysis checkbox toggle during recording.
+
+        Allows starting/stopping periodic analysis mid-recording when the user
+        toggles the Advanced Analysis checkbox.
+
+        Args:
+            enabled: Whether the checkbox is now checked
+        """
+        # Only act if recording is active
+        if not self.app.recording_manager.is_recording:
+            return
+
+        if enabled:
+            # Start periodic analysis mid-recording
+            self.app._start_periodic_analysis()
+            # Show the analysis panel
+            if hasattr(self.app.ui, 'shared_panel_manager') and self.app.ui.shared_panel_manager:
+                from ui.components.shared_panel_manager import SharedPanelManager
+                self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
+            logging.info("Started periodic analysis mid-recording")
+        else:
+            # Stop periodic analysis mid-recording
+            self.app._stop_periodic_analysis()
+            logging.info("Stopped periodic analysis mid-recording")
+
     def _finalize_recording(self, recording_data: Dict[str, Any]) -> None:
         """Complete the SOAP recording process.
 

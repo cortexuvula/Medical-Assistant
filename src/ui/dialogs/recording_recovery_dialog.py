@@ -30,8 +30,40 @@ def show_recording_recovery_dialog(parent: tk.Tk, recovery_info: Dict[str, Any])
     """
     result = {"recover": False}
 
-    # Create dialog
-    dialog = create_toplevel_dialog(parent, "Recover Incomplete Recording?", "450x320")
+    # Create dialog - increased height to ensure all content fits
+    dialog = create_toplevel_dialog(parent, "Recover Incomplete Recording?", "450x350")
+
+    # Create button frame FIRST at the bottom so it always appears
+    button_frame = ttk.Frame(dialog, padding=(20, 10, 20, 20))
+    button_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def on_recover():
+        result["recover"] = True
+        dialog.destroy()
+
+    def on_discard():
+        result["recover"] = False
+        dialog.destroy()
+
+    # Discard button (secondary)
+    discard_btn = ttk.Button(
+        button_frame,
+        text="Discard",
+        command=on_discard,
+        bootstyle="secondary",
+        width=12
+    )
+    discard_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+    # Recover button (primary)
+    recover_btn = ttk.Button(
+        button_frame,
+        text="Recover",
+        command=on_recover,
+        bootstyle="success",
+        width=12
+    )
+    recover_btn.pack(side=tk.RIGHT)
 
     # Main content frame
     main_frame = ttk.Frame(dialog, padding=20)
@@ -68,9 +100,14 @@ def show_recording_recovery_dialog(parent: tk.Tk, recovery_info: Dict[str, Any])
     )
     description.pack(fill=tk.X, pady=(0, 15))
 
-    # Info frame
-    info_frame = ttk.LabelFrame(main_frame, text="Recording Details", padding=10)
-    info_frame.pack(fill=tk.X, pady=(0, 15))
+    # Info frame - use regular Frame with manual label for better compatibility
+    info_outer = ttk.Frame(main_frame)
+    info_outer.pack(fill=tk.X, pady=(0, 15))
+
+    ttk.Label(info_outer, text="Recording Details:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+
+    info_frame = ttk.Frame(info_outer, padding=(10, 5, 10, 5))
+    info_frame.pack(fill=tk.X)
 
     # Format duration
     duration_seconds = recovery_info.get("estimated_duration_seconds", 0)
@@ -121,38 +158,6 @@ def show_recording_recovery_dialog(parent: tk.Tk, recovery_info: Dict[str, Any])
 
         value = ttk.Label(row_frame, text=value_text, anchor=tk.W)
         value.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-    # Button frame
-    button_frame = ttk.Frame(main_frame)
-    button_frame.pack(fill=tk.X, pady=(10, 0))
-
-    def on_recover():
-        result["recover"] = True
-        dialog.destroy()
-
-    def on_discard():
-        result["recover"] = False
-        dialog.destroy()
-
-    # Discard button (secondary)
-    discard_btn = ttk.Button(
-        button_frame,
-        text="Discard",
-        command=on_discard,
-        bootstyle="secondary",
-        width=12
-    )
-    discard_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-    # Recover button (primary)
-    recover_btn = ttk.Button(
-        button_frame,
-        text="Recover",
-        command=on_recover,
-        bootstyle="success",
-        width=12
-    )
-    recover_btn.pack(side=tk.RIGHT)
 
     # Handle window close
     def on_close():

@@ -1150,15 +1150,17 @@ class SecurityManager:
             
             # Additional security checks
             # Remove potential prompt injection attempts
+            # Note: Patterns must be specific to avoid false positives with medical text
+            # (e.g., "cardiovascular system:" is legitimate medical documentation)
             injection_patterns = [
                 r'ignore previous instructions',
                 r'disregard all prior',
                 r'forget everything',
-                r'system:',
-                r'assistant:',
-                r'user:',
+                r'you are now',
+                r'new instructions:',
+                r'override:',
             ]
-            
+
             for pattern in injection_patterns:
                 if pattern.lower() in sanitized.lower():
                     self.logger.warning(f"Potential prompt injection detected: {pattern}")

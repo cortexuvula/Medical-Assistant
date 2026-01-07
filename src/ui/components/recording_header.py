@@ -167,6 +167,9 @@ class RecordingHeader:
         self._advanced_checkbox.pack(side=tk.LEFT)
         ToolTip(self._advanced_checkbox, "Enable real-time differential diagnosis during recording")
 
+        # Add trace to handle checkbox toggle during recording
+        self.advanced_analysis_var.trace_add("write", self._on_advanced_analysis_changed)
+
         # Interval selector
         self.analysis_interval_var = tk.StringVar(value="2 min")
         self._interval_combo = ttk.Combobox(
@@ -337,6 +340,17 @@ class RecordingHeader:
         # Notify parent if it has a handler
         if hasattr(self.parent, '_on_microphone_change'):
             self.parent._on_microphone_change(event)
+
+    def _on_advanced_analysis_changed(self, *args):
+        """Handle advanced analysis checkbox toggle.
+
+        Notifies the recording controller when the checkbox is toggled,
+        allowing periodic analysis to be started/stopped mid-recording.
+        """
+        if hasattr(self.parent, 'recording_controller'):
+            self.parent.recording_controller.on_advanced_analysis_toggled(
+                self.advanced_analysis_var.get()
+            )
 
     def _update_canvas_theme(self, event=None):
         """Update canvas background to match the current theme."""
