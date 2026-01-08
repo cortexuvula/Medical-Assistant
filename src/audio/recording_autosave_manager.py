@@ -186,7 +186,20 @@ class RecordingAutoSaveManager:
             logger.warning("Save did not complete within timeout")
 
         if completed_successfully:
-            # Recording completed normally - clean up files
+            # Recording completed normally - first update status, then clean up files
+            # This ensures that even if cleanup fails, recovery won't be triggered
+            # (recovery only looks for "recording" or "incomplete" status)
+            with self._lock:
+                if self._metadata and session_dir:
+                    self._metadata["status"] = "completed"
+                    try:
+                        metadata_path = session_dir / self.METADATA_FILENAME
+                        with open(metadata_path, 'w', encoding='utf-8') as f:
+                            json.dump(self._metadata, f, indent=2)
+                    except Exception as e:
+                        logger.warning(f"Could not update session status to completed: {e}")
+
+            # Now try to clean up the files
             self._cleanup_session(session_dir)
             logger.info(f"Recording auto-save session {session_id} completed and cleaned up")
         else:
@@ -327,14 +340,31 @@ class RecordingAutoSaveManager:
         except Exception as e:
             logger.error(f"Error saving metadata: {e}")
 
-    def _cleanup_session(self, session_dir: Optional[Path]) -> None:
-        """Delete a session directory and all its contents."""
-        if session_dir and session_dir.exists():
-            try:
-                shutil.rmtree(session_dir)
-                logger.debug(f"Cleaned up session directory: {session_dir}")
-            except Exception as e:
-                logger.error(f"Error cleaning up session: {e}")
+    def _cleanup_session(self, session_dir: Optional[Path]) -> bool:
+        """Delete a session directory and all its contents.
+
+        Args:
+            session_dir: Path to the session directory to delete
+
+        Returns:
+            True if cleanup was successful, False otherwise
+        """
+        if not session_dir:
+            return True
+
+        if not session_dir.exists():
+            return True
+
+        try:
+            shutil.rmtree(session_dir)
+            logger.debug(f"Cleaned up session directory: {session_dir}")
+            return True
+        except PermissionError as e:
+            logger.warning(f"Permission denied cleaning up session (files may be in use): {session_dir} - {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error cleaning up session {session_dir}: {e}")
+            return False
 
     # =========================================================================
     # RECOVERY METHODS
@@ -342,6 +372,8 @@ class RecordingAutoSaveManager:
 
     def has_incomplete_recording(self) -> bool:
         """Check if there's an incomplete recording to recover.
+
+        Also cleans up any "completed" sessions that should have been deleted.
 
         Returns:
             True if an incomplete recording session exists
@@ -355,8 +387,13 @@ class RecordingAutoSaveManager:
                     try:
                         with open(metadata_path, 'r', encoding='utf-8') as f:
                             metadata = json.load(f)
-                        if metadata.get("status") in ["recording", "incomplete"]:
+                        status = metadata.get("status")
+                        if status in ["recording", "incomplete"]:
                             return True
+                        elif status == "completed":
+                            # This session should have been cleaned up - try again
+                            logger.info(f"Cleaning up leftover completed session: {session_dir.name}")
+                            self._cleanup_session(session_dir)
                     except Exception as e:
                         logger.warning(f"Error reading session metadata: {e}")
 
