@@ -573,20 +573,24 @@ class Database:
     def get_recording(self, recording_id: int) -> Optional[Dict[str, Any]]:
         """Get a recording by ID"""
         with self.connection() as (conn, cursor):
-            cursor.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,))
+            # Use explicit column selection to guarantee order matches schema
+            columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+            cursor.execute(f"SELECT {columns} FROM recordings WHERE id = ?", (recording_id,))
             recording = cursor.fetchone()
 
             if recording:
-                return RecordingSchema.row_to_dict(recording, RecordingSchema.BASIC_COLUMNS)
+                return RecordingSchema.row_to_dict(recording, RecordingSchema.SELECT_COLUMNS)
             return None
     
     def get_all_recordings(self) -> List[Dict[str, Any]]:
         """Get all recordings"""
         with self.connection() as (conn, cursor):
-            cursor.execute("SELECT * FROM recordings ORDER BY timestamp DESC")
+            # Use explicit column selection to guarantee order matches schema
+            columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+            cursor.execute(f"SELECT {columns} FROM recordings ORDER BY timestamp DESC")
             recordings = cursor.fetchall()
 
-            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
 
     def get_recordings_paginated(
         self,
@@ -616,14 +620,15 @@ class Database:
 
         order_direction = "DESC" if descending else "ASC"
 
-        # Use parameterized query for limit/offset (safe from injection)
-        query = f"SELECT * FROM recordings ORDER BY {order_by} {order_direction} LIMIT ? OFFSET ?"
+        # Use explicit column selection to guarantee order matches schema
+        columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+        query = f"SELECT {columns} FROM recordings ORDER BY {order_by} {order_direction} LIMIT ? OFFSET ?"
 
         with self.connection() as (conn, cursor):
             cursor.execute(query, (limit, offset))
             recordings = cursor.fetchall()
 
-            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
 
     def get_recordings_by_ids(self, recording_ids: List[int]) -> List[Dict[str, Any]]:
         """Get multiple recordings by their IDs.
@@ -637,14 +642,16 @@ class Database:
         if not recording_ids:
             return []
 
+        # Use explicit column selection to guarantee order matches schema
+        columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
         placeholders = ','.join(['?' for _ in recording_ids])
-        query = f"SELECT * FROM recordings WHERE id IN ({placeholders})"
+        query = f"SELECT {columns} FROM recordings WHERE id IN ({placeholders})"
 
         with self.connection() as (conn, cursor):
             cursor.execute(query, recording_ids)
             recordings = cursor.fetchall()
 
-            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
         
     def search_recordings(self, search_term: str) -> List[Dict[str, Any]]:
         """Search for recordings containing the search term in any text field
@@ -655,7 +662,9 @@ class Database:
         Returns:
         - List of matching recordings
         """
-        query = """SELECT * FROM recordings
+        # Use explicit column selection to guarantee order matches schema
+        columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+        query = f"""SELECT {columns} FROM recordings
                  WHERE filename LIKE ?
                  OR transcript LIKE ?
                  OR soap_note LIKE ?
@@ -669,7 +678,7 @@ class Database:
             cursor.execute(query, params)
             recordings = cursor.fetchall()
 
-            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
     
     def get_recordings_by_date_range(self, start_date: Union[str, datetime.datetime], end_date: Union[str, datetime.datetime]) -> List[Dict[str, Any]]:
         """Get recordings created within a date range
@@ -689,14 +698,17 @@ class Database:
         # Add one day to end_date to make the range inclusive
         end_date = end_date + datetime.timedelta(days=1)
 
+        # Use explicit column selection to guarantee order matches schema
+        columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+
         with self.connection() as (conn, cursor):
             cursor.execute(
-                "SELECT * FROM recordings WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC",
+                f"SELECT {columns} FROM recordings WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC",
                 (start_date.isoformat(), end_date.isoformat())
             )
             recordings = cursor.fetchall()
 
-            return [RecordingSchema.row_to_dict(r, RecordingSchema.BASIC_COLUMNS) for r in recordings]
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
 
     
     # Queue-related methods
@@ -964,25 +976,13 @@ class Database:
         - List of recording dictionaries with failed status
         """
         with self.connection() as (conn, cursor):
-            cursor.execute("""
-                SELECT * FROM recordings
+            columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+            cursor.execute(f"""
+                SELECT {columns} FROM recordings
                 WHERE processing_status = 'failed'
                 ORDER BY timestamp DESC
                 LIMIT ?
             """, (limit,))
 
             recordings = cursor.fetchall()
-
-            # Convert to list of dictionaries
-            result = []
-            for rec in recordings:
-                recording_dict = dict(rec)
-                # Parse metadata JSON if present
-                if recording_dict.get('metadata'):
-                    try:
-                        recording_dict['metadata'] = json.loads(recording_dict['metadata'])
-                    except (json.JSONDecodeError, TypeError, ValueError):
-                        pass  # Leave as string if parsing fails
-                result.append(recording_dict)
-
-            return result
+            return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
