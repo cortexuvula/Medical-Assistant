@@ -128,6 +128,26 @@ class DocumentGenerators:
 
         self.app.after(0, finish)
 
+    def _update_text_widget_content(self, widget, content: str) -> None:
+        """Replace text widget content with new content.
+
+        Used to update streaming output with formatted/cleaned version.
+
+        Args:
+            widget: The text widget to update
+            content: The new content to display
+        """
+        try:
+            widget.configure(state='normal')
+            widget.delete('1.0', 'end')
+            widget.insert('1.0', content)
+            widget.see('1.0')  # Scroll to top
+            widget.edit_separator()  # Add undo separator
+            widget.update_idletasks()  # Force widget refresh
+            logging.debug("Updated text widget with formatted content")
+        except Exception as e:
+            logging.error(f"Error updating text widget: {e}")
+
     def process_batch_recordings(self, recording_ids: List[int], options: Dict[str, Any],
                                  on_complete: Callable = None, on_progress: Callable = None) -> None:
         """Process multiple recordings in batch. Delegates to BatchProcessor."""
@@ -192,11 +212,9 @@ class DocumentGenerators:
                     if self.app.soap_button:
                         self.app.soap_button.config(state=NORMAL)
 
-                    # Add edit separator for undo support
-                    try:
-                        self.app.soap_text.edit_separator()
-                    except Exception:
-                        pass
+                    # Replace streaming content with formatted version
+                    # The result from create_soap_note_streaming is cleaned and formatted
+                    self._update_text_widget_content(self.app.soap_text, soap_note)
 
                     # Update status
                     self.app.status_manager.success("SOAP note created")
@@ -204,8 +222,9 @@ class DocumentGenerators:
                     # Give focus to SOAP text widget
                     self.app.soap_text.focus_set()
 
-                    # Save to database
+                    # Save to database - only create new entry if no current recording exists
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
+                        logging.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
                         success = self.app.db.update_recording(
                             self.app.current_recording_id,
                             soap_note=soap_note
@@ -215,7 +234,9 @@ class DocumentGenerators:
                         else:
                             logging.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
                     else:
+                        logging.debug("No current_recording_id set, creating new database entry")
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
+                        logging.info(f"Created new recording with ID: {self.app.current_recording_id}")
 
                     # Check if diagnostic agent is enabled and offer to run analysis
                     if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):

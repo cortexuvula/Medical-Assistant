@@ -1015,18 +1015,19 @@ def format_soap_paragraphs(text: str) -> str:
     Returns:
         Text with proper paragraph separation
     """
-    # SOAP section headers that should have a blank line before them
+    # SOAP section headers that should have a blank line before them (lowercase for matching)
     section_headers = [
-        "ICD-9 Code:",
-        "ICD-10 Code:",
-        "Subjective:",
-        "Objective:",
-        "Assessment:",
-        "Differential Diagnosis:",
-        "Plan:",
-        "Follow up:",
-        "Follow-up:",
-        "Clinical Synopsis:",
+        "icd-9 code",
+        "icd-10 code",
+        "icd code",
+        "subjective",
+        "objective",
+        "assessment",
+        "differential diagnosis",
+        "plan",
+        "follow up",
+        "follow-up",
+        "clinical synopsis",
     ]
 
     lines = text.split('\n')
@@ -1034,10 +1035,17 @@ def format_soap_paragraphs(text: str) -> str:
 
     for i, line in enumerate(lines):
         stripped = line.strip()
+        # Remove leading dash/bullet for header detection
+        stripped_no_bullet = stripped.lstrip('-').lstrip('•').lstrip('*').strip()
+        stripped_lower = stripped_no_bullet.lower()
 
-        # Check if this line is a section header
-        is_section_header = any(stripped.startswith(header) or stripped == header.rstrip(':') + ':'
-                                for header in section_headers)
+        # Check if this line is a section header (case-insensitive, with or without colon)
+        is_section_header = any(
+            stripped_lower.startswith(header) or
+            stripped_lower == header or
+            stripped_lower == header + ":"
+            for header in section_headers
+        )
 
         # Add blank line before section header if needed (not for first section)
         if is_section_header and i > 0:
@@ -1047,6 +1055,7 @@ def format_soap_paragraphs(text: str) -> str:
 
         result_lines.append(line)
 
+    logging.debug(f"format_soap_paragraphs: processed {len(lines)} lines into {len(result_lines)} lines")
     return '\n'.join(result_lines)
 
 def create_soap_note_streaming(

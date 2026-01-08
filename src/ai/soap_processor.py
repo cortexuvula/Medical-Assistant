@@ -183,13 +183,27 @@ class SOAPProcessor:
                 filename = "Transcript"
                 
                 # Schedule UI update on the main thread and save to database
-                self.app.after(0, lambda: [
-                    self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text),
-                    self.app.notebook.select(1),  # Switch to SOAP tab
-                    self.app.soap_text.focus_set(),  # Give focus to SOAP text widget
-                    # Save to database on the main thread
-                    self.app._save_soap_recording_to_database(filename, transcript, soap_note)
-                ])
+                def finalize_soap():
+                    self.app._update_text_area(soap_note, "SOAP note created", self.app.soap_button, self.app.soap_text)
+                    self.app.notebook.select(1)  # Switch to SOAP tab
+                    self.app.soap_text.focus_set()  # Give focus to SOAP text widget
+                    # Save to database - update if recording exists, else create new
+                    if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
+                        logging.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
+                        success = self.app.db.update_recording(
+                            self.app.current_recording_id,
+                            transcript=transcript,
+                            soap_note=soap_note
+                        )
+                        if success:
+                            logging.info(f"Updated existing recording {self.app.current_recording_id}")
+                        else:
+                            logging.error(f"Failed to update recording {self.app.current_recording_id}")
+                    else:
+                        logging.debug("No current_recording_id, creating new database entry")
+                        self.app._save_soap_recording_to_database(filename, transcript, soap_note)
+
+                self.app.after(0, finalize_soap)
             except concurrent.futures.TimeoutError:
                 self.app.after(0, lambda: [
                     self.status_manager.error("SOAP note creation timed out. Please try again."),
