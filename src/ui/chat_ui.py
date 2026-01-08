@@ -175,7 +175,18 @@ class ChatUI:
         # Suggestions frame (left side)
         self.suggestions_frame = ttk.Frame(bottom_row)
         self.suggestions_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
+
+        # Settings button for managing suggestions (at start of suggestions row)
+        self.settings_btn = ttk.Button(
+            self.suggestions_frame,
+            text="...",
+            command=self._show_suggestions_manager,
+            width=3,
+            bootstyle="secondary-outline"
+        )
+        self.settings_btn.pack(side=tk.LEFT, padx=(0, 5))
+        ToolTip(self.settings_btn, "Manage custom suggestions")
+
         # Tool toggle checkbox
         from settings.settings import SETTINGS
         self.tools_enabled_var = tk.BooleanVar(value=SETTINGS.get("chat_interface", {}).get("enable_tools", True))
@@ -199,18 +210,7 @@ class ChatUI:
         )
         self.mcp_btn.pack(side=tk.LEFT, padx=(5, 0))
         ToolTip(self.mcp_btn, "Configure MCP (Model Context Protocol) tools")
-        
-        # Manage suggestions button
-        self.manage_btn = ttk.Button(
-            bottom_row,
-            text="Settings",
-            command=self._show_suggestions_manager,
-            width=10,
-            bootstyle="secondary-outline"
-        )
-        self.manage_btn.pack(side=tk.LEFT, padx=(5, 0))
-        ToolTip(self.manage_btn, "Manage custom suggestions")
-        
+
         # Bind events
         self._bind_events()
         
@@ -355,55 +355,85 @@ class ChatUI:
                 self.context_indicator.config(text="Context: Unknown")
                 
     def set_suggestions(self, suggestions: list):
-        """Set quick action suggestions based on context"""
-        # Clear existing suggestions
+        """Set quick action suggestions based on context.
+
+        Args:
+            suggestions: List of suggestion strings or objects with 'text' and 'favorite' keys.
+                        Objects with favorite=True will show a star prefix.
+        """
+        # Clear existing suggestions (but keep the settings button)
         for widget in self.suggestions_frame.winfo_children():
-            widget.destroy()
-            
+            if widget != self.settings_btn:
+                widget.destroy()
+
         if not suggestions:
             return
-            
+
         # Create scrollable frame if we have many suggestions
         if len(suggestions) > 6:
             # Create canvas and scrollbar for horizontal scrolling
             canvas = tk.Canvas(self.suggestions_frame, height=35, highlightthickness=0)
             scrollbar = ttk.Scrollbar(self.suggestions_frame, orient="horizontal", command=canvas.xview)
             scrollable_frame = ttk.Frame(canvas)
-            
+
             scrollable_frame.bind(
                 "<Configure>",
                 lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
             )
-            
+
             canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
             canvas.configure(xscrollcommand=scrollbar.set)
-            
+
             canvas.pack(side="top", fill="x", expand=True)
             scrollbar.pack(side="bottom", fill="x")
-            
+
             parent_frame = scrollable_frame
         else:
             parent_frame = self.suggestions_frame
-            
+
         # Add suggestion buttons (limit to 6 to avoid UI clutter)
         for i, suggestion in enumerate(suggestions[:6]):
-            # Truncate long suggestions for button display
-            display_text = suggestion[:30] + "..." if len(suggestion) > 30 else suggestion
-            
+            # Handle both string and object formats
+            if isinstance(suggestion, dict):
+                text = suggestion.get("text", "")
+                is_favorite = suggestion.get("favorite", False)
+            else:
+                text = str(suggestion)
+                is_favorite = False
+
+            # Add star prefix for favorites
+            if is_favorite:
+                display_text = "★ " + text
+            else:
+                display_text = text
+
+            # Truncate long suggestions for button display (accounting for star)
+            max_len = 28 if is_favorite else 30
+            if len(text) > max_len:
+                if is_favorite:
+                    display_text = "★ " + text[:max_len] + "..."
+                else:
+                    display_text = text[:max_len] + "..."
+
             btn = ttk.Button(
                 parent_frame,
                 text=display_text,
-                command=lambda s=suggestion: self.use_suggestion(s),
+                command=lambda t=text: self.use_suggestion(t),
                 bootstyle="info-link"
             )
             btn.pack(side=tk.LEFT, padx=(0, 5))
-            
+
             # Add tooltip for full text if truncated
-            if len(suggestion) > 30:
-                ToolTip(btn, suggestion)
-            
+            if len(text) > max_len:
+                tooltip_text = ("★ " + text) if is_favorite else text
+                ToolTip(btn, tooltip_text)
+
     def use_suggestion(self, suggestion: str):
-        """Use a suggestion as input"""
+        """Use a suggestion as input.
+
+        Args:
+            suggestion: The suggestion text to use (always a string, not object).
+        """
         self.input_text.delete("1.0", tk.END)
         self.input_text.insert("1.0", suggestion)
         self.input_text.focus_set()

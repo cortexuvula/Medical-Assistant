@@ -340,23 +340,41 @@ class ContextPanel:
         self._expanded_templates.clear()
         self._template_content_frames.clear()
 
-        # Create accordion items
+        # Get favorite template names from settings
+        favorite_templates = set(SETTINGS.get("context_template_favorites", []))
+
+        # Collect all templates with favorite status
+        all_templates = []
+
+        # Add built-in templates
         for name, text in builtin_templates:
-            self._create_accordion_item(name, text, is_builtin=True)
+            is_favorite = name in favorite_templates
+            all_templates.append((name, text, True, is_favorite))  # (name, text, is_builtin, is_favorite)
 
         # Add custom templates
         custom_templates = SETTINGS.get("custom_context_templates", {})
         if custom_templates:
             for template_name, template_text in custom_templates.items():
-                self._create_accordion_item(template_name, template_text, is_builtin=False)
+                is_favorite = template_name in favorite_templates
+                all_templates.append((template_name, template_text, False, is_favorite))
 
-    def _create_accordion_item(self, name: str, text: str, is_builtin: bool = True):
+        # Sort: favorites first (alphabetically), then non-favorites (alphabetically)
+        favorites = sorted([t for t in all_templates if t[3]], key=lambda x: x[0].lower())
+        non_favorites = sorted([t for t in all_templates if not t[3]], key=lambda x: x[0].lower())
+        sorted_templates = favorites + non_favorites
+
+        # Create accordion items
+        for name, text, is_builtin, is_favorite in sorted_templates:
+            self._create_accordion_item(name, text, is_builtin=is_builtin, is_favorite=is_favorite)
+
+    def _create_accordion_item(self, name: str, text: str, is_builtin: bool = True, is_favorite: bool = False):
         """Create a single accordion item.
 
         Args:
             name: Template name
             text: Template content
             is_builtin: Whether this is a built-in template
+            is_favorite: Whether this template is marked as favorite
         """
         # Initialize as collapsed
         self._expanded_templates[name] = False
@@ -369,6 +387,37 @@ class ContextPanel:
         header = tk.Frame(item_frame, bg="#ffffff", cursor="hand2")
         header.pack(fill=tk.X)
 
+        # Favorite star button
+        star_label = tk.Label(
+            header,
+            text="★" if is_favorite else "☆",
+            font=("Segoe UI", 10),
+            bg="#ffffff",
+            fg="#f0ad4e" if is_favorite else self.COLORS["text_muted"],
+            cursor="hand2"
+        )
+        star_label.pack(side=tk.LEFT, padx=(8, 2), pady=8)
+
+        def toggle_favorite(e=None):
+            """Toggle favorite status for this template."""
+            favorite_templates = set(SETTINGS.get("context_template_favorites", []))
+            if name in favorite_templates:
+                favorite_templates.discard(name)
+                star_label.config(text="☆", fg=self.COLORS["text_muted"])
+            else:
+                favorite_templates.add(name)
+                star_label.config(text="★", fg="#f0ad4e")
+
+            # Save to settings
+            SETTINGS["context_template_favorites"] = list(favorite_templates)
+            from settings.settings import save_settings
+            save_settings(SETTINGS)
+
+            # Refresh to re-sort templates
+            self._create_accordion_templates()
+
+        star_label.bind("<Button-1>", toggle_favorite)
+
         # Expand indicator
         expand_label = tk.Label(
             header,
@@ -377,7 +426,7 @@ class ContextPanel:
             bg="#ffffff",
             fg=self.COLORS["expand_icon"]
         )
-        expand_label.pack(side=tk.LEFT, padx=(10, 5), pady=8)
+        expand_label.pack(side=tk.LEFT, padx=(2, 5), pady=8)
 
         # Template name
         name_label = tk.Label(

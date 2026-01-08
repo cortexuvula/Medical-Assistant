@@ -81,7 +81,7 @@ class AppChatMixin:
             return
 
         current_tab = self.notebook.index(self.notebook.select())
-        suggestions = []
+        custom_suggestions_list = []
 
         # Get current content
         content = self.active_text_widget.get("1.0", tk.END).strip()
@@ -91,9 +91,20 @@ class AppChatMixin:
         from settings.settings import SETTINGS
         custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
 
+        # Helper to normalize suggestion to object format
+        def normalize_suggestion(s):
+            if isinstance(s, dict) and "text" in s:
+                return s
+            elif isinstance(s, str):
+                return {"text": s, "favorite": False}
+            return None
+
         # Add global custom suggestions first
         global_custom = custom_suggestions.get("global", [])
-        suggestions.extend(global_custom)
+        for s in global_custom:
+            normalized = normalize_suggestion(s)
+            if normalized:
+                custom_suggestions_list.append(normalized)
 
         # Determine context and content state
         context_map = {0: "transcript", 1: "soap", 2: "referral", 3: "letter", 4: "chat", 5: "rag"}
@@ -102,18 +113,36 @@ class AppChatMixin:
 
         # Add context-specific custom suggestions
         context_custom = custom_suggestions.get(context, {}).get(content_state, [])
-        suggestions.extend(context_custom)
+        for s in context_custom:
+            normalized = normalize_suggestion(s)
+            if normalized:
+                custom_suggestions_list.append(normalized)
 
-        # Add built-in suggestions as fallback/additional options
+        # Sort custom suggestions: favorites first (alphabetically), then non-favorites (alphabetically)
+        favorites = sorted(
+            [s for s in custom_suggestions_list if s.get("favorite")],
+            key=lambda x: x["text"].lower()
+        )
+        non_favorites = sorted(
+            [s for s in custom_suggestions_list if not s.get("favorite")],
+            key=lambda x: x["text"].lower()
+        )
+        sorted_custom = favorites + non_favorites
+
+        # Add built-in suggestions as fallback/additional options (always non-favorites)
         builtin_suggestions = self._get_builtin_suggestions(current_tab, has_content)
-        suggestions.extend(builtin_suggestions)
+        builtin_objects = [{"text": s, "favorite": False} for s in builtin_suggestions]
 
-        # Remove duplicates while preserving order (custom suggestions first)
+        # Combine custom + builtin
+        all_suggestions = sorted_custom + builtin_objects
+
+        # Remove duplicates while preserving order (favorites first, then sorted non-favorites)
         seen = set()
         unique_suggestions = []
-        for suggestion in suggestions:
-            if suggestion not in seen:
-                seen.add(suggestion)
+        for suggestion in all_suggestions:
+            text = suggestion["text"]
+            if text not in seen:
+                seen.add(text)
                 unique_suggestions.append(suggestion)
 
         # Limit to max 6 suggestions to avoid UI clutter

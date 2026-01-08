@@ -964,7 +964,7 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
         else:
             current_suggestions = SETTINGS.get("custom_chat_suggestions", {}).get(context, {}).get(content_state, [])
 
-        # Variables to track suggestions
+        # Variables to track suggestions: list of (frame, text_var, favorite_var)
         suggestion_vars_list = []
 
         # Scrollable frame for suggestions
@@ -984,33 +984,57 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
         scrollbar.pack(side="right", fill="y")
 
         # Function to add a suggestion entry
-        def add_suggestion_entry(text=""):
+        def add_suggestion_entry(text="", is_favorite=False):
             entry_frame = ttk.Frame(scrollable_frame)
             entry_frame.pack(fill=tk.X, pady=2)
 
-            var = tk.StringVar(value=text)
-            entry = ttk.Entry(entry_frame, textvariable=var, width=50)
+            # Favorite toggle button (star)
+            favorite_var = tk.BooleanVar(value=is_favorite)
+            star_btn = ttk.Button(entry_frame, text="★" if is_favorite else "☆", width=3)
+
+            def toggle_favorite():
+                new_state = not favorite_var.get()
+                favorite_var.set(new_state)
+                star_btn.configure(text="★" if new_state else "☆")
+
+            star_btn.configure(command=toggle_favorite)
+            star_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+            # Text entry
+            text_var = tk.StringVar(value=text)
+            entry = ttk.Entry(entry_frame, textvariable=text_var, width=45)
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
             def remove_entry():
-                suggestion_vars_list.remove((entry_frame, var))
+                # Find and remove from list
+                for i, (f, t, fav) in enumerate(suggestion_vars_list):
+                    if f == entry_frame:
+                        suggestion_vars_list.pop(i)
+                        break
                 entry_frame.destroy()
                 canvas.configure(scrollregion=canvas.bbox("all"))
 
             remove_btn = ttk.Button(entry_frame, text="×", width=3, command=remove_entry)
             remove_btn.pack(side=tk.RIGHT)
 
-            suggestion_vars_list.append((entry_frame, var))
+            suggestion_vars_list.append((entry_frame, text_var, favorite_var))
 
             # Update scroll region
             canvas.update_idletasks()
             canvas.configure(scrollregion=canvas.bbox("all"))
 
-            return var
+            return text_var
 
-        # Add existing suggestions
+        # Add existing suggestions (handle both string and object formats)
         for suggestion in current_suggestions:
-            add_suggestion_entry(suggestion)
+            if isinstance(suggestion, dict):
+                text = suggestion.get("text", "")
+                is_favorite = suggestion.get("favorite", False)
+            else:
+                text = str(suggestion)
+                is_favorite = False
+            if text:  # Only add non-empty suggestions
+                add_suggestion_entry(text, is_favorite)
 
         # Add button frame
         button_frame = ttk.Frame(parent_frame)
@@ -1019,8 +1043,8 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
         def add_new_suggestion():
             var = add_suggestion_entry()
             # Focus the new entry
-            for entry_frame, entry_var in suggestion_vars_list:
-                if entry_var == var:
+            for entry_frame, text_var, _ in suggestion_vars_list:
+                if text_var == var:
                     for widget in entry_frame.winfo_children():
                         if isinstance(widget, ttk.Entry):
                             widget.focus_set()
@@ -1031,7 +1055,7 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
 
         def clear_all():
             if messagebox.askyesno("Clear All", "Are you sure you want to remove all suggestions?", parent=dialog):
-                for entry_frame, _ in suggestion_vars_list.copy():
+                for entry_frame, _, _ in suggestion_vars_list.copy():
                     entry_frame.destroy()
                 suggestion_vars_list.clear()
                 canvas.configure(scrollregion=canvas.bbox("all"))
@@ -1059,10 +1083,13 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
             # Update global suggestions
             if "global" in suggestion_vars:
                 global_suggestions = []
-                for _, var in suggestion_vars["global"]:
-                    text = var.get().strip()
+                for _, text_var, favorite_var in suggestion_vars["global"]:
+                    text = text_var.get().strip()
                     if text:
-                        global_suggestions.append(text)
+                        global_suggestions.append({
+                            "text": text,
+                            "favorite": favorite_var.get()
+                        })
                 custom_suggestions["global"] = global_suggestions
 
             # Update context-specific suggestions
@@ -1074,20 +1101,26 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
                 key = f"{context}_with_content"
                 if key in suggestion_vars:
                     with_suggestions = []
-                    for _, var in suggestion_vars[key]:
-                        text = var.get().strip()
+                    for _, text_var, favorite_var in suggestion_vars[key]:
+                        text = text_var.get().strip()
                         if text:
-                            with_suggestions.append(text)
+                            with_suggestions.append({
+                                "text": text,
+                                "favorite": favorite_var.get()
+                            })
                     custom_suggestions[context]["with_content"] = with_suggestions
 
                 # Without content
                 key = f"{context}_without_content"
                 if key in suggestion_vars:
                     without_suggestions = []
-                    for _, var in suggestion_vars[key]:
-                        text = var.get().strip()
+                    for _, text_var, favorite_var in suggestion_vars[key]:
+                        text = text_var.get().strip()
                         if text:
-                            without_suggestions.append(text)
+                            without_suggestions.append({
+                                "text": text,
+                                "favorite": favorite_var.get()
+                            })
                     custom_suggestions[context]["without_content"] = without_suggestions
 
             # Save to settings

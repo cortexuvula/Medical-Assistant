@@ -296,48 +296,48 @@ IMMEDIATE ACTIONS:
     },
     "custom_chat_suggestions": {
         "global": [
-            "Explain in simple terms",
-            "What are the next steps?",
-            "Check for errors"
+            {"text": "Explain in simple terms", "favorite": False},
+            {"text": "What are the next steps?", "favorite": False},
+            {"text": "Check for errors", "favorite": False}
         ],  # Always available suggestions
         "transcript": {
             "with_content": [
-                "Highlight key medical findings",
-                "Extract patient concerns"
+                {"text": "Highlight key medical findings", "favorite": False},
+                {"text": "Extract patient concerns", "favorite": False}
             ],
             "without_content": [
-                "Upload and transcribe audio file",
-                "Paste medical conversation"
+                {"text": "Upload and transcribe audio file", "favorite": False},
+                {"text": "Paste medical conversation", "favorite": False}
             ]
         },
         "soap": {
             "with_content": [
-                "Review for completeness",
-                "Add ICD-10 codes"
+                {"text": "Review for completeness", "favorite": False},
+                {"text": "Add ICD-10 codes", "favorite": False}
             ],
             "without_content": [
-                "Create SOAP from transcript",
-                "Generate structured note"
+                {"text": "Create SOAP from transcript", "favorite": False},
+                {"text": "Generate structured note", "favorite": False}
             ]
         },
         "referral": {
             "with_content": [
-                "Check urgency level",
-                "Verify specialist info"
+                {"text": "Check urgency level", "favorite": False},
+                {"text": "Verify specialist info", "favorite": False}
             ],
             "without_content": [
-                "Draft specialist referral",
-                "Create consultation request"
+                {"text": "Draft specialist referral", "favorite": False},
+                {"text": "Create consultation request", "favorite": False}
             ]
         },
         "letter": {
             "with_content": [
-                "Make patient-friendly",
-                "Check medical accuracy"
+                {"text": "Make patient-friendly", "favorite": False},
+                {"text": "Check medical accuracy", "favorite": False}
             ],
             "without_content": [
-                "Write patient explanation",
-                "Create follow-up letter"
+                {"text": "Write patient explanation", "favorite": False},
+                {"text": "Create follow-up letter", "favorite": False}
             ]
         }
     },
@@ -437,6 +437,39 @@ def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
     
     return merged
 
+
+def _migrate_suggestions_to_favorites(suggestions):
+    """Convert string-based suggestions to object format with favorite flag.
+
+    Handles nested dictionaries for context-specific suggestions.
+    If suggestions are already in object format, returns them unchanged.
+
+    Args:
+        suggestions: Can be a list of strings/objects, or a dict with nested structure
+
+    Returns:
+        Suggestions in the new object format with 'text' and 'favorite' keys
+    """
+    if isinstance(suggestions, list):
+        migrated = []
+        for s in suggestions:
+            if isinstance(s, dict) and "text" in s:
+                # Already in new format
+                migrated.append(s)
+            elif isinstance(s, str):
+                # Convert string to object format
+                migrated.append({"text": s, "favorite": False})
+            # Skip invalid entries
+        return migrated
+    elif isinstance(suggestions, dict):
+        # Recursively handle nested dictionaries (e.g., transcript -> with_content/without_content)
+        return {
+            key: _migrate_suggestions_to_favorites(value)
+            for key, value in suggestions.items()
+        }
+    return suggestions
+
+
 def load_settings(force_refresh: bool = False) -> dict:
     """Load settings with caching to avoid repeated file reads.
 
@@ -478,6 +511,12 @@ def load_settings(force_refresh: bool = False) -> dict:
                     # Debug: Log after merge
                     merged_provider = merged.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
                     logging.debug(f"After merge, synopsis provider: {merged_provider}")
+
+                    # Migrate custom_chat_suggestions to new object format (with favorite flag)
+                    if "custom_chat_suggestions" in merged:
+                        merged["custom_chat_suggestions"] = _migrate_suggestions_to_favorites(
+                            merged["custom_chat_suggestions"]
+                        )
 
                     # Update cache
                     _settings_cache = merged
