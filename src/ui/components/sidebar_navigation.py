@@ -205,8 +205,8 @@ class SidebarNavigation:
             borderwidth=0
         )
         # Use place geometry manager to overlay at bottom
+        # place() naturally stacks later widgets on top
         self._scroll_fade_overlay.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
-        self._scroll_fade_overlay.tkraise()  # Ensure it's on top
 
         # Create custom scrollbar - a thin canvas-based scrollbar for better theming
         scrollbar_width = 6 if not self._collapsed else 4
@@ -377,7 +377,6 @@ class SidebarNavigation:
                 # Show fade indicator
                 if not self._scroll_fade_overlay.winfo_ismapped():
                     self._scroll_fade_overlay.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
-                    self._scroll_fade_overlay.tkraise()
 
                 # Draw gradient fade effect
                 self._draw_scroll_fade()
