@@ -1076,30 +1076,38 @@ def create_soap_note_streaming(
     # Clean both markdown and citations
     cleaned_soap = clean_text(result)
 
-    # Check if synopsis generation is enabled through agent manager
-    try:
-        from managers.agent_manager import agent_manager
+    # Check if the AI already generated a Clinical Synopsis section
+    # (Some providers like Anthropic include it in the response)
+    has_synopsis = "clinical synopsis" in cleaned_soap.lower()
 
-        # Use agent manager to generate synopsis
-        synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+    # Only generate/append synopsis if not already present
+    if not has_synopsis:
+        # Check if synopsis generation is enabled through agent manager
+        try:
+            from managers.agent_manager import agent_manager
 
-        if synopsis:
-            # Append synopsis to SOAP note
-            synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{synopsis}"
-            cleaned_soap += synopsis_section
-            # Also stream the synopsis if callback provided
-            if on_chunk:
-                on_chunk(synopsis_section)
-            logging.info("Added synopsis to SOAP note")
-        else:
-            from ai.agents.models import AgentType
-            if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
-                logging.info("Synopsis generation is disabled")
+            # Use agent manager to generate synopsis
+            synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+
+            if synopsis:
+                # Append synopsis to SOAP note (without decoration to match AI format)
+                synopsis_section = f"\n\nClinical Synopsis:\n- {synopsis}"
+                cleaned_soap += synopsis_section
+                # Also stream the synopsis if callback provided
+                if on_chunk:
+                    on_chunk(synopsis_section)
+                logging.info("Added synopsis to SOAP note")
             else:
-                logging.warning("Synopsis generation failed")
+                from ai.agents.models import AgentType
+                if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
+                    logging.info("Synopsis generation is disabled")
+                else:
+                    logging.warning("Synopsis generation failed")
 
-    except Exception as e:
-        logging.error(f"Error with synopsis generation: {e}")
+        except Exception as e:
+            logging.error(f"Error with synopsis generation: {e}")
+    else:
+        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
 
     return cleaned_soap
 
@@ -1152,29 +1160,37 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     # Clean both markdown and citations
     cleaned_soap = clean_text(result)
     
-    # Check if synopsis generation is enabled through agent manager
-    try:
-        from managers.agent_manager import agent_manager
-        
-        # Use agent manager to generate synopsis
-        synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
-        
-        if synopsis:
-            # Append synopsis to SOAP note
-            synopsis_section = f"\n\nCLINICAL SYNOPSIS\n{'=' * 17}\n{synopsis}"
-            cleaned_soap += synopsis_section
-            logging.info("Added synopsis to SOAP note")
-        else:
-            # Check if it's due to being disabled or an error
-            from ai.agents.models import AgentType
-            if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
-                logging.info("Synopsis generation is disabled")
+    # Check if the AI already generated a Clinical Synopsis section
+    # (Some providers like Anthropic include it in the response)
+    has_synopsis = "clinical synopsis" in cleaned_soap.lower()
+
+    # Only generate/append synopsis if not already present
+    if not has_synopsis:
+        # Check if synopsis generation is enabled through agent manager
+        try:
+            from managers.agent_manager import agent_manager
+
+            # Use agent manager to generate synopsis
+            synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+
+            if synopsis:
+                # Append synopsis to SOAP note (without decoration to match AI format)
+                synopsis_section = f"\n\nClinical Synopsis:\n- {synopsis}"
+                cleaned_soap += synopsis_section
+                logging.info("Added synopsis to SOAP note")
             else:
-                logging.warning("Synopsis generation failed")
-                
-    except Exception as e:
-        logging.error(f"Error with synopsis generation: {e}")
-        # Continue without synopsis if there's an error
+                # Check if it's due to being disabled or an error
+                from ai.agents.models import AgentType
+                if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
+                    logging.info("Synopsis generation is disabled")
+                else:
+                    logging.warning("Synopsis generation failed")
+
+        except Exception as e:
+            logging.error(f"Error with synopsis generation: {e}")
+            # Continue without synopsis if there's an error
+    else:
+        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
     
     return cleaned_soap
 
