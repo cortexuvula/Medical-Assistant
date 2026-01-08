@@ -449,7 +449,11 @@ class Database:
                     logger.warning(f"Error during global database cleanup: {e}")
             
     def create_tables(self) -> None:
-        """Create the recordings table if it doesn't exist"""
+        """Create the recordings table if it doesn't exist.
+
+        This creates a table with all columns used by SELECT_COLUMNS to ensure
+        queries work correctly. Additional columns may be added by migrations.
+        """
         with self.connection() as (conn, cursor):
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS recordings (
@@ -459,7 +463,9 @@ class Database:
                 soap_note TEXT,
                 referral TEXT,
                 letter TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                processing_status TEXT DEFAULT 'pending',
+                patient_name TEXT
             )
             ''')
     
