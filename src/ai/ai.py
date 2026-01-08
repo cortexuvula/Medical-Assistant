@@ -977,12 +977,12 @@ def improve_text_with_openai(text: str) -> str:
 
 def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool = True) -> str:
     """Clean text by removing markdown formatting and/or citation markers.
-    
+
     Args:
         text: The text to clean
         remove_markdown: Whether to remove markdown formatting
         remove_citations: Whether to remove citation markers like [1], [2]
-    
+
     Returns:
         Cleaned text
     """
@@ -996,12 +996,58 @@ def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool =
         # Remove bold and italic markers
         text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
         text = re.sub(r"(\*|_)(.*?)\1", r"\2", text)
-    
+
     if remove_citations:
         # Remove citation markers like [1], [2] etc.
         text = re.sub(r'(\[\d+\])+', '', text)
-    
+
     return text.strip()
+
+
+def format_soap_paragraphs(text: str) -> str:
+    """Ensure proper paragraph separation between SOAP note sections.
+
+    Adds blank lines before major section headers if not already present.
+
+    Args:
+        text: SOAP note text
+
+    Returns:
+        Text with proper paragraph separation
+    """
+    # SOAP section headers that should have a blank line before them
+    section_headers = [
+        "ICD-9 Code:",
+        "ICD-10 Code:",
+        "Subjective:",
+        "Objective:",
+        "Assessment:",
+        "Differential Diagnosis:",
+        "Plan:",
+        "Follow up:",
+        "Follow-up:",
+        "Clinical Synopsis:",
+    ]
+
+    lines = text.split('\n')
+    result_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Check if this line is a section header
+        is_section_header = any(stripped.startswith(header) or stripped == header.rstrip(':') + ':'
+                                for header in section_headers)
+
+        # Add blank line before section header if needed (not for first section)
+        if is_section_header and i > 0:
+            # Check if previous line is already blank
+            if result_lines and result_lines[-1].strip() != '':
+                result_lines.append('')
+
+        result_lines.append(line)
+
+    return '\n'.join(result_lines)
 
 def create_soap_note_streaming(
     text: str,
@@ -1073,8 +1119,9 @@ def create_soap_note_streaming(
         # Fall back to non-streaming if no callback provided
         result = call_ai(model, system_message, full_prompt, temperature)
 
-    # Clean both markdown and citations
+    # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
+    cleaned_soap = format_soap_paragraphs(cleaned_soap)
 
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
@@ -1157,9 +1204,10 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
         full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
 
     result = call_ai(model, system_message, full_prompt, temperature)
-    # Clean both markdown and citations
+    # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
-    
+    cleaned_soap = format_soap_paragraphs(cleaned_soap)
+
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
     has_synopsis = "clinical synopsis" in cleaned_soap.lower()
