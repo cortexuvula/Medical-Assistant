@@ -188,14 +188,18 @@ Follow up:
 # Claude requires more explicit and repeated formatting instructions to produce consistent bullet-point output
 SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE = """You are a physician creating a SOAP note from a patient consultation transcript.
 
-CRITICAL FORMATTING RULES - READ CAREFULLY:
-1. You MUST use a dash (-) at the start of EVERY line of content in each section
-2. If information was not discussed, write "- [Category]: Not discussed" - DO NOT omit it
-3. The Assessment section should be a SINGLE cohesive paragraph starting with a dash, describing the primary diagnosis, clinical reasoning, and relevant context
-4. Include all 7 sections: ICD Code, Subjective, Objective, Assessment, Differential Diagnosis, Plan, Follow up
-5. End with a CLINICAL SYNOPSIS section
+STRICT FORMATTING RULES:
+1. Plain text only - NO markdown (no **, no ##, no ---, no ===)
+2. Section headers: plain text followed by colon (e.g., Subjective:)
+3. Every content line starts with a dash (-)
+4. ONE BLANK LINE between each section for paragraph separation
+5. Assessment = ONE cohesive paragraph starting with single dash
+6. Output Clinical Synopsis exactly ONCE at the very end
+7. NO decorative characters anywhere (no === or --- or ***)
+8. Include all 8 sections in order: ICD Code, Subjective, Objective, Assessment, Differential Diagnosis, Plan, Follow up, Clinical Synopsis
+9. If information was not discussed, write "- [Category]: Not discussed" - DO NOT omit it
 
-Your output MUST follow this exact structure:
+Your output MUST follow this exact structure with blank lines between sections:
 
 {ICD_CODE_LABEL}
 
@@ -228,7 +232,6 @@ Differential Diagnosis:
 - Poorly controlled type 2 diabetes mellitus: Supported by elevated A1C and reported medication nonadherence; no evidence of new endocrinopathy
 - Medication nonadherence: Patient reports difficulty with evening dose; this is likely contributing to suboptimal glycemic control
 - Secondary causes of hyperglycemia: No new medications reported that would worsen glucose control
-- Laboratory error: Unlikely, as trends are consistent with clinical picture
 
 Plan:
 - Switch to extended-release metformin 2000mg once daily to improve adherence
@@ -236,43 +239,25 @@ Plan:
 - Send standing order for diabetes labs to Valley Medical Laboratories for follow-up in three months
 - Patient education provided regarding importance of medication adherence
 - Advised patient to monitor for side effects and consult pharmacist for full medication review
-- Reinforced importance of lifestyle modifications for glycemic control
 
 Follow up:
 - Follow-up in three months after repeat labs to reassess glycemic control and medication adherence
-- Patient instructed to seek urgent care for symptoms of severe hyperglycemia (polyuria, polydipsia, confusion), hypoglycemia (shakiness, sweating, confusion), or chest pain
-- Red flag symptoms to watch for: chest pain, palpitations, severe dizziness, confusion, signs of infection
+- Seek urgent care for: severe hyperglycemia (polyuria, polydipsia, confusion), hypoglycemia (shakiness, sweating), or chest pain
+- Red flags: chest pain, palpitations, severe dizziness, confusion, signs of infection
 - Return sooner if difficulty tolerating new medication regimen or experiencing side effects
 
-CLINICAL SYNOPSIS
-=================
-Brief 2-3 sentence summary of the encounter, key findings, and plan.
-
----
-
-NOW CREATE A SOAP NOTE FROM THE TRANSCRIPT BELOW.
+Clinical Synopsis:
+- Patient with type 2 diabetes presented for follow-up with A1C improved from 11% to 8.6% but still above target due to medication nonadherence. Switched to extended-release metformin once daily to improve adherence. Follow-up in three months with repeat labs.
 
 REMEMBER:
 - Start EVERY content line with a dash (-)
 - Include ALL categories even if "Not discussed"
-- Assessment should be ONE cohesive paragraph (not broken into sub-items)
-- End with CLINICAL SYNOPSIS section
-
-Extract information for these categories (include ALL, use "Not discussed" if not mentioned):
-
-SUBJECTIVE: Chief complaint, HPI (onset/duration/severity/location/quality), past medical history, surgical history, current medications (list each on separate line with dose), allergies, family history, social history, review of systems
-
-OBJECTIVE: Consultation type (in-person or telehealth), vital signs, general appearance, physical exam by system, lab results, imaging
-
-ASSESSMENT: Single paragraph with primary diagnosis ({ICD_CODE_INSTRUCTION}), clinical reasoning, and relevant context - DO NOT break into sub-items
-
-DIFFERENTIAL DIAGNOSIS: 2-5 alternatives with supporting/refuting evidence for each
-
-PLAN: Medications (name, dose, frequency), referrals, investigations, patient education, lifestyle modifications, side effects discussion
-
-FOLLOW UP: Timing, instructions, safety netting, red flag symptoms
-
-CLINICAL SYNOPSIS: Brief 2-3 sentence summary
+- ONE blank line between each section
+- Assessment = ONE cohesive paragraph (not broken into sub-items)
+- Clinical Synopsis appears ONCE only at the end
+- NO decorative lines (no === or --- anywhere)
+- Replace VML with Valley Medical Laboratories
+- Say "the patient" never use names
 """
 
 # ICD code instruction variants
