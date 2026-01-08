@@ -97,6 +97,11 @@ class SidebarNavigation:
         self._file_header: Optional[tk.Frame] = None
         self._file_container: Optional[tk.Frame] = None
 
+        # Scroll indicator
+        self._scroll_fade_overlay: Optional[tk.Canvas] = None
+        self._scroll_container: Optional[tk.Frame] = None
+        self._colors: Optional[dict] = None
+
         # Command map for tool actions
         self._command_map: Dict[str, Callable] = {}
 
@@ -114,6 +119,7 @@ class SidebarNavigation:
         # Detect initial theme
         self._is_dark = self._detect_dark_theme()
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
+        self._colors = colors  # Store for later use
 
         # Create main sidebar frame
         self._sidebar_frame = ttk.Frame(self.parent)
@@ -179,6 +185,7 @@ class SidebarNavigation:
         # Create container frame for canvas and scrollbar
         scroll_container = tk.Frame(self._content_frame, bg=colors["bg"])
         scroll_container.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
+        self._scroll_container = scroll_container
 
         # Create canvas for scrolling
         self._scroll_canvas = tk.Canvas(
@@ -188,6 +195,18 @@ class SidebarNavigation:
             borderwidth=0
         )
         self._scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Create fade overlay for scroll indicator (placed on top)
+        self._scroll_fade_overlay = tk.Canvas(
+            scroll_container,
+            height=24,
+            bg=colors["bg"],
+            highlightthickness=0,
+            borderwidth=0
+        )
+        # Use place geometry manager to overlay at bottom
+        self._scroll_fade_overlay.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
+        self._scroll_fade_overlay.lift()  # Ensure it's on top
 
         # Create custom scrollbar - a thin canvas-based scrollbar for better theming
         scrollbar_width = 6 if not self._collapsed else 4
@@ -236,12 +255,14 @@ class SidebarNavigation:
         self._scroll_canvas.configure(scrollregion=self._scroll_canvas.bbox("all"))
         self._update_scrollbar_visibility()
         self._draw_scrollbar()
+        self._update_scroll_indicator()
 
     def _on_canvas_configure(self, event: tk.Event):
         """Update scrollable frame width when canvas is resized."""
         self._scroll_canvas.itemconfig(self._scroll_window_id, width=event.width)
         self._update_scrollbar_visibility()
         self._draw_scrollbar()
+        self._update_scroll_indicator()
 
     def _update_scrollbar_visibility(self):
         """Show or hide scrollbar based on content size."""
@@ -325,6 +346,98 @@ class SidebarNavigation:
         except tk.TclError:
             pass  # Widget destroyed
 
+    def _update_scroll_indicator(self):
+        """Update the scroll fade indicator based on scroll position."""
+        if not self._scroll_fade_overlay or not self._scroll_canvas:
+            return
+
+        try:
+            canvas_height = self._scroll_canvas.winfo_height()
+            bbox = self._scroll_canvas.bbox("all")
+            if not bbox:
+                self._scroll_fade_overlay.place_forget()
+                return
+
+            content_height = bbox[3] - bbox[1]
+
+            # Check if content is scrollable and not at bottom
+            if content_height <= canvas_height + 5:
+                # No scrolling needed - hide indicator
+                self._scroll_fade_overlay.place_forget()
+                return
+
+            # Get current scroll position
+            yview = self._scroll_canvas.yview()
+            at_bottom = yview[1] >= 0.99  # Allow small tolerance
+
+            if at_bottom:
+                # At bottom - hide indicator
+                self._scroll_fade_overlay.place_forget()
+            else:
+                # Show fade indicator
+                if not self._scroll_fade_overlay.winfo_ismapped():
+                    self._scroll_fade_overlay.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
+                    self._scroll_fade_overlay.lift()
+
+                # Draw gradient fade effect
+                self._draw_scroll_fade()
+
+        except tk.TclError:
+            pass  # Widget destroyed
+
+    def _draw_scroll_fade(self):
+        """Draw the gradient fade effect on the scroll indicator."""
+        if not self._scroll_fade_overlay or not self._colors:
+            return
+
+        try:
+            self._scroll_fade_overlay.delete("all")
+
+            width = self._scroll_fade_overlay.winfo_width()
+            height = self._scroll_fade_overlay.winfo_height()
+
+            if width <= 1 or height <= 1:
+                return
+
+            bg_color = self._colors["bg"]
+            # Create gradient effect with multiple rectangles
+            # From transparent (top) to solid bg color (bottom)
+            steps = 8
+            for i in range(steps):
+                # Calculate alpha-like effect by blending with bg
+                y1 = int(height * i / steps)
+                y2 = int(height * (i + 1) / steps)
+
+                # Use stipple pattern for transparency effect on older displays
+                # or just draw gradient bars
+                alpha = i / (steps - 1) if steps > 1 else 1
+                self._scroll_fade_overlay.create_rectangle(
+                    0, y1, width, y2,
+                    fill=bg_color,
+                    outline=bg_color,
+                    stipple="" if alpha > 0.5 else "gray50"
+                )
+
+            # Draw a subtle indicator arrow/chevron at bottom center
+            center_x = width // 2
+            arrow_y = height - 6
+            arrow_size = 4
+            indicator_color = self._colors.get("fg_muted", "#888888")
+
+            # Draw down chevron
+            self._scroll_fade_overlay.create_line(
+                center_x - arrow_size, arrow_y - arrow_size // 2,
+                center_x, arrow_y + arrow_size // 2,
+                center_x + arrow_size, arrow_y - arrow_size // 2,
+                fill=indicator_color,
+                width=1.5,
+                capstyle=tk.ROUND,
+                joinstyle=tk.ROUND
+            )
+
+        except tk.TclError:
+            pass  # Widget destroyed
+
     def _on_scrollbar_click(self, event: tk.Event):
         """Handle click on scrollbar."""
         self._scrollbar_dragging = True
@@ -379,6 +492,7 @@ class SidebarNavigation:
             fraction = max(0, min(1, (y - thumb_height / 2) / scroll_range))
             self._scroll_canvas.yview_moveto(fraction)
             self._draw_scrollbar()
+            self._update_scroll_indicator()
         except tk.TclError:
             pass  # Widget destroyed
 
@@ -413,6 +527,7 @@ class SidebarNavigation:
             delta = -event.delta // 120
         self._scroll_canvas.yview_scroll(delta * 3, "units")
         self._draw_scrollbar()
+        self._update_scroll_indicator()
 
     def _on_mousewheel_linux(self, event: tk.Event):
         """Handle mouse wheel scrolling (Linux)."""
@@ -421,6 +536,7 @@ class SidebarNavigation:
         elif event.num == 5:
             self._scroll_canvas.yview_scroll(3, "units")
         self._draw_scrollbar()
+        self._update_scroll_indicator()
 
     def _detect_dark_theme(self) -> bool:
         """Detect if dark theme is currently active."""
@@ -936,9 +1052,12 @@ class SidebarNavigation:
         self._footer_frame = None
         self._scroll_canvas = None
         self._scrollable_frame = None
+        self._scroll_fade_overlay = None
+        self._scroll_container = None
 
         # Get colors
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
+        self._colors = colors  # Update stored colors
 
         # Update frame width
         new_width = SidebarConfig.WIDTH_COLLAPSED if self._collapsed else SidebarConfig.WIDTH_EXPANDED
