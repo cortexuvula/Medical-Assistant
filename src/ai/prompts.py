@@ -282,6 +282,19 @@ ICD_CODE_INSTRUCTIONS = {
     "both": ("both ICD-9 and ICD-10 codes", "ICD-9 Code: [code]\nICD-10 Code: [code]"),
 }
 
+# Supported AI providers for per-provider SOAP prompts
+SOAP_PROVIDERS = ["openai", "anthropic", "grok", "perplexity", "ollama", "gemini"]
+
+# Provider display names for UI
+SOAP_PROVIDER_NAMES = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "grok": "Grok",
+    "perplexity": "Perplexity",
+    "ollama": "Ollama",
+    "gemini": "Gemini",
+}
+
 
 def get_soap_system_message(icd_version: str = "ICD-9", provider: str = None) -> str:
     """Generate SOAP system message with appropriate ICD code instructions.

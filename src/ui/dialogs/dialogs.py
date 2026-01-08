@@ -188,6 +188,113 @@ def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_pr
     
     return prompt_text, system_prompt_text
 
+
+def _create_soap_prompts_tab(parent: ttk.Frame, current_prompt: str,
+                              provider_messages: Dict[str, str],
+                              current_icd_version: str = "ICD-9") -> Tuple[tk.Text, Dict[str, tk.Text]]:
+    """Create the SOAP prompts tab with per-provider system message tabs.
+
+    Args:
+        parent: Parent frame for the tab
+        current_prompt: Current user prompt (shared across all providers)
+        provider_messages: Dict mapping provider names to their current system messages
+        current_icd_version: Current ICD code version for showing defaults
+
+    Returns:
+        Tuple of (user_prompt_text, dict of provider_name -> system_prompt_text widgets)
+    """
+    from ai.prompts import SOAP_PROVIDERS, SOAP_PROVIDER_NAMES, get_soap_system_message
+
+    # User Prompt (shared across all providers)
+    prompt_frame = ttk.Labelframe(parent, text="User Prompt (shared)", padding=5)
+    prompt_frame.pack(fill=tk.X, padx=5, pady=(5, 10))
+
+    prompt_text = scrolledtext.ScrolledText(prompt_frame, width=80, height=3)
+    prompt_text.pack(fill=tk.X, padx=5, pady=5)
+    prompt_text.insert("1.0", current_prompt)
+
+    # Info label
+    info_label = ttk.Label(parent,
+                          text="Each AI provider can have its own system prompt. Leave empty to use the optimized default.",
+                          foreground="gray")
+    info_label.pack(anchor="w", padx=10, pady=(0, 5))
+
+    # Create nested notebook for provider-specific system prompts
+    provider_notebook = ttk.Notebook(parent)
+    provider_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    system_prompt_texts = {}
+
+    for provider in SOAP_PROVIDERS:
+        provider_tab = ttk.Frame(provider_notebook)
+        provider_notebook.add(provider_tab, text=SOAP_PROVIDER_NAMES.get(provider, provider.title()))
+
+        # Get current message for this provider
+        current_msg = provider_messages.get(f"{provider}_system_message", "")
+
+        # Create frame for system message
+        msg_frame = ttk.Frame(provider_tab)
+        msg_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Label with provider name
+        header_frame = ttk.Frame(msg_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(header_frame,
+                 text=f"System Prompt for {SOAP_PROVIDER_NAMES.get(provider, provider.title())}:").pack(side=tk.LEFT)
+
+        # Status indicator
+        status_text = "Using custom prompt" if current_msg and current_msg.strip() else "Using optimized default"
+        status_color = "blue" if current_msg and current_msg.strip() else "green"
+        status_label = ttk.Label(header_frame, text=f"({status_text})", foreground=status_color)
+        status_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Text area for system prompt
+        system_text = scrolledtext.ScrolledText(msg_frame, width=80, height=12)
+        system_text.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        system_text.insert("1.0", current_msg)
+        system_prompt_texts[provider] = system_text
+
+        # Button frame
+        btn_frame = ttk.Frame(msg_frame)
+        btn_frame.pack(fill=tk.X, pady=(0, 5))
+
+        # Show Default button
+        def show_default(p=provider, text_widget=system_text, icd=current_icd_version):
+            default_prompt = get_soap_system_message(icd, provider=p)
+            # Show in a new window
+            default_win = tk.Toplevel(parent)
+            default_win.title(f"Default {SOAP_PROVIDER_NAMES.get(p, p.title())} Prompt")
+            default_win.geometry("800x600")
+            default_win.transient(parent.winfo_toplevel())
+
+            default_text = scrolledtext.ScrolledText(default_win, width=90, height=30)
+            default_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            default_text.insert("1.0", default_prompt)
+            default_text.config(state=tk.DISABLED)
+
+            ttk.Button(default_win, text="Close", command=default_win.destroy).pack(pady=10)
+
+        def clear_to_default(text_widget=system_text, status_lbl=status_label):
+            text_widget.delete("1.0", tk.END)
+            status_lbl.config(text="(Using optimized default)", foreground="green")
+
+        def update_status(event=None, text_widget=system_text, status_lbl=status_label):
+            content = text_widget.get("1.0", tk.END).strip()
+            if content:
+                status_lbl.config(text="(Using custom prompt)", foreground="blue")
+            else:
+                status_lbl.config(text="(Using optimized default)", foreground="green")
+
+        # Bind text change to update status
+        system_text.bind("<KeyRelease>", update_status)
+
+        ttk.Button(btn_frame, text="Show Default", command=show_default).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(btn_frame, text="Clear (Use Default)", command=clear_to_default).pack(side=tk.LEFT, padx=(0, 5))
+
+    return prompt_text, system_prompt_texts
+
+
 def _create_models_tab(parent: ttk.Frame, current_model: str, current_perplexity: str,
                       current_grok: str, current_ollama: str, current_anthropic: str,
                       current_gemini: str = "") -> Dict[str, tk.StringVar]:
@@ -297,7 +404,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          save_callback: callable, current_ollama: str = "", current_system_prompt: str = "",
                          current_anthropic: str = "", current_gemini: str = "",
                          current_icd_version: str = "ICD-9", is_soap_settings: bool = False,
-                         current_provider: str = "", is_advanced_analysis: bool = False) -> None:
+                         current_provider: str = "", is_advanced_analysis: bool = False,
+                         provider_messages: Dict[str, str] = None) -> None:
     """Show settings dialog for configuring prompt and model.
 
     Args:
@@ -318,7 +426,11 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         is_soap_settings: Whether this is the SOAP settings dialog (shows ICD selector)
         current_provider: Current AI provider for Advanced Analysis (empty = use global)
         is_advanced_analysis: Whether this is the Advanced Analysis settings dialog
+        provider_messages: Dict of per-provider system messages for SOAP settings
     """
+    # Initialize provider_messages if not provided
+    if provider_messages is None:
+        provider_messages = {}
     # Create dialog
     dialog = tk.Toplevel(parent)
     dialog.title(title)
@@ -434,7 +546,17 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                  wraplength=500, justify="left").pack(anchor="w")
 
     # Populate tabs
-    prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
+    # For SOAP settings, use per-provider prompts tab; for others, use standard tab
+    soap_provider_texts = None  # Will hold dict of provider -> text widget for SOAP
+    if is_soap_settings:
+        prompt_text, soap_provider_texts = _create_soap_prompts_tab(
+            prompts_tab, current_prompt, provider_messages, current_icd_version
+        )
+        # Create a dummy system_prompt_text for compatibility (won't be used)
+        system_prompt_text = None
+    else:
+        prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
+
     model_vars = _create_models_tab(models_tab, current_model, current_perplexity, current_grok, current_ollama, current_anthropic, current_gemini)
 
     # Get temperature from config
@@ -449,37 +571,46 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     def reset_fields():
         # Import default prompts directly from prompts.py
         from ai.prompts import REFINE_PROMPT, IMPROVE_PROMPT, SOAP_PROMPT_TEMPLATE, REFINE_SYSTEM_MESSAGE, IMPROVE_SYSTEM_MESSAGE, SOAP_SYSTEM_MESSAGE
-        
-        # Clear text areas
+
+        # Clear user prompt text area
         prompt_text.delete("1.0", tk.END)
-        system_prompt_text.delete("1.0", tk.END)
-        
-        # Determine which default prompt to use based on the dialog title
-        default_prompt = ""
-        default_system = ""
-        
-        if "Refine Text" in title:
-            default_prompt = REFINE_PROMPT
-            default_system = REFINE_SYSTEM_MESSAGE
-        elif "Improve Text" in title:
-            default_prompt = IMPROVE_PROMPT
-            default_system = IMPROVE_SYSTEM_MESSAGE
-        elif "SOAP Note" in title:
-            default_prompt = SOAP_PROMPT_TEMPLATE
-            default_system = SOAP_SYSTEM_MESSAGE
-        elif "Referral" in title:
-            # For referral, use defaults from the default dictionary
-            default_prompt = default.get("prompt", "Write a referral paragraph using the SOAP Note given to you")
-            default_system = default.get("system_message", "")
-        elif "Advanced Analysis" in title:
-            # For advanced analysis, use defaults from the default dictionary
-            default_prompt = default.get("prompt", "")
-            default_system = default.get("system_message", "")
-        
-        # Insert defaults
-        prompt_text.insert("1.0", default_prompt)
-        system_prompt_text.insert("1.0", default_system)
-        
+
+        # Handle SOAP settings with per-provider prompts differently
+        if is_soap_settings and soap_provider_texts:
+            # Clear all per-provider system prompts (empty = use default)
+            for provider, text_widget in soap_provider_texts.items():
+                text_widget.delete("1.0", tk.END)
+            # Reset user prompt to default
+            prompt_text.insert("1.0", SOAP_PROMPT_TEMPLATE)
+        else:
+            # Standard behavior for non-SOAP dialogs
+            if system_prompt_text:
+                system_prompt_text.delete("1.0", tk.END)
+
+            # Determine which default prompt to use based on the dialog title
+            default_prompt = ""
+            default_system = ""
+
+            if "Refine Text" in title:
+                default_prompt = REFINE_PROMPT
+                default_system = REFINE_SYSTEM_MESSAGE
+            elif "Improve Text" in title:
+                default_prompt = IMPROVE_PROMPT
+                default_system = IMPROVE_SYSTEM_MESSAGE
+            elif "Referral" in title:
+                # For referral, use defaults from the default dictionary
+                default_prompt = default.get("prompt", "Write a referral paragraph using the SOAP Note given to you")
+                default_system = default.get("system_message", "")
+            elif "Advanced Analysis" in title:
+                # For advanced analysis, use defaults from the default dictionary
+                default_prompt = default.get("prompt", "")
+                default_system = default.get("system_message", "")
+
+            # Insert defaults
+            prompt_text.insert("1.0", default_prompt)
+            if system_prompt_text:
+                system_prompt_text.insert("1.0", default_system)
+
         # Reset model fields to defaults
         model_vars['openai'].set(config.get("model", default.get("model", "gpt-3.5-turbo")))
         model_vars['perplexity'].set(config.get("perplexity_model", default.get("perplexity_model", "sonar-reasoning-pro")))
@@ -487,7 +618,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
         model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-sonnet-4-20250514")))
         model_vars['gemini'].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
-        
+
         # Reset temperature
         temp_scale.set(default_temp)
         temp_value_var.set(f"{default_temp:.1f}")
@@ -509,25 +640,45 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         # Add temperature to config
         config["temperature"] = temp_scale.get()
 
-        # Build arguments for save callback
-        save_args = [
-            prompt_text.get("1.0", tk.END).strip(),
-            model_vars['openai'].get().strip(),
-            model_vars['perplexity'].get().strip(),
-            model_vars['grok'].get().strip(),
-            model_vars['ollama'].get().strip(),
-            system_prompt_text.get("1.0", tk.END).strip(),
-            model_vars['anthropic'].get().strip(),
-            model_vars['gemini'].get().strip()
-        ]
+        # Handle SOAP settings with per-provider prompts
+        if is_soap_settings and soap_provider_texts:
+            # Collect per-provider system messages
+            provider_msgs = {}
+            for provider, text_widget in soap_provider_texts.items():
+                provider_msgs[f"{provider}_system_message"] = text_widget.get("1.0", tk.END).strip()
 
-        # Add ICD version for SOAP settings
-        if is_soap_settings:
-            save_args.append(icd_version_var.get())
+            # Build arguments for SOAP save callback (different signature)
+            save_args = [
+                prompt_text.get("1.0", tk.END).strip(),
+                model_vars['openai'].get().strip(),
+                model_vars['perplexity'].get().strip(),
+                model_vars['grok'].get().strip(),
+                model_vars['ollama'].get().strip(),
+                model_vars['anthropic'].get().strip(),
+                model_vars['gemini'].get().strip(),
+                icd_version_var.get(),
+                provider_msgs  # Dict of per-provider system messages
+            ]
+        else:
+            # Standard save for non-SOAP dialogs
+            save_args = [
+                prompt_text.get("1.0", tk.END).strip(),
+                model_vars['openai'].get().strip(),
+                model_vars['perplexity'].get().strip(),
+                model_vars['grok'].get().strip(),
+                model_vars['ollama'].get().strip(),
+                system_prompt_text.get("1.0", tk.END).strip() if system_prompt_text else "",
+                model_vars['anthropic'].get().strip(),
+                model_vars['gemini'].get().strip()
+            ]
 
-        # Add provider for Advanced Analysis settings
-        if is_advanced_analysis:
-            save_args.append(provider_var.get())
+            # Add ICD version for SOAP settings (backward compat for non per-provider mode)
+            if is_soap_settings:
+                save_args.append(icd_version_var.get())
+
+            # Add provider for Advanced Analysis settings
+            if is_advanced_analysis:
+                save_args.append(provider_var.get())
 
         save_callback(*save_args)
         dialog.destroy()

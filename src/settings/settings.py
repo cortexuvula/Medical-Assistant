@@ -146,7 +146,14 @@ Format your response as:
         "gemini_temperature": 0.7  # Gemini-specific temperature
     },
     "soap_note": {
-        "system_message": "",  # Empty - will use dynamic prompt from prompts.py based on icd_code_version
+        "system_message": "",  # DEPRECATED - legacy field, use per-provider fields below
+        # Per-provider system messages (empty = use provider-optimized default)
+        "openai_system_message": "",
+        "anthropic_system_message": "",
+        "grok_system_message": "",
+        "perplexity_system_message": "",
+        "ollama_system_message": "",
+        "gemini_system_message": "",
         "icd_code_version": "ICD-9",  # Options: "ICD-9", "ICD-10", "both"
         "model": "gpt-3.5-turbo",  # OpenAI model
         "grok_model": "grok-1",    # Grok model

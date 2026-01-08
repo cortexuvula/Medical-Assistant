@@ -62,12 +62,19 @@ class AppSettingsMixin:
     def show_soap_settings_dialog(self) -> None:
         """Show the SOAP note settings dialog."""
         from settings.settings import SETTINGS, _DEFAULT_SETTINGS
-        from ai.prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
+        from ai.prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE, SOAP_PROVIDERS
         from ui.dialogs.dialogs import show_settings_dialog
 
         cfg = SETTINGS.get("soap_note", {})
         default_system_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", SOAP_SYSTEM_MESSAGE)
         default_model = _DEFAULT_SETTINGS["soap_note"].get("model", "")
+
+        # Collect per-provider system messages
+        provider_messages = {}
+        for provider in SOAP_PROVIDERS:
+            key = f"{provider}_system_message"
+            provider_messages[key] = cfg.get(key, "")
+
         show_settings_dialog(
             parent=self,
             title="SOAP Note Settings",
@@ -83,7 +90,8 @@ class AppSettingsMixin:
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["soap_note"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash")),
             current_icd_version=cfg.get("icd_code_version", "ICD-9"),
-            is_soap_settings=True
+            is_soap_settings=True,
+            provider_messages=provider_messages
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -226,14 +234,27 @@ class AppSettingsMixin:
         self.status_manager.success("Improve text settings saved successfully")
 
     def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                           grok_model: str, ollama_model: str, system_prompt: str,
+                           grok_model: str, ollama_model: str,
                            anthropic_model: str, gemini_model: str = "",
-                           icd_code_version: str = "ICD-9") -> None:
-        """Save SOAP note settings."""
+                           icd_code_version: str = "ICD-9",
+                           provider_messages: dict = None) -> None:
+        """Save SOAP note settings with per-provider system messages.
+
+        Args:
+            prompt: User prompt (shared across providers)
+            openai_model: OpenAI model name
+            perplexity_model: Perplexity model name
+            grok_model: Grok model name
+            ollama_model: Ollama model name
+            anthropic_model: Anthropic model name
+            gemini_model: Gemini model name
+            icd_code_version: ICD code version (ICD-9, ICD-10, or both)
+            provider_messages: Dict mapping provider_system_message keys to values
+        """
         from settings.settings import save_settings, SETTINGS
+
         # Preserve existing temperature settings
         SETTINGS["soap_note"]["prompt"] = prompt
-        SETTINGS["soap_note"]["system_message"] = system_prompt
         SETTINGS["soap_note"]["model"] = openai_model
         SETTINGS["soap_note"]["perplexity_model"] = perplexity_model
         SETTINGS["soap_note"]["grok_model"] = grok_model
@@ -241,6 +262,14 @@ class AppSettingsMixin:
         SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
         SETTINGS["soap_note"]["gemini_model"] = gemini_model
         SETTINGS["soap_note"]["icd_code_version"] = icd_code_version
+
+        # Save per-provider system messages
+        if provider_messages:
+            for key, value in provider_messages.items():
+                SETTINGS["soap_note"][key] = value
+        # Clear legacy system_message since we now use per-provider messages
+        SETTINGS["soap_note"]["system_message"] = ""
+
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 

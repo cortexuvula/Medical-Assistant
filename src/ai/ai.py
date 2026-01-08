@@ -1038,8 +1038,15 @@ def create_soap_note_streaming(
     # Get dynamic system message based on ICD code preference and provider
     system_message = get_soap_system_message(icd_version, provider=current_provider)
 
-    # Check if user has a custom system message override
-    custom_message = current_settings.get("soap_note", {}).get("system_message", "")
+    # Check for per-provider custom system message first
+    provider_message_key = f"{current_provider}_system_message"
+    custom_message = current_settings.get("soap_note", {}).get(provider_message_key, "")
+
+    # Fall back to legacy single system_message if provider-specific is empty
+    if not custom_message or not custom_message.strip():
+        custom_message = current_settings.get("soap_note", {}).get("system_message", "")
+
+    # Use custom message if provided, otherwise keep dynamic default
     if custom_message and custom_message.strip():
         system_message = custom_message
 
@@ -1113,10 +1120,16 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
     # Get dynamic system message based on ICD code preference and provider
     system_message = get_soap_system_message(icd_version, provider=current_provider)
 
-    # Check if user has a custom system message override
-    custom_message = SETTINGS.get("soap_note", {}).get("system_message", "")
+    # Check for per-provider custom system message first
+    provider_message_key = f"{current_provider}_system_message"
+    custom_message = SETTINGS.get("soap_note", {}).get(provider_message_key, "")
+
+    # Fall back to legacy single system_message if provider-specific is empty
+    if not custom_message or not custom_message.strip():
+        custom_message = SETTINGS.get("soap_note", {}).get("system_message", "")
+
+    # Use custom message if provided, otherwise keep dynamic default
     if custom_message and custom_message.strip():
-        # Use custom message if provided (for advanced users who want full control)
         system_message = custom_message
 
     # Get temperature from settings (default 0.4 for consistent output)
