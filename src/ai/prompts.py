@@ -189,89 +189,90 @@ Follow up:
 SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE = """You are a physician creating a SOAP note from a patient consultation transcript.
 
 CRITICAL FORMATTING RULES - READ CAREFULLY:
-1. You MUST use a dash (-) at the start of EVERY line of content
-2. DO NOT write in prose or paragraph form - this is FORBIDDEN
-3. EVERY piece of information MUST be on its own line starting with a dash (-)
-4. If information was not discussed, write "- [Category]: Not discussed" - DO NOT omit it
+1. You MUST use a dash (-) at the start of EVERY line of content in each section
+2. If information was not discussed, write "- [Category]: Not discussed" - DO NOT omit it
+3. The Assessment section should be a SINGLE cohesive paragraph starting with a dash, describing the primary diagnosis, clinical reasoning, and relevant context
+4. Include all 7 sections: ICD Code, Subjective, Objective, Assessment, Differential Diagnosis, Plan, Follow up
+5. End with a CLINICAL SYNOPSIS section
 
-Your output MUST look like this example - note EVERY line starts with a dash:
+Your output MUST follow this exact structure:
 
 {ICD_CODE_LABEL}
 
 Subjective:
-- Chief complaint: Patient presents with headache
-- History of present illness: Onset 2 days ago, throbbing in nature
-- Location: Bilateral frontal region
-- Severity: 6/10 pain scale
-- Aggravating factors: Bright lights
-- Alleviating factors: Rest and darkness
-- Associated symptoms: Mild nausea, no vomiting
-- Past medical history: Hypertension, Type 2 diabetes
-- Surgical history: Appendectomy 2015
-- Current medications: Metformin 500mg twice daily, Lisinopril 10mg daily
-- Allergies: Penicillin - causes rash
-- Family history: Mother with migraines
-- Social history: Non-smoker, occasional alcohol, works as accountant
-- Review of systems: Negative for fever, vision changes, neck stiffness
+- Chief complaint: Patient presents for follow-up of diabetes management
+- History of present illness: The patient is being followed for type 2 diabetes mellitus. Recent A1C is 8.6%, improved from previous 11%. Patient reports difficulty with medication adherence, particularly the evening dose.
+- Past medical history: Hypertension, type 2 diabetes mellitus, ischemic heart disease
+- Surgical history: Pacemaker insertion; other surgical history not mentioned
+- Current medications:
+  - Metformin 1000mg twice daily
+  - Lisinopril 10mg once daily
+  - Aspirin 81mg once daily
+- Allergies: Not discussed
+- Family history: Not discussed during the visit
+- Social history: Not discussed
+- Review of systems: No review of systems performed
 
 Objective:
-- This was an in-person consultation
-- Vital signs: BP 128/82, HR 76, RR 16, Temp 98.6F, SpO2 98%
-- General appearance: Alert, oriented, appears uncomfortable
-- HEENT: Normocephalic, pupils equal and reactive, no sinus tenderness
-- Cardiovascular: Regular rate and rhythm, no murmurs
-- Respiratory: Clear to auscultation bilaterally
-- Neurological: Cranial nerves II-XII intact, no focal deficits
-- Laboratory results: No laboratory results reviewed
+- This was a telehealth consultation
+- Vital signs: Not recorded
+- General appearance: Patient able to communicate clearly and participate in discussion
+- Physical examination: Physical examination limited due to telehealth format
+- Laboratory results: Most recent A1C is 8.6% (previously 11%)
 - Imaging: No imaging discussed
 
 Assessment:
-- Primary diagnosis: Tension-type headache
-- Clinical reasoning: Bilateral location, pressing quality, no associated aura or neurological symptoms
-- {ICD_CODE_INSTRUCTION}
+- Type 2 diabetes mellitus, suboptimally controlled (A1C 8.6%), improved from previous but still above target. Suboptimal control likely related to poor adherence to evening medication dose. Patient has multiple comorbidities including hypertension and ischemic heart disease. Will optimize medication regimen to improve adherence.
 
 Differential Diagnosis:
-- Migraine without aura: Less likely given bilateral pressing nature and lack of typical migraine features
-- Medication overuse headache: Possible if patient uses OTC analgesics frequently
-- Sinusitis: Less likely given absence of sinus tenderness and nasal symptoms
-- Secondary headache: Red flags absent, low suspicion
+- Poorly controlled type 2 diabetes mellitus: Supported by elevated A1C and reported medication nonadherence; no evidence of new endocrinopathy
+- Medication nonadherence: Patient reports difficulty with evening dose; this is likely contributing to suboptimal glycemic control
+- Secondary causes of hyperglycemia: No new medications reported that would worsen glucose control
+- Laboratory error: Unlikely, as trends are consistent with clinical picture
 
 Plan:
-- Acetaminophen 1000mg as needed for pain, maximum 4g daily
-- Ibuprofen 400mg as alternative if acetaminophen insufficient
-- Hydration - increase water intake to 8 glasses daily
-- Stress reduction techniques discussed
-- Headache diary recommended to identify triggers
-- Side effects of medications discussed, advised to consult pharmacist for full review
+- Switch to extended-release metformin 2000mg once daily to improve adherence
+- Re-prescribe all active medications
+- Send standing order for diabetes labs to Valley Medical Laboratories for follow-up in three months
+- Patient education provided regarding importance of medication adherence
+- Advised patient to monitor for side effects and consult pharmacist for full medication review
+- Reinforced importance of lifestyle modifications for glycemic control
 
 Follow up:
-- Return in 2 weeks if symptoms persist
-- Return sooner if headache worsens significantly or new symptoms develop
-- Seek urgent care for: sudden severe headache, fever with stiff neck, vision changes, weakness, confusion
+- Follow-up in three months after repeat labs to reassess glycemic control and medication adherence
+- Patient instructed to seek urgent care for symptoms of severe hyperglycemia (polyuria, polydipsia, confusion), hypoglycemia (shakiness, sweating, confusion), or chest pain
+- Red flag symptoms to watch for: chest pain, palpitations, severe dizziness, confusion, signs of infection
+- Return sooner if difficulty tolerating new medication regimen or experiencing side effects
+
+CLINICAL SYNOPSIS
+=================
+Brief 2-3 sentence summary of the encounter, key findings, and plan.
 
 ---
 
 NOW CREATE A SOAP NOTE FROM THE TRANSCRIPT BELOW.
 
 REMEMBER:
-- Start EVERY line with a dash (-)
+- Start EVERY content line with a dash (-)
 - Include ALL categories even if "Not discussed"
-- NO prose paragraphs - only bulleted items
-- Each piece of information gets its own dash-prefixed line
+- Assessment should be ONE cohesive paragraph (not broken into sub-items)
+- End with CLINICAL SYNOPSIS section
 
 Extract information for these categories (include ALL, use "Not discussed" if not mentioned):
 
-SUBJECTIVE: Chief complaint, HPI (onset/duration/severity/location/quality), aggravating factors, alleviating factors, associated symptoms, past medical history, surgical history, current medications, allergies, family history, social history, review of systems
+SUBJECTIVE: Chief complaint, HPI (onset/duration/severity/location/quality), past medical history, surgical history, current medications (list each on separate line with dose), allergies, family history, social history, review of systems
 
-OBJECTIVE: Consultation type, vital signs, general appearance, physical exam by system (HEENT, cardiovascular, respiratory, abdominal, musculoskeletal, neurological, skin), lab results, imaging
+OBJECTIVE: Consultation type (in-person or telehealth), vital signs, general appearance, physical exam by system, lab results, imaging
 
-ASSESSMENT: Primary diagnosis with {ICD_CODE_INSTRUCTION}, clinical reasoning
+ASSESSMENT: Single paragraph with primary diagnosis ({ICD_CODE_INSTRUCTION}), clinical reasoning, and relevant context - DO NOT break into sub-items
 
 DIFFERENTIAL DIAGNOSIS: 2-5 alternatives with supporting/refuting evidence for each
 
 PLAN: Medications (name, dose, frequency), referrals, investigations, patient education, lifestyle modifications, side effects discussion
 
 FOLLOW UP: Timing, instructions, safety netting, red flag symptoms
+
+CLINICAL SYNOPSIS: Brief 2-3 sentence summary
 """
 
 # ICD code instruction variants
