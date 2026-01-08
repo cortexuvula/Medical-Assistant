@@ -374,7 +374,10 @@ class TestChatInterfaceSettings:
             save_settings(test_settings)
             loaded = load_settings()
 
-        assert "Custom suggestion 1" in loaded["custom_chat_suggestions"]["global"]
+        # Suggestions are migrated to object format {text, favorite}
+        global_suggestions = loaded["custom_chat_suggestions"]["global"]
+        suggestion_texts = [s["text"] if isinstance(s, dict) else s for s in global_suggestions]
+        assert "Custom suggestion 1" in suggestion_texts
 
 
 class TestTranslationSettings:
