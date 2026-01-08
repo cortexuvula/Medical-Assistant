@@ -1078,8 +1078,7 @@ def format_soap_paragraphs(text: str) -> str:
 
         result_lines.append(line)
 
-    logging.debug(f"format_soap_paragraphs: processed {len(lines)} lines into {len(result_lines)} lines")
-    logging.debug(f"format_soap_paragraphs: detected headers: {detected_headers}")
+    logging.info(f"format_soap_paragraphs: {len(lines)} lines -> {len(result_lines)} lines, detected headers: {detected_headers}")
     return '\n'.join(result_lines)
 
 def create_soap_note_streaming(
@@ -1152,18 +1151,21 @@ def create_soap_note_streaming(
         # Fall back to non-streaming if no callback provided
         result = call_ai(model, system_message, full_prompt, temperature)
 
-    # Debug logging to trace SOAP formatting
-    logging.debug(f"SOAP streaming raw response length: {len(result)} chars")
-    if len(result) > 0:
-        logging.debug(f"SOAP streaming raw response preview: {result[:500]}...")
-        logging.debug(f"SOAP streaming raw response has {result.count(chr(10))} newlines")
+    # Trace logging for SOAP formatting (INFO level to appear in logs)
+    logging.info(f"SOAP streaming raw response: {len(result)} chars, {result.count(chr(10))} newlines")
+    # Log first 200 chars to see structure (repr shows actual newlines as \n)
+    logging.info(f"SOAP raw preview: {repr(result[:200])}")
 
     # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
-    logging.debug(f"SOAP streaming after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
 
     cleaned_soap = format_soap_paragraphs(cleaned_soap)
-    logging.debug(f"SOAP streaming after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+
+    # Count blank lines (consecutive newlines) to verify formatting
+    blank_line_count = cleaned_soap.count('\n\n')
+    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
+    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
 
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
@@ -1247,21 +1249,21 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
 
     result = call_ai(model, system_message, full_prompt, temperature)
 
-    # Debug logging to trace SOAP formatting
-    logging.debug(f"SOAP raw AI response length: {len(result)} chars")
-    if len(result) > 0:
-        # Log first 500 chars to see structure
-        logging.debug(f"SOAP raw response preview: {result[:500]}...")
-        # Count newlines to verify line structure
-        newline_count = result.count('\n')
-        logging.debug(f"SOAP raw response has {newline_count} newlines")
+    # Trace logging for SOAP formatting (INFO level to appear in logs)
+    logging.info(f"SOAP raw AI response: {len(result)} chars, {result.count(chr(10))} newlines")
+    # Log first 200 chars to see structure (repr shows actual newlines as \n)
+    logging.info(f"SOAP raw preview: {repr(result[:200])}")
 
     # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
-    logging.debug(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
 
     cleaned_soap = format_soap_paragraphs(cleaned_soap)
-    logging.debug(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+
+    # Count blank lines (consecutive newlines) to verify formatting
+    blank_line_count = cleaned_soap.count('\n\n')
+    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
+    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
 
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
