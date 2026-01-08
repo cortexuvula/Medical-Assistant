@@ -1008,6 +1008,7 @@ def format_soap_paragraphs(text: str) -> str:
     """Ensure proper paragraph separation between SOAP note sections.
 
     Adds blank lines before major section headers if not already present.
+    Also handles cases where headers appear mid-line by splitting them.
 
     Args:
         text: SOAP note text
@@ -1030,8 +1031,23 @@ def format_soap_paragraphs(text: str) -> str:
         "clinical synopsis",
     ]
 
+    # Normalize line endings first
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Handle case where section headers appear mid-line (e.g., "content Subjective:")
+    # Split them onto separate lines
+    for header in section_headers:
+        # Pattern: non-whitespace followed by whitespace followed by header with colon
+        # This splits "some text Subjective:" into "some text\nSubjective:"
+        pattern = rf'(\S)\s+({re.escape(header)}:)'
+        text = re.sub(pattern, r'\1\n\2', text, flags=re.IGNORECASE)
+        # Also handle header without colon at end of content
+        pattern2 = rf'(\S)\s+({re.escape(header)})\s*$'
+        text = re.sub(pattern2, r'\1\n\2', text, flags=re.IGNORECASE | re.MULTILINE)
+
     lines = text.split('\n')
     result_lines = []
+    detected_headers = []
 
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -1039,13 +1055,20 @@ def format_soap_paragraphs(text: str) -> str:
         stripped_no_bullet = stripped.lstrip('-').lstrip('•').lstrip('*').strip()
         stripped_lower = stripped_no_bullet.lower()
 
-        # Check if this line is a section header (case-insensitive, with or without colon)
-        is_section_header = any(
-            stripped_lower.startswith(header) or
-            stripped_lower == header or
-            stripped_lower == header + ":"
-            for header in section_headers
-        )
+        # Check if this line STARTS with a section header
+        is_section_header = False
+        matched_header = None
+        for header in section_headers:
+            if stripped_lower.startswith(header):
+                # Verify it's actually a header (followed by :, space, or end of string)
+                rest = stripped_lower[len(header):]
+                if not rest or rest[0] in (':', ' ', '\t'):
+                    is_section_header = True
+                    matched_header = header
+                    break
+
+        if is_section_header:
+            detected_headers.append(matched_header)
 
         # Add blank line before section header if needed (not for first section)
         if is_section_header and i > 0:
@@ -1056,6 +1079,7 @@ def format_soap_paragraphs(text: str) -> str:
         result_lines.append(line)
 
     logging.debug(f"format_soap_paragraphs: processed {len(lines)} lines into {len(result_lines)} lines")
+    logging.debug(f"format_soap_paragraphs: detected headers: {detected_headers}")
     return '\n'.join(result_lines)
 
 def create_soap_note_streaming(
@@ -1128,9 +1152,18 @@ def create_soap_note_streaming(
         # Fall back to non-streaming if no callback provided
         result = call_ai(model, system_message, full_prompt, temperature)
 
+    # Debug logging to trace SOAP formatting
+    logging.debug(f"SOAP streaming raw response length: {len(result)} chars")
+    if len(result) > 0:
+        logging.debug(f"SOAP streaming raw response preview: {result[:500]}...")
+        logging.debug(f"SOAP streaming raw response has {result.count(chr(10))} newlines")
+
     # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
+    logging.debug(f"SOAP streaming after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+
     cleaned_soap = format_soap_paragraphs(cleaned_soap)
+    logging.debug(f"SOAP streaming after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
 
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
@@ -1213,9 +1246,22 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
         full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
 
     result = call_ai(model, system_message, full_prompt, temperature)
+
+    # Debug logging to trace SOAP formatting
+    logging.debug(f"SOAP raw AI response length: {len(result)} chars")
+    if len(result) > 0:
+        # Log first 500 chars to see structure
+        logging.debug(f"SOAP raw response preview: {result[:500]}...")
+        # Count newlines to verify line structure
+        newline_count = result.count('\n')
+        logging.debug(f"SOAP raw response has {newline_count} newlines")
+
     # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
+    logging.debug(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+
     cleaned_soap = format_soap_paragraphs(cleaned_soap)
+    logging.debug(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
 
     # Check if the AI already generated a Clinical Synopsis section
     # (Some providers like Anthropic include it in the response)
