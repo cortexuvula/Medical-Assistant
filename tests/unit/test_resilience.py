@@ -68,18 +68,19 @@ class TestRetryDecorator:
         """Test that rate limit errors use retry-after header."""
         error = RateLimitError("Rate limited", retry_after=2)
         mock_func = Mock(side_effect=[error, "success"])
-        
+
         @retry(max_retries=3, initial_delay=0.1)
         def test_func():
             return mock_func()
-        
-        start_time = time.time()
-        result = test_func()
-        elapsed = time.time() - start_time
-        
+
+        # Mock time.sleep to verify it's called with the correct delay
+        with patch('utils.resilience.time.sleep') as mock_sleep:
+            result = test_func()
+
         assert result == "success"
         assert mock_func.call_count == 2
-        assert elapsed >= 2  # Should wait at least 2 seconds
+        # Verify sleep was called with the retry_after value (2 seconds)
+        mock_sleep.assert_called_once_with(2)
     
     def test_exponential_backoff(self):
         """Test exponential backoff between retries."""

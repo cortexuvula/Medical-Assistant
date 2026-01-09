@@ -83,6 +83,9 @@ class RecordingsTab:
         self._auto_refresh_interval = 60000  # 60 seconds in milliseconds
         self._auto_refresh_job = None  # Stores the after() job ID
 
+        # Refresh-in-progress flag to prevent concurrent refreshes
+        self._refresh_in_progress = False
+
     @property
     def data_provider(self) -> RecordingsDataProvider:
         """Get the data provider, falling back to parent.db if not set.
@@ -355,10 +358,16 @@ class RecordingsTab:
         """Refresh the recordings list from database with caching.
 
         Uses a cache to avoid reloading on every tab switch (saves 500ms-2s).
+        Runs database queries in background thread to avoid blocking UI.
 
         Args:
             force_refresh: Force reload from database ignoring cache
         """
+        # Prevent concurrent refreshes
+        if self._refresh_in_progress:
+            logging.debug("Refresh already in progress, skipping")
+            return
+
         current_time = time.time()
 
         # Check cache first (unless force refresh)
@@ -371,11 +380,16 @@ class RecordingsTab:
 
         # Show loading state for fresh load
         self._show_loading_state()
+        self._refresh_in_progress = True
 
         def task():
             try:
-                # Get recent recordings from database
-                recordings = self.data_provider.get_all_recordings()
+                # Use lightweight query if available (50-100x less data transfer)
+                # Falls back to full query for data providers that don't support it
+                if hasattr(self.data_provider, 'get_recordings_lightweight'):
+                    recordings = self.data_provider.get_recordings_lightweight(limit=500)
+                else:
+                    recordings = self.data_provider.get_all_recordings()
 
                 # Update cache
                 self._recordings_cache = recordings
@@ -384,7 +398,7 @@ class RecordingsTab:
                 # Update UI on main thread - check if parent still exists
                 if self.parent and hasattr(self.parent, 'after'):
                     try:
-                        self.parent.after(0, lambda: self._populate_recordings_tree(recordings))
+                        self.parent.after(0, lambda: self._on_refresh_complete(recordings))
                     except RuntimeError:
                         # Window might be closing
                         pass
@@ -395,13 +409,23 @@ class RecordingsTab:
                     try:
                         # Capture error message immediately (exception var deleted after except block)
                         error_msg = str(e)
-                        self.parent.after(0, lambda msg=error_msg: self._show_error_state(msg))
+                        self.parent.after(0, lambda msg=error_msg: self._on_refresh_error(msg))
                     except RuntimeError:
                         # Window might be closing
                         pass
+            finally:
+                self._refresh_in_progress = False
 
         # Run in background thread
         threading.Thread(target=task, daemon=True).start()
+
+    def _on_refresh_complete(self, recordings: List[Dict[str, Any]]):
+        """Handle successful refresh completion on main thread."""
+        self._populate_recordings_tree(recordings)
+
+    def _on_refresh_error(self, error_msg: str):
+        """Handle refresh error on main thread."""
+        self._show_error_state(error_msg)
 
     def invalidate_recordings_cache(self):
         """Invalidate the recordings cache to force refresh on next access."""

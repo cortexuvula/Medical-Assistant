@@ -133,6 +133,13 @@ class RecordingSchema:
         'timestamp', 'processing_status', 'patient_name'
     )
 
+    # Lightweight columns for list views (minimal data for UI display)
+    # This avoids fetching large text columns (transcript, soap_note, referral, letter)
+    LIGHTWEIGHT_COLUMNS: Tuple[str, ...] = (
+        'id', 'filename', 'patient_name', 'timestamp', 'duration',
+        'processing_status'
+    )
+
     # Full column set for comprehensive queries (22 columns with all migration 4 additions)
     FULL_COLUMNS: Tuple[str, ...] = (
         'id', 'filename', 'transcript', 'soap_note', 'referral', 'letter',
@@ -186,7 +193,9 @@ class RecordingSchema:
             return dict(zip(columns, row))
 
         # Auto-detect based on row length
-        if row_len == len(cls.BASIC_COLUMNS):
+        if row_len == len(cls.LIGHTWEIGHT_COLUMNS):
+            columns = cls.LIGHTWEIGHT_COLUMNS
+        elif row_len == len(cls.BASIC_COLUMNS):
             columns = cls.BASIC_COLUMNS
         elif row_len == len(cls.SELECT_COLUMNS):
             columns = cls.SELECT_COLUMNS
@@ -199,8 +208,9 @@ class RecordingSchema:
         else:
             raise ValueError(
                 f"Row length ({row_len}) doesn't match any known column set. "
-                f"Known lengths: {len(cls.BASIC_COLUMNS)}, {len(cls.SELECT_COLUMNS)}, "
-                f"{len(cls.DB_COLUMNS_16)}, {len(cls.FULL_COLUMNS)}, {len(cls.COLUMN_NAMES)}"
+                f"Known lengths: {len(cls.LIGHTWEIGHT_COLUMNS)}, {len(cls.BASIC_COLUMNS)}, "
+                f"{len(cls.SELECT_COLUMNS)}, {len(cls.DB_COLUMNS_16)}, {len(cls.FULL_COLUMNS)}, "
+                f"{len(cls.COLUMN_NAMES)}"
             )
 
         return dict(zip(columns, row))

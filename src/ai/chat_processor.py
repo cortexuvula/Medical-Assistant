@@ -5,6 +5,7 @@ Handles LLM interactions for conversational AI features
 
 import logging
 import threading
+import time
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
@@ -17,29 +18,47 @@ from ai.tools.tool_registry import tool_registry
 import ai.tools.builtin_tools
 import ai.tools.medical_tools
 # MCP support
-from ai.mcp.mcp_manager import mcp_manager
+from ai.mcp.mcp_manager import mcp_manager, health_monitor
 from ai.mcp.mcp_tool_wrapper import register_mcp_tools
 # Provider constants
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
     PROVIDER_GROK, PROVIDER_OLLAMA
 )
+# Resilience patterns
+from utils.resilience import CircuitBreaker, CircuitState
+from utils.exceptions import ServiceUnavailableError
 
 
 class ChatProcessor:
     """Processes chat messages and handles AI interactions"""
-    
+
     def __init__(self, app):
         """
         Initialize the chat processor.
-        
+
         Args:
             app: Reference to the main application
         """
         self.app = app
         self.is_processing = False
         self.conversation_history = []
-        
+
+        # Typing indicator state
+        self._typing_indicator_mark = None
+        self._typing_animation_id = None
+        self._typing_frames = ["⏳ Assistant is thinking", "⏳ Assistant is thinking.", "⏳ Assistant is thinking..", "⏳ Assistant is thinking..."]
+        self._typing_frame_index = 0
+
+        # Circuit breaker for AI provider resilience
+        # Opens after 5 consecutive failures, recovers after 60 seconds
+        self._ai_circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60,
+            expected_exception=Exception,
+            name="chat_ai_provider"
+        )
+
         # Configuration from settings
         chat_config = SETTINGS.get("chat_interface", {})
         self.max_context_length = chat_config.get("max_context_length", 8000)
@@ -86,40 +105,48 @@ class ChatProcessor:
         """Async processing of chat message."""
         try:
             self.is_processing = True
-            
+
             # Get current context from active tab
             context_data = self._extract_context()
-            
+
             # Check for special chat commands when in chat tab
             if context_data.get("tab_name") == "chat" and self._handle_chat_command(user_message):
                 return  # Command was handled, no need to call AI
-            
+
+            # Show typing indicator while processing
+            self._show_typing_indicator()
+
             # Add user message to history
             self._add_to_history("user", user_message)
-            
+
             # Construct prompt for AI
             prompt = self._construct_prompt(user_message, context_data)
-            
+
             # Get AI response (might include tool usage)
             ai_response, tool_info = self._get_ai_response_with_tools(prompt)
-            
+
+            # Hide typing indicator before showing response
+            self._hide_typing_indicator()
+
             if ai_response:
                 # Add AI response to history
                 self._add_to_history("assistant", ai_response)
-                
+
                 # Process the response (apply changes if requested)
                 self._process_ai_response(user_message, ai_response, context_data, tool_info)
-                
+
             else:
                 self.app.status_manager.error("Failed to get AI response")
-                
+
         except Exception as e:
             logging.error(f"Error processing chat message: {e}", exc_info=True)
             self.app.status_manager.error(f"Chat processing error: {str(e)}")
-            
+            # Hide typing indicator on error
+            self._hide_typing_indicator()
+
         finally:
             self.is_processing = False
-            
+
             # Call callback on main thread
             if callback:
                 self.app.after(0, callback)
@@ -286,95 +313,154 @@ class ChatProcessor:
         response_text, tool_info = self._get_ai_response(prompt)
         return response_text, tool_info
     
-    def _get_ai_response(self, prompt: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
-        """Get response from AI provider."""
-        try:
-            # Extract the actual user message from the prompt
-            # The prompt contains system messages and context, but we need just the user's request
-            user_message = None
-            if "User Request: " in prompt:
-                # Extract the user message from the constructed prompt
-                parts = prompt.split("User Request: ", 1)
-                if len(parts) > 1:
-                    user_message = parts[1].split("\n\n")[0].strip()
-            
-            # Check if we should use the chat agent with tools
-            if user_message and self._should_use_tools(user_message):
-                logging.info("Using chat agent with tools for this request")
-                
-                # Create an agent task with just the user message
-                task = AgentTask(
-                    task_description=user_message,
-                    context=self.get_context_from_history(max_entries=3)
-                )
-                
-                # Execute with chat agent
-                response = self.chat_agent.execute(task)
-                
-                if response.success:
-                    # Log tool usage
-                    if response.tool_calls:
-                        logging.info(f"Used {len(response.tool_calls)} tools")
-                        for tool_call in response.tool_calls:
-                            logging.info(f"Tool: {tool_call.tool_name}")
-                    
-                    # Debug log the response
-                    logging.debug(f"Chat agent response length: {len(response.result) if response.result else 0}")
-                    logging.debug(f"Response preview: {response.result[:200] if response.result else 'None'}...")
-                    
-                    tool_info = {
-                        "tool_calls": response.tool_calls,
-                        "metadata": response.metadata
-                    }
-                    return response.result, tool_info
-                else:
-                    logging.error(f"Chat agent failed: {response.error}")
-                    # Fall back to regular AI
-            
-            # Import AI functions
-            from ai.ai import call_openai, call_perplexity, call_grok, call_ai
-            
-            # Get current AI provider setting
-            provider = SETTINGS.get("ai_provider", "openai").lower()
-            system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
-            
-            if provider == PROVIDER_OPENAI:
-                model = SETTINGS.get("openai", {}).get("model", "gpt-4")
-                response = call_openai(
-                    model=model,
-                    system_message=system_message,
-                    prompt=prompt,
-                    temperature=self.temperature
-                )
-            elif provider == PROVIDER_GROK:
-                model = SETTINGS.get("grok", {}).get("model", "grok-beta")
-                response = call_grok(
-                    model=model,
-                    system_message=system_message,
-                    prompt=prompt,
-                    temperature=self.temperature
-                )
-            elif provider == PROVIDER_PERPLEXITY:
-                response = call_perplexity(
-                    system_message=system_message,
-                    prompt=prompt,
-                    temperature=self.temperature
-                )
+    def _get_ai_response(self, prompt: str, max_retries: int = 3) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Get response from AI provider with retry logic and circuit breaker.
+
+        Args:
+            prompt: The prompt to send to the AI
+            max_retries: Maximum number of retry attempts (default: 3)
+
+        Returns:
+            Tuple of (response_text, tool_info) or (None, None) on failure
+        """
+        # Check circuit breaker state first
+        if self._ai_circuit_breaker.state == CircuitState.OPEN:
+            logging.warning("AI circuit breaker is OPEN - service unavailable")
+            self.app.status_manager.warning(
+                "AI service temporarily unavailable. Please try again in a minute."
+            )
+            return None, None
+
+        # Extract the actual user message from the prompt
+        # The prompt contains system messages and context, but we need just the user's request
+        user_message = None
+        if "User Request: " in prompt:
+            # Extract the user message from the constructed prompt
+            parts = prompt.split("User Request: ", 1)
+            if len(parts) > 1:
+                user_message = parts[1].split("\n\n")[0].strip()
+
+        # Check if we should use the chat agent with tools
+        if user_message and self._should_use_tools(user_message):
+            logging.info("Using chat agent with tools for this request")
+
+            # Create an agent task with just the user message
+            task = AgentTask(
+                task_description=user_message,
+                context=self.get_context_from_history(max_entries=3)
+            )
+
+            # Execute with chat agent (has its own retry logic)
+            response = self.chat_agent.execute(task)
+
+            if response.success:
+                # Record success in circuit breaker
+                self._ai_circuit_breaker._on_success()
+
+                # Log tool usage
+                if response.tool_calls:
+                    logging.info(f"Used {len(response.tool_calls)} tools")
+                    for tool_call in response.tool_calls:
+                        logging.info(f"Tool: {tool_call.tool_name}")
+
+                # Debug log the response
+                logging.debug(f"Chat agent response length: {len(response.result) if response.result else 0}")
+                logging.debug(f"Response preview: {response.result[:200] if response.result else 'None'}...")
+
+                tool_info = {
+                    "tool_calls": response.tool_calls,
+                    "metadata": response.metadata
+                }
+                return response.result, tool_info
             else:
-                # Fallback to generic call_ai function
-                logging.warning(f"Unknown provider '{provider}', using fallback")
-                response = call_ai(
-                    model="gpt-4",
-                    system_message=system_message,
-                    prompt=prompt,
-                    temperature=self.temperature
-                )
-                    
-            return response, None  # No tool info for regular AI calls
-                
-        except Exception as e:
-            logging.error(f"Error getting AI response: {e}", exc_info=True)
-            
+                logging.error(f"Chat agent failed: {response.error}")
+                # Fall back to regular AI (will be handled by the retry loop below)
+
+        # Import AI functions
+        from ai.ai import call_openai, call_perplexity, call_grok, call_ai
+
+        # Get current AI provider setting
+        provider = SETTINGS.get("ai_provider", "openai").lower()
+        system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
+
+        # Retry loop with exponential backoff
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                if provider == PROVIDER_OPENAI:
+                    model = SETTINGS.get("openai", {}).get("model", "gpt-4")
+                    response = call_openai(
+                        model=model,
+                        system_message=system_message,
+                        prompt=prompt,
+                        temperature=self.temperature
+                    )
+                elif provider == PROVIDER_GROK:
+                    model = SETTINGS.get("grok", {}).get("model", "grok-beta")
+                    response = call_grok(
+                        model=model,
+                        system_message=system_message,
+                        prompt=prompt,
+                        temperature=self.temperature
+                    )
+                elif provider == PROVIDER_PERPLEXITY:
+                    response = call_perplexity(
+                        system_message=system_message,
+                        prompt=prompt,
+                        temperature=self.temperature
+                    )
+                else:
+                    # Fallback to generic call_ai function
+                    logging.warning(f"Unknown provider '{provider}', using fallback")
+                    response = call_ai(
+                        model="gpt-4",
+                        system_message=system_message,
+                        prompt=prompt,
+                        temperature=self.temperature
+                    )
+
+                # If we get here, the call succeeded
+                if response:
+                    # Record success in circuit breaker
+                    self._ai_circuit_breaker._on_success()
+                    return response, None  # No tool info for regular AI calls
+                else:
+                    # Empty response, might be a transient issue
+                    raise ValueError("Empty response from AI provider")
+
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+
+                # Check for rate limit or transient errors
+                is_retryable = any(term in error_str for term in [
+                    'rate limit', '429', 'timeout', 'connection',
+                    'temporarily', 'overloaded', '503', '502', '500'
+                ])
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff: 1s, 2s, 4s
+                    wait_time = 2 ** attempt
+                    logging.warning(
+                        f"AI request failed (attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {wait_time}s: {e}"
+                    )
+                    time.sleep(wait_time)
+                elif attempt < max_retries - 1:
+                    # Non-retryable error but still have attempts left
+                    # Try once more with minimal delay
+                    logging.warning(
+                        f"AI request failed (attempt {attempt + 1}/{max_retries}): {e}"
+                    )
+                    time.sleep(0.5)
+                else:
+                    # Final attempt failed - record failure in circuit breaker
+                    self._ai_circuit_breaker._on_failure()
+                    logging.error(
+                        f"AI request failed after {max_retries} attempts: {e}",
+                        exc_info=True
+                    )
+
         return None, None
         
     def _process_ai_response(self, user_message: str, ai_response: str, context_data: Dict[str, Any], tool_info: Dict[str, Any] = None):
@@ -637,7 +723,26 @@ class ChatProcessor:
         """Clear conversation history."""
         self.conversation_history = []
         logging.info("Chat conversation history cleared")
-        
+
+    def get_circuit_breaker_status(self) -> str:
+        """Get the current circuit breaker status.
+
+        Returns:
+            String describing the circuit breaker state.
+        """
+        state = self._ai_circuit_breaker.state
+        return state.value
+
+    def reset_circuit_breaker(self):
+        """Manually reset the circuit breaker to closed state.
+
+        Use this to recover from an open circuit after the underlying
+        issue has been resolved (e.g., API key fixed, service restored).
+        """
+        self._ai_circuit_breaker.reset()
+        logging.info("Chat AI circuit breaker manually reset")
+        self.app.status_manager.success("AI service circuit breaker reset")
+
     def get_history(self) -> list:
         """Get conversation history."""
         return self.conversation_history.copy()
@@ -822,9 +927,94 @@ class ChatProcessor:
             
             self.app.after(0, clear_chat)
             return True
-        
+
         return False
-    
+
+    def _show_typing_indicator(self):
+        """Show a typing indicator in the chat widget while processing."""
+        def show():
+            try:
+                chat_widget = self.app.chat_text
+
+                # Get current content to check if we need separator
+                current_content = chat_widget.get("1.0", "end-1c")
+
+                # Add separator if there's existing content
+                if current_content.strip():
+                    chat_widget.insert("end", "\n" + "="*50 + "\n\n")
+
+                # Mark the position where we inserted the indicator
+                self._typing_indicator_mark = chat_widget.index("end-1c")
+
+                # Insert initial typing indicator
+                chat_widget.insert("end", self._typing_frames[0], "typing_indicator")
+                chat_widget.tag_config("typing_indicator", foreground="#888888", font=("Arial", 10, "italic"))
+
+                # Scroll to bottom
+                chat_widget.see("end")
+
+                # Start animation
+                self._animate_typing_indicator()
+
+            except Exception as e:
+                logging.debug(f"Error showing typing indicator: {e}")
+
+        # Execute on main thread
+        self.app.after(0, show)
+
+    def _animate_typing_indicator(self):
+        """Animate the typing indicator with dots."""
+        def animate():
+            try:
+                if not self._typing_indicator_mark:
+                    return
+
+                chat_widget = self.app.chat_text
+
+                # Delete old indicator text
+                chat_widget.delete(self._typing_indicator_mark, "end-1c")
+
+                # Cycle through frames
+                self._typing_frame_index = (self._typing_frame_index + 1) % len(self._typing_frames)
+
+                # Insert new frame
+                chat_widget.insert(self._typing_indicator_mark, self._typing_frames[self._typing_frame_index], "typing_indicator")
+
+                # Schedule next animation
+                self._typing_animation_id = self.app.after(500, animate)
+
+            except Exception as e:
+                logging.debug(f"Error animating typing indicator: {e}")
+
+        animate()
+
+    def _hide_typing_indicator(self):
+        """Hide the typing indicator."""
+        def hide():
+            try:
+                # Cancel animation
+                if self._typing_animation_id:
+                    try:
+                        self.app.after_cancel(self._typing_animation_id)
+                    except Exception:
+                        pass
+                    self._typing_animation_id = None
+
+                # Remove indicator text if mark exists
+                if self._typing_indicator_mark:
+                    chat_widget = self.app.chat_text
+                    # Delete from mark to end
+                    chat_widget.delete(self._typing_indicator_mark, "end")
+                    self._typing_indicator_mark = None
+
+                self._typing_frame_index = 0
+
+            except Exception as e:
+                logging.debug(f"Error hiding typing indicator: {e}")
+
+        # Execute on main thread
+        self.app.after(0, hide)
+
     def _copy_to_clipboard(self, text: str):
         """Copy text to clipboard."""
         try:
@@ -887,35 +1077,47 @@ class ChatProcessor:
         """Initialize MCP manager and register tools."""
         try:
             mcp_config = SETTINGS.get("mcp_config", {})
-            
+
             # Load MCP servers
             mcp_manager.load_config(mcp_config)
-            
+
             # Register MCP tools with the tool registry
             if mcp_config.get("enabled", False):
                 registered = register_mcp_tools(tool_registry, mcp_manager)
                 if registered > 0:
                     logging.info(f"Registered {registered} MCP tools")
-                    
+
+                # Start health monitor for automatic server recovery
+                health_monitor.start()
+            else:
+                # Stop health monitor if MCP is disabled
+                health_monitor.stop()
+
         except Exception as e:
             logging.error(f"Error initializing MCP: {e}")
     
     def reload_mcp_tools(self):
         """Reload MCP tools after configuration change."""
         try:
+            # Stop health monitor first
+            health_monitor.stop()
+
             # Stop all MCP servers
             mcp_manager.stop_all()
-            
+
+            # Clear restart attempts on reload
+            health_monitor.restart_attempts.clear()
+
             # Clear existing MCP tools
             tool_registry.clear_category("mcp")
-            
-            # Reinitialize
+
+            # Reinitialize (will restart health monitor if enabled)
             self._initialize_mcp()
-            
+
             # Recreate chat agent if tools are enabled
             if self.use_tools:
                 self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
-                
+
         except Exception as e:
             logging.error(f"Error reloading MCP tools: {e}")
     

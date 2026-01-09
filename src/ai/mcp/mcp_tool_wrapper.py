@@ -5,7 +5,9 @@ MCP Tool Wrapper - Bridges MCP tools with the existing tool system
 import logging
 import time
 import threading
-from typing import Dict, Any, Optional
+import hashlib
+import json
+from typing import Dict, Any, Optional, Tuple
 from ai.tools.base_tool import BaseTool, ToolResult
 from ai.agents.models import Tool, ToolParameter
 
@@ -23,6 +25,103 @@ RATE_LIMITS = {
 
 # Lock for thread-safe rate limiting
 rate_limit_lock = threading.Lock()
+
+
+class ResultCache:
+    """LRU cache for MCP tool results with TTL support."""
+
+    def __init__(self, max_size: int = 100, default_ttl: float = 300.0):
+        """Initialize the result cache.
+
+        Args:
+            max_size: Maximum number of cached results
+            default_ttl: Default time-to-live in seconds (5 minutes)
+        """
+        self._cache: Dict[str, Tuple[float, ToolResult]] = {}
+        self._access_order: list = []
+        self._max_size = max_size
+        self._default_ttl = default_ttl
+        self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
+
+    def get(self, key: str) -> Optional[ToolResult]:
+        """Get a cached result if valid.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached ToolResult or None if not found/expired
+        """
+        with self._lock:
+            if key not in self._cache:
+                self._misses += 1
+                return None
+
+            timestamp, result = self._cache[key]
+
+            # Check if expired
+            if time.time() - timestamp > self._default_ttl:
+                del self._cache[key]
+                if key in self._access_order:
+                    self._access_order.remove(key)
+                self._misses += 1
+                return None
+
+            # Update access order
+            if key in self._access_order:
+                self._access_order.remove(key)
+            self._access_order.append(key)
+
+            self._hits += 1
+            logger.debug(f"Cache hit for key: {key[:32]}...")
+            return result
+
+    def set(self, key: str, result: ToolResult) -> None:
+        """Store a result in the cache.
+
+        Args:
+            key: Cache key
+            result: Result to cache
+        """
+        with self._lock:
+            # Evict oldest if at capacity
+            while len(self._cache) >= self._max_size and self._access_order:
+                oldest_key = self._access_order.pop(0)
+                if oldest_key in self._cache:
+                    del self._cache[oldest_key]
+
+            self._cache[key] = (time.time(), result)
+            self._access_order.append(key)
+
+    def clear(self) -> None:
+        """Clear all cached results."""
+        with self._lock:
+            self._cache.clear()
+            self._access_order.clear()
+            logger.info("MCP result cache cleared")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics.
+
+        Returns:
+            Dict with hits, misses, hit rate, and size
+        """
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = (self._hits / total * 100) if total > 0 else 0
+            return {
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": f"{hit_rate:.1f}%",
+                "size": len(self._cache),
+                "max_size": self._max_size
+            }
+
+
+# Global result cache for MCP tools
+result_cache = ResultCache(max_size=100, default_ttl=300.0)
 
 
 class MCPToolWrapper(BaseTool):
@@ -84,12 +183,28 @@ class MCPToolWrapper(BaseTool):
         
         return None
     
-    def execute(self, **kwargs) -> ToolResult:
-        """Execute the MCP tool
-        
+    def _get_cache_key(self, **kwargs) -> str:
+        """Generate a cache key from tool name and arguments.
+
         Args:
             **kwargs: Tool arguments
-            
+
+        Returns:
+            MD5 hash string as cache key
+        """
+        try:
+            args_str = json.dumps(kwargs, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            args_str = str(kwargs)
+        key_content = f"{self.name}:{args_str}"
+        return hashlib.md5(key_content.encode()).hexdigest()
+
+    def execute(self, **kwargs) -> ToolResult:
+        """Execute the MCP tool
+
+        Args:
+            **kwargs: Tool arguments
+
         Returns:
             ToolResult with success status and output
         """
@@ -102,7 +217,20 @@ class MCPToolWrapper(BaseTool):
                     output="",  # Required field
                     error=f"Argument validation failed: {error}"
                 )
-            
+
+            # Check cache first
+            cache_key = self._get_cache_key(**kwargs)
+            cached_result = result_cache.get(cache_key)
+            if cached_result is not None:
+                # Add cache hit indicator to metadata
+                cached_result = ToolResult(
+                    success=cached_result.success,
+                    output=cached_result.output,
+                    error=cached_result.error,
+                    metadata={**cached_result.metadata, "cached": True}
+                )
+                return cached_result
+
             # Check rate limits for this server
             if self.server_name in RATE_LIMITS:
                 with rate_limit_lock:
@@ -201,15 +329,21 @@ class MCPToolWrapper(BaseTool):
             else:
                 output = str(result)
             
-            return ToolResult(
+            tool_result = ToolResult(
                 success=True,
                 output=output,
                 metadata={
                     "server": self.server_name,
-                    "tool": self.original_name
+                    "tool": self.original_name,
+                    "cached": False
                 }
             )
-            
+
+            # Cache successful results
+            result_cache.set(cache_key, tool_result)
+
+            return tool_result
+
         except Exception as e:
             logger.error(f"Error executing MCP tool {self.name}: {e}")
             return ToolResult(

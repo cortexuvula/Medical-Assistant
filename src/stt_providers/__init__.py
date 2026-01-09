@@ -19,6 +19,7 @@ from .elevenlabs import ElevenLabsProvider
 from .deepgram import DeepgramProvider
 from .groq import GroqProvider
 from .whisper import WhisperProvider
+from .failover import STTFailoverManager, create_failover_manager_from_settings
 
 __all__ = [
     'BaseSTTProvider',
@@ -26,5 +27,7 @@ __all__ = [
     'ElevenLabsProvider',
     'DeepgramProvider',
     'GroqProvider',
-    'WhisperProvider'
+    'WhisperProvider',
+    'STTFailoverManager',
+    'create_failover_manager_from_settings'
 ]

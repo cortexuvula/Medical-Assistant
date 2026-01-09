@@ -103,14 +103,29 @@ Remember: ALWAYS use tools for medical information queries to ensure accuracy an
         # Use the global tool registry and executor
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor or ToolExecutor()
-        
+
+        # Track cache version to avoid unnecessary refreshes
+        self._last_cache_version = -1
+
         # Update available tools in config
-        self.config.available_tools = self.tool_registry.get_all_definitions()
-        
-    def refresh_available_tools(self):
-        """Refresh the available tools from the registry."""
-        self.config.available_tools = self.tool_registry.get_all_definitions()
-        logger.info(f"Refreshed available tools. Total: {len(self.config.available_tools)}")
+        self.refresh_available_tools()
+
+    def refresh_available_tools(self) -> bool:
+        """Refresh the available tools from the registry if cache changed.
+
+        Returns:
+            True if tools were refreshed, False if cache was still valid
+        """
+        cache_version, is_cached = self.tool_registry.get_cache_info()
+
+        if cache_version != self._last_cache_version:
+            self.config.available_tools = self.tool_registry.get_all_definitions()
+            self._last_cache_version = cache_version
+            logger.info(f"Refreshed available tools (cache v{cache_version}). Total: {len(self.config.available_tools)}")
+            return True
+
+        logger.debug(f"Tools cache still valid (v{cache_version}), skipping refresh")
+        return False
         
     def execute(self, task: AgentTask) -> AgentResponse:
         """
@@ -135,9 +150,10 @@ Remember: ALWAYS use tools for medical information queries to ensure accuracy an
                 "available_tools_count": len(self.config.available_tools) if self.config.available_tools else 0
             })
             
-            # Refresh available tools before execution
-            self.refresh_available_tools()
-            chat_debugger.log_step("tools_refreshed", {
+            # Refresh available tools before execution (only if cache changed)
+            tools_updated = self.refresh_available_tools()
+            chat_debugger.log_step("tools_checked", {
+                "refreshed": tools_updated,
                 "tool_count": len(self.config.available_tools),
                 "tool_names": [t.name for t in self.config.available_tools] if self.config.available_tools else []
             })

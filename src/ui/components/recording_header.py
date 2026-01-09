@@ -12,20 +12,22 @@ import math
 
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
+from ui.ui_constants import Colors
 from settings.settings import SETTINGS
 
 
 class RecordingHeader:
     """Creates a prominent recording header with button, waveform, and device selector."""
 
-    # Colors for buttons (these are explicit and don't change with theme)
+    # Colors for buttons - using centralized color constants where possible
+    # Some explicit colors remain for specific UI requirements
     COLORS = {
-        "button_bg": "#2196F3",    # Blue button
-        "button_fg": "#ffffff",    # White text
-        "button_recording": "#f44336",  # Red when recording
-        "button_paused": "#FF9800",     # Orange when paused
-        "waveform_idle": "#90CAF9",     # Light blue dots
-        "waveform_active": "#2196F3",   # Blue waveform
+        "button_bg": Colors.INFO,         # Blue button (was #2196F3)
+        "button_fg": "#ffffff",           # White text
+        "button_recording": Colors.RECORDING_ACTIVE,  # Red when recording (was #f44336)
+        "button_paused": Colors.RECORDING_PAUSED,     # Orange when paused (was #FF9800)
+        "waveform_idle": "#90CAF9",       # Light blue dots (specific to waveform)
+        "waveform_active": Colors.INFO,   # Blue waveform (was #2196F3)
     }
 
     def __init__(self, parent_ui):
@@ -384,14 +386,14 @@ class RecordingHeader:
                     bg=self.COLORS["button_recording"]
                 )
                 # Only pause button changes to Resume
-                self._pause_btn.config(text="▶ Resume", bg="#28a745")  # Green
+                self._pause_btn.config(text="▶ Resume", bg=Colors.SUCCESS)  # Green
                 self._pause_timer()
             else:
                 self._record_btn.config(
                     text="⏹  Stop Recording",
                     bg=self.COLORS["button_recording"]
                 )
-                self._pause_btn.config(text="⏸ Pause", bg="#FF9800")  # Orange
+                self._pause_btn.config(text="⏸ Pause", bg=self.COLORS["button_paused"])  # Orange
                 # Check if resuming from pause (has accumulated time) vs fresh start
                 if self._timer_paused_time > 0:
                     self._resume_timer()

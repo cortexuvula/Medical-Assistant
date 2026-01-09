@@ -33,7 +33,7 @@ class ConnectionPool:
     # Constants for shutdown behavior
     CLOSE_TIMEOUT = 10.0  # Maximum time to wait for pool close
     HEALTH_CHECK_TIMEOUT = 1.0  # Timeout for connection health check
-    HEALTH_CHECK_INTERVAL = 60.0  # Skip health check if verified within this many seconds
+    HEALTH_CHECK_INTERVAL = 300.0  # Skip health check if verified within this many seconds (5 minutes)
 
     def __init__(self, database_path: str, pool_size: int = 10, timeout: float = 30.0):
         """Initialize connection pool.

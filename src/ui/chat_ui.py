@@ -199,17 +199,6 @@ class ChatUI:
         )
         self.tools_checkbox.pack(side=tk.LEFT, padx=(10, 5))
         ToolTip(self.tools_checkbox, "Enable AI tools for calculations, file operations, etc.")
-        
-        # MCP Tools button
-        self.mcp_btn = ttk.Button(
-            bottom_row,
-            text="MCP Tools",
-            command=self._show_mcp_config,
-            width=10,
-            bootstyle="warning-outline"
-        )
-        self.mcp_btn.pack(side=tk.LEFT, padx=(5, 0))
-        ToolTip(self.mcp_btn, "Configure MCP (Model Context Protocol) tools")
 
         # Bind events
         self._bind_events()

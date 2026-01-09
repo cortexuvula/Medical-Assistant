@@ -28,7 +28,38 @@ class MCPServer:
     process: Optional[subprocess.Popen] = None
     protocol: Optional['MCPProtocol'] = None
     tools: List[Dict[str, Any]] = None
-    
+    error_log: List[str] = None  # Stores recent stderr output
+
+    def __post_init__(self):
+        """Initialize mutable defaults."""
+        if self.error_log is None:
+            self.error_log = []
+
+    def add_error(self, message: str, max_entries: int = 100) -> None:
+        """Add an error message to the log.
+
+        Args:
+            message: Error message to add
+            max_entries: Maximum log entries to keep
+        """
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.error_log.append(f"[{timestamp}] {message}")
+        # Keep only last N entries
+        if len(self.error_log) > max_entries:
+            self.error_log = self.error_log[-max_entries:]
+
+    def get_error_log(self) -> str:
+        """Get the full error log as a string.
+
+        Returns:
+            Newline-separated error log entries
+        """
+        return "\n".join(self.error_log) if self.error_log else "No errors logged"
+
+    def clear_error_log(self) -> None:
+        """Clear the error log."""
+        self.error_log.clear()
+
     def to_dict(self):
         """Convert to dictionary for settings storage"""
         return {
@@ -41,9 +72,10 @@ class MCPServer:
 
 class MCPProtocol:
     """Handles JSON-RPC 2.0 communication with MCP servers"""
-    
-    def __init__(self, process: subprocess.Popen):
+
+    def __init__(self, process: subprocess.Popen, server: MCPServer = None):
         self.process = process
+        self.server = server  # Reference to store errors
         self.request_id = 0
         self.response_queue = queue.Queue()
         self.reader_thread = threading.Thread(target=self._read_responses, daemon=True)
@@ -84,8 +116,13 @@ class MCPProtocol:
                         logger.warning(f"MCP server stderr reader: process terminated")
                         break
                     continue
-                    
-                logger.info(f"MCP server stderr: {line.strip()}")
+
+                stderr_msg = line.strip()
+                logger.info(f"MCP server stderr: {stderr_msg}")
+
+                # Store in server's error log if available
+                if self.server is not None:
+                    self.server.add_error(stderr_msg)
         except Exception as e:
             logger.error(f"Error reading MCP stderr: {e}")
     
@@ -211,9 +248,9 @@ class MCPManager:
                 )
                 
                 logger.info(f"Started MCP server {name} (PID: {server.process.pid})")
-                
-                # Initialize communication
-                server.protocol = MCPProtocol(server.process)
+
+                # Initialize communication (pass server reference for error logging)
+                server.protocol = MCPProtocol(server.process, server)
                 
                 # Initialize the connection
                 server.protocol.send_request("initialize", {
@@ -375,5 +412,122 @@ class MCPManager:
             self.remove_server(test_name)
 
 
-# Global instance
+class HealthMonitor:
+    """Monitors MCP server health and restarts crashed servers."""
+
+    def __init__(self, mcp_manager: MCPManager, check_interval: float = 30.0, max_restarts: int = 3):
+        """Initialize the health monitor.
+
+        Args:
+            mcp_manager: The MCP manager to monitor
+            check_interval: Seconds between health checks
+            max_restarts: Maximum restart attempts per server
+        """
+        self.mcp_manager = mcp_manager
+        self.check_interval = check_interval
+        self.max_restarts = max_restarts
+        self.restart_attempts: Dict[str, int] = {}
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        """Start the health monitoring thread."""
+        if self._running:
+            return
+
+        self._running = True
+        self._thread = threading.Thread(target=self._monitor_loop, daemon=True, name="MCP-HealthMonitor")
+        self._thread.start()
+        logger.info("MCP Health Monitor started")
+
+    def stop(self) -> None:
+        """Stop the health monitoring thread."""
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        logger.info("MCP Health Monitor stopped")
+
+    def reset_attempts(self, server_name: str) -> None:
+        """Reset restart attempts for a server (call after manual restart).
+
+        Args:
+            server_name: Name of the server to reset
+        """
+        self.restart_attempts[server_name] = 0
+
+    def _monitor_loop(self) -> None:
+        """Main monitoring loop running in background thread."""
+        while self._running:
+            try:
+                self._check_servers()
+            except Exception as e:
+                logger.error(f"Error in health monitor: {e}")
+
+            # Sleep in small intervals to allow quick shutdown
+            for _ in range(int(self.check_interval)):
+                if not self._running:
+                    break
+                time.sleep(1)
+
+    def _check_servers(self) -> None:
+        """Check all servers and restart any that have crashed."""
+        with self.mcp_manager._lock:
+            for name, server in list(self.mcp_manager.servers.items()):
+                if not server.enabled:
+                    continue
+
+                if server.process is None:
+                    # Server was never started, skip
+                    continue
+
+                if server.process.poll() is not None:
+                    # Process has terminated
+                    exit_code = server.process.returncode
+                    logger.warning(f"MCP server '{name}' crashed with exit code {exit_code}")
+                    self._handle_crash(name, server)
+
+    def _handle_crash(self, name: str, server: MCPServer) -> None:
+        """Handle a crashed server with restart logic.
+
+        Args:
+            name: Server name
+            server: Server instance
+        """
+        attempts = self.restart_attempts.get(name, 0)
+
+        if attempts >= self.max_restarts:
+            logger.error(f"MCP server '{name}' exceeded max restarts ({self.max_restarts}). Giving up.")
+            return
+
+        # Exponential backoff: 1s, 2s, 4s, 8s...
+        backoff = 2 ** attempts
+        logger.info(f"Attempting to restart MCP server '{name}' in {backoff}s (attempt {attempts + 1}/{self.max_restarts})")
+
+        # Clean up old process
+        server.process = None
+        server.protocol = None
+        server.tools = None
+
+        # Wait with backoff
+        time.sleep(backoff)
+
+        if not self._running:
+            return
+
+        try:
+            # Release lock temporarily for restart
+            self.mcp_manager._lock.release()
+            try:
+                self.mcp_manager.start_server(name)
+                self.restart_attempts[name] = 0  # Reset on success
+                logger.info(f"Successfully restarted MCP server '{name}'")
+            finally:
+                self.mcp_manager._lock.acquire()
+        except Exception as e:
+            self.restart_attempts[name] = attempts + 1
+            logger.error(f"Failed to restart MCP server '{name}': {e}")
+
+
+# Global instances
 mcp_manager = MCPManager()
+health_monitor = HealthMonitor(mcp_manager)

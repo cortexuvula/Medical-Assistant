@@ -784,6 +784,23 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
+    # Migration 12: Add performance indices for recordings list views
+    migrations.append(Migration(
+        version=12,
+        name="Add performance indices for recordings",
+        up_sql="""
+        -- Add index on patient_name for faster filtering and searches
+        CREATE INDEX IF NOT EXISTS idx_recordings_patient_name ON recordings(patient_name);
+
+        -- Add index on timestamp DESC for faster list ordering (existing index may not have DESC)
+        CREATE INDEX IF NOT EXISTS idx_recordings_timestamp_desc ON recordings(timestamp DESC);
+        """,
+        down_sql="""
+        DROP INDEX IF EXISTS idx_recordings_timestamp_desc;
+        DROP INDEX IF EXISTS idx_recordings_patient_name;
+        """
+    ))
+
     return migrations
 
 

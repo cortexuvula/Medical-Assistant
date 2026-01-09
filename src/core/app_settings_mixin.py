@@ -197,6 +197,24 @@ class AppSettingsMixin:
         from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
         show_unified_settings_dialog(self)
 
+    def show_mcp_config(self) -> None:
+        """Show MCP configuration dialog."""
+        import logging
+        try:
+            from ui.dialogs.mcp_config_dialog import show_mcp_config_dialog
+            from ai.mcp.mcp_manager import mcp_manager
+            from settings.settings import SETTINGS
+
+            # Show dialog and check if configuration was saved
+            if show_mcp_config_dialog(self, mcp_manager, SETTINGS):
+                # Configuration was saved, reload MCP tools
+                if hasattr(self, 'chat_processor') and self.chat_processor:
+                    self.chat_processor.reload_mcp_tools()
+                self.status_manager.success("MCP configuration updated")
+        except Exception as e:
+            logging.error(f"Error showing MCP config dialog: {e}")
+            self.status_manager.error("Failed to open MCP configuration")
+
     def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str,
                              grok_model: str, ollama_model: str, system_prompt: str,
                              anthropic_model: str, gemini_model: str = "") -> None:

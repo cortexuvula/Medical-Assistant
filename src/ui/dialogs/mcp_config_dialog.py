@@ -8,9 +8,64 @@ import ttkbootstrap as ttk
 from tkinter import messagebox, scrolledtext
 import json
 import logging
-from typing import Dict, Any, Optional
+import shutil
+import threading
+from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Popular MCP server presets
+MCP_SERVER_PRESETS = {
+    "Brave Search": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "env": {"BRAVE_API_KEY": "YOUR_API_KEY_HERE"},
+        "enabled": True,
+        "description": "Web search via Brave Search API"
+    },
+    "Filesystem": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"],
+        "env": {},
+        "enabled": True,
+        "description": "Read/write files in allowed directories"
+    },
+    "GitHub": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_TOKEN_HERE"},
+        "enabled": True,
+        "description": "Access GitHub repos, issues, PRs"
+    },
+    "Google Maps": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-google-maps"],
+        "env": {"GOOGLE_MAPS_API_KEY": "YOUR_API_KEY_HERE"},
+        "enabled": True,
+        "description": "Location search and directions"
+    },
+    "Memory": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "env": {},
+        "enabled": True,
+        "description": "Persistent memory across sessions"
+    },
+    "Puppeteer": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+        "env": {},
+        "enabled": True,
+        "description": "Browser automation and screenshots"
+    },
+    "SQLite": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", "/path/to/database.db"],
+        "env": {},
+        "enabled": True,
+        "description": "Query SQLite databases"
+    }
+}
 
 
 class MCPConfigDialog:
@@ -142,7 +197,32 @@ class MCPConfigDialog:
             command=self._test_server,
             bootstyle="warning"
         ).pack(side=tk.LEFT)
-        
+
+        # Add preset button with dropdown
+        preset_btn = ttk.Menubutton(
+            toolbar,
+            text="Add Preset",
+            bootstyle="success-outline"
+        )
+        preset_btn.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Create preset menu
+        preset_menu = tk.Menu(preset_btn, tearoff=0)
+        for preset_name, preset_config in MCP_SERVER_PRESETS.items():
+            preset_menu.add_command(
+                label=f"{preset_name} - {preset_config['description']}",
+                command=lambda n=preset_name, c=preset_config: self._add_preset(n, c)
+            )
+        preset_btn["menu"] = preset_menu
+
+        # View Logs button
+        ttk.Button(
+            toolbar,
+            text="View Logs",
+            command=self._view_server_logs,
+            bootstyle="info-outline"
+        ).pack(side=tk.LEFT, padx=(5, 0))
+
         # Server list
         list_container = ttk.Frame(parent)
         list_container.pack(fill=tk.BOTH, expand=True)
@@ -313,7 +393,49 @@ class MCPConfigDialog:
             
             # Add to list
             self._add_server_to_list(name, config)
-    
+
+    def _add_preset(self, preset_name: str, preset_config: Dict[str, Any]):
+        """Add a server from preset configuration.
+
+        Args:
+            preset_name: Display name of the preset
+            preset_config: Preset configuration dict
+        """
+        # Generate a unique server name
+        base_name = preset_name.lower().replace(" ", "-")
+        name = base_name
+        counter = 1
+
+        # Check for existing servers with same name
+        existing_names = [item_data["name"] for item_data in self.server_items.values()]
+        while name in existing_names:
+            name = f"{base_name}-{counter}"
+            counter += 1
+
+        # Copy config without description
+        config = {
+            "command": preset_config["command"],
+            "args": preset_config["args"].copy(),
+            "env": preset_config["env"].copy(),
+            "enabled": preset_config["enabled"]
+        }
+
+        # Open edit dialog so user can customize (especially API keys and paths)
+        dialog = ServerEditDialog(self.dialog, name, config)
+        if dialog.show():
+            final_name = dialog.name_var.get()
+            final_config = dialog.get_config()
+
+            # Check for duplicate
+            for item_data in self.server_items.values():
+                if item_data["name"] == final_name:
+                    messagebox.showerror("Error", f"Server '{final_name}' already exists")
+                    return
+
+            # Add to list
+            self._add_server_to_list(final_name, final_config)
+            messagebox.showinfo("Preset Added", f"Server '{final_name}' added from preset.\n\nRemember to update any placeholder values (API keys, paths, etc.)")
+
     def _edit_server(self):
         """Edit selected server"""
         selection = self.server_tree.selection()
@@ -360,48 +482,201 @@ class MCPConfigDialog:
         if messagebox.askyesno("Confirm Remove", f"Remove server '{item_data['name']}'?"):
             self.server_tree.delete(item)
             del self.server_items[item]
-    
-    def _test_server(self):
-        """Test selected server connection"""
+
+    def _view_server_logs(self):
+        """View error logs for selected server."""
         selection = self.server_tree.selection()
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a server to test")
+            messagebox.showwarning("No Selection", "Please select a server to view logs", parent=self.dialog)
             return
-        
+
         item = selection[0]
         item_data = self.server_items.get(item)
         if not item_data:
             return
-        
-        # Show progress
+
+        server_name = item_data["name"]
+        server = self.mcp_manager.servers.get(server_name)
+
+        # Create log viewer dialog
+        log_dialog = tk.Toplevel(self.dialog)
+        log_dialog.title(f"Server Logs - {server_name}")
+        dialog_width, dialog_height = ui_scaler.get_dialog_size(600, 400)
+        log_dialog.geometry(f"{dialog_width}x{dialog_height}")
+        log_dialog.transient(self.dialog)
+
+        # Content frame
+        content = ttk.Frame(log_dialog, padding=10)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # Status info
+        if server and server.process:
+            status = "Running" if server.process.poll() is None else f"Stopped (exit code: {server.process.returncode})"
+        else:
+            status = "Not started"
+
+        ttk.Label(
+            content,
+            text=f"Status: {status}",
+            font=("", 10, "bold")
+        ).pack(anchor=tk.W, pady=(0, 5))
+
+        # Log text area
+        log_frame = ttk.Frame(content)
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        log_text = scrolledtext.ScrolledText(
+            log_frame,
+            wrap=tk.WORD,
+            font=("Courier", 9),
+            state=tk.NORMAL
+        )
+        log_text.pack(fill=tk.BOTH, expand=True)
+
+        # Get and display logs
+        if server:
+            log_content = server.get_error_log()
+        else:
+            log_content = "Server not active. Start the server to collect logs."
+
+        log_text.insert("1.0", log_content)
+        log_text.config(state=tk.DISABLED)
+
+        # Scroll to bottom
+        log_text.see(tk.END)
+
+        # Button frame
+        btn_frame = ttk.Frame(content)
+        btn_frame.pack(fill=tk.X)
+
+        def refresh_logs():
+            log_text.config(state=tk.NORMAL)
+            log_text.delete("1.0", tk.END)
+            if server:
+                log_text.insert("1.0", server.get_error_log())
+            log_text.config(state=tk.DISABLED)
+            log_text.see(tk.END)
+
+        def clear_logs():
+            if server:
+                server.clear_error_log()
+                refresh_logs()
+
+        ttk.Button(
+            btn_frame,
+            text="Refresh",
+            command=refresh_logs,
+            bootstyle="info"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            btn_frame,
+            text="Clear Logs",
+            command=clear_logs,
+            bootstyle="warning"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            btn_frame,
+            text="Close",
+            command=log_dialog.destroy,
+            bootstyle="secondary"
+        ).pack(side=tk.RIGHT)
+
+        # Center dialog
+        log_dialog.update_idletasks()
+        x = (log_dialog.winfo_screenwidth() // 2) - (log_dialog.winfo_width() // 2)
+        y = (log_dialog.winfo_screenheight() // 2) - (log_dialog.winfo_height() // 2)
+        log_dialog.geometry(f"+{x}+{y}")
+
+    def _test_server(self):
+        """Test selected server connection (async with cancel option)"""
+        selection = self.server_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a server to test")
+            return
+
+        item = selection[0]
+        item_data = self.server_items.get(item)
+        if not item_data:
+            return
+
+        # Show progress dialog
         progress = ttk.Toplevel(self.dialog)
         progress.title("Testing Connection")
-        progress_width, progress_height = ui_scaler.get_dialog_size(300, 100)
+        progress_width, progress_height = ui_scaler.get_dialog_size(350, 150)
         progress.geometry(f"{progress_width}x{progress_height}")
         progress.transient(self.dialog)
-        
-        ttk.Label(progress, text="Testing MCP server connection...").pack(pady=20)
-        progress_bar = ttk.Progressbar(progress, mode="indeterminate")
-        progress_bar.pack(padx=20, fill=tk.X)
-        progress_bar.start()
-        
+        progress.resizable(False, False)
+
+        # Track if cancelled
+        cancelled = [False]
+
+        # Content frame
+        content = ttk.Frame(progress, padding=15)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            content,
+            text=f"Testing '{item_data['name']}'...",
+            font=("", 11)
+        ).pack(pady=(0, 10))
+
+        progress_bar = ttk.Progressbar(content, mode="indeterminate", length=280)
+        progress_bar.pack(pady=(0, 15))
+        progress_bar.start(10)
+
+        def cancel_test():
+            cancelled[0] = True
+            progress.destroy()
+
+        cancel_btn = ttk.Button(
+            content,
+            text="Cancel",
+            command=cancel_test,
+            bootstyle="secondary",
+            width=10
+        )
+        cancel_btn.pack()
+
         # Center progress dialog
         progress.update_idletasks()
         x = (progress.winfo_screenwidth() // 2) - (progress.winfo_width() // 2)
         y = (progress.winfo_screenheight() // 2) - (progress.winfo_height() // 2)
         progress.geometry(f"+{x}+{y}")
-        
-        # Test in background
-        def test():
-            success, message = self.mcp_manager.test_server(item_data["config"])
-            progress.destroy()
-            
+
+        # Handle window close
+        progress.protocol("WM_DELETE_WINDOW", cancel_test)
+
+        def show_result(success: bool, message: str):
+            """Show test result on main thread"""
+            if cancelled[0]:
+                return
+
+            try:
+                progress.destroy()
+            except tk.TclError:
+                pass  # Dialog already closed
+
             if success:
-                messagebox.showinfo("Test Successful", message)
+                messagebox.showinfo("Test Successful", message, parent=self.dialog)
             else:
-                messagebox.showerror("Test Failed", message)
-        
-        self.dialog.after(100, test)
+                messagebox.showerror("Test Failed", message, parent=self.dialog)
+
+        def run_test():
+            """Run test in background thread"""
+            try:
+                success, message = self.mcp_manager.test_server(item_data["config"])
+                if not cancelled[0]:
+                    # Schedule result display on main thread
+                    self.dialog.after(0, lambda: show_result(success, message))
+            except Exception as e:
+                if not cancelled[0]:
+                    self.dialog.after(0, lambda: show_result(False, str(e)))
+
+        # Start test in background thread
+        test_thread = threading.Thread(target=run_test, daemon=True)
+        test_thread.start()
     
     def _import_json(self):
         """Import JSON configuration"""
@@ -450,20 +725,79 @@ class MCPConfigDialog:
         except Exception as e:
             messagebox.showerror("Import Error", f"Failed to import: {str(e)}")
     
+    def _validate_config(self) -> Tuple[bool, str]:
+        """Validate all server configurations before saving.
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        warnings = []
+
+        for item, item_data in self.server_items.items():
+            config = item_data["config"]
+            name = item_data["name"]
+
+            # Check command exists
+            command = config.get("command", "")
+            if not command:
+                return False, f"Server '{name}': command is required"
+
+            # Check for npx availability if using npx
+            if command in ("npx", "npx.cmd"):
+                if not shutil.which("npx") and not shutil.which("npx.cmd"):
+                    return False, f"Server '{name}': npx not found.\n\nPlease install Node.js from https://nodejs.org"
+
+            # Check for python availability if using python
+            if command in ("python", "python3"):
+                if not shutil.which("python") and not shutil.which("python3"):
+                    return False, f"Server '{name}': Python not found in PATH"
+
+            # Warn about empty API keys (but don't block)
+            env = config.get("env", {})
+            for key, value in env.items():
+                if "API_KEY" in key or "TOKEN" in key or "SECRET" in key:
+                    if not value or value in ("YOUR_API_KEY_HERE", "YOUR_TOKEN_HERE"):
+                        warnings.append(f"Server '{name}': {key} appears to be a placeholder")
+
+            # Warn about placeholder paths
+            args = config.get("args", [])
+            for arg in args:
+                if "/path/to/" in arg or "YOUR_" in arg:
+                    warnings.append(f"Server '{name}': argument '{arg}' appears to be a placeholder")
+
+        # Show warnings but allow save
+        if warnings:
+            warning_msg = "Configuration has potential issues:\n\n" + "\n".join(f"• {w}" for w in warnings[:5])
+            if len(warnings) > 5:
+                warning_msg += f"\n\n...and {len(warnings) - 5} more"
+            warning_msg += "\n\nDo you want to save anyway?"
+
+            if not messagebox.askyesno("Configuration Warnings", warning_msg, parent=self.dialog):
+                return False, ""  # User cancelled, no error message
+
+        return True, ""
+
     def _save_config(self):
         """Save the configuration"""
+        # Validate configuration first
+        is_valid, error_msg = self._validate_config()
+        if not is_valid:
+            if error_msg:  # Only show error if there's a message (not cancelled)
+                messagebox.showerror("Validation Error", error_msg, parent=self.dialog)
+            return
+
         # Build new config
         mcp_config = {
             "enabled": self.enable_var.get(),
             "servers": {}
         }
-        
+
         # Get servers from list
         for item, item_data in self.server_items.items():
             name = item_data["name"]
             config = item_data["config"]
             mcp_config["servers"][name] = config
-        
+
         # Update settings
         self.settings["mcp_config"] = mcp_config
         

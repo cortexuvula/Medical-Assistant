@@ -83,6 +83,8 @@ class BaseResultsDialog(ABC):
         self.source: str = ""
         self.metadata: Dict[str, Any] = {}
         self.logger = logging.getLogger(self.__class__.__module__)
+        self._status_label: Optional[ttk.Label] = None
+        self._status_after_id: Optional[str] = None
 
     @abstractmethod
     def _get_dialog_title(self) -> str:
@@ -389,6 +391,15 @@ class BaseResultsDialog(ABC):
             width=18
         ).pack(side=LEFT)
 
+        # Status label for brief feedback messages
+        self._status_label = ttk.Label(
+            button_frame,
+            text="",
+            font=("Segoe UI", 10),
+            foreground="green"
+        )
+        self._status_label.pack(side=LEFT, padx=(15, 0))
+
         # Close button
         ttk.Button(
             button_frame,
@@ -397,22 +408,46 @@ class BaseResultsDialog(ABC):
             width=15
         ).pack(side=RIGHT)
 
+    def _show_brief_feedback(self, message: str, duration_ms: int = 2000, error: bool = False) -> None:
+        """Show a brief feedback message that auto-dismisses.
+
+        Args:
+            message: The message to display
+            duration_ms: How long to show the message (default: 2 seconds)
+            error: If True, show in red color for errors
+        """
+        if not self._status_label:
+            return
+
+        # Cancel any pending clear
+        if self._status_after_id:
+            try:
+                self.dialog.after_cancel(self._status_after_id)
+            except (tk.TclError, AttributeError):
+                pass
+
+        # Show the message
+        color = "red" if error else "green"
+        self._status_label.config(text=message, foreground=color)
+
+        # Schedule clear
+        def clear_message():
+            try:
+                if self._status_label and self._status_label.winfo_exists():
+                    self._status_label.config(text="")
+            except (tk.TclError, AttributeError):
+                pass
+
+        self._status_after_id = self.dialog.after(duration_ms, clear_message)
+
     def _copy_to_clipboard(self) -> None:
         """Copy the results to clipboard."""
         try:
             pyperclip.copy(self.results_text)
-            messagebox.showinfo(
-                "Copied",
-                "Results copied to clipboard!",
-                parent=self.dialog
-            )
+            self._show_brief_feedback("Copied to clipboard!")
         except Exception as e:
             self.logger.error(f"Error copying to clipboard: {e}")
-            messagebox.showerror(
-                "Error",
-                f"Failed to copy to clipboard: {str(e)}",
-                parent=self.dialog
-            )
+            self._show_brief_feedback(f"Copy failed: {str(e)}", error=True)
 
     def _add_to_document(self, doc_type: str) -> None:
         """Add the results to a document (SOAP note or letter).

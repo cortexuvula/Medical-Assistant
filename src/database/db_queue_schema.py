@@ -30,6 +30,7 @@ ALLOWED_COLUMNS: Dict[str, str] = {
 # Format: index_name -> (table_name, column_expression)
 ALLOWED_INDEXES: Dict[str, Tuple[str, str]] = {
     "idx_recordings_processing_status": ("recordings", "processing_status"),
+    "idx_recordings_patient_name": ("recordings", "patient_name"),
     "idx_processing_queue_status": ("processing_queue", "status"),
     "idx_processing_queue_task_id": ("processing_queue", "task_id"),
     "idx_processing_queue_priority_created": ("processing_queue", "priority DESC, created_at ASC"),

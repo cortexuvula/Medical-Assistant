@@ -230,6 +230,7 @@ class MenuManager:
         ai_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
         ai_menu.add_separator()
         ai_menu.add_command(label="Translation Settings", command=self.app.show_translation_settings)
+        ai_menu.add_command(label="MCP Tools", command=self.app.show_mcp_config)
 
         settings_menu.add_cascade(label="AI & Models", menu=ai_menu)
 

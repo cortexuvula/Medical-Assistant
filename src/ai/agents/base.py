@@ -26,6 +26,9 @@ MAX_AGENT_PROMPT_LENGTH = 50000
 # Maximum system message length
 MAX_SYSTEM_MESSAGE_LENGTH = 10000
 
+# Maximum history entries to keep per agent (prevents memory growth)
+MAX_AGENT_HISTORY_SIZE = 100
+
 
 class BaseAgent(ABC):
     """Abstract base class for all agents.
@@ -178,11 +181,20 @@ class BaseAgent(ABC):
             raise
             
     def add_to_history(self, task: AgentTask, response: AgentResponse):
-        """Add a task and response to the agent's history."""
+        """Add a task and response to the agent's history.
+
+        Automatically prunes old entries when history exceeds MAX_AGENT_HISTORY_SIZE.
+        """
         self.history.append({
             'task': task,
             'response': response
         })
+
+        # Prune old entries if history is too large
+        if len(self.history) > MAX_AGENT_HISTORY_SIZE:
+            # Keep only the most recent entries
+            self.history = self.history[-MAX_AGENT_HISTORY_SIZE:]
+            logger.debug(f"Agent {self.config.name}: Pruned history to {MAX_AGENT_HISTORY_SIZE} entries")
         
     def clear_history(self):
         """Clear the agent's history."""
