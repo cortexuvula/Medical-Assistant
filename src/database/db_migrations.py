@@ -137,26 +137,57 @@ class MigrationManager:
     
     def _apply_migration(self, migration: Migration):
         """Apply a single migration.
-        
+
         Args:
             migration: Migration to apply
         """
         self.logger.info(f"Applying migration {migration.version}: {migration.name}")
-        
+
         with self.db_manager.transaction() as conn:
-            # Execute migration SQL
-            if ";" in migration.up_sql:
-                # Multiple statements
-                conn.executescript(migration.up_sql)
+            # Special handling for migration 12 - conditionally add patient_name column
+            if migration.version == 12:
+                self._apply_migration_12(conn)
             else:
-                # Single statement
-                conn.execute(migration.up_sql)
-            
+                # Execute migration SQL
+                if ";" in migration.up_sql:
+                    # Multiple statements
+                    conn.executescript(migration.up_sql)
+                else:
+                    # Single statement
+                    conn.execute(migration.up_sql)
+
             # Record migration
             conn.execute(
                 "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
                 (migration.version, migration.name)
             )
+
+    def _apply_migration_12(self, conn):
+        """Apply migration 12 with conditional column addition.
+
+        This migration adds the patient_name column if it doesn't exist,
+        then creates performance indices.
+
+        Args:
+            conn: Database connection within transaction
+        """
+        # Check if patient_name column already exists
+        cursor = conn.execute("PRAGMA table_info(recordings)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'patient_name' not in columns:
+            self.logger.info("Adding patient_name column to recordings table")
+            conn.execute("ALTER TABLE recordings ADD COLUMN patient_name TEXT")
+        else:
+            self.logger.info("patient_name column already exists, skipping")
+
+        # Create indices (these use IF NOT EXISTS so they're safe)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recordings_patient_name ON recordings(patient_name)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recordings_timestamp_desc ON recordings(timestamp DESC)"
+        )
     
     def rollback(self, target_version: int = 0) -> int:
         """Rollback migrations to target version.
@@ -784,15 +815,17 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
-    # Migration 12: Add performance indices for recordings list views
+    # Migration 12: Add patient_name column and performance indices
+    # Note: patient_name may already exist in some databases but not others,
+    # so we need a custom migration function to handle this conditionally
     migrations.append(Migration(
         version=12,
-        name="Add performance indices for recordings",
+        name="Add patient_name column and performance indices",
         up_sql="""
-        -- Add index on patient_name for faster filtering and searches
-        CREATE INDEX IF NOT EXISTS idx_recordings_patient_name ON recordings(patient_name);
+        -- First add patient_name column if it doesn't exist (SQLite doesn't have IF NOT EXISTS for columns)
+        -- This will be handled specially in _apply_migration_12
 
-        -- Add index on timestamp DESC for faster list ordering (existing index may not have DESC)
+        -- Add index on timestamp DESC for faster list ordering
         CREATE INDEX IF NOT EXISTS idx_recordings_timestamp_desc ON recordings(timestamp DESC);
         """,
         down_sql="""
