@@ -474,12 +474,15 @@ class DocumentGenerators:
                 response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
 
                 if response and response.success:
+                    # Capture values for closure
+                    _source_text = clinical_findings if clinical_findings else soap_note
                     # Schedule UI update on main thread
                     error_handler.complete(
                         callback=lambda: self._update_diagnostic_display(
                             response.result,
                             source_name,
-                            response.metadata
+                            response.metadata,
+                            source_text=_source_text
                         )
                     )
                 else:
@@ -513,14 +516,31 @@ class DocumentGenerators:
         # Submit task for execution
         self.app.io_executor.submit(task)
     
-    def _update_diagnostic_display(self, analysis: str, source: str, metadata: dict) -> None:
+    def _update_diagnostic_display(
+        self,
+        analysis: str,
+        source: str,
+        metadata: dict,
+        source_text: str = ""
+    ) -> None:
         """Update the UI with diagnostic analysis results.
 
         Note: Progress bar and button state are handled by AsyncUIErrorHandler.
         """
+        # Try to get recording_id from current selection if available
+        recording_id = None
+        if hasattr(self.app, 'selected_recording_id'):
+            recording_id = self.app.selected_recording_id
+
         # Show results in a dialog
         dialog = DiagnosticResultsDialog(self.app)
-        dialog.show_results(analysis, source, metadata)
+        dialog.show_results(
+            analysis,
+            source,
+            metadata,
+            recording_id=recording_id,
+            source_text=source_text
+        )
 
         # Update status
         diff_count = metadata.get('differential_count', 0)
@@ -627,7 +647,8 @@ class DocumentGenerators:
         analysis_type = result.get("analysis_type")
         source = result.get("source")
         custom_medications = result.get("custom_medications", "")
-        
+        patient_context = result.get("patient_context")  # New: patient context from dialog
+
         # Determine content based on source
         if source == "custom" and custom_medications:
             content = custom_medications
@@ -675,6 +696,10 @@ class DocumentGenerators:
                     "analysis_type": analysis_type
                 }
 
+                # Add patient context if provided
+                if patient_context:
+                    input_data["patient_context"] = patient_context
+
                 # For comprehensive analysis, try to parse medications if they look like a list
                 if analysis_type == "comprehensive" and "\n" in content:
                     lines = content.strip().split("\n")
@@ -692,13 +717,18 @@ class DocumentGenerators:
                 response = agent_manager.execute_agent_task(AgentType.MEDICATION, task_data)
 
                 if response and response.success:
+                    # Capture values for closure
+                    _content = content
+                    _patient_context = patient_context
                     # Schedule UI update on main thread
                     error_handler.complete(
                         callback=lambda: self._update_medication_display(
                             response.result,
                             analysis_type,
                             source_name,
-                            response.metadata
+                            response.metadata,
+                            source_text=_content,
+                            patient_context=_patient_context
                         )
                     )
                 else:
@@ -732,7 +762,15 @@ class DocumentGenerators:
         # Submit task for execution
         self.app.io_executor.submit(task)
 
-    def _update_medication_display(self, analysis: dict, analysis_type: str, source: str, metadata: dict) -> None:
+    def _update_medication_display(
+        self,
+        analysis: dict,
+        analysis_type: str,
+        source: str,
+        metadata: dict,
+        source_text: str = "",
+        patient_context: dict = None
+    ) -> None:
         """Update UI with medication analysis results.
 
         Note: Progress bar and button state are handled by AsyncUIErrorHandler.
@@ -740,9 +778,22 @@ class DocumentGenerators:
         # Import here to avoid circular imports
         from ui.dialogs.medication_results_dialog import MedicationResultsDialog
 
+        # Try to get recording_id from current selection if available
+        recording_id = None
+        if hasattr(self.app, 'selected_recording_id'):
+            recording_id = self.app.selected_recording_id
+
         # Show results in a dialog
         dialog = MedicationResultsDialog(self.app)
-        dialog.show_results(analysis, analysis_type, source, metadata)
+        dialog.show_results(
+            analysis,
+            analysis_type,
+            source,
+            metadata,
+            recording_id=recording_id,
+            patient_context=patient_context,
+            source_text=source_text
+        )
 
         # Update status
         med_count = metadata.get('medication_count', 0)

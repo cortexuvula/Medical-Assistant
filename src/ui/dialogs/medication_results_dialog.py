@@ -11,10 +11,11 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, filedialog
 import pyperclip
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 import os
 from utils.pdf_exporter import PDFExporter
+from database.database import Database
 
 
 class MedicationResultsDialog:
@@ -22,7 +23,7 @@ class MedicationResultsDialog:
     
     def __init__(self, parent):
         """Initialize the medication results dialog.
-        
+
         Args:
             parent: Parent window
         """
@@ -33,16 +34,37 @@ class MedicationResultsDialog:
         self.analysis_type = ""
         self.source = ""
         self.metadata = {}
+        self.recording_id: Optional[int] = None
+        self.patient_context: Optional[Dict[str, Any]] = None
+        self.source_text: str = ""
+        self.dialog: Optional[tk.Toplevel] = None
+        self._db: Optional[Database] = None
         
-    def show_results(self, analysis: Any, analysis_type: str, source: str, metadata: Dict):
+    def show_results(
+        self,
+        analysis: Any,
+        analysis_type: str,
+        source: str,
+        metadata: Dict,
+        recording_id: Optional[int] = None,
+        patient_context: Optional[Dict[str, Any]] = None,
+        source_text: str = ""
+    ):
         """Show the medication analysis results.
-        
+
         Args:
             analysis: The medication analysis results (dict or string)
             analysis_type: Type of analysis performed
             source: Source of the analysis (Transcript, SOAP Note, Custom Input)
             metadata: Additional metadata from the analysis
+            recording_id: Optional recording ID to link analysis to
+            patient_context: Optional patient context used for analysis
+            source_text: Original text that was analyzed
         """
+        # Store additional context for saving
+        self.recording_id = recording_id
+        self.patient_context = patient_context
+        self.source_text = source_text
         # Store data for potential export
         self.analysis_data = analysis if isinstance(analysis, dict) else {"analysis": analysis}
         self.analysis_type = analysis_type
@@ -56,7 +78,8 @@ class MedicationResultsDialog:
             self.analysis_text = str(analysis)
         
         # Create dialog window
-        dialog = tk.Toplevel(self.parent)
+        self.dialog = tk.Toplevel(self.parent)
+        dialog = self.dialog
         dialog.title("Medication Analysis Results")
         dialog_width, dialog_height = ui_scaler.get_dialog_size(950, 750)
         dialog.geometry(f"{dialog_width}x{dialog_height}")
@@ -197,8 +220,16 @@ class MedicationResultsDialog:
             command=lambda: self._add_to_document("letter"),
             bootstyle="primary",
             width=18
+        ).pack(side=LEFT, padx=(0, 5))
+
+        ttk.Button(
+            button_frame,
+            text="Save to Database",
+            command=self._save_to_database,
+            bootstyle="secondary",
+            width=18
         ).pack(side=LEFT)
-        
+
         ttk.Button(
             button_frame,
             text="Close",
@@ -266,33 +297,94 @@ class MedicationResultsDialog:
         return "\n".join(formatted)
     
     def _display_formatted_analysis(self, text: str):
-        """Display formatted analysis in the text widget.
-        
+        """Display formatted analysis in the text widget with severity highlighting.
+
         Args:
             text: Formatted analysis text
         """
         self.result_text.config(state=NORMAL)
         self.result_text.delete("1.0", END)
-        
+
         # Configure tags for formatting
         self.result_text.tag_configure("heading", font=("Segoe UI", 12, "bold"), spacing3=5)
         self.result_text.tag_configure("warning", foreground="orange", font=("Segoe UI", 11, "bold"))
         self.result_text.tag_configure("error", foreground="red", font=("Segoe UI", 11, "bold"))
         self.result_text.tag_configure("medication", font=("Segoe UI", 11, "bold"))
         self.result_text.tag_configure("detail", foreground="gray", font=("Segoe UI", 10))
-        
+
+        # Severity color tags for drug interactions
+        self.result_text.tag_configure(
+            "severity_contraindicated",
+            foreground="white",
+            background="#dc3545",  # Red
+            font=("Segoe UI", 11, "bold")
+        )
+        self.result_text.tag_configure(
+            "severity_major",
+            foreground="black",
+            background="#fd7e14",  # Orange
+            font=("Segoe UI", 11, "bold")
+        )
+        self.result_text.tag_configure(
+            "severity_moderate",
+            foreground="black",
+            background="#ffc107",  # Yellow
+            font=("Segoe UI", 11, "bold")
+        )
+        self.result_text.tag_configure(
+            "severity_minor",
+            foreground="white",
+            background="#28a745",  # Green
+            font=("Segoe UI", 11)
+        )
+        self.result_text.tag_configure(
+            "allergy_warning",
+            foreground="white",
+            background="#dc3545",  # Red
+            font=("Segoe UI", 11, "bold")
+        )
+        self.result_text.tag_configure(
+            "renal_warning",
+            foreground="black",
+            background="#17a2b8",  # Teal/Info
+            font=("Segoe UI", 11, "bold")
+        )
+        self.result_text.tag_configure(
+            "hepatic_warning",
+            foreground="white",
+            background="#6f42c1",  # Purple
+            font=("Segoe UI", 11, "bold")
+        )
+
         # Parse and format the text
         lines = text.split('\n')
         for line in lines:
+            line_lower = line.lower()
+
+            # Check for severity indicators in the line
+            severity_tag = self._detect_severity_tag(line_lower)
+
             if line.upper() == line and line.endswith(':') and line.strip():
                 # Heading
                 self.result_text.insert(END, line + '\n', "heading")
-            elif line.startswith('⚠'):
+            elif severity_tag:
+                # Line contains severity indicator - apply colored tag
+                self.result_text.insert(END, line + '\n', severity_tag)
+            elif line.startswith('⚠') or "warning" in line_lower:
                 # Warning
                 self.result_text.insert(END, line + '\n', "warning")
-            elif line.startswith('❌'):
-                # Error
-                self.result_text.insert(END, line + '\n', "error")
+            elif line.startswith('❌') or "contraindicated" in line_lower:
+                # Error/Contraindicated
+                self.result_text.insert(END, line + '\n', "severity_contraindicated")
+            elif "allergy" in line_lower or "allergic" in line_lower:
+                # Allergy warning
+                self.result_text.insert(END, line + '\n', "allergy_warning")
+            elif "renal" in line_lower or "kidney" in line_lower or "egfr" in line_lower:
+                # Renal-related
+                self.result_text.insert(END, line + '\n', "renal_warning")
+            elif "hepatic" in line_lower or "liver" in line_lower or "child-pugh" in line_lower:
+                # Hepatic-related
+                self.result_text.insert(END, line + '\n', "hepatic_warning")
             elif line.startswith('•'):
                 # Medication or bullet point
                 parts = line.split(' ', 1)
@@ -306,8 +398,41 @@ class MedicationResultsDialog:
             else:
                 # Normal text
                 self.result_text.insert(END, line + '\n')
-        
+
         self.result_text.config(state=DISABLED)
+
+    def _detect_severity_tag(self, line: str) -> str:
+        """
+        Detect severity level in a line and return appropriate tag.
+
+        Args:
+            line: Lowercase line text
+
+        Returns:
+            Tag name for severity coloring, or empty string if none detected
+        """
+        # Severity keywords in order of precedence
+        if "contraindicated" in line or "do not use" in line:
+            return "severity_contraindicated"
+        elif "major" in line and ("interaction" in line or "severity" in line):
+            return "severity_major"
+        elif "serious" in line and "interaction" in line:
+            return "severity_major"
+        elif "moderate" in line and ("interaction" in line or "severity" in line):
+            return "severity_moderate"
+        elif "minor" in line and ("interaction" in line or "severity" in line):
+            return "severity_minor"
+        elif "severity:" in line:
+            # Check what follows "severity:"
+            if "contraindicated" in line:
+                return "severity_contraindicated"
+            elif "major" in line or "serious" in line:
+                return "severity_major"
+            elif "moderate" in line:
+                return "severity_moderate"
+            elif "minor" in line or "minimal" in line:
+                return "severity_minor"
+        return ""
     
     def _copy_to_clipboard(self):
         """Copy the analysis to clipboard."""
@@ -477,4 +602,67 @@ class MedicationResultsDialog:
                 "Export Error",
                 f"Failed to export PDF: {str(e)}",
                 parent=self.parent
+            )
+
+    def _get_database(self) -> Database:
+        """Get or create database connection."""
+        if self._db is None:
+            self._db = Database()
+        return self._db
+
+    def _save_to_database(self):
+        """Save the medication analysis to the database."""
+        try:
+            db = self._get_database()
+
+            # Prepare result JSON
+            result_json = None
+            if isinstance(self.analysis_data, dict):
+                result_json = json.dumps(self.analysis_data)
+
+            # Prepare metadata JSON
+            metadata_json = json.dumps(self.metadata) if self.metadata else None
+
+            # Prepare patient context JSON
+            patient_context_json = None
+            if self.patient_context:
+                patient_context_json = json.dumps(self.patient_context)
+
+            # Save to database
+            analysis_id = db.save_analysis_result(
+                analysis_type="medication",
+                result_text=self.analysis_text,
+                recording_id=self.recording_id,
+                analysis_subtype=self.analysis_type,
+                result_json=result_json,
+                metadata_json=metadata_json,
+                patient_context_json=patient_context_json,
+                source_type=self.source,
+                source_text=self.source_text[:5000] if self.source_text else None  # Limit source text
+            )
+
+            if analysis_id:
+                # Build info message
+                info_parts = [f"Medication analysis saved (ID: {analysis_id})"]
+                if self.recording_id:
+                    info_parts.append(f"Linked to recording #{self.recording_id}")
+
+                messagebox.showinfo(
+                    "Saved",
+                    "\n".join(info_parts),
+                    parent=self.dialog if self.dialog else self.parent
+                )
+            else:
+                messagebox.showerror(
+                    "Save Failed",
+                    "Failed to save analysis to database.",
+                    parent=self.dialog if self.dialog else self.parent
+                )
+
+        except Exception as e:
+            logging.error(f"Error saving to database: {str(e)}")
+            messagebox.showerror(
+                "Save Error",
+                f"Failed to save to database: {str(e)}",
+                parent=self.dialog if self.dialog else self.parent
             )

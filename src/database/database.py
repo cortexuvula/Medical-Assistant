@@ -1055,3 +1055,204 @@ class Database:
 
             recordings = cursor.fetchall()
             return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
+
+    # =========================================================================
+    # Analysis Results Methods
+    # =========================================================================
+
+    def save_analysis_result(
+        self,
+        analysis_type: str,
+        result_text: str,
+        recording_id: Optional[int] = None,
+        analysis_subtype: Optional[str] = None,
+        result_json: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        patient_context: Optional[Dict[str, Any]] = None,
+        source_type: Optional[str] = None,
+        source_text: Optional[str] = None
+    ) -> Optional[int]:
+        """
+        Save a medical analysis result to the database.
+
+        Parameters:
+        - analysis_type: Type of analysis ('medication', 'diagnostic', 'workflow')
+        - result_text: The analysis result text
+        - recording_id: Optional link to a recording
+        - analysis_subtype: Subtype (e.g., 'comprehensive', 'interactions')
+        - result_json: Optional structured JSON result
+        - metadata: Optional metadata (model, counts, etc.)
+        - patient_context: Optional patient context used
+        - source_type: Source of analysis ('transcript', 'soap', 'custom')
+        - source_text: The input text that was analyzed
+
+        Returns:
+        - ID of the created analysis result, or None on failure
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("""
+                INSERT INTO analysis_results (
+                    recording_id, analysis_type, analysis_subtype,
+                    result_text, result_json, metadata_json,
+                    patient_context_json, source_type, source_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                recording_id,
+                analysis_type,
+                analysis_subtype,
+                result_text,
+                json.dumps(result_json) if result_json else None,
+                json.dumps(metadata) if metadata else None,
+                json.dumps(patient_context) if patient_context else None,
+                source_type,
+                source_text
+            ))
+            return cursor.lastrowid
+
+    def get_analysis_result(self, analysis_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a single analysis result by ID.
+
+        Parameters:
+        - analysis_id: The analysis result ID
+
+        Returns:
+        - Analysis result dictionary or None if not found
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("""
+                SELECT id, recording_id, analysis_type, analysis_subtype,
+                       result_text, result_json, metadata_json,
+                       patient_context_json, source_type, source_text,
+                       created_at, updated_at
+                FROM analysis_results
+                WHERE id = ?
+            """, (analysis_id,))
+
+            row = cursor.fetchone()
+            if row:
+                return self._parse_analysis_row(row)
+            return None
+
+    def get_analysis_results_for_recording(
+        self,
+        recording_id: int,
+        analysis_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all analysis results for a recording.
+
+        Parameters:
+        - recording_id: The recording ID
+        - analysis_type: Optional filter by analysis type
+
+        Returns:
+        - List of analysis result dictionaries
+        """
+        with self.connection() as (conn, cursor):
+            if analysis_type:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at
+                    FROM analysis_results
+                    WHERE recording_id = ? AND analysis_type = ?
+                    ORDER BY created_at DESC
+                """, (recording_id, analysis_type))
+            else:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at
+                    FROM analysis_results
+                    WHERE recording_id = ?
+                    ORDER BY created_at DESC
+                """, (recording_id,))
+
+            rows = cursor.fetchall()
+            return [self._parse_analysis_row(row) for row in rows]
+
+    def get_recent_analysis_results(
+        self,
+        analysis_type: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent analysis results.
+
+        Parameters:
+        - analysis_type: Optional filter by analysis type
+        - limit: Maximum number of results to return
+
+        Returns:
+        - List of analysis result dictionaries
+        """
+        with self.connection() as (conn, cursor):
+            if analysis_type:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at
+                    FROM analysis_results
+                    WHERE analysis_type = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (analysis_type, limit))
+            else:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at
+                    FROM analysis_results
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+
+            rows = cursor.fetchall()
+            return [self._parse_analysis_row(row) for row in rows]
+
+    def delete_analysis_result(self, analysis_id: int) -> bool:
+        """
+        Delete an analysis result.
+
+        Parameters:
+        - analysis_id: The analysis result ID
+
+        Returns:
+        - True if deleted, False if not found
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("DELETE FROM analysis_results WHERE id = ?", (analysis_id,))
+            return cursor.rowcount > 0
+
+    def _parse_analysis_row(self, row: tuple) -> Dict[str, Any]:
+        """
+        Parse an analysis result database row into a dictionary.
+
+        Parameters:
+        - row: Database row tuple
+
+        Returns:
+        - Parsed dictionary with JSON fields decoded
+        """
+        columns = (
+            'id', 'recording_id', 'analysis_type', 'analysis_subtype',
+            'result_text', 'result_json', 'metadata_json',
+            'patient_context_json', 'source_type', 'source_text',
+            'created_at', 'updated_at'
+        )
+        result = dict(zip(columns, row))
+
+        # Parse JSON fields
+        for json_field in ('result_json', 'metadata_json', 'patient_context_json'):
+            if result.get(json_field):
+                try:
+                    result[json_field] = json.loads(result[json_field])
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Keep as string if parsing fails
+
+        return result

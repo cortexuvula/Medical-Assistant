@@ -44,33 +44,95 @@ Guidelines:
 - Flag abnormal values when reference ranges are known
 - Maintain temporal relationships when dates/times are mentioned
 - If information is ambiguous or unclear, note it as such
-- Organize data by categories for easy review
-
-Output Format:
-Provide extracted data in the following structure:
-1. VITAL SIGNS
-   - Include timestamp if available
-   - List each vital with value and units
-
-2. LABORATORY VALUES
-   - Group by test category (e.g., CBC, Chemistry, etc.)
-   - Include result, units, reference range, and flag if abnormal
-
-3. MEDICATIONS
-   - List each medication with full details
-   - Note if current, discontinued, or new
-
-4. DIAGNOSES
-   - Primary diagnoses first
-   - Include ICD codes in parentheses
-
-5. PROCEDURES
-   - Include dates if mentioned
-   - Note if planned, completed, or pending""",
+- IMPORTANT: Always respond with valid JSON when requested""",
         model="gpt-3.5-turbo",
         temperature=0.0,  # Zero temperature for consistent extraction
-        max_tokens=500  # Increased for comprehensive extraction
+        max_tokens=800  # Increased for comprehensive JSON extraction
     )
+
+    # JSON schema for structured output
+    COMPREHENSIVE_EXTRACTION_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "vital_signs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Vital sign name (e.g., blood_pressure, heart_rate)"},
+                        "value": {"type": "string", "description": "Value with units"},
+                        "systolic": {"type": "number", "description": "Systolic BP if applicable"},
+                        "diastolic": {"type": "number", "description": "Diastolic BP if applicable"},
+                        "unit": {"type": "string"},
+                        "timestamp": {"type": "string"},
+                        "abnormal": {"type": "boolean"}
+                    },
+                    "required": ["name", "value"]
+                }
+            },
+            "laboratory_values": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "test": {"type": "string", "description": "Lab test name"},
+                        "value": {"type": "number"},
+                        "value_text": {"type": "string", "description": "Value as text if non-numeric"},
+                        "unit": {"type": "string"},
+                        "reference_range": {"type": "string"},
+                        "category": {"type": "string", "description": "Category like CBC, Chemistry"},
+                        "abnormal": {"type": "boolean"},
+                        "abnormal_direction": {"type": "string", "enum": ["high", "low", "normal"]}
+                    },
+                    "required": ["test"]
+                }
+            },
+            "medications": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Generic medication name"},
+                        "brand_name": {"type": "string"},
+                        "dosage": {"type": "string"},
+                        "route": {"type": "string"},
+                        "frequency": {"type": "string"},
+                        "status": {"type": "string", "enum": ["current", "new", "discontinued", "prn"]},
+                        "indication": {"type": "string"}
+                    },
+                    "required": ["name"]
+                }
+            },
+            "diagnoses": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                        "icd10_code": {"type": "string"},
+                        "icd9_code": {"type": "string"},
+                        "is_primary": {"type": "boolean"},
+                        "status": {"type": "string", "enum": ["active", "resolved", "chronic"]}
+                    },
+                    "required": ["description"]
+                }
+            },
+            "procedures": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "date": {"type": "string"},
+                        "status": {"type": "string", "enum": ["completed", "planned", "pending"]},
+                        "provider": {"type": "string"},
+                        "location": {"type": "string"}
+                    },
+                    "required": ["name"]
+                }
+            }
+        }
+    }
     
     def __init__(self, config: Optional[AgentConfig] = None, ai_caller: Optional['AICallerProtocol'] = None):
         """
@@ -144,55 +206,174 @@ Provide extracted data in the following structure:
             return "comprehensive"
     
     def _extract_all_data(self, task: AgentTask) -> AgentResponse:
-        """Extract all types of clinical data comprehensively."""
+        """Extract all types of clinical data comprehensively using structured JSON output."""
         clinical_text = self._get_clinical_text(task)
-        
+
         if not clinical_text:
             return AgentResponse(
                 result="",
                 success=False,
                 error="No clinical text provided for data extraction"
             )
-        
-        output_format = task.input_data.get('output_format', 'structured_text')
-        
-        prompt = self._build_comprehensive_extraction_prompt(clinical_text, task.context)
-        
-        # Call AI to extract data
-        extracted_data = self._call_ai(prompt)
-        
-        # Parse the extracted data
-        parsed_data = self._parse_comprehensive_extraction(extracted_data)
-        
+
+        output_format = task.input_data.get('output_format', 'json')
+
+        # Try structured JSON extraction first
+        parsed_data = self._extract_structured_json(clinical_text, task.context)
+
+        if parsed_data is None:
+            # Fallback to text-based extraction if JSON fails
+            logger.warning("Structured JSON extraction failed, falling back to text parsing")
+            prompt = self._build_comprehensive_extraction_prompt(clinical_text, task.context)
+            extracted_text = self._call_ai(prompt)
+            parsed_data = self._parse_comprehensive_extraction(extracted_text)
+
         # Format output based on requested format
         if output_format == 'json':
             result = json.dumps(parsed_data, indent=2)
         elif output_format == 'csv':
             result = self._format_as_csv(parsed_data)
         else:
-            result = extracted_data  # Already in structured text format
-        
+            result = self._format_as_text(parsed_data)
+
         # Count extracted items
         counts = self._count_extracted_items(parsed_data)
-        
+
         # Create response
         response = AgentResponse(
             result=result,
-            thoughts=f"Extracted {counts['total']} clinical data points",
+            thoughts=f"Extracted {counts['total']} clinical data points using structured output",
             success=True,
             metadata={
                 'extraction_type': 'comprehensive',
                 'output_format': output_format,
                 'counts': counts,
                 'parsed_data': parsed_data,
-                'model_used': self.config.model
+                'model_used': self.config.model,
+                'used_structured_output': True
             }
         )
-        
+
         # Add to history
         self.add_to_history(task, response)
-        
+
         return response
+
+    def _extract_structured_json(self, clinical_text: str, context: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Extract clinical data using structured JSON output.
+
+        Args:
+            clinical_text: The clinical text to extract from
+            context: Optional additional context
+
+        Returns:
+            Dictionary of extracted data, or None if extraction failed
+        """
+        prompt_parts = []
+
+        if context:
+            prompt_parts.append(f"Additional Context: {context}\n")
+
+        prompt_parts.append("Extract all structured clinical data from the following medical text.")
+        prompt_parts.append("Return the data as a JSON object with these categories:")
+        prompt_parts.append("- vital_signs: Array of vital signs with name, value, unit")
+        prompt_parts.append("- laboratory_values: Array of lab tests with test name, value, unit, reference range")
+        prompt_parts.append("- medications: Array with name, dosage, route, frequency, status")
+        prompt_parts.append("- diagnoses: Array with description, ICD-10 code, ICD-9 code, is_primary status")
+        prompt_parts.append("- procedures: Array with name, date, status (completed/planned/pending)")
+        prompt_parts.append("\nOnly extract information explicitly stated in the text.")
+        prompt_parts.append(f"\nClinical Text:\n{clinical_text}")
+
+        prompt = "\n".join(prompt_parts)
+
+        try:
+            # Use structured response helper from base class
+            result = self._get_structured_response_with_fallback(
+                prompt=prompt,
+                response_schema=self.COMPREHENSIVE_EXTRACTION_SCHEMA
+            )
+
+            if result and isinstance(result, dict):
+                # Ensure all expected keys exist
+                for key in ['vital_signs', 'laboratory_values', 'medications', 'diagnoses', 'procedures']:
+                    if key not in result:
+                        result[key] = []
+                return result
+
+        except Exception as e:
+            logger.error(f"Error in structured JSON extraction: {e}")
+
+        return None
+
+    def _format_as_text(self, parsed_data: Dict[str, Any]) -> str:
+        """Format parsed data as readable text."""
+        sections = []
+
+        # Vital Signs
+        if parsed_data.get('vital_signs'):
+            sections.append("VITAL SIGNS:")
+            for vital in parsed_data['vital_signs']:
+                name = vital.get('name', 'Unknown')
+                value = vital.get('value', '')
+                unit = vital.get('unit', '')
+                abnormal = " [ABNORMAL]" if vital.get('abnormal') else ""
+                sections.append(f"  - {name}: {value} {unit}{abnormal}")
+
+        # Laboratory Values
+        if parsed_data.get('laboratory_values'):
+            sections.append("\nLABORATORY VALUES:")
+            for lab in parsed_data['laboratory_values']:
+                test = lab.get('test', 'Unknown')
+                value = lab.get('value') or lab.get('value_text', '')
+                unit = lab.get('unit', '')
+                ref = f" (ref: {lab.get('reference_range')})" if lab.get('reference_range') else ""
+                abnormal = " [ABNORMAL]" if lab.get('abnormal') else ""
+                sections.append(f"  - {test}: {value} {unit}{ref}{abnormal}")
+
+        # Medications
+        if parsed_data.get('medications'):
+            sections.append("\nMEDICATIONS:")
+            for med in parsed_data['medications']:
+                name = med.get('name', 'Unknown')
+                dosage = med.get('dosage', '')
+                route = med.get('route', '')
+                freq = med.get('frequency', '')
+                status = f" ({med.get('status')})" if med.get('status') else ""
+                parts = [name]
+                if dosage:
+                    parts.append(dosage)
+                if route:
+                    parts.append(route)
+                if freq:
+                    parts.append(freq)
+                sections.append(f"  - {' '.join(parts)}{status}")
+
+        # Diagnoses
+        if parsed_data.get('diagnoses'):
+            sections.append("\nDIAGNOSES:")
+            for diag in parsed_data['diagnoses']:
+                desc = diag.get('description', 'Unknown')
+                icd10 = diag.get('icd10_code', '')
+                icd9 = diag.get('icd9_code', '')
+                codes = []
+                if icd10:
+                    codes.append(f"ICD-10: {icd10}")
+                if icd9:
+                    codes.append(f"ICD-9: {icd9}")
+                code_str = f" ({', '.join(codes)})" if codes else ""
+                primary = " [PRIMARY]" if diag.get('is_primary') else ""
+                sections.append(f"  - {desc}{code_str}{primary}")
+
+        # Procedures
+        if parsed_data.get('procedures'):
+            sections.append("\nPROCEDURES:")
+            for proc in parsed_data['procedures']:
+                name = proc.get('name', 'Unknown')
+                date = f" on {proc.get('date')}" if proc.get('date') else ""
+                status = f" [{proc.get('status').upper()}]" if proc.get('status') else ""
+                sections.append(f"  - {name}{date}{status}")
+
+        return "\n".join(sections) if sections else "No clinical data extracted."
     
     def _extract_vital_signs(self, task: AgentTask) -> AgentResponse:
         """Extract vital signs from clinical text."""

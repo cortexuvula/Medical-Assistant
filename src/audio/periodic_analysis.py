@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Dict, Any
 import numpy as np
 from pydub import AudioSegment
 
@@ -23,13 +23,18 @@ class PeriodicAnalyzer:
         to prevent blocking application exit.
     """
 
-    def __init__(self, interval_seconds: int = 120):
+    # Default maximum history entries to keep
+    DEFAULT_MAX_HISTORY = 20
+
+    def __init__(self, interval_seconds: int = 120, max_history_items: int = None):
         """Initialize the periodic analyzer.
 
         Args:
             interval_seconds: Interval between analyses in seconds (default: 120 = 2 minutes)
+            max_history_items: Maximum number of analysis results to keep in history
         """
         self.interval_seconds = interval_seconds
+        self.max_history_items = max_history_items or self.DEFAULT_MAX_HISTORY
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._callback_complete = threading.Event()  # Signals when callback finishes
@@ -45,6 +50,9 @@ class PeriodicAnalyzer:
         self._countdown_callback: Optional[Callable[[int], None]] = None
         self._seconds_remaining = 0
 
+        # Analysis history for accumulating results
+        self._analysis_history: List[Dict[str, Any]] = []
+
     @property
     def is_running(self) -> bool:
         """Thread-safe check if analyzer is running."""
@@ -56,6 +64,108 @@ class PeriodicAnalyzer:
         """Thread-safe access to analysis count."""
         with self._lock:
             return self._analysis_count
+
+    @property
+    def analysis_history(self) -> List[Dict[str, Any]]:
+        """Thread-safe access to analysis history.
+
+        Returns:
+            Copy of the analysis history list
+        """
+        with self._lock:
+            return list(self._analysis_history)
+
+    def add_to_history(
+        self,
+        result_text: str,
+        elapsed_seconds: float,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Add an analysis result to the history.
+
+        Args:
+            result_text: The analysis result text
+            elapsed_seconds: Time elapsed since recording started
+            metadata: Optional additional metadata (differentials, red flags, etc.)
+        """
+        with self._lock:
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "elapsed_seconds": elapsed_seconds,
+                "analysis_number": self._analysis_count,
+                "result_text": result_text,
+                "metadata": metadata or {}
+            }
+            self._analysis_history.append(entry)
+
+            # Trim history if exceeded max
+            if len(self._analysis_history) > self.max_history_items:
+                self._analysis_history.pop(0)
+
+            logging.debug(f"Added analysis #{self._analysis_count} to history "
+                         f"(total: {len(self._analysis_history)})")
+
+    def get_history_summary(self) -> Dict[str, Any]:
+        """Get a summary of the analysis history.
+
+        Returns:
+            Dictionary containing summary statistics and condensed history
+        """
+        with self._lock:
+            if not self._analysis_history:
+                return {
+                    "total_analyses": 0,
+                    "entries": [],
+                    "first_analysis": None,
+                    "last_analysis": None,
+                    "total_duration_seconds": 0
+                }
+
+            first = self._analysis_history[0]
+            last = self._analysis_history[-1]
+
+            return {
+                "total_analyses": len(self._analysis_history),
+                "entries": [
+                    {
+                        "analysis_number": entry["analysis_number"],
+                        "timestamp": entry["timestamp"],
+                        "elapsed_seconds": entry["elapsed_seconds"],
+                        "preview": entry["result_text"][:200] + "..." if len(entry["result_text"]) > 200 else entry["result_text"],
+                        "has_metadata": bool(entry.get("metadata"))
+                    }
+                    for entry in self._analysis_history
+                ],
+                "first_analysis": first["timestamp"],
+                "last_analysis": last["timestamp"],
+                "total_duration_seconds": last["elapsed_seconds"]
+            }
+
+    def get_combined_history_text(self) -> str:
+        """Get all analysis results combined as a single text.
+
+        Useful for saving the entire session's analysis to database or file.
+
+        Returns:
+            Combined text of all analyses in the history
+        """
+        with self._lock:
+            if not self._analysis_history:
+                return ""
+
+            parts = []
+            for entry in self._analysis_history:
+                formatted_time = f"{int(entry['elapsed_seconds'] // 60)}:{int(entry['elapsed_seconds'] % 60):02d}"
+                header = f"Analysis #{entry['analysis_number']} (recording time: {formatted_time})"
+                parts.append(f"{header}\n{entry['result_text']}")
+
+            return "\n\n" + "─" * 50 + "\n\n".join(parts)
+
+    def clear_history(self) -> None:
+        """Clear the analysis history."""
+        with self._lock:
+            self._analysis_history.clear()
+            logging.info("Cleared analysis history")
 
     def set_interval(self, seconds: int) -> None:
         """Set the analysis interval.
@@ -92,6 +202,8 @@ class PeriodicAnalyzer:
             self._start_time = time.time()
             self._analysis_count = 0
             self._callback = callback
+            # Clear history for fresh session
+            self._analysis_history.clear()
 
         # Schedule first analysis after interval
         self._schedule_next_analysis()

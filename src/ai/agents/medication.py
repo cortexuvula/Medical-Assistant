@@ -332,16 +332,17 @@ For interaction checks, categorize as:
         clinical_text = task.input_data.get('clinical_text', '')
         soap_note = task.input_data.get('soap_note', '')
         current_medications = task.input_data.get('current_medications', [])
-        
+        patient_context = task.input_data.get('patient_context', {})
+
         text_to_analyze = clinical_text or soap_note
-        
+
         prompt = self._build_comprehensive_prompt(
-            text_to_analyze, current_medications, task.context
+            text_to_analyze, current_medications, task.context, patient_context
         )
         
         # Call AI for comprehensive analysis
         analysis = self._call_ai(prompt)
-        
+
         # Create response
         response = AgentResponse(
             result=analysis,
@@ -350,6 +351,9 @@ For interaction checks, categorize as:
             metadata={
                 'analysis_type': 'comprehensive',
                 'has_current_medications': bool(current_medications),
+                'has_patient_context': bool(patient_context),
+                'patient_age': patient_context.get('age'),
+                'patient_allergies': patient_context.get('allergies', []),
                 'model_used': self.config.model
             }
         )
@@ -504,38 +508,105 @@ For interaction checks, categorize as:
         
         return "\n".join(prompt_parts)
     
+    def _format_patient_context(self, patient_context: Dict[str, Any]) -> str:
+        """
+        Format patient context for inclusion in prompts.
+
+        Args:
+            patient_context: Dictionary with patient factors
+
+        Returns:
+            Formatted string for prompt inclusion, or empty string if no context
+        """
+        if not patient_context:
+            return ""
+
+        parts = ["\nPATIENT FACTORS (IMPORTANT - Consider these in your analysis):"]
+
+        if 'age' in patient_context:
+            age = patient_context['age']
+            parts.append(f"- Age: {age} years")
+            if age < 12:
+                parts.append("  ⚠️ PEDIATRIC patient - use pediatric dosing")
+            elif age >= 65:
+                parts.append("  ⚠️ GERIATRIC patient - consider reduced dosing, increased fall risk")
+
+        if 'weight_kg' in patient_context:
+            weight = patient_context['weight_kg']
+            parts.append(f"- Weight: {weight} kg")
+            if weight < 50:
+                parts.append("  ⚠️ Low body weight - may need dose reduction")
+
+        if 'egfr' in patient_context:
+            egfr = patient_context['egfr']
+            parts.append(f"- eGFR: {egfr} mL/min")
+            if egfr < 30:
+                parts.append("  ⚠️ SEVERE renal impairment (CKD Stage 4-5) - significant dose adjustments likely needed")
+            elif egfr < 60:
+                parts.append("  ⚠️ MODERATE renal impairment (CKD Stage 3) - dose adjustments may be needed")
+            elif egfr < 90:
+                parts.append("  Note: Mild renal impairment (CKD Stage 2)")
+
+        if 'hepatic_function' in patient_context:
+            hepatic = patient_context['hepatic_function']
+            parts.append(f"- Hepatic function: {hepatic}")
+            if 'Child-Pugh C' in hepatic:
+                parts.append("  ⚠️ SEVERE hepatic impairment - many medications contraindicated")
+            elif 'Child-Pugh B' in hepatic:
+                parts.append("  ⚠️ MODERATE hepatic impairment - significant dose reductions needed")
+            elif 'Child-Pugh A' in hepatic:
+                parts.append("  Note: Mild hepatic impairment - monitor closely")
+
+        if 'allergies' in patient_context and patient_context['allergies']:
+            allergies = patient_context['allergies']
+            parts.append(f"- Known allergies: {', '.join(allergies)}")
+            parts.append("  ⚠️ CHECK for cross-reactivity with any recommended medications!")
+
+        return "\n".join(parts)
+
     def _build_comprehensive_prompt(
         self,
         text: str,
         current_medications: List[str],
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        patient_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """Build prompt for comprehensive analysis."""
         prompt_parts = []
-        
+
         if context:
             prompt_parts.append(f"Additional Context: {context}\n")
-        
-        prompt_parts.append("Perform a comprehensive medication analysis for the following:")
-        
+
+        # Add patient context prominently at the top
+        if patient_context:
+            patient_info = self._format_patient_context(patient_context)
+            if patient_info:
+                prompt_parts.append(patient_info)
+
+        prompt_parts.append("\nPerform a comprehensive medication analysis for the following:")
+
         if text:
             prompt_parts.append(f"\nClinical Text:\n{text}")
-        
+
         if current_medications:
             prompt_parts.append("\nCurrent Medications:")
             for med in current_medications:
                 prompt_parts.append(f"- {med}")
-        
+
         prompt_parts.append("\nProvide analysis including:")
         prompt_parts.append("1. All medications mentioned or implied")
         prompt_parts.append("2. Potential drug interactions")
-        prompt_parts.append("3. Dosing appropriateness")
+        prompt_parts.append("3. Dosing appropriateness (ESPECIALLY given patient factors above)")
         prompt_parts.append("4. Missing medications for conditions mentioned")
         prompt_parts.append("5. Optimization opportunities")
-        prompt_parts.append("6. Safety concerns")
-        prompt_parts.append("7. Monitoring requirements\n")
-        prompt_parts.append("Comprehensive Medication Analysis:")
-        
+        prompt_parts.append("6. Safety concerns (CHECK ALLERGIES if provided)")
+        prompt_parts.append("7. Monitoring requirements")
+        if patient_context and patient_context.get('egfr'):
+            prompt_parts.append("8. Renal dose adjustments needed")
+        if patient_context and patient_context.get('hepatic_function'):
+            prompt_parts.append("9. Hepatic dose adjustments needed")
+        prompt_parts.append("\nComprehensive Medication Analysis:")
+
         return "\n".join(prompt_parts)
     
     def _parse_medication_list(self, text: str) -> List[Dict[str, str]]:

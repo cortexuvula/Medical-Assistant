@@ -7,8 +7,11 @@ standard implementation that lazily loads AI functions.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, TYPE_CHECKING, List
 import logging
+import json
+import hashlib
+import time
 
 from .models import AgentConfig, AgentTask, AgentResponse
 from .ai_caller import AICallerProtocol, get_default_ai_caller
@@ -28,6 +31,10 @@ MAX_SYSTEM_MESSAGE_LENGTH = 10000
 
 # Maximum history entries to keep per agent (prevents memory growth)
 MAX_AGENT_HISTORY_SIZE = 100
+
+# Cache settings for agent responses
+AGENT_CACHE_TTL_SECONDS = 300  # 5 minutes
+MAX_CACHE_ENTRIES = 50  # Maximum cached responses per agent
 
 
 class BaseAgent(ABC):
@@ -50,6 +57,10 @@ class BaseAgent(ABC):
         self.config = config
         self.history: list = []
         self._ai_caller = ai_caller or get_default_ai_caller()
+
+        # Response cache: {hash: (response, timestamp)}
+        self._response_cache: Dict[str, tuple] = {}
+        self._cache_enabled = True
         
     @abstractmethod
     def execute(self, task: AgentTask) -> AgentResponse:
@@ -219,11 +230,329 @@ class BaseAgent(ABC):
         for entry in recent_history:
             task = entry['task']
             response = entry['response']
-            
+
             context_parts.append(f"Task: {task.task_description}")
             if task.context:
                 context_parts.append(f"Context: {task.context}")
             context_parts.append(f"Result: {response.result}")
             context_parts.append("")  # Empty line between entries
-            
+
         return "\n".join(context_parts)
+
+    # =========================================================================
+    # Structured Output Methods
+    # =========================================================================
+
+    def _get_structured_response(
+        self,
+        prompt: str,
+        response_schema: Dict[str, Any],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get AI response in structured JSON format.
+
+        This method instructs the AI to return a JSON response matching the provided
+        schema, then parses and validates the response.
+
+        Args:
+            prompt: The prompt to send to the AI
+            response_schema: JSON schema describing the expected response structure.
+                           Used to instruct the AI on the output format.
+            **kwargs: Additional arguments for the AI call
+
+        Returns:
+            Parsed JSON response as a dictionary
+
+        Raises:
+            ValueError: If the AI response is not valid JSON
+            json.JSONDecodeError: If JSON parsing fails
+
+        Example:
+            schema = {
+                "medications": [{"name": "str", "dose": "str", "frequency": "str"}],
+                "interactions": [{"drug1": "str", "drug2": "str", "severity": "str"}]
+            }
+            result = self._get_structured_response(prompt, schema)
+        """
+        # Build enhanced system message requesting JSON output
+        base_system_message = kwargs.get('system_message', self.config.system_prompt) or ""
+
+        json_instruction = f"""
+{base_system_message}
+
+CRITICAL: You MUST respond with ONLY valid JSON. No additional text, explanations, or markdown.
+
+Expected JSON structure:
+```json
+{json.dumps(response_schema, indent=2)}
+```
+
+Rules:
+1. Output ONLY the JSON object, starting with {{ and ending with }}
+2. Do not include ```json or ``` markers
+3. Ensure all strings are properly escaped
+4. Use null for missing optional values
+5. Arrays can be empty [] if no items match
+"""
+
+        # Override system message with JSON-aware version
+        kwargs['system_message'] = json_instruction
+
+        # Call AI and parse response
+        response_text = self._call_ai(prompt, **kwargs)
+
+        # Clean up response - remove any markdown code blocks
+        cleaned_response = self._clean_json_response(response_text)
+
+        try:
+            parsed = json.loads(cleaned_response)
+            logger.debug(f"Agent {self.config.name}: Successfully parsed structured response")
+            return parsed
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"Agent {self.config.name}: Failed to parse JSON response. "
+                f"Error: {e}. Response: {cleaned_response[:500]}..."
+            )
+            # Attempt recovery by extracting JSON from response
+            recovered = self._extract_json_from_text(response_text)
+            if recovered:
+                logger.info(f"Agent {self.config.name}: Recovered JSON from response")
+                return recovered
+            raise ValueError(f"AI response was not valid JSON: {e}")
+
+    def _clean_json_response(self, response: str) -> str:
+        """
+        Clean up AI response to extract pure JSON.
+
+        Removes markdown code blocks, leading/trailing whitespace, and other
+        common formatting issues.
+
+        Args:
+            response: Raw AI response text
+
+        Returns:
+            Cleaned JSON string
+        """
+        cleaned = response.strip()
+
+        # Remove markdown code blocks
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+
+        cleaned = cleaned.strip()
+
+        # Find the JSON object boundaries
+        start_idx = cleaned.find('{')
+        end_idx = cleaned.rfind('}')
+
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            cleaned = cleaned[start_idx:end_idx + 1]
+
+        return cleaned
+
+    def _extract_json_from_text(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Attempt to extract JSON object from mixed text response.
+
+        Args:
+            text: Text that may contain JSON
+
+        Returns:
+            Parsed JSON dict if found, None otherwise
+        """
+        # Try to find JSON object in the text
+        brace_count = 0
+        start_idx = None
+
+        for i, char in enumerate(text):
+            if char == '{':
+                if start_idx is None:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx is not None:
+                    try:
+                        json_str = text[start_idx:i + 1]
+                        return json.loads(json_str)
+                    except json.JSONDecodeError:
+                        start_idx = None
+                        continue
+
+        return None
+
+    def _get_structured_response_with_fallback(
+        self,
+        prompt: str,
+        response_schema: Dict[str, Any],
+        fallback_parser: Optional[callable] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Get structured response with optional fallback to text parsing.
+
+        This is a robust version that falls back to a custom parser if
+        JSON parsing fails entirely.
+
+        Args:
+            prompt: The prompt to send to the AI
+            response_schema: Expected JSON structure
+            fallback_parser: Optional function(text) -> dict that parses free text
+            **kwargs: Additional arguments for AI call
+
+        Returns:
+            Parsed response as dictionary
+
+        Raises:
+            ValueError: If both JSON parsing and fallback parser fail
+        """
+        try:
+            return self._get_structured_response(prompt, response_schema, **kwargs)
+        except (ValueError, json.JSONDecodeError) as e:
+            if fallback_parser:
+                logger.info(
+                    f"Agent {self.config.name}: JSON parsing failed, using fallback parser"
+                )
+                # Get raw response for fallback parsing
+                raw_response = self._call_ai(prompt, **kwargs)
+                return fallback_parser(raw_response)
+            raise
+
+    # =========================================================================
+    # Response Caching Methods
+    # =========================================================================
+
+    def _compute_cache_key(self, prompt: str, **kwargs) -> str:
+        """
+        Compute a cache key for the given prompt and parameters.
+
+        Args:
+            prompt: The prompt text
+            **kwargs: Additional parameters that affect the response
+
+        Returns:
+            SHA256 hash string as cache key
+        """
+        # Include relevant parameters that would change the response
+        key_parts = [
+            prompt,
+            str(kwargs.get('model', self.config.model)),
+            str(kwargs.get('temperature', self.config.temperature)),
+            str(kwargs.get('system_message', '')[:500])  # First 500 chars of system message
+        ]
+        key_string = '|'.join(key_parts)
+        return hashlib.sha256(key_string.encode()).hexdigest()
+
+    def _get_cached_response(self, cache_key: str) -> Optional[str]:
+        """
+        Get a cached response if it exists and hasn't expired.
+
+        Args:
+            cache_key: The cache key to look up
+
+        Returns:
+            Cached response string, or None if not found/expired
+        """
+        if not self._cache_enabled:
+            return None
+
+        if cache_key in self._response_cache:
+            response, timestamp = self._response_cache[cache_key]
+            if time.time() - timestamp < AGENT_CACHE_TTL_SECONDS:
+                logger.debug(f"Agent {self.config.name}: Cache hit for key {cache_key[:16]}...")
+                return response
+            else:
+                # Cache entry expired, remove it
+                del self._response_cache[cache_key]
+                logger.debug(f"Agent {self.config.name}: Cache entry expired for key {cache_key[:16]}...")
+
+        return None
+
+    def _cache_response(self, cache_key: str, response: str):
+        """
+        Cache a response with the current timestamp.
+
+        Args:
+            cache_key: The cache key
+            response: The response to cache
+        """
+        if not self._cache_enabled:
+            return
+
+        # Prune cache if too large
+        if len(self._response_cache) >= MAX_CACHE_ENTRIES:
+            self._prune_cache()
+
+        self._response_cache[cache_key] = (response, time.time())
+        logger.debug(f"Agent {self.config.name}: Cached response for key {cache_key[:16]}...")
+
+    def _prune_cache(self):
+        """Remove expired and oldest cache entries to stay under limit."""
+        current_time = time.time()
+
+        # First, remove all expired entries
+        expired_keys = [
+            key for key, (_, timestamp) in self._response_cache.items()
+            if current_time - timestamp >= AGENT_CACHE_TTL_SECONDS
+        ]
+        for key in expired_keys:
+            del self._response_cache[key]
+
+        # If still too large, remove oldest entries
+        while len(self._response_cache) >= MAX_CACHE_ENTRIES:
+            oldest_key = min(
+                self._response_cache.keys(),
+                key=lambda k: self._response_cache[k][1]
+            )
+            del self._response_cache[oldest_key]
+
+        logger.debug(f"Agent {self.config.name}: Pruned cache to {len(self._response_cache)} entries")
+
+    def _call_ai_cached(self, prompt: str, **kwargs) -> str:
+        """
+        Call AI with caching support.
+
+        Checks cache first, returns cached response if valid.
+        Otherwise calls AI and caches the response.
+
+        Args:
+            prompt: The prompt to send
+            **kwargs: Additional arguments for the AI call
+
+        Returns:
+            AI response text (from cache or fresh)
+        """
+        cache_key = self._compute_cache_key(prompt, **kwargs)
+
+        # Check cache first
+        cached = self._get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
+        # Call AI and cache result
+        response = self._call_ai(prompt, **kwargs)
+        self._cache_response(cache_key, response)
+        return response
+
+    def clear_cache(self):
+        """Clear all cached responses."""
+        self._response_cache.clear()
+        logger.debug(f"Agent {self.config.name}: Cache cleared")
+
+    def set_cache_enabled(self, enabled: bool):
+        """
+        Enable or disable response caching.
+
+        Args:
+            enabled: Whether caching should be enabled
+        """
+        self._cache_enabled = enabled
+        if not enabled:
+            self.clear_cache()
+        logger.debug(f"Agent {self.config.name}: Caching {'enabled' if enabled else 'disabled'}")

@@ -11,9 +11,11 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, filedialog
 import pyperclip
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
+import json
 import os
 from utils.pdf_exporter import PDFExporter
+from database.database import Database
 
 
 class DiagnosticResultsDialog:
@@ -21,7 +23,7 @@ class DiagnosticResultsDialog:
     
     def __init__(self, parent):
         """Initialize the diagnostic results dialog.
-        
+
         Args:
             parent: Parent window
         """
@@ -29,22 +31,37 @@ class DiagnosticResultsDialog:
         self.analysis_text = ""
         self.source = ""
         self.metadata = {}
-        self.dialog = None
+        self.dialog: Optional[tk.Toplevel] = None
+        self.recording_id: Optional[int] = None
+        self.source_text: str = ""
+        self._db: Optional[Database] = None
         
-    def show_results(self, analysis: str, source: str, metadata: Dict):
+    def show_results(
+        self,
+        analysis: str,
+        source: str,
+        metadata: Dict,
+        recording_id: Optional[int] = None,
+        source_text: str = ""
+    ):
         """Show the diagnostic analysis results.
-        
+
         Args:
             analysis: The diagnostic analysis text
             source: Source of the analysis (Transcript, SOAP Note, Custom Input)
             metadata: Additional metadata from the analysis
+            recording_id: Optional recording ID to link analysis to
+            source_text: Original text that was analyzed
         """
         self.analysis_text = analysis
         self.source = source
         self.metadata = metadata
+        self.recording_id = recording_id
+        self.source_text = source_text
         
         # Create dialog window
-        dialog = tk.Toplevel(self.parent)
+        self.dialog = tk.Toplevel(self.parent)
+        dialog = self.dialog
         dialog.title("Diagnostic Analysis Results")
         dialog_width, dialog_height = ui_scaler.get_dialog_size(900, 700)
         dialog.geometry(f"{dialog_width}x{dialog_height}")
@@ -172,8 +189,16 @@ class DiagnosticResultsDialog:
             command=lambda: self._add_to_document("letter"),
             bootstyle="primary",
             width=20
+        ).pack(side=LEFT, padx=(0, 5))
+
+        ttk.Button(
+            button_frame,
+            text="Save to Database",
+            command=self._save_to_database,
+            bootstyle="secondary",
+            width=18
         ).pack(side=LEFT)
-        
+
         ttk.Button(
             button_frame,
             text="Close",
@@ -479,3 +504,69 @@ class DiagnosticResultsDialog:
             data["investigations"] = [line.strip("- •") for line in content if line.strip()]
         elif section == "clinical_pearls":
             data["clinical_pearls"] = [line.strip("- •") for line in content if line.strip()]
+
+    def _get_database(self) -> Database:
+        """Get or create database connection."""
+        if self._db is None:
+            self._db = Database()
+        return self._db
+
+    def _save_to_database(self):
+        """Save the diagnostic analysis to the database."""
+        try:
+            db = self._get_database()
+
+            # Parse structured data from analysis
+            parsed_data = self._parse_diagnostic_analysis(self.analysis_text)
+
+            # Prepare result JSON
+            result_json = json.dumps(parsed_data)
+
+            # Prepare metadata JSON with ICD validation results if available
+            metadata_dict = dict(self.metadata) if self.metadata else {}
+            if 'icd_validation_results' in metadata_dict:
+                # Already included from agent
+                pass
+            metadata_json = json.dumps(metadata_dict) if metadata_dict else None
+
+            # Save to database
+            analysis_id = db.save_analysis_result(
+                analysis_type="diagnostic",
+                result_text=self.analysis_text,
+                recording_id=self.recording_id,
+                analysis_subtype="differential",
+                result_json=result_json,
+                metadata_json=metadata_json,
+                patient_context_json=None,  # Diagnostic doesn't have patient context yet
+                source_type=self.source,
+                source_text=self.source_text[:5000] if self.source_text else None
+            )
+
+            if analysis_id:
+                # Build info message
+                info_parts = [f"Diagnostic analysis saved (ID: {analysis_id})"]
+                if self.recording_id:
+                    info_parts.append(f"Linked to recording #{self.recording_id}")
+                diff_count = self.metadata.get('differential_count', 0)
+                if diff_count:
+                    info_parts.append(f"Contains {diff_count} differential diagnoses")
+
+                messagebox.showinfo(
+                    "Saved",
+                    "\n".join(info_parts),
+                    parent=self.dialog if self.dialog else self.parent
+                )
+            else:
+                messagebox.showerror(
+                    "Save Failed",
+                    "Failed to save analysis to database.",
+                    parent=self.dialog if self.dialog else self.parent
+                )
+
+        except Exception as e:
+            logging.error(f"Error saving to database: {str(e)}")
+            messagebox.showerror(
+                "Save Error",
+                f"Failed to save to database: {str(e)}",
+                parent=self.dialog if self.dialog else self.parent
+            )

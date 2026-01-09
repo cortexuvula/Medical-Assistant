@@ -165,6 +165,7 @@ class PeriodicAnalysisController:
 
                 # Track differential evolution
                 evolution_text = ""
+                current_differentials = []
                 try:
                     # Parse differentials from the result
                     current_differentials = self.differential_tracker.parse_differentials(result_text)
@@ -192,6 +193,19 @@ class PeriodicAnalysisController:
                     f"{result_text}"
                     f"{evolution_text}"
                 )
+
+                # Add to history for persistence and retrieval
+                if self.app.periodic_analyzer:
+                    metadata = {
+                        "differentials": [d.__dict__ if hasattr(d, '__dict__') else str(d) for d in current_differentials],
+                        "differential_count": len(current_differentials),
+                        "has_evolution": bool(evolution_text)
+                    }
+                    self.app.periodic_analyzer.add_to_history(
+                        result_text=result_text + evolution_text,
+                        elapsed_seconds=elapsed_time,
+                        metadata=metadata
+                    )
 
                 # Update UI on main thread using accumulated display
                 self.app.after(0, lambda: self.update_analysis_display(analysis_text))
@@ -239,17 +253,41 @@ class PeriodicAnalysisController:
             # Clear differential tracker
             self.differential_tracker.clear()
 
+            # Clear analyzer history if available
+            if self.app.periodic_analyzer:
+                self.app.periodic_analyzer.clear_history()
+
             # Use RecordTab's clear method which shows empty state hint
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
                 record_tab = self.app.ui.record_tab
                 if hasattr(record_tab, '_clear_analysis'):
                     record_tab._clear_analysis()
-                    logging.info("Cleared advanced analysis text and differential tracker")
+                    logging.info("Cleared advanced analysis text, differential tracker, and history")
                     return
 
             # Fallback to direct clear
             if 'record_notes_text' in self.app.ui.components:
                 self.app.ui.components['record_notes_text'].delete('1.0', tk.END)
-                logging.info("Cleared advanced analysis text and differential tracker")
+                logging.info("Cleared advanced analysis text, differential tracker, and history")
         except Exception as e:
             logging.error(f"Error clearing advanced analysis text: {e}")
+
+    def get_analysis_history(self) -> dict:
+        """Get the analysis history summary.
+
+        Returns:
+            Dictionary containing analysis history summary, or empty dict if no analyzer
+        """
+        if self.app.periodic_analyzer:
+            return self.app.periodic_analyzer.get_history_summary()
+        return {"total_analyses": 0, "entries": []}
+
+    def get_combined_analysis_text(self) -> str:
+        """Get all analysis results combined as text.
+
+        Returns:
+            Combined text of all analyses, or empty string if no analyzer
+        """
+        if self.app.periodic_analyzer:
+            return self.app.periodic_analyzer.get_combined_history_text()
+        return ""

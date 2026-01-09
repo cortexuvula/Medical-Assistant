@@ -834,6 +834,43 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
+    # Migration 13: Add analysis_results table for persisting medical analysis results
+    migrations.append(Migration(
+        version=13,
+        name="Add analysis_results table for medical analysis persistence",
+        up_sql="""
+        -- Table for storing medical analysis results (medication, diagnostic, workflow)
+        CREATE TABLE IF NOT EXISTS analysis_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recording_id INTEGER,                          -- Optional link to a recording
+            analysis_type TEXT NOT NULL,                   -- 'medication', 'diagnostic', 'workflow', etc.
+            analysis_subtype TEXT,                         -- e.g., 'comprehensive', 'interactions', 'dosing'
+            result_text TEXT NOT NULL,                     -- The analysis result text
+            result_json TEXT,                              -- Structured JSON result if available
+            metadata_json TEXT,                            -- Additional metadata (model, counts, etc.)
+            patient_context_json TEXT,                     -- Patient context used (age, weight, etc.)
+            source_type TEXT,                              -- Source of analysis: 'transcript', 'soap', 'custom'
+            source_text TEXT,                              -- The input text that was analyzed
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE SET NULL
+        );
+
+        -- Indexes for efficient queries
+        CREATE INDEX IF NOT EXISTS idx_analysis_recording_id ON analysis_results(recording_id);
+        CREATE INDEX IF NOT EXISTS idx_analysis_type ON analysis_results(analysis_type);
+        CREATE INDEX IF NOT EXISTS idx_analysis_created_at ON analysis_results(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_analysis_type_created ON analysis_results(analysis_type, created_at DESC);
+        """,
+        down_sql="""
+        DROP INDEX IF EXISTS idx_analysis_type_created;
+        DROP INDEX IF EXISTS idx_analysis_created_at;
+        DROP INDEX IF EXISTS idx_analysis_type;
+        DROP INDEX IF EXISTS idx_analysis_recording_id;
+        DROP TABLE IF EXISTS analysis_results;
+        """
+    ))
+
     return migrations
 
 
