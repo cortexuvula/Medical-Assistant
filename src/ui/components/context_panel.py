@@ -1,6 +1,6 @@
 """
 Context Panel Component for Medical Assistant
-Handles persistent context information and templates with accordion-style UI
+Handles persistent context information and templates with click-to-apply UI
 """
 
 import tkinter as tk
@@ -15,7 +15,7 @@ from ui.ui_constants import Icons
 
 
 class ContextPanel:
-    """Manages the context side panel UI components with expandable templates."""
+    """Manages the context side panel UI components with click-to-apply templates."""
 
     # Colors for the context panel (light theme)
     COLORS = {
@@ -41,8 +41,7 @@ class ContextPanel:
 
         self._context_collapsed = False
         self.templates_frame = None
-        self._expanded_templates: Dict[str, bool] = {}  # Track expanded state
-        self._template_content_frames: Dict[str, tk.Frame] = {}  # Store content frames
+        self._template_item_frames: Dict[str, tk.Frame] = {}  # Store item frames for filtering
 
     def create_context_panel(self) -> ttk.Frame:
         """Create the persistent context side panel.
@@ -162,6 +161,13 @@ class ContextPanel:
 
         # Inner frame that holds the actual template items
         self.templates_frame = tk.Frame(self._templates_canvas, bg=self.COLORS["bg"])
+
+        # Two-column layout for templates
+        self._left_column = tk.Frame(self.templates_frame, bg=self.COLORS["bg"])
+        self._left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._right_column = tk.Frame(self.templates_frame, bg=self.COLORS["bg"])
+        self._right_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # Create window in canvas for the frame
         self._templates_canvas_window = self._templates_canvas.create_window(
@@ -315,15 +321,14 @@ class ContextPanel:
 
     def _filter_templates(self, search_text: str):
         """Filter templates based on search text."""
-        for template_name, content_frame in self._template_content_frames.items():
-            parent_frame = content_frame.master
+        for template_name, item_frame in self._template_item_frames.items():
             if search_text and search_text not in template_name.lower():
-                parent_frame.pack_forget()
+                item_frame.pack_forget()
             else:
-                parent_frame.pack(fill=tk.X, pady=1)
+                item_frame.pack(fill=tk.X, pady=1)
 
     def _create_accordion_templates(self):
-        """Create accordion-style template items."""
+        """Create template items in two-column layout."""
         # Built-in templates
         builtin_templates = [
             ("Follow Up", "Follow-up visit for ongoing condition."),
@@ -333,12 +338,13 @@ class ContextPanel:
             ("Urgent Care", "Urgent care visit for acute symptoms.")
         ]
 
-        # Clear existing
-        for widget in self.templates_frame.winfo_children():
+        # Clear existing widgets from both columns
+        for widget in self._left_column.winfo_children():
+            widget.destroy()
+        for widget in self._right_column.winfo_children():
             widget.destroy()
 
-        self._expanded_templates.clear()
-        self._template_content_frames.clear()
+        self._template_item_frames.clear()
 
         # Get favorite template names from settings
         favorite_templates = set(SETTINGS.get("context_template_favorites", []))
@@ -363,27 +369,35 @@ class ContextPanel:
         non_favorites = sorted([t for t in all_templates if not t[3]], key=lambda x: x[0].lower())
         sorted_templates = favorites + non_favorites
 
-        # Create accordion items
-        for name, text, is_builtin, is_favorite in sorted_templates:
-            self._create_accordion_item(name, text, is_builtin=is_builtin, is_favorite=is_favorite)
+        # Create template items - alternate between columns
+        for index, (name, text, is_builtin, is_favorite) in enumerate(sorted_templates):
+            target_column = self._left_column if index % 2 == 0 else self._right_column
+            self._create_template_item(name, text, is_builtin=is_builtin,
+                                       is_favorite=is_favorite, parent_frame=target_column)
 
-    def _create_accordion_item(self, name: str, text: str, is_builtin: bool = True, is_favorite: bool = False):
-        """Create a single accordion item.
+    def _create_template_item(self, name: str, text: str, is_builtin: bool = True,
+                              is_favorite: bool = False, parent_frame: tk.Frame = None):
+        """Create a single template item (click to apply, hover for tooltip).
 
         Args:
             name: Template name
             text: Template content
             is_builtin: Whether this is a built-in template
             is_favorite: Whether this template is marked as favorite
+            parent_frame: Parent frame to add item to (left or right column)
         """
-        # Initialize as collapsed
-        self._expanded_templates[name] = False
+        # Use provided parent or default to left column
+        if parent_frame is None:
+            parent_frame = self._left_column
 
         # Item container
-        item_frame = tk.Frame(self.templates_frame, bg=self.COLORS["bg"])
+        item_frame = tk.Frame(parent_frame, bg=self.COLORS["bg"])
         item_frame.pack(fill=tk.X, pady=1)
 
-        # Header row (clickable)
+        # Store reference for filtering
+        self._template_item_frames[name] = item_frame
+
+        # Header row (clickable - applies template)
         header = tk.Frame(item_frame, bg="#ffffff", cursor="hand2")
         header.pack(fill=tk.X)
 
@@ -418,16 +432,6 @@ class ContextPanel:
 
         star_label.bind("<Button-1>", toggle_favorite)
 
-        # Expand indicator
-        expand_label = tk.Label(
-            header,
-            text=Icons.SECTION_CLOSED,
-            font=("Segoe UI", 9),
-            bg="#ffffff",
-            fg=self.COLORS["expand_icon"]
-        )
-        expand_label.pack(side=tk.LEFT, padx=(2, 5), pady=8)
-
         # Template name
         name_label = tk.Label(
             header,
@@ -437,62 +441,51 @@ class ContextPanel:
             fg=self.COLORS["text"],
             anchor=tk.W
         )
-        name_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=8)
+        name_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 8), pady=8)
 
-        # Content frame (initially hidden)
-        content_frame = tk.Frame(item_frame, bg="#f8f9fa")
-        self._template_content_frames[name] = content_frame
+        # Click to apply template
+        def apply_on_click(e=None):
+            self._apply_template(text)
 
-        # Content inner
-        content_inner = tk.Frame(content_frame, bg="#f8f9fa")
-        content_inner.pack(fill=tk.X, padx=25, pady=(0, 10))
+        header.bind("<Button-1>", apply_on_click)
+        name_label.bind("<Button-1>", apply_on_click)
 
-        # Preview text
-        preview_text = text[:80] + "..." if len(text) > 80 else text
-        tk.Label(
-            content_inner,
-            text=preview_text,
-            font=("Segoe UI", 9),
-            bg="#f8f9fa",
-            fg=self.COLORS["text_muted"],
-            wraplength=180,
-            justify=tk.LEFT
-        ).pack(anchor=tk.W, pady=(5, 8))
+        # Tooltip showing template content preview
+        tooltip_text = text[:150] + "..." if len(text) > 150 else text
+        ToolTip(header, tooltip_text)
 
-        # Action buttons
-        actions = tk.Frame(content_inner, bg="#f8f9fa")
-        actions.pack(anchor=tk.W)
-
-        ttk.Button(
-            actions,
-            text="Use",
-            bootstyle="primary-outline",
-            command=lambda t=text: self._apply_template(t)
-        ).pack(side=tk.LEFT, padx=(0, 5))
-
+        # Right-click context menu for custom templates (delete option)
         if not is_builtin:
-            ttk.Button(
-                actions,
-                text="Delete",
-                bootstyle="danger-outline",
-                command=lambda n=name: self._delete_custom_template(n)
-            ).pack(side=tk.LEFT)
+            def show_context_menu(e):
+                # Destroy any existing context menu
+                if hasattr(self, '_context_menu') and self._context_menu:
+                    try:
+                        self._context_menu.destroy()
+                    except:
+                        pass
 
-        # Click handlers
-        def toggle_expand(e=None):
-            is_expanded = self._expanded_templates.get(name, False)
-            if is_expanded:
-                content_frame.pack_forget()
-                expand_label.config(text=Icons.SECTION_CLOSED)
-                self._expanded_templates[name] = False
-            else:
-                content_frame.pack(fill=tk.X)
-                expand_label.config(text=Icons.SECTION_OPEN)
-                self._expanded_templates[name] = True
+                self._context_menu = tk.Menu(self.parent, tearoff=0)
+                self._context_menu.add_command(label="Delete", command=lambda n=name: self._delete_custom_template(n))
 
-        header.bind("<Button-1>", toggle_expand)
-        expand_label.bind("<Button-1>", toggle_expand)
-        name_label.bind("<Button-1>", toggle_expand)
+                def close_menu(event=None):
+                    if hasattr(self, '_context_menu') and self._context_menu:
+                        try:
+                            self._context_menu.unpost()
+                            self._context_menu.destroy()
+                            self._context_menu = None
+                        except:
+                            pass
+
+                # Close menu when it loses focus or user clicks elsewhere
+                self._context_menu.bind("<FocusOut>", close_menu)
+                self._context_menu.bind("<Escape>", close_menu)
+                self.parent.bind("<Button-1>", close_menu, add="+")
+
+                self._context_menu.post(e.x_root, e.y_root)
+                return "break"
+
+            header.bind("<ButtonRelease-3>", show_context_menu)
+            name_label.bind("<ButtonRelease-3>", show_context_menu)
 
     def _apply_template(self, text: str):
         """Apply a template to the context text area."""

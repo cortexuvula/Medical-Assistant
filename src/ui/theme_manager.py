@@ -147,6 +147,11 @@ class ThemeManager:
                 # Also update the inner frame background
                 if hasattr(context_panel, 'templates_frame'):
                     context_panel.templates_frame.configure(bg=canvas_bg)
+                # Update two-column layout backgrounds
+                if hasattr(context_panel, '_left_column'):
+                    context_panel._left_column.configure(bg=canvas_bg)
+                if hasattr(context_panel, '_right_column'):
+                    context_panel._right_column.configure(bg=canvas_bg)
 
     def _update_notebook_style(self, is_dark: bool):
         """Update notebook and general component styling."""
