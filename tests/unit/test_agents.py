@@ -105,7 +105,7 @@ class TestDiagnosticAgent(unittest.TestCase):
         """Test agent initializes with correct config."""
         self.assertEqual(self.agent.config.name, "DiagnosticAgent")
         self.assertEqual(self.agent.config.temperature, 0.1)
-        self.assertEqual(self.agent.config.max_tokens, 500)
+        self.assertEqual(self.agent.config.max_tokens, 1200)  # Increased for detailed structured output
         
     def test_clinical_findings_extraction(self):
         """Test extraction of clinical findings from SOAP note."""
