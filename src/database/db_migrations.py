@@ -871,6 +871,163 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
+    # Migration 14: Enhanced diagnostic analysis with structured differentials and FTS
+    migrations.append(Migration(
+        version=14,
+        name="Enhanced diagnostic analysis with structured differentials and FTS",
+        up_sql="""
+        -- Table for storing individual differential diagnoses (structured)
+        CREATE TABLE IF NOT EXISTS differential_diagnoses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            rank INTEGER NOT NULL,                          -- Position in differential list (1 = most likely)
+            diagnosis_name TEXT NOT NULL,
+            icd10_code TEXT,
+            icd9_code TEXT,
+            confidence_score REAL,                          -- 0.0 to 1.0 (0-100%)
+            confidence_level TEXT,                          -- 'high', 'medium', 'low'
+            reasoning TEXT,                                 -- Why this diagnosis is considered
+            supporting_findings TEXT,                       -- JSON array of supporting evidence
+            against_findings TEXT,                          -- JSON array of findings against
+            is_red_flag BOOLEAN DEFAULT FALSE,              -- Urgent/life-threatening
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_id) REFERENCES analysis_results(id) ON DELETE CASCADE
+        );
+
+        -- Table for storing recommended investigations
+        CREATE TABLE IF NOT EXISTS recommended_investigations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            investigation_name TEXT NOT NULL,
+            investigation_type TEXT,                        -- 'lab', 'imaging', 'procedure', 'referral'
+            priority TEXT,                                  -- 'urgent', 'routine', 'optional'
+            rationale TEXT,                                 -- Why this investigation is recommended
+            target_diagnoses TEXT,                          -- JSON array of diagnosis names this helps rule in/out
+            status TEXT DEFAULT 'pending',                  -- 'pending', 'ordered', 'completed', 'cancelled'
+            ordered_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            result_summary TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_id) REFERENCES analysis_results(id) ON DELETE CASCADE
+        );
+
+        -- Table for storing clinical pearls
+        CREATE TABLE IF NOT EXISTS clinical_pearls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            pearl_text TEXT NOT NULL,
+            category TEXT,                                  -- 'diagnostic', 'treatment', 'prognosis', 'general'
+            source TEXT,                                    -- Where the pearl comes from
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_id) REFERENCES analysis_results(id) ON DELETE CASCADE
+        );
+
+        -- Table for extracted clinical data (from DataExtractionAgent)
+        CREATE TABLE IF NOT EXISTS extracted_clinical_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            data_type TEXT NOT NULL,                        -- 'vital_signs', 'labs', 'medications', 'diagnoses', 'procedures'
+            data_json TEXT NOT NULL,                        -- JSON object with extracted data
+            extraction_confidence REAL,                     -- How confident the extraction is
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_id) REFERENCES analysis_results(id) ON DELETE CASCADE
+        );
+
+        -- Add version tracking columns to analysis_results
+        ALTER TABLE analysis_results ADD COLUMN version INTEGER DEFAULT 1;
+        ALTER TABLE analysis_results ADD COLUMN parent_analysis_id INTEGER REFERENCES analysis_results(id);
+        ALTER TABLE analysis_results ADD COLUMN patient_identifier TEXT;  -- For grouping analyses by patient
+
+        -- Create indexes for efficient queries
+        CREATE INDEX IF NOT EXISTS idx_differential_analysis ON differential_diagnoses(analysis_id);
+        CREATE INDEX IF NOT EXISTS idx_differential_icd10 ON differential_diagnoses(icd10_code);
+        CREATE INDEX IF NOT EXISTS idx_differential_confidence ON differential_diagnoses(confidence_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_investigations_analysis ON recommended_investigations(analysis_id);
+        CREATE INDEX IF NOT EXISTS idx_investigations_status ON recommended_investigations(status);
+        CREATE INDEX IF NOT EXISTS idx_pearls_analysis ON clinical_pearls(analysis_id);
+        CREATE INDEX IF NOT EXISTS idx_extracted_data_analysis ON extracted_clinical_data(analysis_id);
+        CREATE INDEX IF NOT EXISTS idx_analysis_patient ON analysis_results(patient_identifier);
+        CREATE INDEX IF NOT EXISTS idx_analysis_parent ON analysis_results(parent_analysis_id);
+
+        -- Create FTS5 table for full-text search on analysis results
+        CREATE VIRTUAL TABLE IF NOT EXISTS analysis_results_fts USING fts5(
+            result_text,
+            source_text,
+            content=analysis_results,
+            content_rowid=id
+        );
+
+        -- Triggers to keep FTS in sync
+        CREATE TRIGGER IF NOT EXISTS analysis_results_ai AFTER INSERT ON analysis_results BEGIN
+            INSERT INTO analysis_results_fts(rowid, result_text, source_text)
+            VALUES (new.id, new.result_text, new.source_text);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS analysis_results_ad AFTER DELETE ON analysis_results BEGIN
+            DELETE FROM analysis_results_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS analysis_results_au AFTER UPDATE ON analysis_results BEGIN
+            UPDATE analysis_results_fts
+            SET result_text = new.result_text,
+                source_text = new.source_text
+            WHERE rowid = new.id;
+        END;
+
+        -- Populate FTS table with existing data
+        INSERT INTO analysis_results_fts(rowid, result_text, source_text)
+        SELECT id, result_text, source_text FROM analysis_results;
+
+        -- Create FTS5 table for searching differential diagnoses
+        CREATE VIRTUAL TABLE IF NOT EXISTS differential_diagnoses_fts USING fts5(
+            diagnosis_name,
+            reasoning,
+            content=differential_diagnoses,
+            content_rowid=id
+        );
+
+        -- Triggers for differential diagnoses FTS
+        CREATE TRIGGER IF NOT EXISTS differential_ai AFTER INSERT ON differential_diagnoses BEGIN
+            INSERT INTO differential_diagnoses_fts(rowid, diagnosis_name, reasoning)
+            VALUES (new.id, new.diagnosis_name, new.reasoning);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS differential_ad AFTER DELETE ON differential_diagnoses BEGIN
+            DELETE FROM differential_diagnoses_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS differential_au AFTER UPDATE ON differential_diagnoses BEGIN
+            UPDATE differential_diagnoses_fts
+            SET diagnosis_name = new.diagnosis_name,
+                reasoning = new.reasoning
+            WHERE rowid = new.id;
+        END;
+        """,
+        down_sql="""
+        DROP TRIGGER IF EXISTS differential_au;
+        DROP TRIGGER IF EXISTS differential_ad;
+        DROP TRIGGER IF EXISTS differential_ai;
+        DROP TABLE IF EXISTS differential_diagnoses_fts;
+        DROP TRIGGER IF EXISTS analysis_results_au;
+        DROP TRIGGER IF EXISTS analysis_results_ad;
+        DROP TRIGGER IF EXISTS analysis_results_ai;
+        DROP TABLE IF EXISTS analysis_results_fts;
+        DROP INDEX IF EXISTS idx_analysis_parent;
+        DROP INDEX IF EXISTS idx_analysis_patient;
+        DROP INDEX IF EXISTS idx_extracted_data_analysis;
+        DROP INDEX IF EXISTS idx_pearls_analysis;
+        DROP INDEX IF EXISTS idx_investigations_status;
+        DROP INDEX IF EXISTS idx_investigations_analysis;
+        DROP INDEX IF EXISTS idx_differential_confidence;
+        DROP INDEX IF EXISTS idx_differential_icd10;
+        DROP INDEX IF EXISTS idx_differential_analysis;
+        DROP TABLE IF EXISTS extracted_clinical_data;
+        DROP TABLE IF EXISTS clinical_pearls;
+        DROP TABLE IF EXISTS recommended_investigations;
+        DROP TABLE IF EXISTS differential_diagnoses;
+        """
+    ))
+
     return migrations
 
 

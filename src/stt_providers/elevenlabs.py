@@ -168,9 +168,9 @@ class ElevenLabsProvider(BaseSTTProvider):
             # Get settings
             elevenlabs_settings = SETTINGS.get("elevenlabs", {})
 
-            # Prepare data for request - model_id from settings (scribe_v1 or scribe_v1_experimental)
+            # Prepare data for request - model_id from settings (scribe_v2 is new default)
             data = {
-                'model_id': elevenlabs_settings.get("model_id", "scribe_v1")
+                'model_id': elevenlabs_settings.get("model_id", "scribe_v2")
             }
 
             # Add temperature if set (controls creativity/accuracy tradeoff)
@@ -210,6 +210,18 @@ class ElevenLabsProvider(BaseSTTProvider):
             # When False, transcription won't include things like "[keyboard clicking]"
             tag_audio_events = elevenlabs_settings.get("tag_audio_events", True)
             data['tag_audio_events'] = tag_audio_events
+
+            # Add entity detection if configured (scribe_v2 feature)
+            # Options: "phi" (health info), "pii" (personal info), "pci" (payment info), "offensive"
+            entity_detection = elevenlabs_settings.get("entity_detection", [])
+            if entity_detection:
+                data['entity_detection'] = entity_detection
+
+            # Add keyterms if configured (scribe_v2 feature)
+            # Up to 100 medical terms to bias recognition
+            keyterms = elevenlabs_settings.get("keyterms", [])
+            if keyterms:
+                data['keyterms'] = keyterms
 
             # Print API call details to terminal
             logging.debug("\n===== ELEVENLABS API CALL =====")
@@ -256,6 +268,17 @@ class ElevenLabsProvider(BaseSTTProvider):
                 if 'text' in result:
                     text_preview = result['text'][:100] + "..." if len(result['text']) > 100 else result['text']
                     logging.debug(f"Text preview: {text_preview}")
+
+                # Handle entity detection results (scribe_v2 feature)
+                detected_entities = result.get('entities', [])
+                if detected_entities:
+                    logging.debug(f"\n=== Entity Detection Results ===")
+                    logging.debug(f"Detected {len(detected_entities)} entities:")
+                    for entity in detected_entities:
+                        entity_type = entity.get('entity_type', 'unknown')
+                        entity_text = entity.get('text', '')
+                        self.logger.info(f"Detected {entity_type}: '{entity_text}'")
+                        logging.debug(f"  - {entity_type}: '{entity_text}' (chars {entity.get('start_char')}-{entity.get('end_char')})")
 
                 # Print response structure for debugging
                 logging.debug("\n=== Response Structure ===")
@@ -400,10 +423,20 @@ class ElevenLabsProvider(BaseSTTProvider):
 
             elevenlabs_settings = SETTINGS.get("elevenlabs", {})
             data = {
-                'model_id': elevenlabs_settings.get("model_id", "scribe_v1"),
+                'model_id': elevenlabs_settings.get("model_id", "scribe_v2"),
                 'diarize': elevenlabs_settings.get("diarize", True),
                 'num_speakers': elevenlabs_settings.get("num_speakers", 2),
             }
+
+            # Add entity detection if configured
+            entity_detection = elevenlabs_settings.get("entity_detection", [])
+            if entity_detection:
+                data['entity_detection'] = entity_detection
+
+            # Add keyterms if configured
+            keyterms = elevenlabs_settings.get("keyterms", [])
+            if keyterms:
+                data['keyterms'] = keyterms
 
             with open(temp_path, 'rb') as audio_file:
                 files = {'file': ('audio.wav', audio_file, 'audio/wav')}

@@ -157,6 +157,45 @@ class Database:
         except Exception as e:
             logging.error(f"Error checking/adding critical columns: {e}")
 
+        # Also ensure analysis_results table exists
+        self._ensure_analysis_results_table()
+
+    def _ensure_analysis_results_table(self):
+        """Ensure analysis_results table exists for storing medical analysis results."""
+        try:
+            conn = self._get_connection()
+            # Check if table exists
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_results'"
+            )
+            if cursor.fetchone() is None:
+                logging.info("Creating missing analysis_results table")
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS analysis_results (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        recording_id INTEGER,
+                        analysis_type TEXT NOT NULL,
+                        analysis_subtype TEXT,
+                        result_text TEXT NOT NULL,
+                        result_json TEXT,
+                        metadata_json TEXT,
+                        patient_context_json TEXT,
+                        source_type TEXT,
+                        source_text TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE SET NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_analysis_recording_id ON analysis_results(recording_id);
+                    CREATE INDEX IF NOT EXISTS idx_analysis_type ON analysis_results(analysis_type);
+                    CREATE INDEX IF NOT EXISTS idx_analysis_created_at ON analysis_results(created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_analysis_type_created ON analysis_results(analysis_type, created_at DESC);
+                """)
+                conn.commit()
+                logging.info("Created analysis_results table successfully")
+        except Exception as e:
+            logging.error(f"Error ensuring analysis_results table: {e}")
+
     def __del__(self):
         """Destructor to clean up connections when Database instance is garbage collected.
 
@@ -1256,3 +1295,334 @@ class Database:
                     pass  # Keep as string if parsing fails
 
         return result
+
+    def save_analysis_with_version(
+        self,
+        analysis_type: str,
+        result_text: str,
+        recording_id: Optional[int] = None,
+        analysis_subtype: Optional[str] = None,
+        result_json: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        patient_context: Optional[Dict[str, Any]] = None,
+        source_type: Optional[str] = None,
+        source_text: Optional[str] = None,
+        patient_identifier: Optional[str] = None,
+        parent_analysis_id: Optional[int] = None
+    ) -> Optional[int]:
+        """
+        Save an analysis result with version tracking.
+
+        This extends save_analysis_result to support:
+        - patient_identifier: Group analyses for same patient
+        - parent_analysis_id: Link to previous version of this analysis
+        - Automatic version numbering
+
+        Parameters:
+        - All parameters from save_analysis_result
+        - patient_identifier: Unique patient identifier for grouping
+        - parent_analysis_id: ID of previous analysis version
+
+        Returns:
+        - ID of the created analysis result, or None on failure
+        """
+        with self.connection() as (conn, cursor):
+            # Determine version number
+            version = 1
+            if parent_analysis_id:
+                cursor.execute(
+                    "SELECT version FROM analysis_results WHERE id = ?",
+                    (parent_analysis_id,)
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    version = row[0] + 1
+
+            cursor.execute("""
+                INSERT INTO analysis_results (
+                    recording_id, analysis_type, analysis_subtype,
+                    result_text, result_json, metadata_json,
+                    patient_context_json, source_type, source_text,
+                    version, parent_analysis_id, patient_identifier
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                recording_id,
+                analysis_type,
+                analysis_subtype,
+                result_text,
+                json.dumps(result_json) if result_json else None,
+                json.dumps(metadata) if metadata else None,
+                json.dumps(patient_context) if patient_context else None,
+                source_type,
+                source_text,
+                version,
+                parent_analysis_id,
+                patient_identifier
+            ))
+            return cursor.lastrowid
+
+    def get_analysis_versions(self, analysis_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all versions of an analysis (version history).
+
+        This traces back through parent_analysis_id links to find
+        all previous versions of an analysis.
+
+        Parameters:
+        - analysis_id: Starting analysis ID
+
+        Returns:
+        - List of analysis versions, newest first
+        """
+        versions = []
+        current_id = analysis_id
+
+        with self.connection() as (conn, cursor):
+            while current_id:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at, version, parent_analysis_id,
+                           patient_identifier
+                    FROM analysis_results
+                    WHERE id = ?
+                """, (current_id,))
+
+                row = cursor.fetchone()
+                if row:
+                    result = self._parse_analysis_row_extended(row)
+                    versions.append(result)
+                    current_id = result.get('parent_analysis_id')
+                else:
+                    break
+
+        return versions
+
+    def get_patient_analyses(
+        self,
+        patient_identifier: str,
+        analysis_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all analyses for a patient.
+
+        Parameters:
+        - patient_identifier: The patient identifier
+        - analysis_type: Optional filter by analysis type
+
+        Returns:
+        - List of analyses for the patient, newest first
+        """
+        with self.connection() as (conn, cursor):
+            if analysis_type:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at, version, parent_analysis_id,
+                           patient_identifier
+                    FROM analysis_results
+                    WHERE patient_identifier = ? AND analysis_type = ?
+                    ORDER BY created_at DESC
+                """, (patient_identifier, analysis_type))
+            else:
+                cursor.execute("""
+                    SELECT id, recording_id, analysis_type, analysis_subtype,
+                           result_text, result_json, metadata_json,
+                           patient_context_json, source_type, source_text,
+                           created_at, updated_at, version, parent_analysis_id,
+                           patient_identifier
+                    FROM analysis_results
+                    WHERE patient_identifier = ?
+                    ORDER BY created_at DESC
+                """, (patient_identifier,))
+
+            rows = cursor.fetchall()
+            return [self._parse_analysis_row_extended(row) for row in rows]
+
+    def get_child_analyses(self, analysis_id: int) -> List[Dict[str, Any]]:
+        """
+        Get analyses that are newer versions of this one.
+
+        Parameters:
+        - analysis_id: The parent analysis ID
+
+        Returns:
+        - List of child analyses
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("""
+                SELECT id, recording_id, analysis_type, analysis_subtype,
+                       result_text, result_json, metadata_json,
+                       patient_context_json, source_type, source_text,
+                       created_at, updated_at, version, parent_analysis_id,
+                       patient_identifier
+                FROM analysis_results
+                WHERE parent_analysis_id = ?
+                ORDER BY created_at DESC
+            """, (analysis_id,))
+
+            rows = cursor.fetchall()
+            return [self._parse_analysis_row_extended(row) for row in rows]
+
+    def _parse_analysis_row_extended(self, row: tuple) -> Dict[str, Any]:
+        """
+        Parse an extended analysis result row with version fields.
+
+        Parameters:
+        - row: Database row tuple with version fields
+
+        Returns:
+        - Parsed dictionary with JSON fields decoded
+        """
+        columns = (
+            'id', 'recording_id', 'analysis_type', 'analysis_subtype',
+            'result_text', 'result_json', 'metadata_json',
+            'patient_context_json', 'source_type', 'source_text',
+            'created_at', 'updated_at', 'version', 'parent_analysis_id',
+            'patient_identifier'
+        )
+        result = dict(zip(columns, row))
+
+        # Parse JSON fields
+        for json_field in ('result_json', 'metadata_json', 'patient_context_json'):
+            if result.get(json_field):
+                try:
+                    result[json_field] = json.loads(result[json_field])
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Keep as string if parsing fails
+
+        return result
+
+    def get_structured_differentials(
+        self,
+        analysis_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get structured differential diagnoses for an analysis.
+
+        Parameters:
+        - analysis_id: The analysis result ID
+
+        Returns:
+        - List of differential diagnosis dictionaries
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("""
+                SELECT id, analysis_id, rank, diagnosis_name, icd10_code, icd9_code,
+                       confidence_score, confidence_level, reasoning,
+                       supporting_findings, against_findings, is_red_flag, created_at
+                FROM differential_diagnoses
+                WHERE analysis_id = ?
+                ORDER BY rank ASC
+            """, (analysis_id,))
+
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                diff = {
+                    'id': row[0],
+                    'analysis_id': row[1],
+                    'rank': row[2],
+                    'diagnosis_name': row[3],
+                    'icd10_code': row[4],
+                    'icd9_code': row[5],
+                    'confidence_score': row[6],
+                    'confidence_level': row[7],
+                    'reasoning': row[8],
+                    'supporting_findings': json.loads(row[9]) if row[9] else [],
+                    'against_findings': json.loads(row[10]) if row[10] else [],
+                    'is_red_flag': bool(row[11]),
+                    'created_at': row[12]
+                }
+                results.append(diff)
+            return results
+
+    def get_recommended_investigations(
+        self,
+        analysis_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recommended investigations for an analysis.
+
+        Parameters:
+        - analysis_id: The analysis result ID
+
+        Returns:
+        - List of investigation dictionaries
+        """
+        with self.connection() as (conn, cursor):
+            cursor.execute("""
+                SELECT id, analysis_id, investigation_name, investigation_type,
+                       priority, rationale, target_diagnoses, status,
+                       ordered_at, completed_at, result_summary, created_at
+                FROM recommended_investigations
+                WHERE analysis_id = ?
+                ORDER BY
+                    CASE priority
+                        WHEN 'urgent' THEN 1
+                        WHEN 'routine' THEN 2
+                        WHEN 'optional' THEN 3
+                        ELSE 4
+                    END
+            """, (analysis_id,))
+
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                inv = {
+                    'id': row[0],
+                    'analysis_id': row[1],
+                    'investigation_name': row[2],
+                    'investigation_type': row[3],
+                    'priority': row[4],
+                    'rationale': row[5],
+                    'target_diagnoses': json.loads(row[6]) if row[6] else [],
+                    'status': row[7],
+                    'ordered_at': row[8],
+                    'completed_at': row[9],
+                    'result_summary': row[10],
+                    'created_at': row[11]
+                }
+                results.append(inv)
+            return results
+
+    def update_investigation_status(
+        self,
+        investigation_id: int,
+        status: str,
+        result_summary: Optional[str] = None
+    ) -> bool:
+        """
+        Update the status of an investigation.
+
+        Parameters:
+        - investigation_id: The investigation ID
+        - status: New status ('pending', 'ordered', 'completed', 'cancelled')
+        - result_summary: Optional result summary for completed investigations
+
+        Returns:
+        - True if updated, False if not found
+        """
+        with self.connection() as (conn, cursor):
+            if status == 'ordered':
+                cursor.execute("""
+                    UPDATE recommended_investigations
+                    SET status = ?, ordered_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (status, investigation_id))
+            elif status == 'completed':
+                cursor.execute("""
+                    UPDATE recommended_investigations
+                    SET status = ?, completed_at = CURRENT_TIMESTAMP, result_summary = ?
+                    WHERE id = ?
+                """, (status, result_summary, investigation_id))
+            else:
+                cursor.execute("""
+                    UPDATE recommended_investigations
+                    SET status = ?
+                    WHERE id = ?
+                """, (status, investigation_id))
+
+            return cursor.rowcount > 0

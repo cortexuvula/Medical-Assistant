@@ -339,3 +339,146 @@ class TestElevenLabsProvider:
         assert 'sample_width' in details
         assert details['frame_rate'] == 44100
         assert details['channels'] == 1
+
+    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_transcribe_with_entity_detection(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test transcription with entity detection enabled (scribe_v2 feature)."""
+        # Mock settings with entity detection
+        mock_settings.get.return_value = {
+            "diarize": False,
+            "model_id": "scribe_v2",
+            "tag_audio_events": True,
+            "entity_detection": ["phi", "pii"]
+        }
+
+        # Mock response with entity information
+        mock_response_data = {
+            "text": "Patient John Smith has diabetes",
+            "entities": [
+                {"entity_type": "pii", "text": "John Smith", "start_char": 8, "end_char": 18},
+                {"entity_type": "phi", "text": "diabetes", "start_char": 23, "end_char": 31}
+            ]
+        }
+
+        # Mock HTTP session
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        # Check that entity_detection was sent in request
+        call_args = mock_session.post.call_args
+        assert call_args[1]["data"]["entity_detection"] == ["phi", "pii"]
+        assert result == "Patient John Smith has diabetes"
+
+    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_transcribe_with_keyterms(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test transcription with keyterms enabled (scribe_v2 feature)."""
+        # Mock settings with keyterms
+        mock_settings.get.return_value = {
+            "diarize": False,
+            "model_id": "scribe_v2",
+            "tag_audio_events": True,
+            "keyterms": ["hypertension", "metformin", "COPD"]
+        }
+
+        mock_response_data = {
+            "text": "Patient has hypertension and takes metformin"
+        }
+
+        # Mock HTTP session
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        # Check that keyterms was sent in request
+        call_args = mock_session.post.call_args
+        assert call_args[1]["data"]["keyterms"] == ["hypertension", "metformin", "COPD"]
+        assert result == "Patient has hypertension and takes metformin"
+
+    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_transcribe_with_scribe_v2_model(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test transcription with scribe_v2 model (new default)."""
+        # Mock settings with scribe_v2
+        mock_settings.get.return_value = {
+            "diarize": False,
+            "model_id": "scribe_v2",
+            "tag_audio_events": True,
+            "entity_detection": [],
+            "keyterms": []
+        }
+
+        mock_response_data = {
+            "text": "Test with scribe v2 model"
+        }
+
+        # Mock HTTP session
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        # Check that scribe_v2 model was used
+        call_args = mock_session.post.call_args
+        assert call_args[1]["data"]["model_id"] == "scribe_v2"
+        assert result == "Test with scribe v2 model"
+
+    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_default_model_is_scribe_v2(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test that the default model is scribe_v2."""
+        # Mock settings with empty model_id (should default to scribe_v2)
+        mock_settings.get.return_value = {
+            "diarize": False,
+            "tag_audio_events": True
+        }
+
+        mock_response_data = {
+            "text": "Test default model"
+        }
+
+        # Mock HTTP session
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        # Check that default model is scribe_v2
+        call_args = mock_session.post.call_args
+        assert call_args[1]["data"]["model_id"] == "scribe_v2"

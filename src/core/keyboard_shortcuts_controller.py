@@ -54,6 +54,10 @@ class KeyboardShortcutsController:
         self.app.bind("<Control-Shift-f>", lambda _: self.app.export_as_fhir())
         self.app.bind("<Control-Shift-F>", lambda _: self.app.export_as_fhir())
 
+        # AI Analysis shortcuts
+        self.app.bind("<Control-d>", lambda _: self.app.create_diagnostic_analysis())
+        self.app.bind("<Control-D>", lambda _: self.app.create_diagnostic_analysis())
+
         # Recording shortcuts - use bind_all for global access
         self.app.bind_all("<F5>", lambda _: self.app.toggle_soap_recording())
         self.app.bind_all("<Control-Shift-S>", lambda _: self.app.toggle_soap_recording())

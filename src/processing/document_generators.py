@@ -238,15 +238,25 @@ class DocumentGenerators:
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
                         logging.info(f"Created new recording with ID: {self.app.current_recording_id}")
 
-                    # Check if diagnostic agent is enabled and offer to run analysis
+                    # Check if diagnostic agent is enabled
                     if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
-                        if messagebox.askyesno(
-                            "Run Diagnostic Analysis?",
-                            "SOAP note created successfully.\n\n"
-                            "Would you like to run diagnostic analysis on this SOAP note?",
-                            parent=self.app
-                        ):
+                        # Check if auto-run is enabled in settings
+                        from settings.settings import SETTINGS
+                        auto_run = SETTINGS.get('agent_config', {}).get('diagnostic', {}).get('auto_run_after_soap', False)
+
+                        if auto_run:
+                            # Auto-run diagnostic analysis
+                            self.app.status_manager.info("Auto-running diagnostic analysis...")
                             self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
+                        else:
+                            # Ask user if they want to run analysis
+                            if messagebox.askyesno(
+                                "Run Diagnostic Analysis?",
+                                "SOAP note created successfully.\n\n"
+                                "Would you like to run diagnostic analysis on this SOAP note?",
+                                parent=self.app
+                            ):
+                                self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
 
                 self.app.after(0, finalize)
 
@@ -428,10 +438,12 @@ class DocumentGenerators:
         result = dialog.show()
         if not result:
             return  # User cancelled
-        
+
         source = result.get("source")
         custom_findings = result.get("custom_findings", "")
-        
+        patient_context = result.get("patient_context")
+        specialty = result.get("specialty", "general")
+
         # Determine what content to analyze
         if source == "custom" and custom_findings:
             clinical_findings = custom_findings
@@ -458,17 +470,27 @@ class DocumentGenerators:
 
         def task() -> None:
             try:
-                # Create agent task
+                # Build input data with patient context and specialty
+                task_input_data = {}
+
                 if clinical_findings:
-                    task_data = AgentTask(
-                        task_description=f"Analyze clinical findings from {source_name}",
-                        input_data={"clinical_findings": clinical_findings}
-                    )
-                else:
-                    task_data = AgentTask(
-                        task_description=f"Analyze SOAP note for diagnostic insights",
-                        input_data=input_data
-                    )
+                    task_input_data["clinical_findings"] = clinical_findings
+                elif source == "soap":
+                    task_input_data["soap_note"] = soap_note
+
+                # Add patient context if provided
+                if patient_context:
+                    task_input_data["patient_context"] = patient_context
+
+                # Add specialty focus
+                task_input_data["specialty"] = specialty
+
+                # Create agent task with enhanced input
+                task_data = AgentTask(
+                    task_description=f"Analyze clinical findings from {source_name} with {specialty} focus",
+                    input_data=task_input_data,
+                    context=self._build_context_string(patient_context, specialty) if patient_context else None
+                )
 
                 # Execute diagnostic analysis
                 response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
@@ -515,7 +537,62 @@ class DocumentGenerators:
 
         # Submit task for execution
         self.app.io_executor.submit(task)
-    
+
+    def _build_context_string(self, patient_context: dict, specialty: str) -> str:
+        """Build a context string from patient context and specialty for the agent.
+
+        Args:
+            patient_context: Dictionary with patient demographics and history
+            specialty: The specialty focus for the analysis
+
+        Returns:
+            Formatted context string for the agent
+        """
+        parts = []
+
+        # Specialty context mapping
+        specialty_contexts = {
+            "general": "Apply a broad primary care perspective, considering common conditions first.",
+            "emergency": "Prioritize life-threatening and time-sensitive conditions. Focus on red flags.",
+            "internal": "Consider multisystem involvement and complex medical conditions.",
+            "pediatric": "Apply age-appropriate differentials and developmental considerations.",
+            "cardiology": "Focus on cardiovascular causes and risk stratification.",
+            "pulmonology": "Focus on respiratory and pulmonary conditions.",
+            "gi": "Focus on gastrointestinal and hepatobiliary conditions.",
+            "neurology": "Focus on neurological causes including structural, vascular, and functional.",
+            "psychiatry": "Consider psychiatric and biopsychosocial factors.",
+            "orthopedic": "Focus on musculoskeletal and orthopedic conditions.",
+            "oncology": "Consider malignancy in the differential and paraneoplastic syndromes.",
+            "geriatric": "Consider age-related conditions, polypharmacy, and atypical presentations.",
+        }
+
+        parts.append(f"SPECIALTY FOCUS: {specialty_contexts.get(specialty, specialty_contexts['general'])}")
+
+        if patient_context:
+            patient_parts = []
+
+            if 'age' in patient_context:
+                patient_parts.append(f"Age: {patient_context['age']} years")
+
+            if 'sex' in patient_context:
+                patient_parts.append(f"Sex: {patient_context['sex']}")
+                if patient_context.get('pregnant'):
+                    patient_parts.append("Pregnancy: Currently pregnant")
+
+            if 'past_medical_history' in patient_context:
+                patient_parts.append(f"Past Medical History: {patient_context['past_medical_history']}")
+
+            if 'current_medications' in patient_context:
+                patient_parts.append(f"Current Medications: {patient_context['current_medications']}")
+
+            if 'allergies' in patient_context:
+                patient_parts.append(f"Allergies: {patient_context['allergies']}")
+
+            if patient_parts:
+                parts.append("PATIENT CONTEXT:\n" + "\n".join(patient_parts))
+
+        return "\n\n".join(parts)
+
     def _update_diagnostic_display(
         self,
         analysis: str,

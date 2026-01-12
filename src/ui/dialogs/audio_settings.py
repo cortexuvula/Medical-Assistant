@@ -27,7 +27,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     elevenlabs_settings = SETTINGS.get("elevenlabs", {})
     default_settings = _DEFAULT_SETTINGS.get("elevenlabs", {})
 
-    dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x800")
+    dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x950")
     frame = ttk.Frame(dialog, padding=20)
     frame.pack(fill=tk.BOTH, expand=True)
 
@@ -37,11 +37,11 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
 
     # Model ID
     ttk.Label(frame, text="Model ID:").grid(row=1, column=0, sticky="w", pady=10)
-    model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings.get("model_id", "scribe_v1")))
+    model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", default_settings.get("model_id", "scribe_v2")))
     model_combo = ttk.Combobox(frame, textvariable=model_var, width=30)
-    model_combo['values'] = ["scribe_v1", "scribe_v1_experimental"]  # Updated Dec 2025
+    model_combo['values'] = ["scribe_v2", "scribe_v1", "scribe_v1_experimental"]  # Updated Jan 2026
     model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="scribe_v1: stable, scribe_v1_experimental: improved multi-language, reduced hallucinations",
+    ttk.Label(frame, text="scribe_v2: 90+ languages, up to 48 speakers, entity detection, keyterm prompting",
               wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Language Code
@@ -70,14 +70,14 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     speakers_entry.insert(0, speakers_str)
     speakers_entry.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=10)
 
-    ttk.Label(frame, text="Optional number of speakers. Leave empty for auto-detection.",
+    ttk.Label(frame, text="Optional number of speakers (up to 48). Leave empty for auto-detection.",
               wraplength=400, foreground="gray").grid(row=8, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Timestamps Granularity
     ttk.Label(frame, text="Timestamps Granularity:").grid(row=9, column=0, sticky="w", pady=10)
     granularity_var = tk.StringVar(value=elevenlabs_settings.get("timestamps_granularity", default_settings.get("timestamps_granularity", "word")))
     granularity_combo = ttk.Combobox(frame, textvariable=granularity_var, width=30)
-    granularity_combo['values'] = ["word", "segment", "sentence"]
+    granularity_combo['values'] = ["none", "word", "character"]  # Updated for scribe_v2
     granularity_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
 
     # Diarize
@@ -95,7 +95,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     temp_entry = ttk.Entry(frame, width=30)
     temp_entry.insert(0, temp_str)
     temp_entry.grid(row=12, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="Optional. 0.0=deterministic, 1.0=creative. Leave empty for default.",
+    ttk.Label(frame, text="Optional. 0.0=deterministic, 2.0=creative. Leave empty for default.",
               wraplength=400, foreground="gray").grid(row=13, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Diarization Threshold (new in 2025 API)
@@ -105,12 +105,46 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     diar_thresh_entry = ttk.Entry(frame, width=30)
     diar_thresh_entry.insert(0, diar_thresh_str)
     diar_thresh_entry.grid(row=14, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-1.0).",
+    ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-2.0).",
               wraplength=400, foreground="gray").grid(row=15, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Entity Detection (scribe_v2 feature)
+    ttk.Label(frame, text="Entity Detection:", font=("Segoe UI", 10, "bold")).grid(
+        row=16, column=0, columnspan=2, sticky="w", pady=(15, 5))
+    ttk.Label(frame, text="Detect sensitive entities in transcription (scribe_v2 only)",
+              wraplength=400, foreground="gray").grid(row=17, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Get current entity detection settings
+    current_entities = elevenlabs_settings.get("entity_detection", default_settings.get("entity_detection", []))
+
+    entity_frame = ttk.Frame(frame)
+    entity_frame.grid(row=18, column=0, columnspan=2, sticky="w", pady=5, padx=(20, 0))
+
+    phi_var = tk.BooleanVar(value="phi" in current_entities)
+    pii_var = tk.BooleanVar(value="pii" in current_entities)
+    pci_var = tk.BooleanVar(value="pci" in current_entities)
+    offensive_var = tk.BooleanVar(value="offensive" in current_entities)
+
+    ttk.Checkbutton(entity_frame, text="PHI (Protected Health Info)", variable=phi_var).grid(row=0, column=0, sticky="w", padx=(0, 15))
+    ttk.Checkbutton(entity_frame, text="PII (Personal Info)", variable=pii_var).grid(row=0, column=1, sticky="w", padx=(0, 15))
+    ttk.Checkbutton(entity_frame, text="PCI (Payment Info)", variable=pci_var).grid(row=1, column=0, sticky="w", padx=(0, 15), pady=(5, 0))
+    ttk.Checkbutton(entity_frame, text="Offensive Language", variable=offensive_var).grid(row=1, column=1, sticky="w", pady=(5, 0))
+
+    # Keyterms (scribe_v2 feature)
+    ttk.Label(frame, text="Keyterms:", font=("Segoe UI", 10, "bold")).grid(
+        row=19, column=0, columnspan=2, sticky="w", pady=(15, 5))
+    ttk.Label(frame, text="Medical terms to bias recognition (comma-separated, up to 100 terms)",
+              wraplength=400, foreground="gray").grid(row=20, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Get current keyterms
+    current_keyterms = elevenlabs_settings.get("keyterms", default_settings.get("keyterms", []))
+    keyterms_text = tk.Text(frame, width=50, height=3, wrap=tk.WORD)
+    keyterms_text.insert("1.0", ", ".join(current_keyterms))
+    keyterms_text.grid(row=21, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=5)
 
     # Create the buttons frame
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=16, column=0, columnspan=2, pady=(20, 0), sticky="e")
+    btn_frame.grid(row=22, column=0, columnspan=2, pady=(20, 0), sticky="e")
 
     # Save handler - renamed to avoid conflict with imported save_settings
     def save_elevenlabs_settings():
@@ -124,8 +158,8 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
         # Parse temperature (None or float)
         try:
             temperature = None if not temp_entry.get().strip() else float(temp_entry.get())
-            if temperature is not None and (temperature < 0.0 or temperature > 1.0):
-                messagebox.showerror("Invalid Input", "Temperature must be between 0.0 and 1.0.")
+            if temperature is not None and (temperature < 0.0 or temperature > 2.0):
+                messagebox.showerror("Invalid Input", "Temperature must be between 0.0 and 2.0.")
                 return
         except ValueError:
             messagebox.showerror("Invalid Input", "Temperature must be a valid number or empty.")
@@ -134,12 +168,31 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
         # Parse diarization threshold (None or float)
         try:
             diarization_threshold = None if not diar_thresh_entry.get().strip() else float(diar_thresh_entry.get())
-            if diarization_threshold is not None and (diarization_threshold < 0.0 or diarization_threshold > 1.0):
-                messagebox.showerror("Invalid Input", "Diarization threshold must be between 0.0 and 1.0.")
+            if diarization_threshold is not None and (diarization_threshold < 0.0 or diarization_threshold > 2.0):
+                messagebox.showerror("Invalid Input", "Diarization threshold must be between 0.0 and 2.0.")
                 return
         except ValueError:
             messagebox.showerror("Invalid Input", "Diarization threshold must be a valid number or empty.")
             return
+
+        # Build entity detection list
+        entity_detection = []
+        if phi_var.get():
+            entity_detection.append("phi")
+        if pii_var.get():
+            entity_detection.append("pii")
+        if pci_var.get():
+            entity_detection.append("pci")
+        if offensive_var.get():
+            entity_detection.append("offensive")
+
+        # Parse keyterms (comma-separated text)
+        keyterms_raw = keyterms_text.get("1.0", tk.END).strip()
+        keyterms = [term.strip() for term in keyterms_raw.split(",") if term.strip()]
+        # Limit to 100 terms as per API spec
+        if len(keyterms) > 100:
+            messagebox.showwarning("Keyterms Limit", "Only the first 100 keyterms will be used.")
+            keyterms = keyterms[:100]
 
         # Build the new settings
         new_settings = {
@@ -150,7 +203,9 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
             "timestamps_granularity": granularity_var.get(),
             "diarize": diarize_var.get(),
             "temperature": temperature,
-            "diarization_threshold": diarization_threshold
+            "diarization_threshold": diarization_threshold,
+            "entity_detection": entity_detection,
+            "keyterms": keyterms
         }
 
         # Update the settings

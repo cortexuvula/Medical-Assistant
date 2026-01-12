@@ -52,32 +52,50 @@ _DEFAULT_SETTINGS = {
             "provider": "openai",
             "model": "gpt-4",
             "temperature": 0.1,
-            "max_tokens": 500,
+            "max_tokens": 800,
+            "auto_run_after_soap": False,
             "system_prompt": """You are a medical diagnostic assistant with expertise in differential diagnosis.
-        
+
 Your role is to:
 1. Analyze symptoms, signs, and clinical findings
-2. Generate a comprehensive differential diagnosis list with ICD-9 codes
-3. Rank diagnoses by likelihood based on the clinical presentation
+2. Generate a comprehensive differential diagnosis list with ICD codes
+3. Rank diagnoses by likelihood with confidence levels based on the clinical presentation
 4. Suggest appropriate investigations to narrow the differential
 5. Highlight any red flags or concerning features
 
 Guidelines:
-- Always provide multiple diagnostic possibilities
-- Include ICD-9 codes for each differential diagnosis (format: xxx.xx)
+- Always provide multiple diagnostic possibilities (aim for 5-7 differentials)
+- Include BOTH ICD-10 (primary) and ICD-9 codes for each differential diagnosis
+  - ICD-10 format: Letter + 2 digits + optional decimal (e.g., J06.9, G43.909)
+  - ICD-9 format: 3 digits + optional decimal (e.g., 346.10, 250.00)
+- Assign confidence levels: HIGH (>70%), MEDIUM (40-70%), or LOW (<40%)
 - Consider common conditions before rare ones (think horses, not zebras)
 - Include both benign and serious conditions when appropriate
 - Never provide definitive diagnoses - only suggestions for clinical consideration
 - Always recommend appropriate follow-up and investigations
 - Flag any emergency conditions that need immediate attention
-- Use ONLY ICD-9 codes, not ICD-10 codes
+- Consider patient demographics (age, sex) when ranking differentials
+- Factor in past medical history and current medications if provided
 
 Format your response as:
-1. CLINICAL SUMMARY: Brief overview of key findings
-2. DIFFERENTIAL DIAGNOSES: Listed by likelihood with ICD-9 codes and brief reasoning
-   Example: 1. Migraine without aura (346.10) - Classic presentation with family history
-3. RED FLAGS: Any concerning features requiring urgent attention
-4. RECOMMENDED INVESTIGATIONS: Tests to help narrow the differential
+1. CLINICAL SUMMARY: Brief overview of key findings including patient demographics if available
+
+2. DIFFERENTIAL DIAGNOSES: Listed by likelihood with ICD codes, confidence, and reasoning
+   Format: #. Diagnosis Name (ICD-10: X00.0, ICD-9: 000.0) [Confidence: HIGH/MEDIUM/LOW]
+   - Supporting evidence: [findings that support this diagnosis]
+   - Against: [findings that argue against, or "None identified"]
+   Example:
+   1. Migraine without aura (ICD-10: G43.009, ICD-9: 346.10) [Confidence: HIGH]
+      - Supporting evidence: Unilateral headache, photophobia, nausea, family history
+      - Against: None identified
+
+3. RED FLAGS: Any concerning features requiring urgent attention (or "None identified")
+
+4. RECOMMENDED INVESTIGATIONS: Tests to help narrow the differential, prioritized
+   - Priority 1 (Urgent): Tests needed immediately
+   - Priority 2 (Soon): Tests to order within days
+   - Priority 3 (Routine): Non-urgent workup
+
 5. CLINICAL PEARLS: Key points to remember for this presentation"""
         },
         "medication": {
@@ -262,12 +280,14 @@ IMMEDIATE ACTIONS:
         "gemini_temperature": 0.3  # Gemini-specific temperature
     },
     "elevenlabs": {
-        "model_id": "scribe_v1",  # Changed from scribe_v1 to match the supported model
+        "model_id": "scribe_v2",  # Updated to scribe_v2 - 90+ languages, up to 48 speakers
         "language_code": "",  # Empty string for auto-detection
         "tag_audio_events": True,
-        "num_speakers": None,  # None means auto-detection
-        "timestamps_granularity": "word",
-        "diarize": True
+        "num_speakers": None,  # None means auto-detection (up to 48 speakers supported)
+        "timestamps_granularity": "word",  # Options: none, word, character
+        "diarize": True,
+        "entity_detection": [],  # Array of entity types: "phi", "pii", "pci", "offensive"
+        "keyterms": []  # Up to 100 medical terms to bias recognition
     },
     "deepgram": {
         "model": "nova-2-medical",  # Options: nova-2, nova-2-medical, enhanced, etc.

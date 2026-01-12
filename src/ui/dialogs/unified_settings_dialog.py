@@ -272,12 +272,12 @@ class UnifiedSettingsDialog:
         model_label = ttk.Label(frame, text="Model:")
         model_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(model_label, "ElevenLabs speech-to-text model")
-        model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", defaults.get("model_id", "scribe_v1")))
+        model_var = tk.StringVar(value=elevenlabs_settings.get("model_id", defaults.get("model_id", "scribe_v2")))
         self.widgets['audio_stt']['elevenlabs']['model_id'] = model_var
         model_combo = ttk.Combobox(frame, textvariable=model_var, width=30,
-                                   values=["scribe_v1", "scribe_v1_experimental"])
+                                   values=["scribe_v2", "scribe_v1", "scribe_v1_experimental"])
         model_combo.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
-        ToolTip(model_combo, "scribe_v1 is stable; scribe_v1_experimental has newer features")
+        ToolTip(model_combo, "scribe_v2: 90+ languages, entity detection, keyterms")
         row += 1
 
         # Language
@@ -300,6 +300,43 @@ class UnifiedSettingsDialog:
         tag_check = ttk.Checkbutton(frame, variable=tag_var)
         tag_check.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
         ToolTip(tag_check, "Enable to include audio event markers in transcript")
+        row += 1
+
+        # Entity Detection (scribe_v2 feature)
+        entity_label = ttk.Label(frame, text="Entity Detection:")
+        entity_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(entity_label, "Detect sensitive entities (scribe_v2 only)")
+
+        entity_frame = ttk.Frame(frame)
+        entity_frame.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+
+        current_entities = elevenlabs_settings.get("entity_detection", defaults.get("entity_detection", []))
+        phi_var = tk.BooleanVar(value="phi" in current_entities)
+        pii_var = tk.BooleanVar(value="pii" in current_entities)
+        pci_var = tk.BooleanVar(value="pci" in current_entities)
+        offensive_var = tk.BooleanVar(value="offensive" in current_entities)
+
+        self.widgets['audio_stt']['elevenlabs']['entity_phi'] = phi_var
+        self.widgets['audio_stt']['elevenlabs']['entity_pii'] = pii_var
+        self.widgets['audio_stt']['elevenlabs']['entity_pci'] = pci_var
+        self.widgets['audio_stt']['elevenlabs']['entity_offensive'] = offensive_var
+
+        ttk.Checkbutton(entity_frame, text="PHI", variable=phi_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(entity_frame, text="PII", variable=pii_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(entity_frame, text="PCI", variable=pci_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(entity_frame, text="Offensive", variable=offensive_var).pack(side=tk.LEFT)
+        row += 1
+
+        # Keyterms (scribe_v2 feature)
+        keyterms_label = ttk.Label(frame, text="Keyterms:")
+        keyterms_label.grid(row=row, column=0, sticky="nw", pady=10)
+        ToolTip(keyterms_label, "Medical terms to bias recognition (comma-separated, up to 100)")
+        current_keyterms = elevenlabs_settings.get("keyterms", defaults.get("keyterms", []))
+        keyterms_var = tk.StringVar(value=", ".join(current_keyterms))
+        self.widgets['audio_stt']['elevenlabs']['keyterms'] = keyterms_var
+        keyterms_entry = ttk.Entry(frame, textvariable=keyterms_var, width=40)
+        keyterms_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(keyterms_entry, "Comma-separated medical terms (e.g., 'hypertension, metformin, COPD')")
 
         frame.columnconfigure(1, weight=1)
 
@@ -787,7 +824,29 @@ class UnifiedSettingsDialog:
 
             if 'elevenlabs' in audio_stt:
                 SETTINGS.setdefault('elevenlabs', {})
-                for key, var in audio_stt['elevenlabs'].items():
+                el_widgets = audio_stt['elevenlabs']
+
+                # Handle entity detection checkboxes -> array
+                entity_detection = []
+                if el_widgets.get('entity_phi', tk.BooleanVar()).get():
+                    entity_detection.append('phi')
+                if el_widgets.get('entity_pii', tk.BooleanVar()).get():
+                    entity_detection.append('pii')
+                if el_widgets.get('entity_pci', tk.BooleanVar()).get():
+                    entity_detection.append('pci')
+                if el_widgets.get('entity_offensive', tk.BooleanVar()).get():
+                    entity_detection.append('offensive')
+                SETTINGS['elevenlabs']['entity_detection'] = entity_detection
+
+                # Handle keyterms string -> array
+                keyterms_str = el_widgets.get('keyterms', tk.StringVar()).get()
+                keyterms = [t.strip() for t in keyterms_str.split(',') if t.strip()]
+                SETTINGS['elevenlabs']['keyterms'] = keyterms[:100]  # Limit to 100
+
+                # Handle regular settings
+                for key, var in el_widgets.items():
+                    if key.startswith('entity_') or key == 'keyterms':
+                        continue  # Already handled above
                     SETTINGS['elevenlabs'][key] = var.get()
 
             if 'deepgram' in audio_stt:
@@ -850,7 +909,28 @@ class UnifiedSettingsDialog:
 
         if 'elevenlabs' in audio_stt:
             defaults = _DEFAULT_SETTINGS.get('elevenlabs', {})
-            for key, var in audio_stt['elevenlabs'].items():
+            el_widgets = audio_stt['elevenlabs']
+
+            # Reset entity detection checkboxes
+            default_entities = defaults.get('entity_detection', [])
+            if 'entity_phi' in el_widgets:
+                el_widgets['entity_phi'].set('phi' in default_entities)
+            if 'entity_pii' in el_widgets:
+                el_widgets['entity_pii'].set('pii' in default_entities)
+            if 'entity_pci' in el_widgets:
+                el_widgets['entity_pci'].set('pci' in default_entities)
+            if 'entity_offensive' in el_widgets:
+                el_widgets['entity_offensive'].set('offensive' in default_entities)
+
+            # Reset keyterms
+            if 'keyterms' in el_widgets:
+                default_keyterms = defaults.get('keyterms', [])
+                el_widgets['keyterms'].set(', '.join(default_keyterms))
+
+            # Reset regular settings
+            for key, var in el_widgets.items():
+                if key.startswith('entity_') or key == 'keyterms':
+                    continue  # Already handled above
                 if key in defaults:
                     var.set(defaults[key])
 

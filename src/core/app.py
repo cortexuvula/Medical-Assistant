@@ -1022,7 +1022,67 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def create_diagnostic_analysis(self) -> None:
         """Create a diagnostic analysis using DocumentGenerators."""
         self.document_generators.create_diagnostic_analysis()
-    
+
+    def show_diagnostic_history(self) -> None:
+        """Show the diagnostic analysis history dialog."""
+        from ui.dialogs.diagnostic_history_dialog import DiagnosticHistoryDialog
+
+        try:
+            dialog = DiagnosticHistoryDialog(
+                self,
+                on_view_callback=self._view_diagnostic_analysis
+            )
+            dialog.show()
+        except Exception as e:
+            self.logger.error(f"Failed to open diagnostic history: {e}")
+            self.status_manager.error(f"Failed to open diagnostic history: {str(e)}")
+
+    def show_diagnostic_comparison(self) -> None:
+        """Show the diagnostic comparison dialog for side-by-side analysis."""
+        from ui.dialogs.diagnostic_comparison_dialog import DiagnosticComparisonDialog
+
+        try:
+            dialog = DiagnosticComparisonDialog(self)
+            dialog.show()
+        except Exception as e:
+            self.logger.error(f"Failed to open diagnostic comparison: {e}")
+            self.status_manager.error(f"Failed to open diagnostic comparison: {str(e)}")
+
+    def _view_diagnostic_analysis(self, analysis: dict) -> None:
+        """Callback to view a diagnostic analysis from history.
+
+        Args:
+            analysis: The analysis dictionary from database
+        """
+        from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
+        import json
+
+        try:
+            # Parse metadata - may already be a dict from _parse_analysis_row
+            metadata = {}
+            metadata_raw = analysis.get('metadata_json')
+            if metadata_raw:
+                if isinstance(metadata_raw, dict):
+                    metadata = metadata_raw
+                elif isinstance(metadata_raw, str):
+                    try:
+                        metadata = json.loads(metadata_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # Show in results dialog
+            results_dialog = DiagnosticResultsDialog(self)
+            results_dialog.show_results(
+                analysis=analysis.get('result_text', ''),
+                source=analysis.get('source_type', 'History'),
+                metadata=metadata,
+                recording_id=analysis.get('recording_id'),
+                source_text=analysis.get('source_text', '')
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to view diagnostic analysis: {e}")
+            self.status_manager.error(f"Failed to view analysis: {str(e)}")
+
     def analyze_medications(self) -> None:
         """Analyze medications using DocumentGenerators."""
         self.document_generators.analyze_medications()
@@ -1038,13 +1098,17 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def open_translation_dialog(self) -> None:
         """Open the bidirectional translation dialog."""
         from ui.dialogs.translation_dialog import TranslationDialog
-        
+
         try:
             dialog = TranslationDialog(self, self.audio_handler)
             dialog.show()
         except Exception as e:
             self.logger.error(f"Failed to open translation dialog: {e}")
             self.status_manager.error(f"Failed to open translation dialog: {str(e)}")
+
+    def show_translation_assistant(self) -> None:
+        """Alias for open_translation_dialog for menu consistency."""
+        self.open_translation_dialog()
 
     
 

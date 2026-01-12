@@ -1146,7 +1146,17 @@ def show_shortcuts_dialog(parent: tk.Tk) -> None:
         ("Chat & Interface", [
             ("Ctrl+/", "Focus chat input"),
             ("Alt+T", "Toggle theme (Light/Dark)"),
+            ("Ctrl+,", "Open Preferences"),
             ("F1", "Show this help dialog")
+        ]),
+        ("AI Analysis", [
+            ("Ctrl+D", "Run diagnostic analysis"),
+        ]),
+        ("Export", [
+            ("Ctrl+E", "Export to PDF"),
+            ("Ctrl+Shift+W", "Export to Word"),
+            ("Ctrl+Shift+F", "Export to FHIR"),
+            ("Ctrl+P", "Print document")
         ])
     ]
     

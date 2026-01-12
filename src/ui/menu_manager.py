@@ -40,7 +40,10 @@ class MenuManager:
 
         # Create Settings menu
         self._create_settings_menu(menubar)
-        
+
+        # Create Tools menu
+        self._create_tools_menu(menubar)
+
         # Create Help menu
         self._create_help_menu(menubar)
         
@@ -197,6 +200,47 @@ class MenuManager:
         settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
 
         menubar.add_cascade(label="Settings", menu=settings_menu)
+
+    def _create_tools_menu(self, menubar: tk.Menu) -> None:
+        """Create the Tools menu.
+
+        Args:
+            menubar: The main menu bar to add the Tools menu to
+        """
+        is_dark = self.app.current_theme in ["darkly", "solar", "cyborg", "superhero"]
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        self._style_menu(tools_menu, is_dark)
+
+        # Diagnostic tools
+        tools_menu.add_command(
+            label="Run Diagnostic Analysis",
+            command=self.app.create_diagnostic_analysis,
+            accelerator="Ctrl+D"
+        )
+        tools_menu.add_command(
+            label="Diagnostic History",
+            command=self.app.show_diagnostic_history
+        )
+        tools_menu.add_command(
+            label="Compare Diagnoses",
+            command=self.app.show_diagnostic_comparison
+        )
+        tools_menu.add_separator()
+
+        # Medication tools
+        tools_menu.add_command(
+            label="Medication Analysis",
+            command=self.app.analyze_medications
+        )
+        tools_menu.add_separator()
+
+        # Translation tools
+        tools_menu.add_command(
+            label="Translation Assistant",
+            command=self.app.show_translation_assistant
+        )
+
+        menubar.add_cascade(label="Tools", menu=tools_menu)
 
     def _create_audio_stt_submenu(self, settings_menu: tk.Menu) -> None:
         """Create the Audio & Transcription submenu.

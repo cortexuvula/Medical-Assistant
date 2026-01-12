@@ -10,10 +10,13 @@ to improve maintainability and separation of concerns.
 
 import logging
 import tkinter as tk
-from typing import TYPE_CHECKING, Optional
+import json
+from typing import TYPE_CHECKING, Optional, Dict, List, Any
+from datetime import datetime
 
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
 from utils.differential_tracker import DifferentialTracker
+from database.database import Database
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -42,6 +45,31 @@ class PeriodicAnalysisController:
         self.app = app
         self.patient_context: str = ""
         self.differential_tracker = DifferentialTracker()
+        self._db: Optional[Database] = None
+        self._last_session_id: Optional[int] = None
+        self._current_recording_id: Optional[int] = None
+
+    def _get_database(self) -> Database:
+        """Get or create database connection."""
+        if self._db is None:
+            self._db = Database()
+        return self._db
+
+    def set_recording_id(self, recording_id: Optional[int]) -> None:
+        """Set the current recording ID for linking periodic analyses.
+
+        Args:
+            recording_id: The recording ID to link analyses to
+        """
+        self._current_recording_id = recording_id
+
+    def get_last_session_id(self) -> Optional[int]:
+        """Get the last saved periodic analysis session ID.
+
+        Returns:
+            The session ID if analyses were saved, None otherwise
+        """
+        return self._last_session_id
 
     def start_periodic_analysis(self) -> None:
         """Start periodic analysis during recording."""
@@ -108,15 +136,173 @@ class PeriodicAnalysisController:
         except Exception as e:
             logging.error(f"Error updating countdown: {e}")
 
-    def stop_periodic_analysis(self) -> None:
-        """Stop periodic analysis."""
+    def stop_periodic_analysis(self, save_to_database: bool = True) -> Optional[int]:
+        """Stop periodic analysis and optionally save history to database.
+
+        Args:
+            save_to_database: Whether to save the analysis history to database
+
+        Returns:
+            The session ID if saved, None otherwise
+        """
+        session_id = None
         try:
             if self.app.periodic_analyzer and self.app.periodic_analyzer.is_running:
+                # Save history before stopping
+                if save_to_database:
+                    session_id = self._save_periodic_history()
+
                 self.app.periodic_analyzer.stop()
                 self.app.periodic_analyzer = None  # Clear reference to prevent reuse
                 logging.info("Stopped periodic analysis")
+
+                # Store for later retrieval
+                self._last_session_id = session_id
         except Exception as e:
             logging.error(f"Error stopping periodic analysis: {e}")
+
+        return session_id
+
+    def _save_periodic_history(self) -> Optional[int]:
+        """Save the periodic analysis history to database.
+
+        Returns:
+            The session ID (first analysis ID) if saved, None otherwise
+        """
+        if not self.app.periodic_analyzer:
+            return None
+
+        history = self.app.periodic_analyzer.analysis_history
+        if not history:
+            return None
+
+        try:
+            db = self._get_database()
+            session_id = None
+            saved_count = 0
+
+            # Combine all analyses for the session
+            combined_text = self.app.periodic_analyzer.get_combined_history_text()
+
+            # Save the combined session as a single analysis
+            metadata = {
+                "analysis_type": "periodic_session",
+                "total_analyses": len(history),
+                "session_start": history[0]["timestamp"] if history else None,
+                "session_end": history[-1]["timestamp"] if history else None,
+                "total_duration_seconds": history[-1]["elapsed_seconds"] if history else 0,
+                "individual_analyses": [
+                    {
+                        "analysis_number": entry.get("analysis_number"),
+                        "elapsed_seconds": entry.get("elapsed_seconds"),
+                        "timestamp": entry.get("timestamp"),
+                        "differential_count": entry.get("metadata", {}).get("differential_count", 0)
+                    }
+                    for entry in history
+                ]
+            }
+
+            # Save to analysis_results table
+            session_id = db.save_analysis_result(
+                analysis_type="periodic",
+                result_text=combined_text,
+                recording_id=self._current_recording_id,
+                analysis_subtype="differential_evolution",
+                result_json=None,
+                metadata=metadata,
+                patient_context=self.patient_context if self.patient_context else None,
+                source_type="Recording",
+                source_text=None
+            )
+
+            if session_id:
+                logging.info(
+                    f"Saved periodic analysis session {session_id} "
+                    f"with {len(history)} analyses to database"
+                )
+                saved_count = len(history)
+
+            # Also save individual analyses for detailed tracking
+            for entry in history:
+                try:
+                    entry_metadata = {
+                        "analysis_type": "periodic_individual",
+                        "parent_session_id": session_id,
+                        "analysis_number": entry.get("analysis_number"),
+                        "elapsed_seconds": entry.get("elapsed_seconds"),
+                        "differentials": entry.get("metadata", {}).get("differentials", []),
+                        "differential_count": entry.get("metadata", {}).get("differential_count", 0)
+                    }
+
+                    db.save_analysis_result(
+                        analysis_type="periodic",
+                        result_text=entry.get("result_text", ""),
+                        recording_id=self._current_recording_id,
+                        analysis_subtype="differential_snapshot",
+                        result_json=entry.get("metadata", {}),
+                        metadata=entry_metadata,
+                        patient_context=None,
+                        source_type="Recording",
+                        source_text=None
+                    )
+                except Exception as e:
+                    logging.warning(f"Error saving individual periodic analysis: {e}")
+
+            return session_id
+
+        except Exception as e:
+            logging.error(f"Error saving periodic history to database: {e}")
+            return None
+
+    def get_periodic_session(self, session_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a saved periodic analysis session.
+
+        Args:
+            session_id: The session ID to retrieve
+
+        Returns:
+            Session data dictionary or None if not found
+        """
+        try:
+            db = self._get_database()
+            # Get the session record
+            analyses = db.get_recent_analysis_results(
+                analysis_type="periodic",
+                limit=200
+            )
+
+            for analysis in analyses:
+                if analysis.get('id') == session_id:
+                    return analysis
+
+            return None
+        except Exception as e:
+            logging.error(f"Error retrieving periodic session: {e}")
+            return None
+
+    def get_linked_periodic_analyses(self, recording_id: int) -> List[Dict[str, Any]]:
+        """Get all periodic analyses linked to a recording.
+
+        Args:
+            recording_id: The recording ID to search for
+
+        Returns:
+            List of periodic analysis records
+        """
+        try:
+            db = self._get_database()
+            analyses = db.get_recent_analysis_results(
+                analysis_type="periodic",
+                limit=500
+            )
+
+            return [
+                a for a in analyses
+                if a.get('recording_id') == recording_id
+            ]
+        except Exception as e:
+            logging.error(f"Error getting linked periodic analyses: {e}")
+            return []
 
     def perform_periodic_analysis(self, analysis_count: int, elapsed_time: float) -> None:
         """Perform periodic analysis callback.
