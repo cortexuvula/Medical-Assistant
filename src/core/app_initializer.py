@@ -522,6 +522,12 @@ class AppInitializer:
                     # Switch to SOAP tab to show the results and give focus
                     self.app.notebook.select(1)
                     self.app.soap_text.focus_set()
+
+                    # Auto-run analyses to the side panels
+                    logging.info(f"Scheduling auto-analysis for queued SOAP note ({len(soap_note)} chars)")
+                    if hasattr(self.app, 'document_generators'):
+                        self.app.after(100, lambda sn=soap_note: self.app.document_generators._run_medication_to_panel(sn))
+                        self.app.after(200, lambda sn=soap_note: self.app.document_generators._run_diagnostic_to_panel(sn))
                 else:
                     skipped_updates.append('soap')
                     logging.info(f"Skipped SOAP update - user has modified content")
