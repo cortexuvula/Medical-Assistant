@@ -165,7 +165,7 @@ class TestSOAPNoteGeneration:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = """
             S: Patient reports headache
             O: Vital signs normal
@@ -188,7 +188,7 @@ class TestSOAPNoteGeneration:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = "SOAP note with context"
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False

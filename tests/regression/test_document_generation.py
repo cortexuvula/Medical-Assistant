@@ -30,7 +30,7 @@ class TestSOAPNoteGeneration:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = """
             S: Patient presents with chest pain x2 hours
             O: BP 150/95, HR 88, ST elevation V1-V4
@@ -50,7 +50,7 @@ class TestSOAPNoteGeneration:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = """
             S: Subjective content
             O: Objective content
@@ -73,7 +73,7 @@ class TestSOAPNoteGeneration:
         context = "Patient has history of hypertension and diabetes"
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = "SOAP note with context included"
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
@@ -91,7 +91,7 @@ class TestSOAPNoteGeneration:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = ""
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
@@ -324,7 +324,7 @@ class TestDocumentGenerationRegressionSuite:
         transcript = "Patient's temp is 38.5°C. O2 sat 97%."
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = "S: Patient temp 38.5°C\nO: O2 sat 97%"
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
@@ -341,7 +341,7 @@ class TestDocumentGenerationRegressionSuite:
         long_transcript = "Patient reports headache. " * 500
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = "SOAP note from long transcript"
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
@@ -388,7 +388,7 @@ class TestDocumentGenerationRegressionSuite:
         )
 
         with patch('src.ai.soap_generation.call_ai', return_value="Generated content"), \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent, \
+             patch('src.managers.agent_manager.agent_manager') as mock_agent, \
              patch('src.ai.letter_generation.call_ai', return_value="Generated content"), \
              patch('src.ai.text_processing.call_ai', return_value="Generated content"):
             mock_agent.generate_synopsis.return_value = None
@@ -409,7 +409,7 @@ class TestDocumentGenerationRegressionSuite:
         from src.ai.ai import create_soap_note_with_openai
 
         with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.ai.soap_generation.agent_manager') as mock_agent:
+             patch('src.managers.agent_manager.agent_manager') as mock_agent:
             mock_call.side_effect = Exception("API Error")
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
