@@ -29,7 +29,7 @@ class TestSOAPNoteGeneration:
         """SOAP note generation should return a string."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = """
             S: Patient presents with chest pain x2 hours
             O: BP 150/95, HR 88, ST elevation V1-V4
@@ -46,7 +46,7 @@ class TestSOAPNoteGeneration:
         """SOAP note should contain S, O, A, P sections."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = """
             S: Subjective content
             O: Objective content
@@ -66,7 +66,7 @@ class TestSOAPNoteGeneration:
 
         context = "Patient has history of hypertension and diabetes"
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = "SOAP note with context included"
 
             result = create_soap_note_with_openai(
@@ -81,7 +81,7 @@ class TestSOAPNoteGeneration:
         """SOAP note generation should handle empty transcript."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = ""
 
             result = create_soap_note_with_openai("")
@@ -107,7 +107,7 @@ class TestReferralGeneration:
         """Referral generation should return a string."""
         from src.ai.ai import create_referral_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = """
             Dear Dr. Specialist,
 
@@ -126,7 +126,7 @@ class TestReferralGeneration:
         """Referral should accept specific conditions."""
         from src.ai.ai import create_referral_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Referral letter content"
 
             result = create_referral_with_openai(
@@ -141,7 +141,7 @@ class TestReferralGeneration:
         """Referral should handle empty input."""
         from src.ai.ai import create_referral_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = ""
 
             result = create_referral_with_openai("")
@@ -166,7 +166,7 @@ class TestLetterGeneration:
         """Letter generation should return a string."""
         from src.ai.ai import create_letter_with_ai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = """
             Dear Patient,
 
@@ -185,7 +185,7 @@ class TestLetterGeneration:
         """Letter for patient should be appropriately worded."""
         from src.ai.ai import create_letter_with_ai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Dear Patient, your visit summary..."
 
             result = create_letter_with_ai(
@@ -199,7 +199,7 @@ class TestLetterGeneration:
         """Letter for employer should be appropriately formatted."""
         from src.ai.ai import create_letter_with_ai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "To Whom It May Concern, this letter confirms..."
 
             result = create_letter_with_ai(
@@ -215,7 +215,7 @@ class TestLetterGeneration:
 
         specs = "Include work restrictions and duration of leave"
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter with specifications"
 
             result = create_letter_with_ai(
@@ -264,7 +264,7 @@ class TestTextRefining:
         """refine_text should return a string."""
         from src.ai.ai import adjust_text_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.text_processing.call_ai') as mock_call:
             mock_call.return_value = "Refined text with proper punctuation."
 
             result = adjust_text_with_openai("text to refine")
@@ -277,7 +277,7 @@ class TestTextRefining:
 
         input_text = "patient has headache full stop fever full stop"
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.text_processing.call_ai') as mock_call:
             mock_call.return_value = "Patient has headache. Fever."
 
             result = adjust_text_with_openai(input_text)
@@ -293,7 +293,7 @@ class TestTextImproving:
         """improve_text should return a string."""
         from src.ai.ai import improve_text_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.text_processing.call_ai') as mock_call:
             mock_call.return_value = "Improved and clearer text."
 
             result = improve_text_with_openai("text to improve")
@@ -311,7 +311,7 @@ class TestDocumentGenerationRegressionSuite:
 
         transcript = "Patient's temp is 38.5°C. O2 sat 97%."
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = "S: Patient temp 38.5°C\nO: O2 sat 97%"
 
             result = create_soap_note_with_openai(transcript)
@@ -325,7 +325,7 @@ class TestDocumentGenerationRegressionSuite:
         # Create a long transcript
         long_transcript = "Patient reports headache. " * 500
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = "SOAP note from long transcript"
 
             result = create_soap_note_with_openai(long_transcript)
@@ -339,7 +339,7 @@ class TestDocumentGenerationRegressionSuite:
         soap_note = "A: 1. Diabetes 2. Hypertension 3. CKD"
         conditions = "diabetes, hypertension, chronic kidney disease"
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Referral for multiple conditions"
 
             result = create_referral_with_openai(soap_note, conditions)
@@ -352,7 +352,7 @@ class TestDocumentGenerationRegressionSuite:
 
         soap_note = "Patient José García, température 38°C"
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter for José García"
 
             result = create_letter_with_ai(soap_note)
@@ -369,7 +369,9 @@ class TestDocumentGenerationRegressionSuite:
             improve_text_with_openai
         )
 
-        with patch('src.ai.ai.call_ai', return_value="Generated content"):
+        with patch('src.ai.soap_generation.call_ai', return_value="Generated content"), \
+             patch('src.ai.letter_generation.call_ai', return_value="Generated content"), \
+             patch('src.ai.text_processing.call_ai', return_value="Generated content"):
             results = [
                 create_soap_note_with_openai("test"),
                 create_referral_with_openai("test"),
@@ -385,7 +387,7 @@ class TestDocumentGenerationRegressionSuite:
         """Document generation should handle errors gracefully."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.side_effect = Exception("API Error")
 
             # Should not raise exception, should return error message

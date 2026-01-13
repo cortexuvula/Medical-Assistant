@@ -164,7 +164,7 @@ class TestSOAPNoteGeneration:
         """create_soap_note_with_openai should generate SOAP note."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = """
             S: Patient reports headache
             O: Vital signs normal
@@ -184,7 +184,7 @@ class TestSOAPNoteGeneration:
         """SOAP note generation should include context if provided."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.soap_generation.call_ai') as mock_call:
             mock_call.return_value = "SOAP note with context"
 
             result = create_soap_note_with_openai(
@@ -203,7 +203,7 @@ class TestReferralGeneration:
         """create_referral_with_openai should return string."""
         from src.ai.ai import create_referral_with_openai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Referral letter content"
 
             result = create_referral_with_openai(
@@ -220,7 +220,7 @@ class TestLetterGeneration:
         """create_letter_with_ai should return string."""
         from src.ai.ai import create_letter_with_ai
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter content"
 
             result = create_letter_with_ai(
@@ -236,7 +236,7 @@ class TestLetterGeneration:
 
         recipient_types = ["patient", "employer", "insurance", "other"]
 
-        with patch('src.ai.ai.call_ai') as mock_call:
+        with patch('src.ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter content"
 
             for recipient in recipient_types:

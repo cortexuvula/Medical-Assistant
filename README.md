@@ -1,16 +1,18 @@
 # Medical Assistant
 
-Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Anthropic/Claude, Google Gemini, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
+Medical Assistant is a comprehensive desktop application for medical documentation, designed to transcribe and refine spoken medical notes. It leverages multiple AI providers (OpenAI, Anthropic/Claude, Google Gemini, and Ollama) with a modular architecture for efficient audio-to-text conversion, clinical note generation, and intelligent medical analysis.
 
 ## Features
 
 ### Core Features
 - **Workflow-Based Interface:** Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Chat) plus 6 text editor tabs
+- **Unified Preferences:** Comprehensive settings dialog (Ctrl+,) with tabbed interface for API keys, audio settings, AI models, prompts, and storage
 - **AI-Powered Chat Interface:** ChatGPT-style interface with context-aware suggestions for interacting with your medical notes
 - **RAG Document Search:** RAG tab enables searching your document database via N8N webhook integration with markdown rendering
 - **Advanced Recording System:** Record medical conversations with visual feedback, timer display, and pause/resume capabilities
 - **Real-Time Analysis:** Optional periodic analysis during recording generates differential diagnoses every 2 minutes
 - **Queue System:** Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions
+- **Batch Processing:** Process multiple recordings or audio files at once with progress tracking and statistics
 - **Dedicated Recordings Manager:** Recordings tab with search, filter, and document status indicators (✓, —, 🔄, ❌)
 
 ### Medical Documentation
@@ -43,26 +45,31 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 - **Export:** Save conversation transcripts
 
 ### AI & Transcription
-- **Multiple AI Providers:**
-  - OpenAI (GPT-4, GPT-4o, GPT-3.5)
-  - Anthropic (Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
-  - Google Gemini (Gemini Pro, Gemini Flash)
-  - Ollama (Local models - Llama, Mistral, etc.)
+- **Multiple AI Providers (Modular Architecture):**
+  - OpenAI (GPT-4, GPT-4o, GPT-4o-mini, GPT-3.5-turbo)
+  - Anthropic (Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku, Claude 3.5 Haiku)
+  - Google Gemini (Gemini Pro, Gemini Flash, Gemini 2.0)
+  - Ollama (Local models - Llama 3, Mistral, Qwen, etc.)
+- **Intelligent Provider Routing:** Automatic fallback and provider selection based on model configuration
 - **Multiple STT Providers:**
-  - Deepgram (Nova-2 Medical model)
-  - ElevenLabs (Scribe v1)
-  - Groq (Whisper Large v3 Turbo - 216x real-time)
-  - Local Whisper (Turbo model)
+  - Deepgram (Nova-2 Medical model - optimized for medical terminology)
+  - ElevenLabs (Scribe v1 - high accuracy with speaker diarization)
+  - Groq (Whisper Large v3 Turbo - 216x real-time speed)
+  - Local Whisper (Turbo model - offline capability)
 - **Text-to-Speech:** ElevenLabs integration with voice selection and Flash v2.5 model for ultra-low latency
 - **Customizable Prompts:** Edit and import/export prompts and models for text refinement and note generation
+- **Streaming Support:** Real-time response streaming for faster perceived performance
 
 ### Technical Features
 - **Secure API Key Storage:** Encrypted storage with Fernet encryption and machine-specific key derivation
+- **Security Decorators:** Rate limiting, input sanitization, and secure API call wrappers
 - **Database Storage:** SQLite with FTS5 full-text search, automatic migrations, and connection pooling
-- **Export Functionality:** Export recordings and documents in various formats
-- **Performance Optimizations:** HTTP/2 support, connection pooling, and latency optimizations
+- **Resilient API Calls:** Circuit breaker pattern, exponential backoff, and automatic retry on transient failures
+- **Export Functionality:** Export recordings and documents in PDF, DOCX, and text formats
+- **Performance Optimizations:** HTTP/2 support, connection pooling, and latency optimizations (50-200ms savings per API call)
 - **Cross-Platform Support:** Available for Windows, macOS, and Linux with platform-specific optimizations
 - **Modern UI/UX:** Built with Tkinter and ttkbootstrap featuring animations, visual indicators, and responsive design
+- **Modular Codebase:** Clean separation of concerns with provider modules, agents, and UI components
 
 ## Installation
 
@@ -207,18 +214,39 @@ python main.py
 
 ## Configuration
 
-### Settings Menu
-- **API Keys:** Securely store and manage API keys (encrypted)
-- **Prompt Settings:** Customize prompts for each document type
-- **Audio Settings:** Configure microphone, sample rate, and audio processing
-- **Provider Settings:** Configure individual STT/TTS provider options
-- **ICD Code Version:** Choose ICD-9, ICD-10, or both for SOAP notes
+### Unified Preferences (Ctrl+,)
+Access all settings through the comprehensive Preferences dialog:
+
+| Tab | Settings |
+|-----|----------|
+| **API Keys** | All LLM keys (OpenAI, Anthropic, Gemini, Grok) and STT keys (Deepgram, ElevenLabs, Groq) |
+| **Audio & STT** | ElevenLabs, Deepgram, Groq settings, TTS voice selection |
+| **AI Models** | Temperature settings, translation provider configuration |
+| **Prompts** | Refine, Improve, SOAP, Referral, Advanced Analysis prompts |
+| **Storage** | Default folder, Custom Vocabulary, Address Book, Prefix Audio |
+| **General** | Quick Continue Mode, Theme selection, Sidebar preferences |
+
+### Settings Menu Structure
+```
+Settings
+├── Preferences...              [Ctrl+,]
+├── Update API Keys             [Quick access]
+├── Audio & Transcription ▸     [ElevenLabs, Deepgram, Groq, TTS]
+├── AI & Models ▸               [Temperature, Agent, Translation]
+├── Prompt Settings ▸           [Refine, Improve, SOAP, Referral, Advanced]
+├── Data & Storage ▸            [Vocabulary, Address Book, Storage, Prefix Audio]
+├── Export/Import Prompts
+├── Quick Continue Mode         [Toggle]
+└── Toggle Theme                [Alt+T]
+```
 
 ### Keyboard Shortcuts
+- `Ctrl+,` / `Cmd+,` - Open Preferences dialog
 - `Ctrl+/` / `Cmd+/` - Focus chat input
 - `Ctrl+Z` / `Cmd+Z` - Undo
 - `Ctrl+Y` / `Cmd+Shift+Z` - Redo
 - `Ctrl+S` / `Cmd+S` - Save
+- `Alt+T` - Toggle dark/light theme
 - See [SHORTCUTS.md](SHORTCUTS.md) for complete list
 
 ## Troubleshooting
@@ -243,13 +271,50 @@ python main.py
 - **Internet:** Required for cloud AI services (optional for local Ollama models)
 - **Audio:** Microphone for speech-to-text functionality
 
+## Architecture
+
+### Project Structure
+```
+src/
+├── ai/                    # AI providers and processors
+│   ├── agents/           # Specialized AI agents (medication, diagnostic, workflow)
+│   ├── providers/        # Modular AI provider implementations
+│   │   ├── openai_provider.py
+│   │   ├── anthropic_provider.py
+│   │   ├── gemini_provider.py
+│   │   ├── ollama_provider.py
+│   │   └── router.py     # Intelligent provider routing
+│   ├── ai_processor.py   # Core AI processing logic
+│   ├── soap_generation.py
+│   └── letter_generation.py
+├── audio/                 # Audio recording and processing
+├── core/                  # Application core and initialization
+├── database/              # SQLite with migrations and pooling
+├── managers/              # Singleton managers (agents, translation, etc.)
+├── processing/            # Document generation and queue system
+├── stt_providers/         # Speech-to-text implementations
+├── tts_providers/         # Text-to-speech implementations
+├── translation/           # Translation provider implementations
+├── ui/                    # User interface components
+│   ├── dialogs/          # All dialog windows
+│   └── components/       # Reusable UI components
+└── utils/                 # Utilities (security, validation, resilience)
+```
+
+### Key Design Patterns
+- **Provider Pattern:** All AI, STT, and TTS providers inherit from base classes
+- **Singleton Managers:** Agent, translation, and API key managers use singleton pattern
+- **Circuit Breaker:** Resilient API calls with automatic failure recovery
+- **Security Decorators:** Rate limiting and input sanitization via decorators
+- **Migration System:** Database schema evolution with versioned migrations
+
 ## Documentation
 
 - [User Guide](docs/user_guide.md)
 - [Keyboard Shortcuts](SHORTCUTS.md)
 - [Security Features](docs/security_features.md)
 - [Testing Guide](docs/testing_guide.md)
-- [CLAUDE.md](CLAUDE.md) - Development guide
+- [CLAUDE.md](CLAUDE.md) - Development guide for AI assistants
 
 ## Testing
 
