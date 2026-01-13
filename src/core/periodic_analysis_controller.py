@@ -98,6 +98,9 @@ class PeriodicAnalysisController:
             self.app.periodic_analyzer.start(self.perform_periodic_analysis)
             logging.info(f"Started periodic analysis with {interval_seconds}s interval")
 
+            # Run immediate analysis with accumulated audio if recording is in progress
+            self._run_immediate_analysis_if_needed()
+
         except Exception as e:
             logging.error(f"Failed to start periodic analysis: {e}")
             self.app.status_manager.error("Failed to start advanced analysis")
@@ -114,6 +117,45 @@ class PeriodicAnalysisController:
                         logging.info(f"Captured {len(self.patient_context)} chars of patient context")
         except Exception as e:
             logging.error(f"Error capturing patient context: {e}")
+
+    def _run_immediate_analysis_if_needed(self) -> None:
+        """Run immediate analysis with accumulated audio if recording has been going on.
+
+        This handles the case where user enables Advanced Analysis mid-recording
+        and we want to immediately analyze all audio captured so far.
+        """
+        try:
+            # Check if there's accumulated audio worth analyzing
+            if not self.app.audio_state_manager:
+                return
+
+            # Get actual recording elapsed time
+            elapsed_time = self.app.audio_state_manager.get_elapsed_time()
+
+            # Only run immediate analysis if recording has been going for at least 10 seconds
+            # This avoids running analysis for minimal audio at recording start
+            if elapsed_time < 10:
+                logging.info("Skipping immediate analysis - recording just started")
+                return
+
+            # Check if there's actual audio data
+            from audio.periodic_analysis import AudioSegmentExtractor
+            combined_audio = AudioSegmentExtractor.extract_audio_segment(
+                self.app.recording_manager,
+                self.app.audio_state_manager
+            )
+            if combined_audio is None or len(combined_audio) == 0:
+                logging.info("Skipping immediate analysis - no audio accumulated yet")
+                return
+
+            logging.info(f"Running immediate analysis with {elapsed_time:.1f}s of accumulated audio")
+
+            # Run the analysis with analysis_count=0 to indicate it's the initial analysis
+            self.perform_periodic_analysis(0, elapsed_time)
+
+        except Exception as e:
+            logging.error(f"Error running immediate analysis: {e}")
+            # Don't fail the whole start - periodic analysis will still run normally
 
     def _on_countdown_update(self, seconds: int) -> None:
         """Handle countdown updates from the analyzer.
