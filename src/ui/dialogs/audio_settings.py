@@ -432,7 +432,7 @@ def show_groq_settings_dialog(parent: tk.Tk) -> None:
         "prompt": ""
     })
 
-    dialog = create_toplevel_dialog(parent, "Groq Settings", "550x500")
+    dialog = create_toplevel_dialog(parent, "Groq Settings", "550x580")
 
     # Create the main frame with padding
     frame = ttk.Frame(dialog, padding=20)
