@@ -423,3 +423,51 @@ class FeatureFlags:
     ENABLE_BATCH_PROCESSING = True
     ENABLE_RAG_TAB = True
     ENABLE_CHAT_TAB = True
+
+
+# =============================================================================
+# Timing Constants
+# =============================================================================
+# Centralized timing values to avoid magic numbers throughout the codebase
+
+class TimingConstants:
+    """Timing constants for various application operations.
+
+    All values in seconds unless otherwise noted.
+
+    Usage:
+        from utils.constants import TimingConstants
+
+        interval = TimingConstants.PERIODIC_ANALYSIS_INTERVAL
+    """
+
+    # Analysis intervals
+    PERIODIC_ANALYSIS_INTERVAL = 120  # 2 minutes - default interval for real-time analysis
+    PERIODIC_ANALYSIS_MIN_ELAPSED = 10  # Minimum recording time before immediate analysis
+
+    # Autosave intervals
+    AUTOSAVE_INTERVAL = 300  # 5 minutes - default autosave interval
+
+    # Cache TTLs
+    SETTINGS_CACHE_TTL = 60  # Settings cache validity
+    AGENT_CACHE_TTL = 300  # 5 minutes - agent response cache
+    MODEL_CACHE_TTL = 3600  # 1 hour - model/provider info cache
+
+    # API timeouts
+    API_TIMEOUT_DEFAULT = 30  # Default API request timeout
+    API_TIMEOUT_LONG = 60  # Long-running API operations
+    STREAM_TIMEOUT = 60  # Streaming API timeout
+
+    # STT provider failover
+    STT_FAILOVER_SKIP_DURATION = 300  # 5 minutes - skip failed provider
+
+    # UI update intervals (milliseconds)
+    UI_UPDATE_INTERVAL_MS = 100  # UI refresh rate
+    DEBOUNCE_DELAY_MS = 300  # Debounce for rapid events
+
+    # Database
+    DB_RETRY_INITIAL_DELAY = 0.1  # Initial delay for retry
+    DB_RETRY_MAX_DELAY = 2.0  # Maximum delay between retries
+
+    # Debug
+    MAX_DEBUG_FILES = 20  # Maximum debug files to keep

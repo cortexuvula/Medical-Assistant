@@ -13,7 +13,7 @@ SETTINGS_FILE = str(data_folder_manager.settings_file_path)
 _settings_cache: dict = None
 _settings_cache_time: float = 0.0
 _settings_cache_lock = threading.Lock()
-SETTINGS_CACHE_TTL = 5.0  # Cache valid for 5 seconds
+SETTINGS_CACHE_TTL = 60.0  # Cache valid for 60 seconds (settings rarely change during session)
 DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
 
 # NEW: Default AI Provider setting (default is OpenAI)

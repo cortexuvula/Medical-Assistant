@@ -16,6 +16,7 @@ from datetime import datetime
 
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
 from utils.differential_tracker import DifferentialTracker
+from utils.constants import TimingConstants
 from database.database import Database
 
 if TYPE_CHECKING:
@@ -77,8 +78,8 @@ class PeriodicAnalysisController:
             # Clear differential tracker for fresh analysis session
             self.differential_tracker.clear()
 
-            # Get interval from UI (default 2 minutes = 120 seconds)
-            interval_seconds = 120
+            # Get interval from UI (default from TimingConstants)
+            interval_seconds = TimingConstants.PERIODIC_ANALYSIS_INTERVAL
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
                 record_tab = self.app.ui.record_tab
                 if hasattr(record_tab, 'get_analysis_interval_seconds'):
@@ -140,9 +141,9 @@ class PeriodicAnalysisController:
             logging.info(f"Immediate analysis check: elapsed={elapsed_time:.1f}s, "
                         f"pending_segments={pending}, chunks={chunks}, total={total}")
 
-            # Only run immediate analysis if recording has been going for at least 10 seconds
+            # Only run immediate analysis if recording has been going for minimum time
             # This avoids running analysis for minimal audio at recording start
-            if elapsed_time < 10:
+            if elapsed_time < TimingConstants.PERIODIC_ANALYSIS_MIN_ELAPSED:
                 logging.info("Skipping immediate analysis - recording just started")
                 return
 
