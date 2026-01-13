@@ -870,6 +870,16 @@ def format_soap_paragraphs(text: str) -> str:
         pattern2 = rf'(\S)\s+({re.escape(header)})\s*$'
         text = re.sub(pattern2, r'\1\n\2', text, flags=re.IGNORECASE | re.MULTILINE)
 
+    # Handle case where content follows header on the same line
+    # e.g., "Subjective: - Chief complaint: ..." -> "Subjective:\n- Chief complaint: ..."
+    for header in section_headers:
+        pattern = rf'({re.escape(header)}:)\s*(- )'
+        text = re.sub(pattern, r'\1\n\2', text, flags=re.IGNORECASE)
+
+    # Split multiple bullet points concatenated on the same line
+    # Only split " - " when followed by a capital letter (start of new item)
+    text = re.sub(r' (- [A-Z])', r'\n\1', text)
+
     lines = text.split('\n')
     result_lines = []
     detected_headers = []
