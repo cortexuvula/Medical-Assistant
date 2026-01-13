@@ -27,8 +27,28 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     elevenlabs_settings = SETTINGS.get("elevenlabs", {})
     default_settings = _DEFAULT_SETTINGS.get("elevenlabs", {})
 
-    dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x950")
-    frame = ttk.Frame(dialog, padding=20)
+    dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x700")
+
+    # Use scrollable canvas to ensure all content is accessible regardless of screen size
+    canvas = tk.Canvas(dialog)
+    scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+
+    # Configure scrolling
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda _: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    # Pack the canvas and scrollbar
+    canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+    scrollbar.pack(side="right", fill="y", pady=10)
+
+    # Create the main frame with padding inside the scrollable frame
+    frame = ttk.Frame(scrollable_frame, padding=20)
     frame.pack(fill=tk.BOTH, expand=True)
 
     # Create form with current settings
@@ -212,11 +232,35 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
         SETTINGS["elevenlabs"] = new_settings
         save_settings(SETTINGS)  # This now refers to the imported save_settings function
         messagebox.showinfo("Settings Saved", "ElevenLabs settings saved successfully")
-        dialog.destroy()
+        close_dialog()
 
     # Cancel handler
     def cancel():
+        close_dialog()
+
+    # Bind mousewheel for scrolling
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def _on_mousewheel_linux(event):
+        if event.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            canvas.yview_scroll(1, "units")
+
+    # Bind mousewheel events (Windows/Mac and Linux)
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    canvas.bind_all("<Button-4>", _on_mousewheel_linux)
+    canvas.bind_all("<Button-5>", _on_mousewheel_linux)
+
+    # Ensure dialog is closed properly with cleanup
+    def close_dialog():
+        canvas.unbind_all("<MouseWheel>")
+        canvas.unbind_all("<Button-4>")
+        canvas.unbind_all("<Button-5>")
         dialog.destroy()
+
+    dialog.protocol("WM_DELETE_WINDOW", close_dialog)
 
     ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="left", padx=5)
     ttk.Button(btn_frame, text="Save", command=save_elevenlabs_settings, bootstyle="success", width=10).pack(side="left", padx=5)
