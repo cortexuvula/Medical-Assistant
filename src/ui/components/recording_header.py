@@ -188,25 +188,9 @@ class RecordingHeader:
         self.components['header_advanced_checkbox'] = self._advanced_checkbox
         self.components['header_interval_combo'] = self._interval_combo
 
-        # Center: Waveform visualization
-        waveform_frame = ttk.Frame(content)
-        waveform_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=15)
-
-        # Canvas needs explicit background - will be updated to match theme
-        self._waveform_canvas = tk.Canvas(
-            waveform_frame,
-            height=40,
-            highlightthickness=0
-        )
-        self._waveform_canvas.pack(fill=tk.X, expand=True)
-        # Update canvas background to match theme after window is displayed
-        self._waveform_canvas.bind("<Map>", self._update_canvas_theme)
-
-        # Draw initial idle waveform (dotted line)
-        self._draw_idle_waveform()
-
-        # Bind resize event
-        self._waveform_canvas.bind("<Configure>", self._on_canvas_resize)
+        # Spacer to push device selector to the right
+        spacer = ttk.Frame(content)
+        spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Right: Device selector
         device_frame = ttk.Frame(content)
