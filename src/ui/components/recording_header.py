@@ -188,13 +188,9 @@ class RecordingHeader:
         self.components['header_advanced_checkbox'] = self._advanced_checkbox
         self.components['header_interval_combo'] = self._interval_combo
 
-        # Spacer to push device selector to the right
-        spacer = ttk.Frame(content)
-        spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Right: Device selector
-        device_frame = ttk.Frame(content)
-        device_frame.pack(side=tk.RIGHT)
+        # Device selector (next to Advanced Analysis)
+        device_frame = ttk.Frame(left_section)
+        device_frame.pack(side=tk.LEFT, padx=(20, 0))
 
         device_label = ttk.Label(
             device_frame,
