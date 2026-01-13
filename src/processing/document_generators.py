@@ -239,11 +239,13 @@ class DocumentGenerators:
                         logging.info(f"Created new recording with ID: {self.app.current_recording_id}")
 
                     # Auto-run analyses to the side panels
+                    logging.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
+
                     # Run medication analysis to panel
-                    self.app.after(100, lambda: self._run_medication_to_panel(soap_note))
+                    self.app.after(100, lambda sn=soap_note: self._run_medication_to_panel(sn))
 
                     # Run differential diagnosis to panel
-                    self.app.after(200, lambda: self._run_diagnostic_to_panel(soap_note))
+                    self.app.after(200, lambda sn=soap_note: self._run_diagnostic_to_panel(sn))
 
                 self.app.after(0, finalize)
 
@@ -666,9 +668,13 @@ class DocumentGenerators:
         Args:
             soap_note: The SOAP note text to analyze for medications
         """
+        logging.info("_run_medication_to_panel called")
+        self.app.status_manager.info("Starting medication analysis...")
+
         # Check if the analysis panel exists
         if not hasattr(self.app, 'medication_analysis_text') or self.app.medication_analysis_text is None:
             logging.warning("Medication analysis panel not available")
+            self.app.status_manager.warning("Medication panel not available")
             return
 
         # Check if medication agent is enabled
@@ -731,9 +737,13 @@ class DocumentGenerators:
         Args:
             soap_note: The SOAP note text to analyze for diagnoses
         """
+        logging.info("_run_diagnostic_to_panel called")
+        self.app.status_manager.info("Starting differential diagnosis...")
+
         # Check if the analysis panel exists
         if not hasattr(self.app, 'differential_analysis_text') or self.app.differential_analysis_text is None:
             logging.warning("Differential analysis panel not available")
+            self.app.status_manager.warning("Differential panel not available")
             return
 
         # Check if diagnostic agent is enabled
