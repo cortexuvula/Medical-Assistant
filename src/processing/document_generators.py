@@ -238,25 +238,12 @@ class DocumentGenerators:
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
                         logging.info(f"Created new recording with ID: {self.app.current_recording_id}")
 
-                    # Check if diagnostic agent is enabled
-                    if agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
-                        # Check if auto-run is enabled in settings
-                        from settings.settings import SETTINGS
-                        auto_run = SETTINGS.get('agent_config', {}).get('diagnostic', {}).get('auto_run_after_soap', False)
+                    # Auto-run analyses to the side panels
+                    # Run medication analysis to panel
+                    self.app.after(100, lambda: self._run_medication_to_panel(soap_note))
 
-                        if auto_run:
-                            # Auto-run diagnostic analysis
-                            self.app.status_manager.info("Auto-running diagnostic analysis...")
-                            self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
-                        else:
-                            # Ask user if they want to run analysis
-                            if messagebox.askyesno(
-                                "Run Diagnostic Analysis?",
-                                "SOAP note created successfully.\n\n"
-                                "Would you like to run diagnostic analysis on this SOAP note?",
-                                parent=self.app
-                            ):
-                                self.app.after(100, lambda: self._run_diagnostic_on_soap(soap_note))
+                    # Run differential diagnosis to panel
+                    self.app.after(200, lambda: self._run_diagnostic_to_panel(soap_note))
 
                 self.app.after(0, finalize)
 
@@ -673,7 +660,151 @@ class DocumentGenerators:
         # Submit task for execution
         self.app.io_executor.submit(task)
 
-    
+    def _run_medication_to_panel(self, soap_note: str) -> None:
+        """Run medication analysis and display results in the analysis panel.
+
+        Args:
+            soap_note: The SOAP note text to analyze for medications
+        """
+        # Check if the analysis panel exists
+        if not hasattr(self.app, 'medication_analysis_text') or self.app.medication_analysis_text is None:
+            logging.warning("Medication analysis panel not available")
+            return
+
+        # Check if medication agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.MEDICATION):
+            self._update_analysis_panel(
+                self.app.medication_analysis_text,
+                "Medication agent is disabled.\n\n"
+                "Enable it in Settings → AI & Models → Agent Settings"
+            )
+            return
+
+        # Show loading indicator
+        self._update_analysis_panel(
+            self.app.medication_analysis_text,
+            "Analyzing medications..."
+        )
+
+        def task() -> None:
+            try:
+                # Create agent task for medication analysis
+                task_data = AgentTask(
+                    task_description="Extract and analyze medications from SOAP note",
+                    input_data={
+                        "soap_note": soap_note,
+                        "analysis_type": "comprehensive"
+                    }
+                )
+
+                # Execute medication analysis
+                response = agent_manager.execute_agent_task(AgentType.MEDICATION, task_data)
+
+                if response and response.success:
+                    # Update panel with results
+                    self.app.after(0, lambda: self._update_analysis_panel(
+                        self.app.medication_analysis_text,
+                        response.result
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    self.app.after(0, lambda: self._update_analysis_panel(
+                        self.app.medication_analysis_text,
+                        f"Analysis failed: {error_msg}\n\n"
+                        "No medications found or API error occurred."
+                    ))
+
+            except Exception as e:
+                logging.error(f"Medication panel analysis failed: {e}")
+                self.app.after(0, lambda: self._update_analysis_panel(
+                    self.app.medication_analysis_text,
+                    f"Error: {str(e)}\n\n"
+                    "Check your API key and network connection."
+                ))
+
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+
+    def _run_diagnostic_to_panel(self, soap_note: str) -> None:
+        """Run differential diagnosis and display results in the analysis panel.
+
+        Args:
+            soap_note: The SOAP note text to analyze for diagnoses
+        """
+        # Check if the analysis panel exists
+        if not hasattr(self.app, 'differential_analysis_text') or self.app.differential_analysis_text is None:
+            logging.warning("Differential analysis panel not available")
+            return
+
+        # Check if diagnostic agent is enabled
+        if not agent_manager.is_agent_enabled(AgentType.DIAGNOSTIC):
+            self._update_analysis_panel(
+                self.app.differential_analysis_text,
+                "Diagnostic agent is disabled.\n\n"
+                "Enable it in Settings → AI & Models → Agent Settings"
+            )
+            return
+
+        # Show loading indicator
+        self._update_analysis_panel(
+            self.app.differential_analysis_text,
+            "Analyzing differential diagnoses..."
+        )
+
+        def task() -> None:
+            try:
+                # Create agent task for diagnostic analysis
+                task_data = AgentTask(
+                    task_description="Generate differential diagnosis from SOAP note",
+                    input_data={"soap_note": soap_note}
+                )
+
+                # Execute diagnostic analysis
+                response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
+
+                if response and response.success:
+                    # Update panel with results
+                    self.app.after(0, lambda: self._update_analysis_panel(
+                        self.app.differential_analysis_text,
+                        response.result
+                    ))
+                else:
+                    error_msg = response.error if response else "Unknown error"
+                    self.app.after(0, lambda: self._update_analysis_panel(
+                        self.app.differential_analysis_text,
+                        f"Analysis failed: {error_msg}\n\n"
+                        "Unable to generate differential diagnosis."
+                    ))
+
+            except Exception as e:
+                logging.error(f"Diagnostic panel analysis failed: {e}")
+                self.app.after(0, lambda: self._update_analysis_panel(
+                    self.app.differential_analysis_text,
+                    f"Error: {str(e)}\n\n"
+                    "Check your API key and network connection."
+                ))
+
+        # Submit task for execution
+        self.app.io_executor.submit(task)
+
+    def _update_analysis_panel(self, widget, content: str) -> None:
+        """Update an analysis panel with new content.
+
+        Args:
+            widget: The text widget to update
+            content: The content to display
+        """
+        if widget is None:
+            return
+
+        try:
+            widget.config(state='normal')
+            widget.delete('1.0', 'end')
+            widget.insert('1.0', content)
+            widget.config(state='disabled')
+        except Exception as e:
+            logging.error(f"Failed to update analysis panel: {e}")
+
     def analyze_medications(self) -> None:
         """Analyze medications from clinical content."""
         # Reload settings to ensure we have the latest configuration

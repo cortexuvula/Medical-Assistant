@@ -25,9 +25,11 @@ class NotebookTabs:
         """Create the notebook with tabs for transcript, soap note, referral, letter, chat, and RAG.
 
         Note: Tab headers are hidden since sidebar navigation provides access to each section.
+        The SOAP tab has a special split layout with medication and differential analysis panels.
 
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text, rag_text, context_text)
+            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text,
+                    rag_text, context_text, medication_analysis_text, differential_analysis_text)
         """
         # Create a style that hides the notebook tabs
         style = ttk.Style()
@@ -59,30 +61,34 @@ class NotebookTabs:
         ]
         
         text_widgets = {}
-        
+
         for tab_name, widget_key in tabs:
             # Create frame for each tab
             frame = ttk.Frame(notebook)
             notebook.add(frame, text=tab_name)
-            
-            # Create text widget with scrollbar
-            text_scroll = ttk.Scrollbar(frame)
-            text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            text_widget = tk.Text(
-                frame,
-                wrap=tk.WORD,
-                yscrollcommand=text_scroll.set,
-                undo=True,
-                autoseparators=True
-            )
-            text_widget.pack(fill=tk.BOTH, expand=True)
-            text_scroll.config(command=text_widget.yview)
-            
+
+            # Special handling for SOAP tab - split into paned layout
+            if widget_key == "soap":
+                text_widget = self._create_soap_split_layout(frame, text_widgets)
+            else:
+                # Standard layout for other tabs
+                text_scroll = ttk.Scrollbar(frame)
+                text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+                text_widget = tk.Text(
+                    frame,
+                    wrap=tk.WORD,
+                    yscrollcommand=text_scroll.set,
+                    undo=True,
+                    autoseparators=True
+                )
+                text_widget.pack(fill=tk.BOTH, expand=True)
+                text_scroll.config(command=text_widget.yview)
+
             # Store reference
             text_widgets[widget_key] = text_widget
             self.components[f'{widget_key}_text'] = text_widget
-            
+
             # Add welcome message to chat tab
             if widget_key == "chat":
                 # Add clear history button at the top
@@ -157,9 +163,172 @@ class NotebookTabs:
             text_widgets["letter"],
             text_widgets["chat"],
             text_widgets["rag"],
-            None  # No context text in notebook for workflow UI
+            None,  # No context text in notebook for workflow UI
+            text_widgets.get("medication_analysis"),
+            text_widgets.get("differential_analysis")
         )
     
+    def _create_soap_split_layout(self, frame: ttk.Frame, text_widgets: dict) -> tk.Text:
+        """Create the split SOAP tab layout with collapsible analysis panels.
+
+        Layout:
+        ┌─────────────────────┬─────────────────────┐
+        │                     │ Medication Analysis │
+        │     SOAP Note       ├─────────────────────┤
+        │                     │ Differential Dx     │
+        └─────────────────────┴─────────────────────┘
+
+        Args:
+            frame: Parent frame for the SOAP tab
+            text_widgets: Dictionary to store additional widget references
+
+        Returns:
+            tk.Text: The main SOAP note text widget
+        """
+        # Create horizontal paned window for left/right split
+        soap_paned = ttk.PanedWindow(frame, orient=tk.HORIZONTAL)
+        soap_paned.pack(fill=tk.BOTH, expand=True)
+
+        # ===== LEFT PANE: SOAP Note =====
+        left_frame = ttk.Frame(soap_paned)
+        soap_paned.add(left_frame, weight=1)
+
+        # SOAP note scrollbar
+        soap_scroll = ttk.Scrollbar(left_frame)
+        soap_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # SOAP note text widget (editable)
+        soap_text = tk.Text(
+            left_frame,
+            wrap=tk.WORD,
+            yscrollcommand=soap_scroll.set,
+            undo=True,
+            autoseparators=True
+        )
+        soap_text.pack(fill=tk.BOTH, expand=True)
+        soap_scroll.config(command=soap_text.yview)
+
+        # ===== RIGHT PANE: Analysis Panels (vertical split) =====
+        right_paned = ttk.PanedWindow(soap_paned, orient=tk.VERTICAL)
+        soap_paned.add(right_paned, weight=1)
+
+        # ----- TOP RIGHT: Medication Analysis (collapsible) -----
+        med_frame = ttk.LabelFrame(right_paned, text="Medication Analysis")
+        right_paned.add(med_frame, weight=1)
+
+        # Medication header with collapse button
+        med_header = ttk.Frame(med_frame)
+        med_header.pack(fill=tk.X, padx=2, pady=2)
+
+        # Store references for collapse functionality
+        med_content = ttk.Frame(med_frame)
+        med_collapse_var = tk.BooleanVar(value=True)
+
+        med_collapse_btn = ttk.Button(
+            med_header,
+            text="−",
+            width=3,
+            bootstyle="secondary-outline",
+            command=lambda: self._toggle_collapse(med_content, med_collapse_btn, med_collapse_var)
+        )
+        med_collapse_btn.pack(side=tk.RIGHT, padx=2)
+
+        # Medication content frame
+        med_content.pack(fill=tk.BOTH, expand=True)
+
+        # Medication analysis scrollbar and text widget
+        med_scroll = ttk.Scrollbar(med_content)
+        med_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        medication_analysis_text = tk.Text(
+            med_content,
+            wrap=tk.WORD,
+            yscrollcommand=med_scroll.set,
+            state='disabled',
+            bg='#f8f9fa',
+            height=10
+        )
+        medication_analysis_text.pack(fill=tk.BOTH, expand=True)
+        med_scroll.config(command=medication_analysis_text.yview)
+
+        # Initial placeholder message
+        medication_analysis_text.config(state='normal')
+        medication_analysis_text.insert('1.0', "Medication analysis will appear here after SOAP note generation.")
+        medication_analysis_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['medication_analysis'] = medication_analysis_text
+        self.components['medication_analysis_text'] = medication_analysis_text
+
+        # ----- BOTTOM RIGHT: Differential Diagnosis (collapsible) -----
+        diff_frame = ttk.LabelFrame(right_paned, text="Differential Diagnosis")
+        right_paned.add(diff_frame, weight=1)
+
+        # Differential header with collapse button
+        diff_header = ttk.Frame(diff_frame)
+        diff_header.pack(fill=tk.X, padx=2, pady=2)
+
+        # Store references for collapse functionality
+        diff_content = ttk.Frame(diff_frame)
+        diff_collapse_var = tk.BooleanVar(value=True)
+
+        diff_collapse_btn = ttk.Button(
+            diff_header,
+            text="−",
+            width=3,
+            bootstyle="secondary-outline",
+            command=lambda: self._toggle_collapse(diff_content, diff_collapse_btn, diff_collapse_var)
+        )
+        diff_collapse_btn.pack(side=tk.RIGHT, padx=2)
+
+        # Differential content frame
+        diff_content.pack(fill=tk.BOTH, expand=True)
+
+        # Differential analysis scrollbar and text widget
+        diff_scroll = ttk.Scrollbar(diff_content)
+        diff_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        differential_analysis_text = tk.Text(
+            diff_content,
+            wrap=tk.WORD,
+            yscrollcommand=diff_scroll.set,
+            state='disabled',
+            bg='#f8f9fa',
+            height=10
+        )
+        differential_analysis_text.pack(fill=tk.BOTH, expand=True)
+        diff_scroll.config(command=differential_analysis_text.yview)
+
+        # Initial placeholder message
+        differential_analysis_text.config(state='normal')
+        differential_analysis_text.insert('1.0', "Differential diagnosis will appear here after SOAP note generation.")
+        differential_analysis_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['differential_analysis'] = differential_analysis_text
+        self.components['differential_analysis_text'] = differential_analysis_text
+
+        return soap_text
+
+    def _toggle_collapse(self, content_frame: ttk.Frame, button: ttk.Button, var: tk.BooleanVar) -> None:
+        """Toggle collapse/expand state of a content frame.
+
+        Args:
+            content_frame: The frame to collapse/expand
+            button: The button to update text
+            var: Boolean variable tracking collapse state
+        """
+        if var.get():
+            # Currently expanded, collapse it
+            content_frame.pack_forget()
+            button.config(text="+")
+            var.set(False)
+        else:
+            # Currently collapsed, expand it
+            content_frame.pack(fill=tk.BOTH, expand=True)
+            button.config(text="−")
+            var.set(True)
+
     def _clear_chat_history(self):
         """Clear the chat conversation history."""
         try:

@@ -373,7 +373,10 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
 
         # Create the text notebook (for transcripts, SOAP, etc.)
-        self.notebook, self.transcript_text, self.soap_text, self.referral_text, self.letter_text, self.chat_text, self.rag_text, _ = self.ui.create_notebook()
+        # SOAP tab includes split layout with medication and differential analysis panels
+        (self.notebook, self.transcript_text, self.soap_text, self.referral_text,
+         self.letter_text, self.chat_text, self.rag_text, _,
+         self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
         self.content_paned.add(self.notebook, weight=2)
 
         # Bottom section frame for chat and shared panel
