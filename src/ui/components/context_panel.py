@@ -407,7 +407,7 @@ class ContextPanel:
             text="★" if is_favorite else "☆",
             font=("Segoe UI", 10),
             bg="#ffffff",
-            fg="#f0ad4e" if is_favorite else self.COLORS["text_muted"],
+            fg="#FFD700" if is_favorite else self.COLORS["text_muted"],
             cursor="hand2"
         )
         star_label.pack(side=tk.LEFT, padx=(8, 2), pady=8)
@@ -420,7 +420,7 @@ class ContextPanel:
                 star_label.config(text="☆", fg=self.COLORS["text_muted"])
             else:
                 favorite_templates.add(name)
-                star_label.config(text="★", fg="#f0ad4e")
+                star_label.config(text="★", fg="#FFD700")
 
             # Save to settings
             SETTINGS["context_template_favorites"] = list(favorite_templates)

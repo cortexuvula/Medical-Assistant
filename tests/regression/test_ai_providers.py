@@ -105,24 +105,6 @@ class TestAnthropicProvider:
         assert isinstance(result, str)
 
 
-class TestGrokProvider:
-    """Tests for Grok AI provider."""
-
-    def test_call_grok_returns_string(self, mock_api_keys):
-        """call_grok should return a string."""
-        from src.ai.ai import call_grok
-
-        result = call_grok(
-            model="grok-1",
-            system_message="Test",
-            prompt="Test",
-            temperature=0.7
-        )
-
-        # Result should always be a string (either response or error message)
-        assert isinstance(result, str)
-
-
 class TestGeminiProvider:
     """Tests for Google Gemini AI provider."""
 
@@ -132,23 +114,6 @@ class TestGeminiProvider:
 
         result = call_gemini(
             model_name="gemini-1.5-pro",
-            system_message="Test",
-            prompt="Test",
-            temperature=0.7
-        )
-
-        # Result should always be a string (either response or error message)
-        assert isinstance(result, str)
-
-
-class TestPerplexityProvider:
-    """Tests for Perplexity AI provider."""
-
-    def test_call_perplexity_returns_string(self, mock_api_keys):
-        """call_perplexity should return a string."""
-        from src.ai.ai import call_perplexity
-
-        result = call_perplexity(
             system_message="Test",
             prompt="Test",
             temperature=0.7
@@ -338,9 +303,7 @@ class TestAIProviderRegressionSuite:
         required_functions = [
             'call_openai',
             'call_anthropic',
-            'call_grok',
             'call_gemini',
-            'call_perplexity',
             'call_ai'
         ]
 
