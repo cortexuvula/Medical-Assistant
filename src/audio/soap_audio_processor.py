@@ -21,13 +21,22 @@ class SOAPAudioProcessor:
         """
         self.app = parent_app
         
+    # Counter for logging periodic updates
+    _callback_count = 0
+
     def process_soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using RecordingManager."""
         # Add audio segment to recording manager
         if isinstance(audio_data, np.ndarray):
+            SOAPAudioProcessor._callback_count += 1
             self.app.recording_manager.add_audio_segment(audio_data)
-            # Log for debugging
-            logging.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
+            # Log every 10 callbacks at INFO level to track audio flow
+            if SOAPAudioProcessor._callback_count == 1 or SOAPAudioProcessor._callback_count % 10 == 0:
+                logging.info(f"SOAP callback #{SOAPAudioProcessor._callback_count}: "
+                           f"shape={audio_data.shape}, dtype={audio_data.dtype}, "
+                           f"max_amp={np.abs(audio_data).max():.4f}")
+            else:
+                logging.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
         
         # Visual feedback for UI updates
         try:

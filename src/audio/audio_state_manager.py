@@ -142,7 +142,9 @@ class AudioStateManager:
         """
         with self._lock:
             if self._recording_state != RecordingState.RECORDING:
-                logging.debug(f"Ignoring audio segment in {self._recording_state} state")
+                # Log at INFO level to diagnose audio loss issues
+                logging.info(f"AUDIO IGNORED: state={self._recording_state}, "
+                           f"pending_segments={len(self._segments)}, chunks={len(self._combined_chunks)}")
                 return False
 
             # Store audio format from first segment
@@ -180,9 +182,18 @@ class AudioStateManager:
             if len(self._segments) >= self._combine_threshold:
                 self._combine_segments()
 
-            logging.debug(f"Added audio segment: total_segments={len(self._segments)}, "
-                        f"combined_chunks={len(self._combined_chunks)}, "
-                        f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
+            # Calculate total segment count for logging
+            total_segments = len(self._segments) + len(self._combined_chunks) * self._combine_threshold
+
+            # Log at INFO level every 10 segments to track audio accumulation
+            if len(self._segments) == 1 or len(self._segments) % 10 == 0:
+                logging.info(f"Audio segment added: pending={len(self._segments)}, "
+                           f"chunks={len(self._combined_chunks)}, "
+                           f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
+            else:
+                logging.debug(f"Added audio segment: total_segments={len(self._segments)}, "
+                            f"combined_chunks={len(self._combined_chunks)}, "
+                            f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
             return True
     
     def _combine_segments(self) -> None:
@@ -254,11 +265,16 @@ class AudioStateManager:
             Combined AudioSegment or None if no audio
         """
         with self._lock:
+            # Log current state before combining
+            logging.info(f"get_combined_audio called: pending_segments={len(self._segments)}, "
+                       f"chunks={len(self._combined_chunks)}, state={self._recording_state}")
+
             # First combine any remaining segments
             if self._segments:
                 self._combine_segments()
-            
+
             if not self._combined_chunks:
+                logging.warning("get_combined_audio: No audio data available (no chunks)")
                 return None
             
             # Combine all chunks

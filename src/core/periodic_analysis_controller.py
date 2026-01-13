@@ -124,6 +124,8 @@ class PeriodicAnalysisController:
         This handles the case where user enables Advanced Analysis mid-recording
         and we want to immediately analyze all audio captured so far.
         """
+        import threading
+
         try:
             # Check if there's accumulated audio worth analyzing
             if not self.app.audio_state_manager:
@@ -132,6 +134,11 @@ class PeriodicAnalysisController:
             # Get actual recording elapsed time from metadata
             metadata = self.app.audio_state_manager.get_recording_metadata()
             elapsed_time = metadata.get('recording_duration', 0)
+
+            # Log segment stats for debugging
+            pending, chunks, total = self.app.audio_state_manager.get_segment_stats()
+            logging.info(f"Immediate analysis check: elapsed={elapsed_time:.1f}s, "
+                        f"pending_segments={pending}, chunks={chunks}, total={total}")
 
             # Only run immediate analysis if recording has been going for at least 10 seconds
             # This avoids running analysis for minimal audio at recording start
@@ -149,10 +156,19 @@ class PeriodicAnalysisController:
                 logging.info("Skipping immediate analysis - no audio accumulated yet")
                 return
 
-            logging.info(f"Running immediate analysis with {elapsed_time:.1f}s of accumulated audio")
+            logging.info(f"Running immediate analysis with {elapsed_time:.1f}s of accumulated audio "
+                        f"(actual audio duration: {len(combined_audio)}ms)")
 
-            # Run the analysis with analysis_count=0 to indicate it's the initial analysis
-            self.perform_periodic_analysis(0, elapsed_time)
+            # Run the analysis in a separate thread to avoid blocking audio capture
+            def run_analysis():
+                try:
+                    self.perform_periodic_analysis(0, elapsed_time)
+                except Exception as e:
+                    logging.error(f"Error in immediate analysis thread: {e}")
+
+            analysis_thread = threading.Thread(target=run_analysis, daemon=True)
+            analysis_thread.start()
+            logging.info("Immediate analysis started in background thread")
 
         except Exception as e:
             logging.error(f"Error running immediate analysis: {e}")
