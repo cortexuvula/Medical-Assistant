@@ -403,9 +403,11 @@ class RecordingHeader:
         """Start the waveform animation."""
         if self._animation_id:
             return
+        if not self._waveform_canvas:
+            return
 
         def animate():
-            if self._is_recording:
+            if self._is_recording and self._waveform_canvas:
                 self._draw_active_waveform(self._waveform_data)
                 self._animation_id = self._waveform_canvas.after(50, animate)
 
@@ -415,7 +417,8 @@ class RecordingHeader:
         """Stop the waveform animation."""
         if self._animation_id:
             try:
-                self._waveform_canvas.after_cancel(self._animation_id)
+                if self._waveform_canvas:
+                    self._waveform_canvas.after_cancel(self._animation_id)
             except Exception:
                 pass
             self._animation_id = None
