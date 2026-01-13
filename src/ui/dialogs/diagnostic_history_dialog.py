@@ -630,9 +630,9 @@ class DiagnosticHistoryDialog:
                 for row in cursor.fetchall():
                     results.append(db._parse_analysis_row(row))
                 return results
-            except Exception:
+            except Exception as e:
                 # Fallback to LIKE search if FTS not available
-                pass
+                logging.debug(f"FTS search failed, falling back to LIKE search: {e}")
 
             # Fallback: LIKE search
             cursor = conn.execute(
@@ -685,8 +685,8 @@ class DiagnosticHistoryDialog:
                 for row in cursor.fetchall():
                     results.append(db._parse_analysis_row(row))
                 return results
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug(f"Diagnosis FTS search failed, falling back to LIKE: {e}")
 
             # Fallback: LIKE search on differential_diagnoses
             cursor = conn.execute(

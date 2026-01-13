@@ -846,8 +846,8 @@ class DiagnosticComparisonDialog:
                     elif isinstance(metadata_raw, str):
                         try:
                             metadata = json.loads(metadata_raw)
-                        except:
-                            pass
+                        except (json.JSONDecodeError, ValueError, TypeError) as e:
+                            logging.debug(f"Failed to parse metadata JSON: {e}")
 
                     export_data['analyses'].append({
                         'id': analysis.get('id'),
@@ -870,8 +870,8 @@ class DiagnosticComparisonDialog:
                     elif isinstance(metadata_raw, str):
                         try:
                             metadata = json.loads(metadata_raw)
-                        except:
-                            pass
+                        except (json.JSONDecodeError, ValueError, TypeError) as e:
+                            logging.debug(f"Failed to parse metadata JSON: {e}")
 
                     lines.append(f"--- Analysis {i} ---")
                     lines.append(f"Date: {analysis.get('created_at', 'Unknown')}")

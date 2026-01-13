@@ -1,5 +1,8 @@
 """
 Chat Debug Module - Comprehensive debugging for chat agent responses
+
+Debug files are only created when explicitly enabled via CHAT_DEBUG_ENABLED setting.
+Files are stored in the proper AppData/debug directory and cleaned up periodically.
 """
 
 import logging
@@ -9,34 +12,104 @@ from datetime import datetime
 from typing import Any, Dict, Optional, List
 from pathlib import Path
 import traceback
+import os
 
 # Create a dedicated debug logger
 debug_logger = logging.getLogger("chat_debug")
 debug_logger.setLevel(logging.DEBUG)
 
-# Create debug directory if it doesn't exist
-DEBUG_DIR = Path("AppData/debug")
-DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+# Configuration
+MAX_DEBUG_FILES = 20  # Keep only this many debug files to prevent disk bloat
+DEBUG_ENABLED = os.environ.get("CHAT_DEBUG_ENABLED", "").lower() == "true"
 
-# Add file handler for debug logs
-debug_file = DEBUG_DIR / f"chat_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-file_handler = logging.FileHandler(debug_file)
-file_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-debug_logger.addHandler(file_handler)
+# Debug directory setup - use data_folder_manager for proper path
+DEBUG_DIR: Optional[Path] = None
+_file_handler_added = False
+
+
+def _get_debug_dir() -> Path:
+    """Get the debug directory, creating it if needed."""
+    global DEBUG_DIR
+    if DEBUG_DIR is None:
+        try:
+            from managers.data_folder_manager import data_folder_manager
+            DEBUG_DIR = data_folder_manager.logs_folder / "debug"
+        except ImportError:
+            # Fallback for testing or early initialization
+            DEBUG_DIR = Path("AppData/debug")
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    return DEBUG_DIR
+
+
+def _setup_file_handler():
+    """Set up file handler for debug logging (only when debug is enabled)."""
+    global _file_handler_added
+    if _file_handler_added or not DEBUG_ENABLED:
+        return
+
+    debug_dir = _get_debug_dir()
+    debug_file = debug_dir / f"chat_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    file_handler = logging.FileHandler(debug_file)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    debug_logger.addHandler(file_handler)
+    _file_handler_added = True
+
+    # Clean up old debug files
+    _cleanup_old_debug_files(debug_dir)
+
+
+def _cleanup_old_debug_files(debug_dir: Path):
+    """Remove old debug files to prevent disk bloat."""
+    try:
+        # Get all debug files sorted by modification time
+        debug_files = sorted(
+            [f for f in debug_dir.glob("*.log") if f.is_file()],
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )
+
+        # Remove files beyond the limit
+        for old_file in debug_files[MAX_DEBUG_FILES:]:
+            try:
+                old_file.unlink()
+                debug_logger.debug(f"Cleaned up old debug file: {old_file.name}")
+            except OSError:
+                pass
+
+        # Also clean up execution JSON files
+        json_files = sorted(
+            [f for f in debug_dir.glob("execution_*.json") if f.is_file()],
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )
+        for old_file in json_files[MAX_DEBUG_FILES:]:
+            try:
+                old_file.unlink()
+            except OSError:
+                pass
+    except Exception as e:
+        debug_logger.warning(f"Failed to cleanup old debug files: {e}")
 
 
 class ChatDebugger:
     """Debugger for chat agent execution"""
-    
+
     def __init__(self):
         self.session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.execution_steps = []
         self.current_execution = None
-        
+        self._debug_enabled = DEBUG_ENABLED
+
     def start_execution(self, task_description: str):
         """Start tracking a new execution"""
+        if not self._debug_enabled:
+            return
+
+        # Setup file handler on first actual use
+        _setup_file_handler()
+
         self.current_execution = {
             'id': f"{self.session_id}_{int(time.time() * 1000)}",
             'task': task_description,
@@ -110,16 +183,17 @@ class ChatDebugger:
         
     def end_execution(self, success: bool = True, final_response: str = None):
         """End tracking the current execution"""
-        if not self.current_execution:
+        if not self.current_execution or not self._debug_enabled:
             return
-            
+
         self.current_execution['end_time'] = time.time()
         self.current_execution['duration'] = self.current_execution['end_time'] - self.current_execution['start_time']
         self.current_execution['success'] = success
         self.current_execution['final_response'] = final_response
-        
-        # Save to debug file
-        debug_file_path = DEBUG_DIR / f"execution_{self.current_execution['id']}.json"
+
+        # Save to debug file using proper path
+        debug_dir = _get_debug_dir()
+        debug_file_path = debug_dir / f"execution_{self.current_execution['id']}.json"
         with open(debug_file_path, 'w') as f:
             json.dump(self.current_execution, f, indent=2)
             

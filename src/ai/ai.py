@@ -916,6 +916,114 @@ def format_soap_paragraphs(text: str) -> str:
     logging.info(f"format_soap_paragraphs: {len(lines)} lines -> {len(result_lines)} lines, detected headers: {detected_headers}")
     return '\n'.join(result_lines)
 
+
+def _prepare_soap_generation(text: str, context: str, settings: dict = None) -> tuple:
+    """Prepare common parameters for SOAP note generation.
+
+    Args:
+        text: Transcript text to convert
+        context: Optional medical context
+        settings: Settings dict (uses SETTINGS global if None)
+
+    Returns:
+        Tuple of (model, system_message, full_prompt, temperature)
+    """
+    from datetime import datetime
+
+    # Use provided settings or global
+    if settings is None:
+        settings = SETTINGS
+
+    model = settings.get("soap_note", {}).get("model", "gpt-4")
+    icd_version = settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
+    current_provider = settings.get("ai_provider", "openai")
+
+    # Get dynamic system message based on ICD code preference and provider
+    system_message = get_soap_system_message(icd_version, provider=current_provider)
+
+    # Check for per-provider custom system message first
+    provider_message_key = f"{current_provider}_system_message"
+    custom_message = settings.get("soap_note", {}).get(provider_message_key, "")
+
+    # Fall back to legacy single system_message if provider-specific is empty
+    if not custom_message or not custom_message.strip():
+        custom_message = settings.get("soap_note", {}).get("system_message", "")
+
+    # Use custom message if provided, otherwise keep dynamic default
+    if custom_message and custom_message.strip():
+        system_message = custom_message
+
+    temperature = settings.get("soap_note", {}).get("temperature", 0.4)
+
+    # Build time/date string
+    time_date_str = datetime.now().strftime("Time %H:%M Date %d %b %Y")
+    transcript_with_datetime = f"{time_date_str}\n\n{text}"
+
+    # Build prompt with context
+    if context and context.strip():
+        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
+    else:
+        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
+
+    return model, system_message, full_prompt, temperature
+
+
+def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str], None] = None) -> str:
+    """Post-process SOAP note result: clean, format, and add synopsis.
+
+    Args:
+        result: Raw AI response
+        context: Medical context for synopsis generation
+        on_chunk: Optional callback for streaming synopsis
+
+    Returns:
+        Cleaned and formatted SOAP note
+    """
+    # Trace logging for SOAP formatting
+    logging.info(f"SOAP raw AI response: {len(result)} chars, {result.count(chr(10))} newlines")
+    logging.info(f"SOAP raw preview: {repr(result[:200])}")
+
+    # Clean both markdown and citations, then format paragraphs
+    cleaned_soap = clean_text(result)
+    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+
+    cleaned_soap = format_soap_paragraphs(cleaned_soap)
+
+    # Count blank lines to verify formatting
+    blank_line_count = cleaned_soap.count('\n\n')
+    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
+    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
+
+    # Check if the AI already generated a Clinical Synopsis section
+    has_synopsis = "clinical synopsis" in cleaned_soap.lower()
+
+    # Only generate/append synopsis if not already present
+    if not has_synopsis:
+        try:
+            from managers.agent_manager import agent_manager
+
+            synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
+
+            if synopsis:
+                synopsis_section = f"\n\nClinical Synopsis:\n- {synopsis}"
+                cleaned_soap += synopsis_section
+                if on_chunk:
+                    on_chunk(synopsis_section)
+                logging.info("Added synopsis to SOAP note")
+            else:
+                from ai.agents.models import AgentType
+                if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
+                    logging.info("Synopsis generation is disabled")
+                else:
+                    logging.warning("Synopsis generation failed")
+        except Exception as e:
+            logging.error(f"Error with synopsis generation: {e}")
+    else:
+        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
+
+    return cleaned_soap
+
+
 def create_soap_note_streaming(
     text: str,
     context: str = "",
@@ -934,50 +1042,15 @@ def create_soap_note_streaming(
     Returns:
         Complete SOAP note text
     """
-    from datetime import datetime
     from settings.settings import load_settings
 
     # Reload settings to get latest
     current_settings = load_settings()
 
-    model = current_settings.get("soap_note", {}).get("model", "gpt-4")
-
-    # Get ICD code version from settings
-    icd_version = current_settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
-
-    # Get current AI provider for provider-specific prompt
-    current_provider = current_settings.get("ai_provider", "openai")
-
-    # Get dynamic system message based on ICD code preference and provider
-    system_message = get_soap_system_message(icd_version, provider=current_provider)
-
-    # Check for per-provider custom system message first
-    provider_message_key = f"{current_provider}_system_message"
-    custom_message = current_settings.get("soap_note", {}).get(provider_message_key, "")
-
-    # Fall back to legacy single system_message if provider-specific is empty
-    if not custom_message or not custom_message.strip():
-        custom_message = current_settings.get("soap_note", {}).get("system_message", "")
-
-    # Use custom message if provided, otherwise keep dynamic default
-    if custom_message and custom_message.strip():
-        system_message = custom_message
-
-    # Get temperature from settings
-    temperature = current_settings.get("soap_note", {}).get("temperature", 0.4)
-
-    # Get current time and date in the specified format
-    current_datetime = datetime.now()
-    time_date_str = current_datetime.strftime("Time %H:%M Date %d %b %Y")
-
-    # Build the transcript with time/date prepended
-    transcript_with_datetime = f"{time_date_str}\n\n{text}"
-
-    # If context is provided, prepend it to the prompt
-    if context and context.strip():
-        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
-    else:
-        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
+    # Prepare generation parameters
+    model, system_message, full_prompt, temperature = _prepare_soap_generation(
+        text, context, settings=current_settings
+    )
 
     # Use streaming API call
     if on_chunk:
@@ -986,153 +1059,27 @@ def create_soap_note_streaming(
         # Fall back to non-streaming if no callback provided
         result = call_ai(model, system_message, full_prompt, temperature)
 
-    # Trace logging for SOAP formatting (INFO level to appear in logs)
-    logging.info(f"SOAP streaming raw response: {len(result)} chars, {result.count(chr(10))} newlines")
-    # Log first 200 chars to see structure (repr shows actual newlines as \n)
-    logging.info(f"SOAP raw preview: {repr(result[:200])}")
-
-    # Clean both markdown and citations, then format paragraphs
-    cleaned_soap = clean_text(result)
-    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
-
-    cleaned_soap = format_soap_paragraphs(cleaned_soap)
-
-    # Count blank lines (consecutive newlines) to verify formatting
-    blank_line_count = cleaned_soap.count('\n\n')
-    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
-    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
-
-    # Check if the AI already generated a Clinical Synopsis section
-    # (Some providers like Anthropic include it in the response)
-    has_synopsis = "clinical synopsis" in cleaned_soap.lower()
-
-    # Only generate/append synopsis if not already present
-    if not has_synopsis:
-        # Check if synopsis generation is enabled through agent manager
-        try:
-            from managers.agent_manager import agent_manager
-
-            # Use agent manager to generate synopsis
-            synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
-
-            if synopsis:
-                # Append synopsis to SOAP note (without decoration to match AI format)
-                synopsis_section = f"\n\nClinical Synopsis:\n- {synopsis}"
-                cleaned_soap += synopsis_section
-                # Also stream the synopsis if callback provided
-                if on_chunk:
-                    on_chunk(synopsis_section)
-                logging.info("Added synopsis to SOAP note")
-            else:
-                from ai.agents.models import AgentType
-                if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
-                    logging.info("Synopsis generation is disabled")
-                else:
-                    logging.warning("Synopsis generation failed")
-
-        except Exception as e:
-            logging.error(f"Error with synopsis generation: {e}")
-    else:
-        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
-
-    return cleaned_soap
+    return _postprocess_soap_result(result, context, on_chunk)
 
 
 def create_soap_note_with_openai(text: str, context: str = "") -> str:
-    from datetime import datetime
+    """Create a SOAP note using AI.
 
-    # We don't need to check the provider here since call_ai will handle it
-    # Just pass the model name based on the type of note we're creating
-    model = SETTINGS["soap_note"]["model"]  # Use actual settings, not defaults
+    Args:
+        text: Transcript text to convert to SOAP note
+        context: Optional additional medical context
 
-    # Get ICD code version from settings (default to ICD-9 for backwards compatibility)
-    icd_version = SETTINGS.get("soap_note", {}).get("icd_code_version", "ICD-9")
-
-    # Get current AI provider for provider-specific prompt
-    current_provider = SETTINGS.get("ai_provider", "openai")
-
-    # Get dynamic system message based on ICD code preference and provider
-    system_message = get_soap_system_message(icd_version, provider=current_provider)
-
-    # Check for per-provider custom system message first
-    provider_message_key = f"{current_provider}_system_message"
-    custom_message = SETTINGS.get("soap_note", {}).get(provider_message_key, "")
-
-    # Fall back to legacy single system_message if provider-specific is empty
-    if not custom_message or not custom_message.strip():
-        custom_message = SETTINGS.get("soap_note", {}).get("system_message", "")
-
-    # Use custom message if provided, otherwise keep dynamic default
-    if custom_message and custom_message.strip():
-        system_message = custom_message
-
-    # Get temperature from settings (default 0.4 for consistent output)
-    temperature = SETTINGS.get("soap_note", {}).get("temperature", 0.4)
-
-    # Get current time and date in the specified format
-    current_datetime = datetime.now()
-    time_date_str = current_datetime.strftime("Time %H:%M Date %d %b %Y")
-
-    # Build the transcript with time/date prepended
-    transcript_with_datetime = f"{time_date_str}\n\n{text}"
-
-    # If context is provided, prepend it to the prompt
-    if context and context.strip():
-        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
-    else:
-        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
+    Returns:
+        Complete SOAP note text
+    """
+    # Prepare generation parameters
+    model, system_message, full_prompt, temperature = _prepare_soap_generation(
+        text, context, settings=SETTINGS
+    )
 
     result = call_ai(model, system_message, full_prompt, temperature)
 
-    # Trace logging for SOAP formatting (INFO level to appear in logs)
-    logging.info(f"SOAP raw AI response: {len(result)} chars, {result.count(chr(10))} newlines")
-    # Log first 200 chars to see structure (repr shows actual newlines as \n)
-    logging.info(f"SOAP raw preview: {repr(result[:200])}")
-
-    # Clean both markdown and citations, then format paragraphs
-    cleaned_soap = clean_text(result)
-    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
-
-    cleaned_soap = format_soap_paragraphs(cleaned_soap)
-
-    # Count blank lines (consecutive newlines) to verify formatting
-    blank_line_count = cleaned_soap.count('\n\n')
-    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
-    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
-
-    # Check if the AI already generated a Clinical Synopsis section
-    # (Some providers like Anthropic include it in the response)
-    has_synopsis = "clinical synopsis" in cleaned_soap.lower()
-
-    # Only generate/append synopsis if not already present
-    if not has_synopsis:
-        # Check if synopsis generation is enabled through agent manager
-        try:
-            from managers.agent_manager import agent_manager
-
-            # Use agent manager to generate synopsis
-            synopsis = agent_manager.generate_synopsis(cleaned_soap, context)
-
-            if synopsis:
-                # Append synopsis to SOAP note (without decoration to match AI format)
-                synopsis_section = f"\n\nClinical Synopsis:\n- {synopsis}"
-                cleaned_soap += synopsis_section
-                logging.info("Added synopsis to SOAP note")
-            else:
-                # Check if it's due to being disabled or an error
-                from ai.agents.models import AgentType
-                if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
-                    logging.info("Synopsis generation is disabled")
-                else:
-                    logging.warning("Synopsis generation failed")
-
-        except Exception as e:
-            logging.error(f"Error with synopsis generation: {e}")
-            # Continue without synopsis if there's an error
-    else:
-        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
-    
-    return cleaned_soap
+    return _postprocess_soap_result(result, context)
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
     model = SETTINGS["referral"]["model"]  # Use actual settings, not defaults

@@ -461,8 +461,8 @@ class ContextPanel:
                 if hasattr(self, '_context_menu') and self._context_menu:
                     try:
                         self._context_menu.destroy()
-                    except:
-                        pass
+                    except tk.TclError:
+                        pass  # Widget already destroyed
 
                 self._context_menu = tk.Menu(self.parent, tearoff=0)
                 self._context_menu.add_command(label="Delete", command=lambda n=name: self._delete_custom_template(n))
@@ -473,8 +473,8 @@ class ContextPanel:
                             self._context_menu.unpost()
                             self._context_menu.destroy()
                             self._context_menu = None
-                        except:
-                            pass
+                        except tk.TclError:
+                            pass  # Widget already destroyed or invalid
 
                 # Close menu when it loses focus or user clicks elsewhere
                 self._context_menu.bind("<FocusOut>", close_menu)
