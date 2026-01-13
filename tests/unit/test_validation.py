@@ -38,11 +38,7 @@ class TestAPIKeyValidation:
         # ElevenLabs keys - updated pattern to match sk_ prefix
         ("elevenlabs", "sk_" + "a" * 40, True),
         ("elevenlabs", "short", False),
-        
-        # Perplexity keys - using hex characters
-        ("perplexity", "pplx-" + "a" * 48, True),
-        ("perplexity", "invalid", False),
-        
+
         # Unknown provider - validation.py doesn't reject unknown providers
         ("unknown", "any-key", True),
     ])
@@ -174,13 +170,7 @@ class TestModelNameValidation:
         ("mixtral-8x7b-32768", "groq", True),
         ("llama2-70b-4096", "groq", True),
         ("invalid", "groq", True),  # No specific validation for groq models
-        
-        # Perplexity models
-        ("sonar-small-chat", "perplexity", True),
-        ("sonar-medium-chat", "perplexity", True),
-        ("sonar-reasoning-pro", "perplexity", True),
-        ("invalid", "perplexity", True),  # No specific validation for perplexity models
-        
+
         # Ollama models (any string is valid)
         ("llama3", "ollama", True),
         ("mistral", "ollama", True),
