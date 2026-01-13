@@ -27,8 +27,6 @@ class AppSettingsMixin:
             default=_DEFAULT_SETTINGS["refine_text"],
             current_prompt=cfg.get("prompt", REFINE_PROMPT),
             current_model=cfg.get("model", _DEFAULT_SETTINGS["refine_text"].get("model", "gpt-3.5-turbo")),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["refine_text"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["refine_text"].get("grok_model", "grok-1")),
             save_callback=self.save_refine_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
@@ -50,8 +48,6 @@ class AppSettingsMixin:
             default=_DEFAULT_SETTINGS["improve_text"],
             current_prompt=cfg.get("prompt", IMPROVE_PROMPT),
             current_model=cfg.get("model", _DEFAULT_SETTINGS["improve_text"].get("model", "gpt-3.5-turbo")),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["improve_text"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["improve_text"].get("grok_model", "grok-1")),
             save_callback=self.save_improve_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
@@ -82,8 +78,6 @@ class AppSettingsMixin:
             default=_DEFAULT_SETTINGS["soap_note"],
             current_prompt=cfg.get("prompt", SOAP_PROMPT_TEMPLATE),
             current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["soap_note"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["soap_note"].get("grok_model", "grok-1")),
             save_callback=self.save_soap_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["soap_note"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
@@ -110,8 +104,6 @@ class AppSettingsMixin:
             default=_DEFAULT_SETTINGS["referral"],
             current_prompt=cfg.get("prompt", default_prompt),
             current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["referral"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["referral"].get("grok_model", "grok-1")),
             save_callback=self.save_referral_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
@@ -135,8 +127,6 @@ class AppSettingsMixin:
             default=_DEFAULT_SETTINGS["advanced_analysis"],
             current_prompt=cfg.get("prompt", default_prompt),
             current_model=cfg.get("model", default_model),
-            current_perplexity=cfg.get("perplexity_model", _DEFAULT_SETTINGS["advanced_analysis"].get("perplexity_model", "sonar-reasoning-pro")),
-            current_grok=cfg.get("grok_model", _DEFAULT_SETTINGS["advanced_analysis"].get("grok_model", "grok-1")),
             save_callback=self.save_advanced_analysis_settings,
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["advanced_analysis"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
@@ -215,8 +205,8 @@ class AppSettingsMixin:
             logging.error(f"Error showing MCP config dialog: {e}")
             self.status_manager.error("Failed to open MCP configuration")
 
-    def save_refine_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                             grok_model: str, ollama_model: str, system_prompt: str,
+    def save_refine_settings(self, prompt: str, openai_model: str,
+                             ollama_model: str, system_prompt: str,
                              anthropic_model: str, gemini_model: str = "") -> None:
         """Save refine text settings."""
         from settings.settings import save_settings, SETTINGS
@@ -224,8 +214,6 @@ class AppSettingsMixin:
             "prompt": prompt,
             "system_message": system_prompt,
             "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
             "gemini_model": gemini_model
@@ -233,8 +221,8 @@ class AppSettingsMixin:
         save_settings(SETTINGS)
         self.status_manager.success("Refine text settings saved successfully")
 
-    def save_improve_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                              grok_model: str, ollama_model: str, system_prompt: str,
+    def save_improve_settings(self, prompt: str, openai_model: str,
+                              ollama_model: str, system_prompt: str,
                               anthropic_model: str, gemini_model: str = "") -> None:
         """Save improve text settings."""
         from settings.settings import save_settings, SETTINGS
@@ -242,8 +230,6 @@ class AppSettingsMixin:
             "prompt": prompt,
             "system_message": system_prompt,
             "model": openai_model,
-            "perplexity_model": perplexity_model,
-            "grok_model": grok_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
             "gemini_model": gemini_model
@@ -251,8 +237,8 @@ class AppSettingsMixin:
         save_settings(SETTINGS)
         self.status_manager.success("Improve text settings saved successfully")
 
-    def save_soap_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                           grok_model: str, ollama_model: str,
+    def save_soap_settings(self, prompt: str, openai_model: str,
+                           ollama_model: str,
                            anthropic_model: str, gemini_model: str = "",
                            icd_code_version: str = "ICD-9",
                            provider_messages: dict = None) -> None:
@@ -261,8 +247,6 @@ class AppSettingsMixin:
         Args:
             prompt: User prompt (shared across providers)
             openai_model: OpenAI model name
-            perplexity_model: Perplexity model name
-            grok_model: Grok model name
             ollama_model: Ollama model name
             anthropic_model: Anthropic model name
             gemini_model: Gemini model name
@@ -274,8 +258,6 @@ class AppSettingsMixin:
         # Preserve existing temperature settings
         SETTINGS["soap_note"]["prompt"] = prompt
         SETTINGS["soap_note"]["model"] = openai_model
-        SETTINGS["soap_note"]["perplexity_model"] = perplexity_model
-        SETTINGS["soap_note"]["grok_model"] = grok_model
         SETTINGS["soap_note"]["ollama_model"] = ollama_model
         SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
         SETTINGS["soap_note"]["gemini_model"] = gemini_model
@@ -291,8 +273,8 @@ class AppSettingsMixin:
         save_settings(SETTINGS)
         self.status_manager.success("SOAP note settings saved successfully")
 
-    def save_referral_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                               grok_model: str, ollama_model: str, system_prompt: str,
+    def save_referral_settings(self, prompt: str, openai_model: str,
+                               ollama_model: str, system_prompt: str,
                                anthropic_model: str, gemini_model: str = "") -> None:
         """Save referral settings."""
         from settings.settings import save_settings, SETTINGS
@@ -300,16 +282,14 @@ class AppSettingsMixin:
         SETTINGS["referral"]["prompt"] = prompt
         SETTINGS["referral"]["system_message"] = system_prompt
         SETTINGS["referral"]["model"] = openai_model
-        SETTINGS["referral"]["perplexity_model"] = perplexity_model
-        SETTINGS["referral"]["grok_model"] = grok_model
         SETTINGS["referral"]["ollama_model"] = ollama_model
         SETTINGS["referral"]["anthropic_model"] = anthropic_model
         SETTINGS["referral"]["gemini_model"] = gemini_model
         save_settings(SETTINGS)
         self.status_manager.success("Referral settings saved successfully")
 
-    def save_advanced_analysis_settings(self, prompt: str, openai_model: str, perplexity_model: str,
-                                        grok_model: str, ollama_model: str, system_prompt: str,
+    def save_advanced_analysis_settings(self, prompt: str, openai_model: str,
+                                        ollama_model: str, system_prompt: str,
                                         anthropic_model: str, gemini_model: str = "",
                                         provider: str = "") -> None:
         """Save advanced analysis settings.
@@ -317,8 +297,6 @@ class AppSettingsMixin:
         Args:
             prompt: The analysis prompt
             openai_model: OpenAI model to use
-            perplexity_model: Perplexity model to use
-            grok_model: Grok model to use
             ollama_model: Ollama model to use
             system_prompt: System message for the AI
             anthropic_model: Anthropic model to use
@@ -330,8 +308,6 @@ class AppSettingsMixin:
         SETTINGS["advanced_analysis"]["prompt"] = prompt
         SETTINGS["advanced_analysis"]["system_message"] = system_prompt
         SETTINGS["advanced_analysis"]["model"] = openai_model
-        SETTINGS["advanced_analysis"]["perplexity_model"] = perplexity_model
-        SETTINGS["advanced_analysis"]["grok_model"] = grok_model
         SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
         SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
         SETTINGS["advanced_analysis"]["gemini_model"] = gemini_model

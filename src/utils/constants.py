@@ -94,8 +94,6 @@ class AIProvider(BaseProvider):
     """
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
-    PERPLEXITY = "perplexity"
-    GROK = "grok"
     OLLAMA = "ollama"
     GEMINI = "gemini"
 
@@ -112,8 +110,6 @@ class AIProvider(BaseProvider):
         display_names = {
             cls.OPENAI: "OpenAI",
             cls.ANTHROPIC: "Anthropic (Claude)",
-            cls.PERPLEXITY: "Perplexity",
-            cls.GROK: "Grok (X.AI)",
             cls.OLLAMA: "Ollama (Local)",
             cls.GEMINI: "Google Gemini",
         }
@@ -220,8 +216,6 @@ class TaskType(BaseProvider):
 # AI Providers
 PROVIDER_OPENAI = AIProvider.OPENAI.value
 PROVIDER_ANTHROPIC = AIProvider.ANTHROPIC.value
-PROVIDER_PERPLEXITY = AIProvider.PERPLEXITY.value
-PROVIDER_GROK = AIProvider.GROK.value
 PROVIDER_OLLAMA = AIProvider.OLLAMA.value
 PROVIDER_GEMINI = AIProvider.GEMINI.value
 

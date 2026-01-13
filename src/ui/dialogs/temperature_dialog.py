@@ -35,7 +35,7 @@ def show_temperature_settings_dialog(parent):
     provider_frames = {}
     sliders = []  # Move sliders list outside the loop
     
-    for provider in ["openai", "grok", "perplexity", "ollama", "anthropic", "gemini"]:
+    for provider in ["openai", "ollama", "anthropic", "gemini"]:
         provider_display = provider.capitalize()
         provider_frames[provider] = ttk.Frame(notebook, padding=10)
         notebook.add(provider_frames[provider], text=provider_display)

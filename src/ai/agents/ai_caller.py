@@ -23,8 +23,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Callable, Dict, Any, Protocol, runtime_checkable
 
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 
 logger = logging.getLogger(__name__)
@@ -74,7 +73,7 @@ class AICallerProtocol(Protocol):
         """Make an AI call to a specific provider.
 
         Args:
-            provider: The provider to use (openai, anthropic, perplexity, grok, ollama)
+            provider: The provider to use (openai, anthropic, ollama, gemini)
             model: The model identifier to use
             system_message: System message/context for the AI
             prompt: The user prompt
@@ -129,8 +128,6 @@ class DefaultAICaller(BaseAICaller):
         self._call_ai = None
         self._call_openai = None
         self._call_anthropic = None
-        self._call_perplexity = None
-        self._call_grok = None
         self._call_ollama = None
         self._call_gemini = None
         self._initialized = False
@@ -149,8 +146,6 @@ class DefaultAICaller(BaseAICaller):
             call_ai,
             call_openai,
             call_anthropic,
-            call_perplexity,
-            call_grok,
             call_ollama,
             call_gemini
         )
@@ -158,8 +153,6 @@ class DefaultAICaller(BaseAICaller):
         self._call_ai = call_ai
         self._call_openai = call_openai
         self._call_anthropic = call_anthropic
-        self._call_perplexity = call_perplexity
-        self._call_grok = call_grok
         self._call_ollama = call_ollama
         self._call_gemini = call_gemini
         self._initialized = True
@@ -219,10 +212,6 @@ class DefaultAICaller(BaseAICaller):
             return self._call_openai(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_ANTHROPIC:
             return self._call_anthropic(model, system_message, prompt, temperature)
-        elif provider_lower == PROVIDER_PERPLEXITY:
-            return self._call_perplexity(system_message, prompt, temperature)
-        elif provider_lower == PROVIDER_GROK:
-            return self._call_grok(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_OLLAMA:
             return self._call_ollama(system_message, prompt, temperature)
         elif provider_lower == PROVIDER_GEMINI:

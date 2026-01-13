@@ -56,7 +56,7 @@ def create_model_selector(parent, frame, model_var, provider_name: str,
         parent: Parent window
         frame: Frame to place the widget in
         model_var: tkinter variable to store selected model
-        provider_name: Name of the provider (e.g., "OpenAI", "Perplexity")
+        provider_name: Name of the provider (e.g., "OpenAI", "Anthropic")
         get_models_func: Function to call to get available models
         row: Grid row position
         column: Grid column position

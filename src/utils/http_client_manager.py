@@ -36,9 +36,8 @@ class HTTPClientManager:
     POOL_CONFIG = {
         "openai": {"max_connections": 10, "max_keepalive": 5},
         "anthropic": {"max_connections": 10, "max_keepalive": 5},
-        "perplexity": {"max_connections": 5, "max_keepalive": 3},
-        "grok": {"max_connections": 5, "max_keepalive": 3},
         "ollama": {"max_connections": 3, "max_keepalive": 2},
+        "gemini": {"max_connections": 5, "max_keepalive": 3},
         "elevenlabs": {"max_connections": 5, "max_keepalive": 3},
         "deepgram": {"max_connections": 5, "max_keepalive": 3},
         "groq": {"max_connections": 5, "max_keepalive": 3},
@@ -49,9 +48,8 @@ class HTTPClientManager:
     PROVIDER_TIMEOUTS = {
         "openai": (5.0, 60.0),
         "anthropic": (5.0, 60.0),
-        "perplexity": (5.0, 60.0),
-        "grok": (5.0, 60.0),
         "ollama": (5.0, 120.0),  # Local, may be slower
+        "gemini": (5.0, 60.0),
         "elevenlabs": (5.0, 90.0),  # TTS can be slower
         "deepgram": (5.0, 120.0),  # Long audio transcription
         "groq": (5.0, 60.0),

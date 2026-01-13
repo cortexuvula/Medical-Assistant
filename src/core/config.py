@@ -26,10 +26,9 @@ class Environment(Enum):
 class AIProvider(Enum):
     """Supported AI providers."""
     OPENAI = "openai"
-    PERPLEXITY = "perplexity"
-    GROK = "grok"
     OLLAMA = "ollama"
     ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
 
 
 class STTProvider(Enum):
@@ -187,10 +186,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.0,
                 provider_models={
-                    "grok": "grok-1",
-                    "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514"
+                    "anthropic": "claude-sonnet-4-20250514",
+                    "gemini": "gemini-1.5-pro"
                 }
             ),
             "improve_text": AITaskConfig(
@@ -198,10 +196,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "grok": "grok-1",
-                    "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514"
+                    "anthropic": "claude-sonnet-4-20250514",
+                    "gemini": "gemini-1.5-pro"
                 }
             ),
             "soap_note": AITaskConfig(
@@ -210,10 +207,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "grok": "grok-1",
-                    "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514"
+                    "anthropic": "claude-sonnet-4-20250514",
+                    "gemini": "gemini-1.5-pro"
                 }
             ),
             "referral": AITaskConfig(
@@ -221,10 +217,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "grok": "grok-1",
-                    "perplexity": "sonar-medium-chat",
                     "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514"
+                    "anthropic": "claude-sonnet-4-20250514",
+                    "gemini": "gemini-1.5-pro"
                 }
             )
         }
@@ -458,8 +453,6 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
         """Get API key for a provider from environment variables."""
         key_mapping = {
             "openai": "OPENAI_API_KEY",
-            "grok": "GROK_API_KEY",
-            "perplexity": "PERPLEXITY_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "gemini": "GEMINI_API_KEY",
             "groq": "GROQ_API_KEY",
@@ -472,14 +465,14 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
             return None
 
         return os.getenv(env_var)
-    
+
     def validate_api_keys(self) -> Dict[str, bool]:
         """Validate all configured API keys."""
         results = {}
 
         # AI providers and STT providers
         all_providers = [
-            "openai", "grok", "perplexity", "anthropic", "gemini",  # AI
+            "openai", "anthropic", "gemini",  # AI
             "groq", "deepgram", "elevenlabs"  # STT
         ]
 

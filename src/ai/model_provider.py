@@ -19,8 +19,7 @@ from anthropic import Anthropic
 from utils.security import get_security_manager
 from settings.settings import SETTINGS
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 import google.generativeai as genai
 
@@ -177,20 +176,6 @@ class ModelProvider:
             "vicuna",
             "orca-mini"
         ],
-        PROVIDER_PERPLEXITY: [
-            "llama-3.1-sonar-large-128k-online",
-            "llama-3.1-sonar-large-128k-chat",
-            "llama-3.1-sonar-small-128k-online",
-            "llama-3.1-sonar-small-128k-chat",
-            "sonar-medium-online",
-            "sonar-medium-chat",
-            "sonar-small-online",
-            "sonar-small-chat"
-        ],
-        PROVIDER_GROK: [
-            "grok-1",
-            "grok-2"
-        ],
         PROVIDER_GEMINI: [
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
@@ -257,10 +242,6 @@ class ModelProvider:
                 return self._fetch_anthropic_models()
             elif provider == PROVIDER_OLLAMA:
                 return self._fetch_ollama_models()
-            elif provider == PROVIDER_PERPLEXITY:
-                return self._fetch_perplexity_models()
-            elif provider == PROVIDER_GROK:
-                return self._fetch_grok_models()
             elif provider == PROVIDER_GEMINI:
                 return self._fetch_gemini_models()
             else:
@@ -331,36 +312,6 @@ class ModelProvider:
                 
         except Exception as e:
             logger.error(f"Error fetching Ollama models: {e}")
-            return None
-            
-    def _fetch_perplexity_models(self) -> Optional[List[str]]:
-        """Fetch available models from Perplexity."""
-        try:
-            api_key = self._security_manager.get_api_key(PROVIDER_PERPLEXITY)
-            if not api_key:
-                return None
-
-            # Perplexity doesn't have a public models endpoint
-            # Return the known models
-            return self.FALLBACK_MODELS[PROVIDER_PERPLEXITY]
-            
-        except Exception as e:
-            logger.error(f"Error with Perplexity: {e}")
-            return None
-            
-    def _fetch_grok_models(self) -> Optional[List[str]]:
-        """Fetch available models from Grok."""
-        try:
-            api_key = self._security_manager.get_api_key(PROVIDER_GROK)
-            if not api_key:
-                return None
-
-            # Grok API endpoint for models (if available)
-            # For now, return known models
-            return self.FALLBACK_MODELS[PROVIDER_GROK]
-
-        except Exception as e:
-            logger.error(f"Error with Grok: {e}")
             return None
 
     def _fetch_gemini_models(self) -> Optional[List[str]]:

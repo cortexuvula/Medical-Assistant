@@ -26,8 +26,8 @@ from utils.security_decorators import secure_api_call, rate_limited
 from utils.timeout_config import get_timeout, get_timeout_tuple
 from utils.http_client_manager import get_http_client_manager
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC,
+    PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 import google.generativeai as genai
 
@@ -340,121 +340,6 @@ def call_ai_streaming(
         on_chunk(result)
         return result
 
-
-@secure_api_call("perplexity")
-@resilient_api_call(
-    max_retries=3,
-    initial_delay=1.0,
-    backoff_factor=2.0,
-    failure_threshold=5,
-    recovery_timeout=60
-)
-def _perplexity_api_call(client: OpenAI, model: str, messages: List[Dict[str, str]], temperature: float) -> ChatCompletion:
-    """Make the actual API call to Perplexity with explicit timeout.
-
-    Args:
-        client: OpenAI client configured for Perplexity
-        model: Model name
-        messages: List of messages
-        temperature: Temperature setting
-
-    Returns:
-        API response
-
-    Raises:
-        APIError: On API failures
-        AppTimeoutError: On request timeout
-    """
-    timeout_seconds = get_timeout("perplexity")
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-        )
-        return response
-    except httpx.TimeoutException as e:
-        raise AppTimeoutError(
-            f"Perplexity request timed out after {timeout_seconds}s: {e}",
-            timeout_seconds=timeout_seconds,
-            service="perplexity"
-        )
-    except Exception as e:
-        error_msg = str(e)
-        if "rate limit" in error_msg.lower():
-            raise RateLimitError(f"Perplexity rate limit exceeded: {error_msg}")
-        elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
-            raise AuthenticationError(f"Perplexity authentication failed: {error_msg}")
-        elif "timeout" in error_msg.lower():
-            raise AppTimeoutError(
-                f"Perplexity request timeout: {error_msg}",
-                timeout_seconds=timeout_seconds,
-                service="perplexity"
-            )
-        else:
-            raise APIError(f"Perplexity API error: {error_msg}")
-
-def call_perplexity(system_message: str, prompt: str, temperature: float) -> str:
-
-    # Get security manager
-    security_manager = get_security_manager()
-
-    # Get API key from secure storage or environment
-    api_key = security_manager.get_api_key("perplexity")
-    if not api_key:
-        logging.error("Perplexity API key not provided")
-        title, message = get_error_message("API_KEY_MISSING", "Perplexity API key not found")
-        return f"[Error: {title}] {message}"
-
-    # Validate API key format
-    is_valid, error = validate_api_key("perplexity", api_key)
-    if not is_valid:
-        logging.error(f"Invalid Perplexity API key: {error}")
-        title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}"
-
-    # Enhanced sanitization
-    prompt = security_manager.sanitize_input(prompt, "prompt")
-    system_message = security_manager.sanitize_input(system_message, "prompt")
-
-    # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
-    timeout_seconds = get_timeout("perplexity")
-    http_client = get_http_client_manager().get_httpx_client("perplexity", timeout_seconds)
-    client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", http_client=http_client)
-
-    # Get model from the appropriate settings based on the task
-    model_key = get_model_key_for_task(system_message, prompt)
-    model = SETTINGS.get(model_key, {}).get("perplexity_model", "sonar-medium-chat")
-    logging.info(f"Making Perplexity API call with model: {model}")
-
-    # Use consolidated debug logging
-    log_api_call_debug("Perplexity", model, temperature, system_message, prompt)
-
-    messages = [
-        {"role": "system", "content": system_message},
-        {"role": "user", "content": prompt}
-    ]
-    try:
-        response = _perplexity_api_call(client, model, messages, temperature)
-        result = response.choices[0].message.content.strip()
-        # Remove text between <think> and </think>
-        result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
-        return result
-    except AppTimeoutError as e:
-        logging.error(f"Perplexity API timeout with model {model}: {str(e)}")
-        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}"
-    except (APIError, ServiceUnavailableError) as e:
-        logging.error(f"Perplexity API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("perplexity", e)
-        title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}"
-    except Exception as e:
-        logging.error(f"Perplexity API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("perplexity", e)
-        title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}"
 
 def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
     import json
@@ -773,66 +658,6 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     except Exception as e:
         logging.error(f"Unexpected error calling Anthropic: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}"
-
-def call_grok(model: str, system_message: str, prompt: str, temperature: float) -> str:
-    """Call Grok API with explicit timeout.
-
-    Args:
-        model: Model to use
-        system_message: System message to guide the AI's response
-        prompt: User prompt
-        temperature: Temperature parameter (0.0 to 1.0)
-
-    Returns:
-        AI-generated response as a string
-    """
-    api_key = os.getenv("GROK_API_KEY")
-    if not api_key:
-        logging.error("Grok API key not provided")
-        title, message = get_error_message("API_KEY_MISSING", "Grok API key not found")
-        return f"[Error: {title}] {message}"
-
-    # Validate API key and inputs
-    is_valid, error = validate_api_key("grok", api_key)
-    if not is_valid:
-        logging.error(f"Invalid Grok API key: {error}")
-        title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}"
-
-    # Sanitize inputs
-    prompt = sanitize_prompt(prompt)
-    system_message = sanitize_prompt(system_message)
-
-    logging.info(f"Making Grok API call with model: {model}")
-
-    # Use consolidated debug logging
-    log_api_call_debug("Grok", model, temperature, system_message, prompt)
-
-    # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
-    timeout_seconds = get_timeout("grok")
-    http_client = get_http_client_manager().get_httpx_client("grok", timeout_seconds)
-    client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1", http_client=http_client)
-
-    messages = [
-        {"role": "system", "content": system_message},
-        {"role": "user", "content": prompt}
-    ]
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-        )
-        return response.choices[0].message.content.strip()
-    except httpx.TimeoutException as e:
-        logging.error(f"Grok API timeout with model {model}: {str(e)}")
-        title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {timeout_seconds}s")
-        return f"[Error: {title}] {message}"
-    except Exception as e:
-        logging.error(f"Grok API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("grok", e)
-        title, message = get_error_message(error_code, details, model)
         return f"[Error: {title}] {message}"
 
 @secure_api_call("gemini")
@@ -1724,8 +1549,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
     current_settings = load_settings()
 
     # Validate provider against allowed list to prevent arbitrary key access
-    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_PERPLEXITY, PROVIDER_GROK,
-                       PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI}
+    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI}
 
     # Track if provider was explicitly passed (affects model selection)
     provider_explicitly_set = provider is not None and provider != ""
@@ -1739,11 +1563,11 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         provider = PROVIDER_OPENAI
 
     model_key = get_model_key_for_task(system_message, prompt)
-    
+
     # Get provider-specific temperature if available
     provider_temp_key = f"{provider}_temperature"
     provider_temp = current_settings.get(model_key, {}).get(provider_temp_key)
-    
+
     # If provider-specific temperature exists, use it, otherwise use the passed temperature
     if provider_temp is not None:
         temperature = provider_temp
@@ -1752,22 +1576,10 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         generic_temp = current_settings.get(model_key, {}).get("temperature")
         if generic_temp is not None:
             temperature = generic_temp
-    
+
     # Handle different providers and get appropriate model
     # When provider is explicitly set, use the passed-in model; otherwise look it up from settings
-    if provider == PROVIDER_PERPLEXITY:
-        logging.info(f"Using provider: Perplexity for task: {model_key}")
-        # Debug logging will happen in the actual API call
-        return call_perplexity(system_message, prompt, temperature)
-    elif provider == PROVIDER_GROK:
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("grok_model", "grok-1")
-        logging.info(f"Using provider: Grok with model: {actual_model}")
-        # Debug logging will happen in the actual API call
-        return call_grok(actual_model, system_message, prompt, temperature)
-    elif provider == PROVIDER_OLLAMA:
+    if provider == PROVIDER_OLLAMA:
         logging.info(f"Using provider: Ollama for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)

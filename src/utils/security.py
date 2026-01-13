@@ -24,8 +24,7 @@ from core.config import get_config
 from utils.exceptions import ConfigurationError, APIError
 from utils.constants import (
     AIProvider, STTProvider, TTSProvider,
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA,
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
     STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
 )
 
@@ -527,12 +526,10 @@ class RateLimiter:
         # Format: (calls, window_seconds)
         self.default_limits: Dict[str, Tuple[int, int]] = {
             PROVIDER_OPENAI: (60, 60),       # 60 calls per minute
-            PROVIDER_PERPLEXITY: (50, 60),   # 50 calls per minute
             STT_GROQ: (30, 60),              # 30 calls per minute
             STT_DEEPGRAM: (100, 60),         # 100 calls per minute
             STT_ELEVENLABS: (50, 60),        # 50 calls per minute
             PROVIDER_ANTHROPIC: (60, 60),    # 60 calls per minute
-            PROVIDER_GROK: (60, 60),         # 60 calls per minute
             PROVIDER_OLLAMA: (1000, 60),     # Local, so higher limit
         }
 
@@ -923,9 +920,7 @@ class SecurityManager:
             STT_DEEPGRAM: self._validate_deepgram_key,
             STT_ELEVENLABS: self._validate_elevenlabs_key,
             STT_GROQ: self._validate_groq_key,
-            PROVIDER_PERPLEXITY: self._validate_perplexity_key,
             PROVIDER_ANTHROPIC: self._validate_anthropic_key,
-            PROVIDER_GROK: self._validate_grok_key,
         }
 
         # Configurable API key format rules
@@ -937,9 +932,7 @@ class SecurityManager:
             STT_GROQ: {"prefix": "gsk_", "min_length": 40, "max_length": 100, "chars": "alnum"},
             STT_DEEPGRAM: {"prefix": None, "min_length": 32, "max_length": 100, "chars": "alnum"},
             STT_ELEVENLABS: {"prefix": "sk_", "min_length": 30, "max_length": 100, "chars": "alnum"},
-            PROVIDER_PERPLEXITY: {"prefix": "pplx-", "min_length": 40, "max_length": 100, "chars": "alnum_dash"},
             PROVIDER_ANTHROPIC: {"prefix": "sk-ant-", "min_length": 90, "max_length": 200, "chars": "alnum_dash"},
-            PROVIDER_GROK: {"prefix": "xai-", "min_length": 20, "max_length": 100, "chars": "alnum_dash"},
         }
     
     def store_api_key(self, provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
@@ -1075,17 +1068,9 @@ class SecurityManager:
         """Validate ElevenLabs API key format."""
         return self._validate_key_format(api_key, "elevenlabs")
 
-    def _validate_perplexity_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
-        """Validate Perplexity API key format."""
-        return self._validate_key_format(api_key, "perplexity")
-
     def _validate_anthropic_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Anthropic API key format."""
         return self._validate_key_format(api_key, "anthropic")
-
-    def _validate_grok_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
-        """Validate Grok/xAI API key format."""
-        return self._validate_key_format(api_key, "grok")
 
     def update_api_key_format(self, provider: str, prefix: Optional[str] = None,
                                min_length: Optional[int] = None, max_length: Optional[int] = None,

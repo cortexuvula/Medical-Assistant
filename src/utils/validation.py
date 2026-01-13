@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Optional, Tuple, List
 from utils.error_codes import get_error_message
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY, PROVIDER_GROK,
-    PROVIDER_GEMINI, STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
 )
 
 # API key patterns for basic validation
@@ -24,10 +24,6 @@ API_KEY_PATTERNS = {
     STT_ELEVENLABS: re.compile(r'^sk_[a-zA-Z0-9]{20,}$'),
     # Groq keys start with gsk_ - flexible length (was 52 exact, now 40+)
     STT_GROQ: re.compile(r'^gsk_[a-zA-Z0-9]{40,}$'),
-    # Perplexity keys start with pplx- - flexible length (was 48 exact, now 40+)
-    PROVIDER_PERPLEXITY: re.compile(r'^pplx-[a-zA-Z0-9]{40,}$'),
-    # Grok/xAI keys start with xai-
-    PROVIDER_GROK: re.compile(r'^xai-[a-zA-Z0-9\-_]{10,}$'),
     # Anthropic keys start with sk-ant- - flexible length (was 95+ exact, now 80+)
     PROVIDER_ANTHROPIC: re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{80,}$'),
     # Google Gemini keys start with AIza - typically 39 characters total
@@ -46,8 +42,6 @@ SENSITIVE_PATTERNS = [
     (re.compile(r'sk-ant-[a-zA-Z0-9\-_]{10,}'), '[ANTHROPIC_KEY_REDACTED]'),
     (re.compile(r'sk_[a-zA-Z0-9]{10,}'), '[ELEVENLABS_KEY_REDACTED]'),
     (re.compile(r'gsk_[a-zA-Z0-9]{10,}'), '[GROQ_KEY_REDACTED]'),
-    (re.compile(r'pplx-[a-zA-Z0-9]{10,}'), '[PERPLEXITY_KEY_REDACTED]'),
-    (re.compile(r'xai-[a-zA-Z0-9\-_]{10,}'), '[GROK_KEY_REDACTED]'),
     # Authorization headers
     (re.compile(r'Bearer\s+[a-zA-Z0-9\-_\.]+', re.IGNORECASE), 'Bearer [TOKEN_REDACTED]'),
     (re.compile(r'Authorization:\s*[^\n]+', re.IGNORECASE), 'Authorization: [REDACTED]'),

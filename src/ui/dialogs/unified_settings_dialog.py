@@ -142,8 +142,6 @@ class UnifiedSettingsDialog:
         row = 1
         api_keys_config = [
             ("openai", "OpenAI API Key:", "OPENAI_API_KEY", "API key from platform.openai.com"),
-            ("grok", "Grok API Key:", "GROK_API_KEY", "API key from X.AI/Grok"),
-            ("perplexity", "Perplexity API Key:", "PERPLEXITY_API_KEY", "API key from perplexity.ai"),
             ("anthropic", "Anthropic API Key:", "ANTHROPIC_API_KEY", "API key from console.anthropic.com"),
             ("gemini", "Google Gemini API Key:", "GEMINI_API_KEY", "API key from Google AI Studio"),
         ]
@@ -808,7 +806,7 @@ class UnifiedSettingsDialog:
             security_mgr = get_security_manager()
 
             api_keys = self.widgets.get('api_keys', {})
-            for key_id in ['openai', 'grok', 'perplexity', 'anthropic', 'gemini',
+            for key_id in ['openai', 'anthropic', 'gemini',
                           'deepgram', 'elevenlabs', 'groq']:
                 if key_id in api_keys:
                     value = api_keys[key_id].get().strip()

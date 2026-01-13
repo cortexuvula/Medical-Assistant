@@ -1,6 +1,6 @@
 # Medical Assistant
 
-Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Anthropic/Claude, Google Gemini, Perplexity, Grok, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
+Medical Assistant is a desktop application designed to transcribe and refine spoken medical notes. It leverages advanced AI APIs (OpenAI, Anthropic/Claude, Google Gemini, and Ollama) and offers efficient audio-to-text conversion and note generation with context-aware capabilities.
 
 ## Features
 
@@ -47,8 +47,6 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
   - OpenAI (GPT-4, GPT-4o, GPT-3.5)
   - Anthropic (Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
   - Google Gemini (Gemini Pro, Gemini Flash)
-  - Perplexity (Online models with web search)
-  - Grok (xAI models)
   - Ollama (Local models - Llama, Mistral, etc.)
 - **Multiple STT Providers:**
   - Deepgram (Nova-2 Medical model)
@@ -86,7 +84,7 @@ Medical Assistant is a desktop application designed to transcribe and refine spo
 3. **Configuration**
    - Use the "API Keys" dialog in the application (recommended - keys are encrypted)
    - Or create a `.env` file in the project root:
-     - **LLM Services:** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY`, `GROK_API_KEY`
+     - **LLM Services:** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`
      - **Speech-to-Text Services:** `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`
      - **Local Models:** `OLLAMA_API_URL` (defaults to "http://localhost:11434")
      - **RAG Integration:** `N8N_URL` and `N8N_AUTHORIZATION_SECRET` for document search

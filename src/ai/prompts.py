@@ -268,14 +268,12 @@ ICD_CODE_INSTRUCTIONS = {
 }
 
 # Supported AI providers for per-provider SOAP prompts
-SOAP_PROVIDERS = ["openai", "anthropic", "grok", "perplexity", "ollama", "gemini"]
+SOAP_PROVIDERS = ["openai", "anthropic", "ollama", "gemini"]
 
 # Provider display names for UI
 SOAP_PROVIDER_NAMES = {
     "openai": "OpenAI",
     "anthropic": "Anthropic",
-    "grok": "Grok",
-    "perplexity": "Perplexity",
     "ollama": "Ollama",
     "gemini": "Gemini",
 }

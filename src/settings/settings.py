@@ -134,15 +134,11 @@ Format your response as:
     "refine_text": {
         "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
         "model": "gpt-3.5-turbo",  # OpenAI model
-        "grok_model": "grok-1",    # Grok model
-        "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.0,  # Default temperature for refine_text
         "openai_temperature": 0.0,  # OpenAI-specific temperature
-        "grok_temperature": 0.0,    # Grok-specific temperature
-        "perplexity_temperature": 0.0, # Perplexity-specific temperature
         "ollama_temperature": 0.0,   # Ollama-specific temperature
         "anthropic_temperature": 0.0,  # Anthropic-specific temperature
         "gemini_temperature": 0.0  # Gemini-specific temperature
@@ -150,15 +146,11 @@ Format your response as:
     "improve_text": {
         "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
         "model": "gpt-3.5-turbo",  # OpenAI model
-        "grok_model": "grok-1",    # Grok model
-        "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for improve_text
         "openai_temperature": 0.7,  # OpenAI-specific temperature
-        "grok_temperature": 0.7,    # Grok-specific temperature
-        "perplexity_temperature": 0.7, # Perplexity-specific temperature
         "ollama_temperature": 0.7,   # Ollama-specific temperature
         "anthropic_temperature": 0.7,  # Anthropic-specific temperature
         "gemini_temperature": 0.7  # Gemini-specific temperature
@@ -168,21 +160,15 @@ Format your response as:
         # Per-provider system messages (empty = use provider-optimized default)
         "openai_system_message": "",
         "anthropic_system_message": "",
-        "grok_system_message": "",
-        "perplexity_system_message": "",
         "ollama_system_message": "",
         "gemini_system_message": "",
         "icd_code_version": "ICD-9",  # Options: "ICD-9", "ICD-10", "both"
         "model": "gpt-3.5-turbo",  # OpenAI model
-        "grok_model": "grok-1",    # Grok model
-        "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for SOAP notes)
         "temperature": 0.4,  # Default temperature for soap_note (lower for more consistent output)
         "openai_temperature": 0.4,  # OpenAI-specific temperature
-        "grok_temperature": 0.4,    # Grok-specific temperature
-        "perplexity_temperature": 0.4, # Perplexity-specific temperature
         "ollama_temperature": 0.4,   # Ollama-specific temperature
         "anthropic_temperature": 0.4,  # Anthropic-specific temperature
         "gemini_temperature": 0.4  # Gemini-specific temperature
@@ -190,15 +176,11 @@ Format your response as:
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
         "model": "gpt-3.5-turbo",  # OpenAI model
-        "grok_model": "grok-1",    # Grok model
-        "perplexity_model": "sonar-medium-chat",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-2.0-flash",  # Gemini model
         "temperature": 0.7,  # Default temperature for referral
         "openai_temperature": 0.7,  # OpenAI-specific temperature
-        "grok_temperature": 0.7,    # Grok-specific temperature
-        "perplexity_temperature": 0.7, # Perplexity-specific temperature
         "ollama_temperature": 0.7,   # Ollama-specific temperature
         "anthropic_temperature": 0.7,  # Anthropic-specific temperature
         "gemini_temperature": 0.7  # Gemini-specific temperature
@@ -266,15 +248,11 @@ QUESTIONS TO ASK:
 IMMEDIATE ACTIONS:
 [Any urgent interventions or consults needed, or "Routine evaluation appropriate"]""",
         "model": "gpt-4",  # OpenAI model
-        "grok_model": "grok-1",    # Grok model
-        "perplexity_model": "sonar-reasoning-pro",  # Perplexity model
         "ollama_model": "llama3",   # Ollama model
         "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
         "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for advanced analysis)
         "temperature": 0.3,  # Default temperature for advanced analysis
         "openai_temperature": 0.3,  # OpenAI-specific temperature
-        "grok_temperature": 0.3,    # Grok-specific temperature
-        "perplexity_temperature": 0.3, # Perplexity-specific temperature
         "ollama_temperature": 0.3,   # Ollama-specific temperature
         "anthropic_temperature": 0.3,  # Anthropic-specific temperature
         "gemini_temperature": 0.3  # Gemini-specific temperature

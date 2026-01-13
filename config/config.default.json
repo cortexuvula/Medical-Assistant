@@ -78,14 +78,10 @@
       "model": "gpt-3.5-turbo",
       "temperature": 0.0,
       "provider_models": {
-        "grok": "grok-1",
-        "perplexity": "sonar-medium-chat",
         "ollama": "llama3"
       },
       "provider_temperatures": {
         "openai": 0.0,
-        "grok": 0.0,
-        "perplexity": 0.0,
         "ollama": 0.0
       }
     },
@@ -93,14 +89,10 @@
       "model": "gpt-3.5-turbo",
       "temperature": 0.7,
       "provider_models": {
-        "grok": "grok-1",
-        "perplexity": "sonar-medium-chat",
         "ollama": "llama3"
       },
       "provider_temperatures": {
         "openai": 0.7,
-        "grok": 0.7,
-        "perplexity": 0.7,
         "ollama": 0.7
       }
     },
@@ -108,14 +100,10 @@
       "model": "gpt-3.5-turbo",
       "temperature": 0.7,
       "provider_models": {
-        "grok": "grok-1",
-        "perplexity": "sonar-medium-chat",
         "ollama": "llama3"
       },
       "provider_temperatures": {
         "openai": 0.7,
-        "grok": 0.7,
-        "perplexity": 0.7,
         "ollama": 0.7
       }
     },
@@ -123,14 +111,10 @@
       "model": "gpt-3.5-turbo",
       "temperature": 0.7,
       "provider_models": {
-        "grok": "grok-1",
-        "perplexity": "sonar-medium-chat",
         "ollama": "llama3"
       },
       "provider_temperatures": {
         "openai": 0.7,
-        "grok": 0.7,
-        "perplexity": 0.7,
         "ollama": 0.7
       }
     }

@@ -43,13 +43,11 @@ class SecuritySetup(BaseSetup):
             self.app.deepgram_api_key = self.app.security_manager.get_api_key("deepgram") or ""
             self.app.elevenlabs_api_key = self.app.security_manager.get_api_key("elevenlabs") or ""
             self.app.anthropic_api_key = self.app.security_manager.get_api_key("anthropic") or ""
-            self.app.perplexity_api_key = self.app.security_manager.get_api_key("perplexity") or ""
             self.app.gemini_api_key = self.app.security_manager.get_api_key("gemini") or ""
-            self.app.grok_api_key = self.app.security_manager.get_api_key("grok") or ""
 
             # Log which keys are configured (without revealing values)
             configured_keys = []
-            for provider in ['openai', 'groq', 'deepgram', 'elevenlabs', 'anthropic', 'perplexity', 'gemini', 'grok']:
+            for provider in ['openai', 'groq', 'deepgram', 'elevenlabs', 'anthropic', 'gemini']:
                 if self.app.security_manager.get_api_key(provider):
                     configured_keys.append(provider)
 
@@ -66,9 +64,7 @@ class SecuritySetup(BaseSetup):
             self.app.deepgram_api_key = ""
             self.app.elevenlabs_api_key = ""
             self.app.anthropic_api_key = ""
-            self.app.perplexity_api_key = ""
             self.app.gemini_api_key = ""
-            self.app.grok_api_key = ""
 
     def cleanup(self) -> None:
         """Clean up security resources."""

@@ -51,8 +51,6 @@ class ProviderConfigController:
         # All possible AI providers with their display names
         all_providers = [
             ("openai", "OpenAI"),
-            ("grok", "Grok"),
-            ("perplexity", "Perplexity"),
             ("anthropic", "Anthropic"),
             ("gemini", "Gemini"),
         ]

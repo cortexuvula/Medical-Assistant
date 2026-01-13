@@ -22,8 +22,7 @@ from ai.mcp.mcp_manager import mcp_manager, health_monitor
 from ai.mcp.mcp_tool_wrapper import register_mcp_tools
 # Provider constants
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA
 )
 # Resilience patterns
 from utils.resilience import CircuitBreaker, CircuitState
@@ -377,7 +376,7 @@ class ChatProcessor:
                 # Fall back to regular AI (will be handled by the retry loop below)
 
         # Import AI functions
-        from ai.ai import call_openai, call_perplexity, call_grok, call_ai
+        from ai.ai import call_openai, call_ai
 
         # Get current AI provider setting
         provider = SETTINGS.get("ai_provider", "openai").lower()
@@ -391,20 +390,6 @@ class ChatProcessor:
                     model = SETTINGS.get("openai", {}).get("model", "gpt-4")
                     response = call_openai(
                         model=model,
-                        system_message=system_message,
-                        prompt=prompt,
-                        temperature=self.temperature
-                    )
-                elif provider == PROVIDER_GROK:
-                    model = SETTINGS.get("grok", {}).get("model", "grok-beta")
-                    response = call_grok(
-                        model=model,
-                        system_message=system_message,
-                        prompt=prompt,
-                        temperature=self.temperature
-                    )
-                elif provider == PROVIDER_PERPLEXITY:
-                    response = call_perplexity(
                         system_message=system_message,
                         prompt=prompt,
                         temperature=self.temperature

@@ -126,7 +126,7 @@ def format_api_error(provider: str, error: Exception) -> Tuple[str, str]:
     """Format API-specific errors based on the provider and error type.
     
     Args:
-        provider: The API provider (openai, perplexity, etc.)
+        provider: The API provider (openai, anthropic, etc.)
         error: The exception that occurred
         
     Returns:

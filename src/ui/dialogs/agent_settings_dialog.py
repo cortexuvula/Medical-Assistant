@@ -95,8 +95,6 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         "openai": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
         "anthropic": ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-4-20250514"],
         "ollama": ["llama3", "mistral", "codellama"],
-        "perplexity": ["sonar-medium-chat", "sonar-small-chat"],
-        "grok": ["grok-1", "grok-2"],
         "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"]
     }
     

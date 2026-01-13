@@ -22,8 +22,7 @@ import logging
 from typing import Dict, Optional
 from settings.settings import SETTINGS
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,6 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     # AI Provider timeouts (using constants)
     PROVIDER_OPENAI: 60.0,       # OpenAI API calls
     PROVIDER_ANTHROPIC: 90.0,    # Anthropic/Claude API calls (can be slower)
-    PROVIDER_PERPLEXITY: 60.0,   # Perplexity API calls
-    PROVIDER_GROK: 60.0,         # Grok API calls
     PROVIDER_OLLAMA: 180.0,      # Ollama (local, can be very slow depending on model)
     PROVIDER_GEMINI: 90.0,       # Google Gemini API calls
 

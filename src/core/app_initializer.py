@@ -176,20 +176,20 @@ class AppInitializer:
         deepgram_key = os.getenv("DEEPGRAM_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
         openai_key = os.getenv("OPENAI_API_KEY")
-        grok_key = os.getenv("GROK_API_KEY")
-        perplexity_key = os.getenv("PERPLEXITY_API_KEY")
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        gemini_key = os.getenv("GEMINI_API_KEY")
         ollama_url = os.getenv("OLLAMA_API_URL")
-        
+
         # Check if we have at least one LLM and one STT provider
-        has_llm = bool(openai_key or grok_key or perplexity_key or ollama_url)
+        has_llm = bool(openai_key or anthropic_key or gemini_key or ollama_url)
         has_stt = bool(elevenlabs_key or deepgram_key or groq_key)
-        
+
         if not has_llm or not has_stt:
             messagebox.showinfo(
-                "API Keys Required", 
+                "API Keys Required",
                 "Welcome to Medical Assistant!\n\n" +
                 "To use this application, you need:\n" +
-                "• At least one LLM provider (OpenAI, Grok, Perplexity, or Ollama)\n" +
+                "• At least one LLM provider (OpenAI, Anthropic, Gemini, or Ollama)\n" +
                 "• At least one STT provider (Groq, Deepgram, or ElevenLabs)\n\n" +
                 "Please configure your API keys."
             )

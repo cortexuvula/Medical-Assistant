@@ -548,8 +548,6 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
 
         all_providers = [
             ("openai", "OpenAI"),
-            ("grok", "Grok"),
-            ("perplexity", "Perplexity"),
             ("anthropic", "Anthropic"),
             ("gemini", "Gemini"),
         ]

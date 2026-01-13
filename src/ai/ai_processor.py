@@ -29,8 +29,7 @@ from managers.agent_manager import agent_manager
 from ai.agents.models import AgentTask, AgentType
 from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, sanitize_error_for_user
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_PERPLEXITY,
-    PROVIDER_GROK, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
 
 logger = logging.getLogger(__name__)
@@ -486,10 +485,6 @@ class AIProcessor:
             # Select the appropriate model based on provider
             if ai_provider == PROVIDER_OPENAI:
                 model = analysis_settings.get("model", "gpt-4")
-            elif ai_provider == PROVIDER_PERPLEXITY:
-                model = analysis_settings.get("perplexity_model", "sonar-reasoning-pro")
-            elif ai_provider == PROVIDER_GROK:
-                model = analysis_settings.get("grok_model", "grok-1")
             elif ai_provider == PROVIDER_OLLAMA:
                 model = analysis_settings.get("ollama_model", "llama3")
             elif ai_provider == PROVIDER_ANTHROPIC:

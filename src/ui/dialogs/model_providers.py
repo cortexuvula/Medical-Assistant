@@ -87,79 +87,6 @@ def get_fallback_openai_models() -> List[str]:
     return ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
 
 
-def get_grok_models() -> List[str]:
-    """Fetch available models from Grok API."""
-    try:
-        # Get API key from environment
-        api_key = os.getenv("GROK_API_KEY")
-        if not api_key:
-            logging.error("Grok API key not found in environment variables")
-            return get_fallback_grok_models()
-
-        # Make API call to get models using the OpenAI client with x.ai base URL
-        try:
-            # Initialize client with X.AI base URL
-            client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
-
-            # Make API call to get models
-            response = client.models.list()
-
-            # Extract model IDs
-            models = []
-            for model in response.data:
-                if hasattr(model, 'id'):
-                    models.append(model.id)
-
-            # Add common models that might be missing
-            common_models = ["grok-1", "grok-1.5", "grok-mini"]
-            for model in common_models:
-                if model not in models:
-                    models.append(model)
-
-            return sorted(models)
-
-        except Exception as api_error:
-            # Fall back to direct request if OpenAI client approach fails
-            logging.warning(f"OpenAI client approach failed, trying direct request: {str(api_error)}")
-
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-
-            response = requests.get(
-                "https://api.x.ai/v1/models",
-                headers=headers
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                # Extract model IDs - adjust according to actual response structure
-                if "data" in data:
-                    models = [model.get("id") for model in data.get("data", []) if model.get("id")]
-                else:
-                    models = [model.get("id") for model in data if model.get("id")]
-
-                # Add common models that might be missing
-                common_models = ["grok-1", "grok-1.5", "grok-mini"]
-                for model in common_models:
-                    if model not in models:
-                        models.append(model)
-                return sorted(models)
-            else:
-                logging.error(f"Error fetching Grok models: {response.status_code}")
-                return get_fallback_grok_models()
-
-    except Exception as e:
-        logging.error(f"Error fetching Grok models: {str(e)}")
-        return get_fallback_grok_models()
-
-
-def get_fallback_grok_models() -> List[str]:
-    """Return fallback list of common Grok models."""
-    return ["grok-1", "grok-1.5", "grok-mini"]
-
-
 def get_ollama_models() -> List[str]:
     """Fetch available models from Ollama API."""
     try:
@@ -183,35 +110,6 @@ def get_ollama_models() -> List[str]:
     except Exception as e:
         logging.error(f"Error fetching Ollama models: {str(e)}")
         return []
-
-
-def get_perplexity_models() -> List[str]:
-    """Return a curated list of Perplexity models.
-
-    Note: Perplexity doesn't have a direct API endpoint for listing models,
-    so we use a curated list.
-    """
-    logging.info("Using curated list of Perplexity models")
-    return [
-        # Latest curated Perplexity models with context windows
-        "sonar-reasoning-pro",    # 128k context
-        "sonar-reasoning",        # 128k context
-        "sonar-pro",              # 200k context
-        "sonar",                  # 128k context
-        "r1-1776"                 # 128k context
-    ]
-
-
-def get_fallback_perplexity_models() -> List[str]:
-    """Return a list of Perplexity models."""
-    logging.info("Using standard list of Perplexity models")
-    return [
-        "sonar-reasoning-pro",    # 128k context
-        "sonar-reasoning",        # 128k context
-        "sonar-pro",              # 200k context
-        "sonar",                  # 128k context
-        "r1-1776"                 # 128k context
-    ]
 
 
 def get_anthropic_models() -> List[str]:
