@@ -432,48 +432,51 @@ def show_groq_settings_dialog(parent: tk.Tk) -> None:
         "prompt": ""
     })
 
-    dialog = create_toplevel_dialog(parent, "Groq Settings", "600x450")
+    dialog = create_toplevel_dialog(parent, "Groq Settings", "550x500")
 
     # Create the main frame with padding
     frame = ttk.Frame(dialog, padding=20)
     frame.pack(fill=tk.BOTH, expand=True)
+
+    # Configure column weights for proper expansion
+    frame.columnconfigure(1, weight=1)
 
     # Create form with current settings
     ttk.Label(frame, text="Groq Speech-to-Text Settings",
               font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky="w")
 
     # Model selection
-    ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="w", pady=10)
+    ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="w", pady=5)
     model_var = tk.StringVar(value=groq_settings.get("model", default_settings.get("model", "whisper-large-v3-turbo")))
-    model_combo = ttk.Combobox(frame, textvariable=model_var, width=30, state="readonly")
+    model_combo = ttk.Combobox(frame, textvariable=model_var, width=35, state="readonly")
     model_combo['values'] = [
         "whisper-large-v3-turbo",   # Fastest, 216x real-time
         "whisper-large-v3",         # Higher quality
         "distil-whisper-large-v3-en"  # English-only, fast
     ]
-    model_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+    model_combo.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=5)
     ttk.Label(frame, text="whisper-large-v3-turbo: fastest (216x real-time), whisper-large-v3: higher quality",
-              wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
+              wraplength=450, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=(0, 10))
 
     # Language
-    ttk.Label(frame, text="Language:").grid(row=3, column=0, sticky="w", pady=10)
+    ttk.Label(frame, text="Language:").grid(row=3, column=0, sticky="w", pady=5)
     language_var = tk.StringVar(value=groq_settings.get("language", default_settings.get("language", "en")))
-    language_combo = ttk.Combobox(frame, textvariable=language_var, width=30)
+    language_combo = ttk.Combobox(frame, textvariable=language_var, width=35)
     language_combo['values'] = [
         "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru",
         "ja", "ko", "zh", "ar", "hi", "tr", "vi", "th"
     ]
-    language_combo.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=10)
+    language_combo.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=5)
     ttk.Label(frame, text="ISO-639-1 language code. Setting this improves accuracy and latency.",
-              wraplength=400, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0))
+              wraplength=450, foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=(0, 10))
 
     # Prompt (context/spelling hints)
-    ttk.Label(frame, text="Prompt:").grid(row=5, column=0, sticky="nw", pady=10)
-    prompt_text = tk.Text(frame, width=35, height=4, wrap=tk.WORD)
+    ttk.Label(frame, text="Prompt:").grid(row=5, column=0, sticky="nw", pady=5)
+    prompt_text = tk.Text(frame, width=45, height=8, wrap=tk.WORD)
     prompt_text.insert("1.0", groq_settings.get("prompt", default_settings.get("prompt", "")))
-    prompt_text.grid(row=5, column=1, sticky="w", padx=(10, 0), pady=10)
+    prompt_text.grid(row=5, column=1, sticky="ew", padx=(10, 0), pady=5)
     ttk.Label(frame, text="Optional context or spelling hints (max 224 tokens). Example: medical terminology, names.",
-              wraplength=400, foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", padx=(20, 0))
+              wraplength=450, foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=(0, 10))
 
     # Create the buttons frame
     btn_frame = ttk.Frame(frame)
