@@ -29,7 +29,7 @@ class TestOpenAIProvider:
         """call_openai should return a string."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
+        with patch('ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.return_value = mock_openai_response
 
             result = call_openai(
@@ -46,7 +46,7 @@ class TestOpenAIProvider:
         """call_openai should handle API errors gracefully."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
+        with patch('ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.side_effect = Exception("API Error")
 
             result = call_openai(
@@ -91,7 +91,7 @@ class TestAnthropicProvider:
         """call_anthropic should handle API errors gracefully."""
         from src.ai.ai import call_anthropic
 
-        with patch('src.ai.providers.anthropic_provider._anthropic_api_call') as mock_api_call:
+        with patch('ai.providers.anthropic_provider._anthropic_api_call') as mock_api_call:
             mock_api_call.side_effect = Exception("API Error")
 
             result = call_anthropic(
@@ -130,8 +130,8 @@ class TestAIProviderSelection:
         """call_ai should route based on settings."""
         from src.ai.ai import call_ai
 
-        with patch('src.ai.ai.call_openai', return_value="OpenAI response") as mock_openai:
-            with patch('src.settings.settings.SETTINGS', {'ai_provider': 'openai'}):
+        with patch('ai.ai.call_openai', return_value="OpenAI response") as mock_openai:
+            with patch('settings.settings.SETTINGS', {'ai_provider': 'openai'}):
                 result = call_ai(
                     model="gpt-4",
                     system_message="Test",
@@ -164,8 +164,8 @@ class TestSOAPNoteGeneration:
         """create_soap_note_with_openai should generate SOAP note."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.managers.agent_manager.agent_manager') as mock_agent:
+        with patch('ai.soap_generation.call_ai') as mock_call, \
+             patch('managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = """
             S: Patient reports headache
             O: Vital signs normal
@@ -187,8 +187,8 @@ class TestSOAPNoteGeneration:
         """SOAP note generation should include context if provided."""
         from src.ai.ai import create_soap_note_with_openai
 
-        with patch('src.ai.soap_generation.call_ai') as mock_call, \
-             patch('src.managers.agent_manager.agent_manager') as mock_agent:
+        with patch('ai.soap_generation.call_ai') as mock_call, \
+             patch('managers.agent_manager.agent_manager') as mock_agent:
             mock_call.return_value = "SOAP note with context"
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
@@ -209,7 +209,7 @@ class TestReferralGeneration:
         """create_referral_with_openai should return string."""
         from src.ai.ai import create_referral_with_openai
 
-        with patch('src.ai.letter_generation.call_ai') as mock_call:
+        with patch('ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Referral letter content"
 
             result = create_referral_with_openai(
@@ -226,7 +226,7 @@ class TestLetterGeneration:
         """create_letter_with_ai should return string."""
         from src.ai.ai import create_letter_with_ai
 
-        with patch('src.ai.letter_generation.call_ai') as mock_call:
+        with patch('ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter content"
 
             result = create_letter_with_ai(
@@ -242,7 +242,7 @@ class TestLetterGeneration:
 
         recipient_types = ["patient", "employer", "insurance", "other"]
 
-        with patch('src.ai.letter_generation.call_ai') as mock_call:
+        with patch('ai.letter_generation.call_ai') as mock_call:
             mock_call.return_value = "Letter content"
 
             for recipient in recipient_types:
@@ -261,7 +261,7 @@ class TestTimeoutHandling:
         from src.ai.ai import call_openai
         from utils.exceptions import TimeoutError as AppTimeoutError
 
-        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
+        with patch('ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.side_effect = AppTimeoutError("Timeout", timeout_seconds=30)
 
             result = call_openai(
@@ -283,7 +283,7 @@ class TestRateLimitHandling:
         """Rate limit should be handled gracefully."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
+        with patch('ai.providers.openai_provider._openai_api_call') as mock_api_call:
             # Simulate rate limit error
             mock_api_call.side_effect = Exception("Rate limit exceeded")
 
