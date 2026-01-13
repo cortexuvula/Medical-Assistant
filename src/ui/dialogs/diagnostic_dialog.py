@@ -9,7 +9,7 @@ for diagnostic analysis.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED, W
 from tkinter import messagebox, filedialog
 from typing import Optional, Dict, List
 import json

@@ -13,7 +13,7 @@ Provides a dialog for users to configure referral generation options including:
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, BOTTOM, W, NORMAL
 from typing import Optional, Dict, List, Any
 
 

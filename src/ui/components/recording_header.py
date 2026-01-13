@@ -5,7 +5,6 @@ Provides a prominent recording control area with waveform visualization
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 from typing import Dict, Callable, Optional, List
 import logging
 import math

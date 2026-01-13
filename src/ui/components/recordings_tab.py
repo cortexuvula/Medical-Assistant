@@ -6,7 +6,7 @@ Handles recordings management UI and operations
 import tkinter as tk
 import tkinter.messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
 from typing import Dict, Callable, Optional, List, Protocol, runtime_checkable, Any
 import logging
 import threading

@@ -14,7 +14,6 @@ import tkinter as tk
 from tkinter import messagebox
 from tkinter.constants import DISABLED
 import ttkbootstrap as ttk
-import openai
 
 from settings.settings import SETTINGS
 from ui.dialogs.dialogs import show_api_keys_dialog
@@ -56,6 +55,7 @@ from core.keyboard_shortcuts_controller import KeyboardShortcutsController
 from core.logs_viewer_controller import LogsViewerController
 from core.microphone_controller import MicrophoneController
 from core.queue_processing_controller import QueueProcessingController
+from utils.security import get_security_manager
 
 
 class AppInitializer:
@@ -164,20 +164,22 @@ class AppInitializer:
         
     def _setup_api_keys(self):
         """Initialize and validate API keys."""
-        # Initialize API keys and handlers
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        # Get security manager for API key access
+        security_manager = get_security_manager()
+
+        # Initialize API keys from environment/secure storage
         self.app.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.app.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.app.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.app.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
-        
-        # Check for necessary API keys
-        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
-        deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-        groq_key = os.getenv("GROQ_API_KEY")
-        openai_key = os.getenv("OPENAI_API_KEY")
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        gemini_key = os.getenv("GEMINI_API_KEY")
+
+        # Check for necessary API keys using security manager
+        openai_key = security_manager.get_api_key("openai")
+        anthropic_key = security_manager.get_api_key("anthropic")
+        gemini_key = security_manager.get_api_key("gemini")
+        elevenlabs_key = security_manager.get_api_key("elevenlabs")
+        deepgram_key = security_manager.get_api_key("deepgram")
+        groq_key = security_manager.get_api_key("groq")
         ollama_url = os.getenv("OLLAMA_API_URL")
 
         # Check if we have at least one LLM and one STT provider
@@ -200,7 +202,6 @@ class AppInitializer:
                 self.app.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
                 self.app.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
                 self.app.groq_api_key = os.getenv("GROQ_API_KEY", "")
-                openai.api_key = os.getenv("OPENAI_API_KEY")
                 
     def _initialize_audio_handler(self):
         """Initialize the audio handler and text processor."""
@@ -344,7 +345,7 @@ class AppInitializer:
         # Initialize queue processing controller
         self.app.queue_processing_controller = QueueProcessingController(self.app)
 
-        self.app.ai_processor = AIProcessor(openai.api_key)
+        self.app.ai_processor = AIProcessor()  # Uses security manager internally
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
         self.app.db_manager = DatabaseManager()
         self.app.recordings_dialog_manager = RecordingsDialogManager(self.app)
@@ -372,10 +373,18 @@ class AppInitializer:
         
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""
-        if not openai.api_key:
+        # Check if any LLM provider is configured
+        security_manager = get_security_manager()
+        has_any_llm = any([
+            security_manager.get_api_key("openai"),
+            security_manager.get_api_key("anthropic"),
+            security_manager.get_api_key("gemini"),
+            os.getenv("OLLAMA_API_URL")
+        ])
+        if not has_any_llm:
             self.app.buttons["refine"].config(state=DISABLED)
             self.app.buttons["improve"].config(state=DISABLED)
-            self.app.status_manager.warning("Warning: OpenAI API key not provided. AI features disabled.")
+            self.app.status_manager.warning("Warning: No LLM API keys configured. AI features disabled.")
             
     def _finalize_setup(self):
         """Complete the application setup."""

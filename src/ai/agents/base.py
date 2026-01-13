@@ -83,7 +83,68 @@ class BaseAgent(ABC):
             The AI caller implementation used by this agent.
         """
         return self._ai_caller
-    
+
+    def _validate_task_input(
+        self,
+        task: AgentTask,
+        required_fields: Optional[List[str]] = None
+    ) -> None:
+        """
+        Validate task input data before processing.
+
+        This method should be called at the start of execute() implementations
+        to ensure the task has valid structure and required fields.
+
+        Args:
+            task: The task to validate
+            required_fields: Optional list of required field names in task.input_data.
+                           If any are missing, ValueError is raised.
+
+        Raises:
+            ValueError: If task validation fails (wrong type, missing fields, etc.)
+
+        Example:
+            def execute(self, task: AgentTask) -> AgentResponse:
+                self._validate_task_input(task, required_fields=['clinical_text'])
+                # Now we can safely access task.input_data['clinical_text']
+        """
+        # Validate task is AgentTask instance
+        if not isinstance(task, AgentTask):
+            raise ValueError(
+                f"Task must be an AgentTask instance, got {type(task).__name__}"
+            )
+
+        # Validate input_data is a dictionary
+        if not isinstance(task.input_data, dict):
+            raise ValueError(
+                f"Task input_data must be a dictionary, got {type(task.input_data).__name__}"
+            )
+
+        # Validate task_description is not empty
+        if not task.task_description or not task.task_description.strip():
+            raise ValueError("Task description cannot be empty")
+
+        # Validate required fields exist in input_data
+        if required_fields:
+            missing_fields = [
+                field for field in required_fields
+                if field not in task.input_data
+            ]
+            if missing_fields:
+                raise ValueError(
+                    f"Missing required fields in input_data: {missing_fields}"
+                )
+
+            # Check that required fields have non-empty values
+            empty_fields = [
+                field for field in required_fields
+                if field in task.input_data and not task.input_data[field]
+            ]
+            if empty_fields:
+                logger.warning(
+                    f"Agent {self.config.name}: Required fields have empty values: {empty_fields}"
+                )
+
     def _validate_and_sanitize_input(self, prompt: str, system_message: str) -> tuple[str, str]:
         """
         Validate and sanitize prompt and system message before sending to AI.

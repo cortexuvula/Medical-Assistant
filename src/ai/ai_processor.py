@@ -11,7 +11,7 @@ Use result.to_dict() for backward compatibility with code expecting
 
 import logging
 from typing import Dict, Any, Optional, Tuple, Union
-import openai
+from utils.security import get_security_manager
 from settings.settings import SETTINGS
 from ai.ai import (
     adjust_text_with_openai,
@@ -19,12 +19,8 @@ from ai.ai import (
     create_soap_note_with_openai,
     get_possible_conditions
 )
-# Import individual prompts if needed
-from ai.prompts import (
-    REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
-    IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE,
-    SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
-)
+# Import prompts used for SOAP generation
+from ai.prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE
 from managers.agent_manager import agent_manager
 from ai.agents.models import AgentTask, AgentType
 from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, sanitize_error_for_user
@@ -40,11 +36,15 @@ class AIProcessor:
     
     def __init__(self, api_key: Optional[str] = None):
         """Initialize AI processor.
-        
+
         Args:
-            api_key: OpenAI API key (uses environment if not provided)
+            api_key: OpenAI API key (uses security manager if not provided)
         """
-        self.api_key = api_key or openai.api_key
+        if api_key:
+            self.api_key = api_key
+        else:
+            security_manager = get_security_manager()
+            self.api_key = security_manager.get_api_key("openai")
         
     def refine_text(self, text: str, additional_context: str = "") -> OperationResult[Dict[str, str]]:
         """Refine text using AI.
@@ -61,17 +61,11 @@ class AIProcessor:
             if not text.strip():
                 return OperationResult.failure("No text to refine", error_code="EMPTY_INPUT")
 
-            # Get refine prompt from settings or use default
-            refine_settings = SETTINGS.get("refine_text", {})
-            refine_prompt = refine_settings.get("prompt", REFINE_PROMPT)
+            # Note: additional_context parameter is not currently used by
+            # adjust_text_with_openai() which reads prompt from SETTINGS internally.
+            # TODO: Refactor adjust_text_with_openai() to accept custom prompt parameter
 
-            # Combine prompt with additional context if provided
-            if additional_context:
-                full_prompt = f"{refine_prompt}\n\nAdditional context: {additional_context}"
-            else:
-                full_prompt = refine_prompt
-
-            # Process text (function reads temperature from SETTINGS internally)
+            # Process text (reads prompt and temperature from SETTINGS internally)
             refined_text = adjust_text_with_openai(text)
 
             logger.info("Text refined successfully")
@@ -97,17 +91,11 @@ class AIProcessor:
             if not text.strip():
                 return OperationResult.failure("No text to improve", error_code="EMPTY_INPUT")
 
-            # Get improve prompt from settings or use default
-            improve_settings = SETTINGS.get("improve_text", {})
-            improve_prompt = improve_settings.get("prompt", IMPROVE_PROMPT)
+            # Note: additional_context parameter is not currently used by
+            # improve_text_with_openai() which reads prompt from SETTINGS internally.
+            # TODO: Refactor improve_text_with_openai() to accept custom prompt parameter
 
-            # Combine prompt with additional context if provided
-            if additional_context:
-                full_prompt = f"{improve_prompt}\n\nAdditional context: {additional_context}"
-            else:
-                full_prompt = improve_prompt
-
-            # Process text (function reads temperature from SETTINGS internally)
+            # Process text (reads prompt and temperature from SETTINGS internally)
             improved_text = improve_text_with_openai(text)
 
             logger.info("Text improved successfully")
@@ -285,19 +273,20 @@ class AIProcessor:
     
     def validate_api_key(self) -> bool:
         """Validate the OpenAI API key.
-        
+
         Returns:
             bool: True if API key is valid
         """
         try:
             if not self.api_key:
                 return False
-                
-            # Test the API key with a minimal request
-            openai.api_key = self.api_key
-            openai.Model.list()
+
+            # Test the API key with a minimal request using modern client pattern
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+            client.models.list()
             return True
-            
+
         except Exception as e:
             logging.error(f"API key validation failed: {e}")
             return False

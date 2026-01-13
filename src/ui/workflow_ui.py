@@ -7,7 +7,6 @@ Record, Process, and Generate.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 from typing import Dict, Callable
 import logging
 

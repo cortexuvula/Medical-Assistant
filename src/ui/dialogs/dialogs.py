@@ -950,8 +950,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             # Update environment variables in memory
             if new_openai:
                 os.environ["OPENAI_API_KEY"] = new_openai
-                import openai
-                openai.api_key = new_openai
+                # Note: Modern OpenAI provider uses client pattern that reads from env/security manager
             if new_deepgram:
                 os.environ["DEEPGRAM_API_KEY"] = new_deepgram
             if new_elevenlabs:

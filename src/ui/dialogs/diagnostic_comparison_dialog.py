@@ -8,7 +8,7 @@ differential evolution and compare findings across time or specialties.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, BOTTOM, CENTER, N, S, W, DISABLED, EW
 from tkinter import messagebox
 import logging
 import re

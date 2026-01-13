@@ -11,9 +11,8 @@ import threading
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
 import tkinter as tk
-from tkinter import messagebox, filedialog, ttk
+from tkinter import messagebox, filedialog
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 
 from database.database import Database
 from ui.dialogs.dialogs import create_toplevel_dialog

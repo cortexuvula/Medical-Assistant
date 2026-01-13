@@ -9,7 +9,7 @@ medications, and abbreviations.
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W
 import logging
 from typing import Optional
 

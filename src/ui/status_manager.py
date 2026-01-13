@@ -1,5 +1,5 @@
 import tkinter as tk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import RIGHT
 import logging
 
 from ui.ui_constants import Colors, Fonts, Animation

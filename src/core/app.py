@@ -10,13 +10,9 @@ import os
 import sys
 import concurrent.futures
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-# Import tkinter constants for compatibility
-from tkinter import TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 from dotenv import load_dotenv
-import openai
 from managers.data_folder_manager import data_folder_manager
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
 from typing import Callable, Optional, Dict, Any, List
@@ -24,6 +20,7 @@ import threading
 from pydub import AudioSegment
 from datetime import datetime
 from utils.cleanup_utils import clear_all_content, clear_content_except_context
+from utils.security import get_security_manager
 from database.database import Database
 from audio.audio import AudioHandler
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
@@ -122,7 +119,14 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         
         # Update UI components based on API availability
-        if openai.api_key:
+        security_manager = get_security_manager()
+        has_any_llm = any([
+            security_manager.get_api_key("openai"),
+            security_manager.get_api_key("anthropic"),
+            security_manager.get_api_key("gemini"),
+            os.getenv("OLLAMA_API_URL")
+        ])
+        if has_any_llm:
             if self.refine_button:
                 self.refine_button.config(state=NORMAL)
             if self.improve_button:

@@ -13,7 +13,6 @@ import threading
 import tkinter as tk
 from tkinter import NORMAL, DISABLED
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 
 from ui.dialogs.dialogs import create_toplevel_dialog
 from utils.utils import get_valid_microphones

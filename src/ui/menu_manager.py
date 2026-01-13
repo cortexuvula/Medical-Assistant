@@ -7,7 +7,6 @@ File, Settings, and Help menus with their respective commands.
 
 import tkinter as tk
 import os
-import openai
 from ui.dialogs.dialogs import show_api_keys_dialog
 from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
 
@@ -359,10 +358,9 @@ class MenuManager:
         """Shows a dialog to update API keys and updates the .env file."""
         # Call the refactored function from dialogs.py
         show_api_keys_dialog(self.app)
-        
-        # Refresh API keys in the application
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        
+
+        # Note: OpenAI API key is read from env/security manager by modern provider modules
+
         # Update audio handler with the new API keys
         self.app.audio_handler.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.app.audio_handler.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")

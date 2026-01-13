@@ -5,7 +5,7 @@ Handles the recording workflow UI elements
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
 import logging
 from datetime import datetime
 from typing import Dict, Callable, Optional

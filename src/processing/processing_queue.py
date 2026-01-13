@@ -21,6 +21,27 @@ from settings.settings import SETTINGS
 from utils.error_handling import ErrorContext
 
 
+# Custom exceptions for more specific error handling
+class ProcessingError(Exception):
+    """Base exception for processing queue errors."""
+    pass
+
+
+class TranscriptionError(ProcessingError):
+    """Raised when audio transcription fails."""
+    pass
+
+
+class AudioSaveError(ProcessingError):
+    """Raised when saving audio fails."""
+    pass
+
+
+class DocumentGenerationError(ProcessingError):
+    """Raised when document generation (SOAP, referral, letter) fails."""
+    pass
+
+
 def _thread_exception_hook(args):
     """Global exception hook for thread exceptions.
 
@@ -285,8 +306,20 @@ class ProcessingQueue:
             except Empty:
                 # No items in queue, continue waiting
                 continue
+            except RuntimeError as e:
+                # Thread pool or executor error - may need to exit
+                logging.error(f"Queue processor thread error: {e}", exc_info=True)
+                if "shutdown" in str(e).lower() or "cannot schedule" in str(e).lower():
+                    logging.warning("Executor shutting down, exiting queue processor")
+                    break
+            except (OSError, IOError) as e:
+                # System-level I/O errors
+                logging.error(f"I/O error in queue processor: {e}", exc_info=True)
+                time.sleep(0.5)  # Back off before retrying
             except Exception as e:
-                logging.error(f"Error in queue processor: {str(e)}", exc_info=True)
+                # Unexpected error - log but don't crash the queue processor
+                logging.error(f"Unexpected error in queue processor: {type(e).__name__}: {e}", exc_info=True)
+                time.sleep(0.1)  # Brief back-off to prevent tight error loops
     
     def _process_recording(self, task_id: str, recording_data: Dict[str, Any]):
         """Process a single recording - runs in thread pool."""
@@ -400,13 +433,20 @@ class ProcessingQueue:
                                 self.app.db.update_recording(recording_id, transcript=transcript)
                                 logging.info(f"Transcription completed for recording {recording_id}: {len(transcript)} characters")
                             else:
-                                raise Exception("Transcription returned empty result")
+                                raise TranscriptionError("Transcription returned empty result")
+                        except TranscriptionError:
+                            raise  # Re-raise our custom exception as-is
+                        except (ConnectionError, TimeoutError) as e:
+                            # Network errors during transcription
+                            logging.error(f"Network error during transcription: {e}", exc_info=True)
+                            raise TranscriptionError(f"Network error during transcription: {e}")
                         except Exception as e:
-                            logging.error(f"Transcription failed: {str(e)}", exc_info=True)
-                            raise Exception(f"Failed to transcribe audio: {str(e)}")
+                            # Wrap unexpected errors in TranscriptionError
+                            logging.error(f"Transcription failed: {type(e).__name__}: {e}", exc_info=True)
+                            raise TranscriptionError(f"Transcription failed: {type(e).__name__}: {e}")
                     else:
                         logging.error("Audio handler not available for transcription")
-                        raise Exception("Audio handler not available for transcription")
+                        raise TranscriptionError("Audio handler not available for transcription")
                 else:
                     if transcript:
                         logging.info(f"Using existing transcript for recording {recording_id}: {len(transcript)} characters")
