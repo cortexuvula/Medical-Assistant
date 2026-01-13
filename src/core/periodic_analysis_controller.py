@@ -129,8 +129,9 @@ class PeriodicAnalysisController:
             if not self.app.audio_state_manager:
                 return
 
-            # Get actual recording elapsed time
-            elapsed_time = self.app.audio_state_manager.get_elapsed_time()
+            # Get actual recording elapsed time from metadata
+            metadata = self.app.audio_state_manager.get_recording_metadata()
+            elapsed_time = metadata.get('recording_duration', 0)
 
             # Only run immediate analysis if recording has been going for at least 10 seconds
             # This avoids running analysis for minimal audio at recording start
