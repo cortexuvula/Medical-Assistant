@@ -15,6 +15,16 @@ jobs:
     timeout-minutes: 20
 
     steps:
+    - name: Free up disk space
+      run: |
+        # Remove large pre-installed software to free up disk space
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        df -h
+
     - uses: actions/checkout@v4
 
     - name: Set up Python
@@ -29,6 +39,8 @@ jobs:
         export NEEDRESTART_SUSPEND=1
         sudo -E apt-get update -qq -o=Dpkg::Use-Pty=0
         sudo -E apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o=Dpkg::Options::="--force-confold" -o=Dpkg::Options::="--force-confdef" --no-install-recommends python3-tk portaudio19-dev
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
 
     - name: Install Python dependencies
       run: |
