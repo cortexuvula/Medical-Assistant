@@ -29,7 +29,7 @@ class TestOpenAIProvider:
         """call_openai should return a string."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.ai._openai_api_call') as mock_api_call:
+        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.return_value = mock_openai_response
 
             result = call_openai(
@@ -46,7 +46,7 @@ class TestOpenAIProvider:
         """call_openai should handle API errors gracefully."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.ai._openai_api_call') as mock_api_call:
+        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.side_effect = Exception("API Error")
 
             result = call_openai(
@@ -91,7 +91,7 @@ class TestAnthropicProvider:
         """call_anthropic should handle API errors gracefully."""
         from src.ai.ai import call_anthropic
 
-        with patch('src.ai.ai._anthropic_api_call') as mock_api_call:
+        with patch('src.ai.providers.anthropic_provider._anthropic_api_call') as mock_api_call:
             mock_api_call.side_effect = Exception("API Error")
 
             result = call_anthropic(
@@ -255,7 +255,7 @@ class TestTimeoutHandling:
         from src.ai.ai import call_openai
         from utils.exceptions import TimeoutError as AppTimeoutError
 
-        with patch('src.ai.ai._openai_api_call') as mock_api_call:
+        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
             mock_api_call.side_effect = AppTimeoutError("Timeout", timeout_seconds=30)
 
             result = call_openai(
@@ -277,7 +277,7 @@ class TestRateLimitHandling:
         """Rate limit should be handled gracefully."""
         from src.ai.ai import call_openai
 
-        with patch('src.ai.ai._openai_api_call') as mock_api_call:
+        with patch('src.ai.providers.openai_provider._openai_api_call') as mock_api_call:
             # Simulate rate limit error
             mock_api_call.side_effect = Exception("Rate limit exceeded")
 
