@@ -466,6 +466,76 @@ class SidebarConfig:
     ITEM_PADDING_Y = 8
     SECTION_PADDING = 5
 
+    # Navigation items configuration
+    NAV_ITEMS = [
+        {"id": "record", "label": "Record", "icon": "NAV_RECORD"},
+        {"id": "soap", "label": "SOAP Note", "icon": "NAV_SOAP"},
+        {"id": "referral", "label": "Referral", "icon": "NAV_REFERRAL"},
+        {"id": "letter", "label": "Letter", "icon": "NAV_LETTER"},
+        {"id": "chat", "label": "Chat", "icon": "NAV_CHAT"},
+        {"id": "rag", "label": "RAG", "icon": "NAV_RAG"},
+        {"id": "recordings", "label": "Recordings", "icon": "NAV_RECORDINGS"},
+        {"id": "advanced_analysis", "label": "Analysis", "icon": "NAV_ADVANCED_ANALYSIS"},
+    ]
+
+    # File operation items
+    FILE_ITEMS = [
+        {"id": "new_session", "label": "New Session", "icon": "FILE_NEW"},
+        {"id": "save", "label": "Save", "icon": "FILE_SAVE"},
+        {"id": "load_audio", "label": "Load Audio", "icon": "FILE_LOAD"},
+        {"id": "export_pdf", "label": "Export PDF", "icon": "FILE_EXPORT"},
+    ]
+
+    # Generate items - for creating documents
+    GENERATE_ITEMS = [
+        {"id": "gen_soap", "label": "Generate SOAP", "icon": "NAV_SOAP"},
+        {"id": "gen_referral", "label": "Generate Referral", "icon": "NAV_REFERRAL"},
+        {"id": "gen_letter", "label": "Generate Letter", "icon": "NAV_LETTER"},
+    ]
+
+    # Tool items configuration - labels match actual functionality
+    TOOL_ITEMS = [
+        {"id": "refine", "label": "Refine Text", "icon": "TOOL_REFINE"},
+        {"id": "improve", "label": "Improve Text", "icon": "TOOL_IMPROVE"},
+        {"id": "medication", "label": "Medication", "icon": "TOOL_MEDICATION"},
+        {"id": "diagnostic", "label": "Diagnostic", "icon": "TOOL_DIAGNOSTIC"},
+        {"id": "workflow", "label": "Workflow", "icon": "TOOL_WORKFLOW"},
+        {"id": "translation", "label": "Translation", "icon": "TOOL_TRANSLATION"},
+        {"id": "data_extraction", "label": "Data Extract", "icon": "TOOL_DATA"},
+    ]
+
+    @classmethod
+    def get_nav_items(cls) -> list:
+        """Get navigation items with resolved icon references."""
+        return [
+            {**item, "icon": getattr(Icons, item["icon"])}
+            for item in cls.NAV_ITEMS
+        ]
+
+    @classmethod
+    def get_file_items(cls) -> list:
+        """Get file items with resolved icon references."""
+        return [
+            {**item, "icon": getattr(Icons, item["icon"])}
+            for item in cls.FILE_ITEMS
+        ]
+
+    @classmethod
+    def get_generate_items(cls) -> list:
+        """Get generate items with resolved icon references."""
+        return [
+            {**item, "icon": getattr(Icons, item["icon"])}
+            for item in cls.GENERATE_ITEMS
+        ]
+
+    @classmethod
+    def get_tool_items(cls) -> list:
+        """Get tool items with resolved icon references."""
+        return [
+            {**item, "icon": getattr(Icons, item["icon"])}
+            for item in cls.TOOL_ITEMS
+        ]
+
     # Colors for sidebar (extends theme colors)
     @classmethod
     def get_sidebar_colors(cls, is_dark: bool) -> dict:
