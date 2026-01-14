@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 
 from database.db_pool import get_db_manager
+from utils.error_handling import handle_errors, ErrorSeverity
 
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,7 @@ class RecipientManager:
             logger.error(f"Error saving recipient: {e}")
             return None
 
+    @handle_errors(ErrorSeverity.ERROR, error_message="Error updating recipient", return_type="bool")
     def update_recipient(self, recipient_id: int, recipient: Dict[str, Any]) -> bool:
         """Update an existing recipient.
 
@@ -160,57 +162,54 @@ class RecipientManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Compute name from first/last if not provided
-            name = recipient.get("name", "")
-            if not name:
-                parts = []
-                if recipient.get("title"):
-                    parts.append(recipient["title"])
-                if recipient.get("first_name"):
-                    parts.append(recipient["first_name"])
-                if recipient.get("last_name"):
-                    parts.append(recipient["last_name"])
-                name = " ".join(parts) if parts else "Unknown"
+        # Compute name from first/last if not provided
+        name = recipient.get("name", "")
+        if not name:
+            parts = []
+            if recipient.get("title"):
+                parts.append(recipient["title"])
+            if recipient.get("first_name"):
+                parts.append(recipient["first_name"])
+            if recipient.get("last_name"):
+                parts.append(recipient["last_name"])
+            name = " ".join(parts) if parts else "Unknown"
 
-            self.db_manager.execute(
-                """UPDATE saved_recipients
-                   SET name = ?, recipient_type = ?, specialty = ?, facility = ?,
-                       address = ?, fax = ?, phone = ?, email = ?, notes = ?,
-                       first_name = ?, last_name = ?, middle_name = ?, title = ?,
-                       payee_number = ?, practitioner_number = ?, office_address = ?,
-                       city = ?, province = ?, postal_code = ?,
-                       updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ?""",
-                (
-                    name,
-                    recipient.get("recipient_type", "specialist"),
-                    recipient.get("specialty"),
-                    recipient.get("facility"),
-                    recipient.get("address"),
-                    recipient.get("fax"),
-                    recipient.get("phone"),
-                    recipient.get("email"),
-                    recipient.get("notes"),
-                    recipient.get("first_name"),
-                    recipient.get("last_name"),
-                    recipient.get("middle_name"),
-                    recipient.get("title"),
-                    recipient.get("payee_number"),
-                    recipient.get("practitioner_number"),
-                    recipient.get("office_address"),
-                    recipient.get("city"),
-                    recipient.get("province"),
-                    recipient.get("postal_code"),
-                    recipient_id
-                )
+        self.db_manager.execute(
+            """UPDATE saved_recipients
+               SET name = ?, recipient_type = ?, specialty = ?, facility = ?,
+                   address = ?, fax = ?, phone = ?, email = ?, notes = ?,
+                   first_name = ?, last_name = ?, middle_name = ?, title = ?,
+                   payee_number = ?, practitioner_number = ?, office_address = ?,
+                   city = ?, province = ?, postal_code = ?,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (
+                name,
+                recipient.get("recipient_type", "specialist"),
+                recipient.get("specialty"),
+                recipient.get("facility"),
+                recipient.get("address"),
+                recipient.get("fax"),
+                recipient.get("phone"),
+                recipient.get("email"),
+                recipient.get("notes"),
+                recipient.get("first_name"),
+                recipient.get("last_name"),
+                recipient.get("middle_name"),
+                recipient.get("title"),
+                recipient.get("payee_number"),
+                recipient.get("practitioner_number"),
+                recipient.get("office_address"),
+                recipient.get("city"),
+                recipient.get("province"),
+                recipient.get("postal_code"),
+                recipient_id
             )
-            logger.info(f"Updated recipient {recipient_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Error updating recipient {recipient_id}: {e}")
-            return False
+        )
+        logger.info(f"Updated recipient {recipient_id}")
+        return True
 
+    @handle_errors(ErrorSeverity.ERROR, error_message="Error deleting recipient", return_type="bool")
     def delete_recipient(self, recipient_id: int) -> bool:
         """Delete a recipient.
 
@@ -220,17 +219,14 @@ class RecipientManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            self.db_manager.execute(
-                "DELETE FROM saved_recipients WHERE id = ?",
-                (recipient_id,)
-            )
-            logger.info(f"Deleted recipient {recipient_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Error deleting recipient {recipient_id}: {e}")
-            return False
+        self.db_manager.execute(
+            "DELETE FROM saved_recipients WHERE id = ?",
+            (recipient_id,)
+        )
+        logger.info(f"Deleted recipient {recipient_id}")
+        return True
 
+    @handle_errors(ErrorSeverity.WARNING, error_message="Error incrementing recipient usage", return_type="bool")
     def increment_usage(self, recipient_id: int) -> bool:
         """Increment the usage count and update last_used timestamp.
 
@@ -240,20 +236,17 @@ class RecipientManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            self.db_manager.execute(
-                """UPDATE saved_recipients
-                   SET use_count = use_count + 1,
-                       last_used = CURRENT_TIMESTAMP,
-                       updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ?""",
-                (recipient_id,)
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error incrementing usage for recipient {recipient_id}: {e}")
-            return False
+        self.db_manager.execute(
+            """UPDATE saved_recipients
+               SET use_count = use_count + 1,
+                   last_used = CURRENT_TIMESTAMP,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (recipient_id,)
+        )
+        return True
 
+    @handle_errors(ErrorSeverity.WARNING, error_message="Error toggling recipient favorite", return_type="bool")
     def toggle_favorite(self, recipient_id: int) -> bool:
         """Toggle the favorite status of a recipient.
 
@@ -263,18 +256,14 @@ class RecipientManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            self.db_manager.execute(
-                """UPDATE saved_recipients
-                   SET is_favorite = NOT is_favorite,
-                       updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ?""",
-                (recipient_id,)
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error toggling favorite for recipient {recipient_id}: {e}")
-            return False
+        self.db_manager.execute(
+            """UPDATE saved_recipients
+               SET is_favorite = NOT is_favorite,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (recipient_id,)
+        )
+        return True
 
     def get_recent_recipients(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Get the most recently used recipients.

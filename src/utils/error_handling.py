@@ -256,9 +256,10 @@ def handle_errors(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                # Build error message
+                # Build error message with sanitization for security
                 msg_prefix = error_message or f"Error in {func.__name__}"
-                full_message = f"{msg_prefix}: {str(e)}"
+                sanitized_error = sanitize_error_for_user(e)
+                full_message = f"{msg_prefix}: {sanitized_error}"
 
                 # Log based on severity
                 if severity == ErrorSeverity.CRITICAL:

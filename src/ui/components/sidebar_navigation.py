@@ -13,48 +13,11 @@ from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Icons, SidebarConfig, Fonts
 from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class SidebarNavigation:
     """Manages the left sidebar navigation UI components."""
-
-    # Navigation items configuration
-    NAV_ITEMS = [
-        {"id": "record", "label": "Record", "icon": Icons.NAV_RECORD},
-        {"id": "soap", "label": "SOAP Note", "icon": Icons.NAV_SOAP},
-        {"id": "referral", "label": "Referral", "icon": Icons.NAV_REFERRAL},
-        {"id": "letter", "label": "Letter", "icon": Icons.NAV_LETTER},
-        {"id": "chat", "label": "Chat", "icon": Icons.NAV_CHAT},
-        {"id": "rag", "label": "RAG", "icon": Icons.NAV_RAG},
-        {"id": "recordings", "label": "Recordings", "icon": Icons.NAV_RECORDINGS},
-        {"id": "advanced_analysis", "label": "Analysis", "icon": Icons.NAV_ADVANCED_ANALYSIS},
-    ]
-
-    # File operation items
-    FILE_ITEMS = [
-        {"id": "new_session", "label": "New Session", "icon": Icons.FILE_NEW},
-        {"id": "save", "label": "Save", "icon": Icons.FILE_SAVE},
-        {"id": "load_audio", "label": "Load Audio", "icon": Icons.FILE_LOAD},
-        {"id": "export_pdf", "label": "Export PDF", "icon": Icons.FILE_EXPORT},
-    ]
-
-    # Generate items - for creating documents
-    GENERATE_ITEMS = [
-        {"id": "gen_soap", "label": "Generate SOAP", "icon": Icons.NAV_SOAP},
-        {"id": "gen_referral", "label": "Generate Referral", "icon": Icons.NAV_REFERRAL},
-        {"id": "gen_letter", "label": "Generate Letter", "icon": Icons.NAV_LETTER},
-    ]
-
-    # Tool items configuration - labels match actual functionality
-    TOOL_ITEMS = [
-        {"id": "refine", "label": "Refine Text", "icon": Icons.TOOL_REFINE},
-        {"id": "improve", "label": "Improve Text", "icon": Icons.TOOL_IMPROVE},
-        {"id": "medication", "label": "Medication", "icon": Icons.TOOL_MEDICATION},
-        {"id": "diagnostic", "label": "Diagnostic", "icon": Icons.TOOL_DIAGNOSTIC},
-        {"id": "workflow", "label": "Workflow", "icon": Icons.TOOL_WORKFLOW},
-        {"id": "translation", "label": "Translation", "icon": Icons.TOOL_TRANSLATION},
-        {"id": "data_extraction", "label": "Data Extract", "icon": Icons.TOOL_DATA},
-    ]
 
     def __init__(self, parent_ui):
         """Initialize the SidebarNavigation component.
@@ -594,7 +557,7 @@ class SidebarNavigation:
             section_header.pack(anchor=tk.W, padx=15, pady=(5, 2))
 
         # Create navigation items
-        for item in self.NAV_ITEMS:
+        for item in SidebarConfig.get_nav_items():
             nav_frame = self._create_nav_item(
                 item["id"],
                 item["label"],
@@ -644,7 +607,7 @@ class SidebarNavigation:
             self._file_container.pack(fill=tk.X)
 
         # Create file items
-        for item in self.FILE_ITEMS:
+        for item in SidebarConfig.get_file_items():
             file_frame = self._create_tool_item(
                 item["id"],
                 item["label"],
@@ -658,13 +621,8 @@ class SidebarNavigation:
         """Toggle the file section expanded/collapsed state."""
         self._file_expanded = not self._file_expanded
 
-        # Save preference
-        SETTINGS["sidebar_file_expanded"] = self._file_expanded
-        try:
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
-        except Exception:
-            pass
+        # Save preference using settings_manager (auto-saves)
+        settings_manager.set("sidebar_file_expanded", self._file_expanded)
 
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
 
@@ -718,7 +676,7 @@ class SidebarNavigation:
             self._generate_container.pack(fill=tk.X)
 
         # Create generate items
-        for item in self.GENERATE_ITEMS:
+        for item in SidebarConfig.get_generate_items():
             gen_frame = self._create_tool_item(
                 item["id"],
                 item["label"],
@@ -732,13 +690,8 @@ class SidebarNavigation:
         """Toggle the generate section expanded/collapsed state."""
         self._generate_expanded = not self._generate_expanded
 
-        # Save preference
-        SETTINGS["sidebar_generate_expanded"] = self._generate_expanded
-        try:
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
-        except Exception:
-            pass
+        # Save preference using settings_manager (auto-saves)
+        settings_manager.set("sidebar_generate_expanded", self._generate_expanded)
 
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
 
@@ -792,7 +745,7 @@ class SidebarNavigation:
             self._tools_container.pack(fill=tk.X)
 
         # Create tool items
-        for item in self.TOOL_ITEMS:
+        for item in SidebarConfig.get_tool_items():
             tool_frame = self._create_tool_item(
                 item["id"],
                 item["label"],
@@ -990,13 +943,8 @@ class SidebarNavigation:
         """Toggle sidebar between expanded and collapsed states."""
         self._collapsed = not self._collapsed
 
-        # Save preference
-        SETTINGS["sidebar_collapsed"] = self._collapsed
-        try:
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
-        except Exception as e:
-            logging.error(f"Error saving sidebar state: {e}")
+        # Save preference using settings_manager (auto-saves)
+        settings_manager.set("sidebar_collapsed", self._collapsed)
 
         # Rebuild sidebar
         self._rebuild_sidebar()
@@ -1008,13 +956,8 @@ class SidebarNavigation:
 
         self._tools_expanded = not self._tools_expanded
 
-        # Save preference
-        SETTINGS["sidebar_tools_expanded"] = self._tools_expanded
-        try:
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
-        except Exception as e:
-            logging.error(f"Error saving tools expanded state: {e}")
+        # Save preference using settings_manager (auto-saves)
+        settings_manager.set("sidebar_tools_expanded", self._tools_expanded)
 
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)
 

@@ -11,6 +11,7 @@ import logging
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from ui.ui_constants import Icons
 
 
@@ -422,10 +423,8 @@ class ContextPanel:
                 favorite_templates.add(name)
                 star_label.config(text="★", fg="#FFD700")
 
-            # Save to settings
-            SETTINGS["context_template_favorites"] = list(favorite_templates)
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
+            # Save to settings using settings_manager (auto-saves)
+            settings_manager.set("context_template_favorites", list(favorite_templates))
 
             # Refresh to re-sort templates
             self._create_accordion_templates()
@@ -552,24 +551,20 @@ class ContextPanel:
                 tkinter.messagebox.showwarning("Invalid Name", "Please enter a template name.")
                 return
             
-            # Save to settings
+            # Save to settings using settings_manager
             try:
-                custom_templates = SETTINGS.get("custom_context_templates", {})
+                custom_templates = settings_manager.get("custom_context_templates", {}) or {}
                 custom_templates[template_name] = context_text
-                SETTINGS["custom_context_templates"] = custom_templates
-                
-                # Save settings
-                from settings.settings import save_settings
-                save_settings(SETTINGS)
-                
+                settings_manager.set("custom_context_templates", custom_templates)
+
                 # Refresh template buttons
                 self._refresh_template_buttons()
-                
+
                 result["saved"] = True
                 dialog.destroy()
-                
+
                 tkinter.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
-                
+
             except Exception as e:
                 logging.error(f"Error saving context template: {e}")
                 tkinter.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
@@ -614,20 +609,16 @@ class ContextPanel:
         
         if result:
             try:
-                custom_templates = SETTINGS.get("custom_context_templates", {})
+                custom_templates = settings_manager.get("custom_context_templates", {}) or {}
                 if template_name in custom_templates:
                     del custom_templates[template_name]
-                    SETTINGS["custom_context_templates"] = custom_templates
-                    
-                    # Save settings
-                    from settings.settings import save_settings
-                    save_settings(SETTINGS)
-                    
+                    settings_manager.set("custom_context_templates", custom_templates)
+
                     # Refresh template buttons
                     self._refresh_template_buttons()
-                    
+
                     tkinter.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
-                    
+
             except Exception as e:
                 logging.error(f"Error deleting custom template: {e}")
                 tkinter.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")

@@ -15,6 +15,7 @@ from ui.scaling_utils import ui_scaler
 from ui.dialogs.dialog_utils import create_toplevel_dialog
 from ui.tooltip import ToolTip
 from settings.settings import SETTINGS, save_settings, _DEFAULT_SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class UnifiedSettingsDialog:
@@ -817,11 +818,10 @@ class UnifiedSettingsDialog:
             if 'ollama_url' in api_keys:
                 os.environ["OLLAMA_API_URL"] = api_keys['ollama_url'].get().strip()
 
-            # Save Audio/STT settings
+            # Save Audio/STT settings using settings_manager
             audio_stt = self.widgets.get('audio_stt', {})
 
             if 'elevenlabs' in audio_stt:
-                SETTINGS.setdefault('elevenlabs', {})
                 el_widgets = audio_stt['elevenlabs']
 
                 # Handle entity detection checkboxes -> array
@@ -834,61 +834,57 @@ class UnifiedSettingsDialog:
                     entity_detection.append('pci')
                 if el_widgets.get('entity_offensive', tk.BooleanVar()).get():
                     entity_detection.append('offensive')
-                SETTINGS['elevenlabs']['entity_detection'] = entity_detection
+                settings_manager.set_nested('elevenlabs.entity_detection', entity_detection, auto_save=False)
 
                 # Handle keyterms string -> array
                 keyterms_str = el_widgets.get('keyterms', tk.StringVar()).get()
                 keyterms = [t.strip() for t in keyterms_str.split(',') if t.strip()]
-                SETTINGS['elevenlabs']['keyterms'] = keyterms[:100]  # Limit to 100
+                settings_manager.set_nested('elevenlabs.keyterms', keyterms[:100], auto_save=False)
 
                 # Handle regular settings
                 for key, var in el_widgets.items():
                     if key.startswith('entity_') or key == 'keyterms':
                         continue  # Already handled above
-                    SETTINGS['elevenlabs'][key] = var.get()
+                    settings_manager.set_nested(f'elevenlabs.{key}', var.get(), auto_save=False)
 
             if 'deepgram' in audio_stt:
-                SETTINGS.setdefault('deepgram', {})
                 for key, var in audio_stt['deepgram'].items():
-                    SETTINGS['deepgram'][key] = var.get()
+                    settings_manager.set_nested(f'deepgram.{key}', var.get(), auto_save=False)
 
             if 'groq' in audio_stt:
-                SETTINGS.setdefault('groq', {})
                 for key, var in audio_stt['groq'].items():
-                    SETTINGS['groq'][key] = var.get()
+                    settings_manager.set_nested(f'groq.{key}', var.get(), auto_save=False)
 
             if 'tts' in audio_stt:
-                SETTINGS.setdefault('tts', {})
                 for key, var in audio_stt['tts'].items():
-                    SETTINGS['tts'][key] = var.get()
+                    settings_manager.set_nested(f'tts.{key}', var.get(), auto_save=False)
 
             # Save AI Models settings
             ai_models = self.widgets.get('ai_models', {})
 
             if 'temperature' in ai_models and 'global' in ai_models['temperature']:
-                SETTINGS['temperature'] = ai_models['temperature']['global'].get()
+                settings_manager.set('temperature', ai_models['temperature']['global'].get(), auto_save=False)
 
             if 'translation' in ai_models:
-                SETTINGS.setdefault('translation', {})
                 for key, var in ai_models['translation'].items():
-                    SETTINGS['translation'][key] = var.get()
+                    settings_manager.set_nested(f'translation.{key}', var.get(), auto_save=False)
 
             # Save Storage settings
             storage = self.widgets.get('storage', {})
             if 'default_folder' in storage:
-                SETTINGS['default_folder'] = storage['default_folder'].get()
+                settings_manager.set('default_folder', storage['default_folder'].get(), auto_save=False)
 
             # Save General settings
             general = self.widgets.get('general', {})
             if 'quick_continue_mode' in general:
-                SETTINGS['quick_continue_mode'] = general['quick_continue_mode'].get()
+                settings_manager.set('quick_continue_mode', general['quick_continue_mode'].get(), auto_save=False)
             if 'theme' in general:
-                SETTINGS['theme'] = general['theme'].get()
+                settings_manager.set('theme', general['theme'].get(), auto_save=False)
             if 'sidebar_collapsed' in general:
-                SETTINGS['sidebar_collapsed'] = general['sidebar_collapsed'].get()
+                settings_manager.set('sidebar_collapsed', general['sidebar_collapsed'].get(), auto_save=False)
 
-            # Persist settings
-            save_settings(SETTINGS)
+            # Persist all settings at once
+            settings_manager.save()
 
             messagebox.showinfo("Settings Saved", "All settings have been saved successfully.")
             self.dialog.destroy()
