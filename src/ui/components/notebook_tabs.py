@@ -169,14 +169,15 @@ class NotebookTabs:
         )
     
     def _create_soap_split_layout(self, frame: ttk.Frame, text_widgets: dict) -> tk.Text:
-        """Create the split SOAP tab layout with collapsible analysis panels.
+        """Create the SOAP tab layout with analysis tabs below.
 
         Layout:
-        ┌─────────────────────┬─────────────────────┐
-        │                     │ Medication Analysis │
-        │     SOAP Note       ├─────────────────────┤
-        │                     │ Differential Dx     │
-        └─────────────────────┴─────────────────────┘
+        ┌─────────────────────────────────────────────────────────────────┐
+        │                     SOAP Note (~70%)                            │
+        ├─────────────────────────────────────────────────────────────────┤
+        │ [Medication Analysis] [Differential Dx]              [−]       │
+        │  Analysis content with copy button...                          │
+        └─────────────────────────────────────────────────────────────────┘
 
         Args:
             frame: Parent frame for the SOAP tab
@@ -185,21 +186,21 @@ class NotebookTabs:
         Returns:
             tk.Text: The main SOAP note text widget
         """
-        # Create horizontal paned window for left/right split
-        soap_paned = ttk.PanedWindow(frame, orient=tk.HORIZONTAL)
+        # Create vertical paned window for top/bottom split
+        soap_paned = ttk.PanedWindow(frame, orient=tk.VERTICAL)
         soap_paned.pack(fill=tk.BOTH, expand=True)
 
-        # ===== LEFT PANE: SOAP Note =====
-        left_frame = ttk.Frame(soap_paned)
-        soap_paned.add(left_frame, weight=1)
+        # ===== TOP PANE: SOAP Note (70% height) =====
+        top_frame = ttk.Frame(soap_paned)
+        soap_paned.add(top_frame, weight=7)
 
         # SOAP note scrollbar
-        soap_scroll = ttk.Scrollbar(left_frame)
+        soap_scroll = ttk.Scrollbar(top_frame)
         soap_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         # SOAP note text widget (editable)
         soap_text = tk.Text(
-            left_frame,
+            top_frame,
             wrap=tk.WORD,
             yscrollcommand=soap_scroll.set,
             undo=True,
@@ -208,35 +209,57 @@ class NotebookTabs:
         soap_text.pack(fill=tk.BOTH, expand=True)
         soap_scroll.config(command=soap_text.yview)
 
-        # ===== RIGHT PANE: Analysis Panels (vertical split) =====
-        right_paned = ttk.PanedWindow(soap_paned, orient=tk.VERTICAL)
-        soap_paned.add(right_paned, weight=1)
+        # ===== BOTTOM PANE: Analysis Tabs (30% height) =====
+        bottom_frame = ttk.Frame(soap_paned)
+        soap_paned.add(bottom_frame, weight=3)
 
-        # ----- TOP RIGHT: Medication Analysis (collapsible) -----
-        med_frame = ttk.LabelFrame(right_paned, text="Medication Analysis")
-        right_paned.add(med_frame, weight=1)
+        # Header with collapse button
+        header_frame = ttk.Frame(bottom_frame)
+        header_frame.pack(fill=tk.X, padx=2, pady=2)
 
-        # Medication header with collapse button
-        med_header = ttk.Frame(med_frame)
-        med_header.pack(fill=tk.X, padx=2, pady=2)
+        header_label = ttk.Label(header_frame, text="Analysis", font=("", 10, "bold"))
+        header_label.pack(side=tk.LEFT, padx=5)
 
-        # Store references for collapse functionality
-        med_content = ttk.Frame(med_frame)
-        med_collapse_var = tk.BooleanVar(value=True)
+        # Store reference for collapse functionality
+        analysis_content = ttk.Frame(bottom_frame)
+        collapse_var = tk.BooleanVar(value=True)
 
-        med_collapse_btn = ttk.Button(
-            med_header,
+        collapse_btn = ttk.Button(
+            header_frame,
             text="−",
             width=3,
             bootstyle="secondary-outline",
-            command=lambda: self._toggle_collapse(med_content, med_collapse_btn, med_collapse_var)
+            command=lambda: self._toggle_collapse(analysis_content, collapse_btn, collapse_var)
         )
-        med_collapse_btn.pack(side=tk.RIGHT, padx=2)
+        collapse_btn.pack(side=tk.RIGHT, padx=2)
 
-        # Medication content frame
-        med_content.pack(fill=tk.BOTH, expand=True)
+        # Analysis content frame
+        analysis_content.pack(fill=tk.BOTH, expand=True)
+
+        # Create notebook for analysis tabs
+        analysis_notebook = ttk.Notebook(analysis_content)
+        analysis_notebook.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        # ----- Tab 1: Medication Analysis -----
+        med_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(med_tab, text="  Medication Analysis  ")
+
+        # Medication header with copy button
+        med_header = ttk.Frame(med_tab)
+        med_header.pack(fill=tk.X, padx=5, pady=3)
+
+        med_copy_btn = ttk.Button(
+            med_header,
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(medication_analysis_text)
+        )
+        med_copy_btn.pack(side=tk.RIGHT, padx=2)
 
         # Medication analysis scrollbar and text widget
+        med_content = ttk.Frame(med_tab)
+        med_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
         med_scroll = ttk.Scrollbar(med_content)
         med_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -245,8 +268,7 @@ class NotebookTabs:
             wrap=tk.WORD,
             yscrollcommand=med_scroll.set,
             state='disabled',
-            bg='#f8f9fa',
-            height=10
+            height=8
         )
         medication_analysis_text.pack(fill=tk.BOTH, expand=True)
         med_scroll.config(command=medication_analysis_text.yview)
@@ -260,31 +282,26 @@ class NotebookTabs:
         text_widgets['medication_analysis'] = medication_analysis_text
         self.components['medication_analysis_text'] = medication_analysis_text
 
-        # ----- BOTTOM RIGHT: Differential Diagnosis (collapsible) -----
-        diff_frame = ttk.LabelFrame(right_paned, text="Differential Diagnosis")
-        right_paned.add(diff_frame, weight=1)
+        # ----- Tab 2: Differential Diagnosis -----
+        diff_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(diff_tab, text="  Differential Diagnosis  ")
 
-        # Differential header with collapse button
-        diff_header = ttk.Frame(diff_frame)
-        diff_header.pack(fill=tk.X, padx=2, pady=2)
+        # Differential header with copy button
+        diff_header = ttk.Frame(diff_tab)
+        diff_header.pack(fill=tk.X, padx=5, pady=3)
 
-        # Store references for collapse functionality
-        diff_content = ttk.Frame(diff_frame)
-        diff_collapse_var = tk.BooleanVar(value=True)
-
-        diff_collapse_btn = ttk.Button(
+        diff_copy_btn = ttk.Button(
             diff_header,
-            text="−",
-            width=3,
-            bootstyle="secondary-outline",
-            command=lambda: self._toggle_collapse(diff_content, diff_collapse_btn, diff_collapse_var)
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(differential_analysis_text)
         )
-        diff_collapse_btn.pack(side=tk.RIGHT, padx=2)
-
-        # Differential content frame
-        diff_content.pack(fill=tk.BOTH, expand=True)
+        diff_copy_btn.pack(side=tk.RIGHT, padx=2)
 
         # Differential analysis scrollbar and text widget
+        diff_content = ttk.Frame(diff_tab)
+        diff_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
         diff_scroll = ttk.Scrollbar(diff_content)
         diff_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -293,8 +310,7 @@ class NotebookTabs:
             wrap=tk.WORD,
             yscrollcommand=diff_scroll.set,
             state='disabled',
-            bg='#f8f9fa',
-            height=10
+            height=8
         )
         differential_analysis_text.pack(fill=tk.BOTH, expand=True)
         diff_scroll.config(command=differential_analysis_text.yview)
@@ -309,6 +325,23 @@ class NotebookTabs:
         self.components['differential_analysis_text'] = differential_analysis_text
 
         return soap_text
+
+    def _copy_to_clipboard(self, text_widget: tk.Text) -> None:
+        """Copy text widget content to clipboard.
+
+        Args:
+            text_widget: The text widget to copy from
+        """
+        try:
+            content = text_widget.get('1.0', 'end-1c')
+            self.parent.clipboard_clear()
+            self.parent.clipboard_append(content)
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.success("Copied to clipboard")
+        except Exception as e:
+            logging.error(f"Failed to copy to clipboard: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error("Failed to copy")
 
     def _toggle_collapse(self, content_frame: ttk.Frame, button: ttk.Button, var: tk.BooleanVar) -> None:
         """Toggle collapse/expand state of a content frame.
