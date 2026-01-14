@@ -645,7 +645,10 @@ class RateLimiter:
             self._limits = {}
 
     def _save_to_disk(self, force: bool = False) -> None:
-        """Save rate limit data to disk.
+        """Save rate limit data to disk asynchronously.
+
+        This method schedules a save operation in a background thread to avoid
+        blocking API calls. The save is rate-limited by SAVE_INTERVAL.
 
         Args:
             force: If True, save immediately; otherwise respect SAVE_INTERVAL
@@ -656,27 +659,48 @@ class RateLimiter:
         if not force and now - self._last_save_time < self.SAVE_INTERVAL:
             return
 
-        try:
-            # Ensure directory exists
-            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        # Update timestamp immediately to prevent multiple concurrent saves
+        self._last_save_time = now
 
-            # Clean up old data before saving
-            self._cleanup_expired_data()
+        # Take a snapshot of data for async save (quick operation under lock)
+        with self._global_lock:
+            data_snapshot = {k: dict(v) for k, v in self._limits.items()}
 
-            # Save to disk
-            with self._global_lock:
+        # Schedule async save in background thread
+        def _do_save():
+            try:
+                # Ensure directory exists
+                self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Cleanup old data from snapshot
+                cutoff = time.time() - self.MAX_DATA_AGE
+                cleaned_data = {}
+                for key, limit_data in data_snapshot.items():
+                    calls = limit_data.get("calls", [])
+                    window = limit_data.get("window_seconds", 60)
+                    if calls and max(calls) > cutoff:
+                        # Keep only calls within window
+                        window_start = time.time() - window
+                        limit_data["calls"] = [ts for ts in calls if ts > window_start]
+                        cleaned_data[key] = limit_data
+
+                # Write to disk (no lock needed - working with snapshot)
                 with open(self.storage_path, 'w') as f:
-                    json.dump(self._limits, f)
+                    json.dump(cleaned_data, f)
 
                 # Set file permissions (Unix-like systems)
                 if os.name == 'posix':
                     os.chmod(self.storage_path, 0o600)
 
-            self._last_save_time = now
-            self.logger.debug(f"Saved rate limit data for {len(self._limits)} keys")
+                self.logger.debug(f"Saved rate limit data for {len(cleaned_data)} keys")
 
-        except Exception as e:
-            self.logger.warning(f"Could not save rate limit data: {e}")
+            except Exception as e:
+                self.logger.warning(f"Could not save rate limit data: {e}")
+
+        # Run save in background thread to avoid blocking
+        import threading
+        save_thread = threading.Thread(target=_do_save, daemon=True)
+        save_thread.start()
 
     def _cleanup_expired_data(self) -> None:
         """Remove expired entries from rate limit data and stale locks."""

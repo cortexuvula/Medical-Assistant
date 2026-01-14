@@ -203,17 +203,22 @@ class RecordingsDialogManager:
         """Load recordings from database."""
         def task():
             try:
-                # Get recordings from database
-                recordings = self.db.get_all_recordings()
-                
+                # Use lightweight query - fetches only essential columns + has_* flags
+                # This avoids loading large text fields (transcript, soap_note, etc.)
+                # saving 50-100x data transfer compared to get_all_recordings()
+                if hasattr(self.db, 'get_recordings_lightweight'):
+                    recordings = self.db.get_recordings_lightweight(limit=500)
+                else:
+                    recordings = self.db.get_all_recordings()
+
                 # Update UI on main thread
                 self.app.after(0, lambda: self._update_tree_view(recordings))
-                
+
             except Exception as e:
                 error_msg = f"Error loading recordings: {str(e)}"
                 logging.error(error_msg)
                 self.app.after(0, lambda: messagebox.showerror("Database Error", error_msg))
-        
+
         # Run in background
         threading.Thread(target=task, daemon=True).start()
     
@@ -230,25 +235,34 @@ class RecordingsDialogManager:
                 rec_id = recording['id']
                 filename = recording['filename'] or "N/A"
                 created_at = recording['timestamp'] or "N/A"
-                transcript = recording.get('transcript', '') or ""
-                soap_note = recording.get('soap_note', '') or ""
-                referral = recording.get('referral', '') or ""
-                letter = recording.get('letter', '') or ""
-                
-                # Check for additional content
-                has_referral = bool(referral)
-                has_letter = bool(letter)
-                
-                # Determine status
-                has_transcript = "✓" if transcript else "✗"
-                has_soap = "✓" if soap_note else "✗"
-                has_referral_mark = "✓" if has_referral else "✗"
-                has_letter_mark = "✓" if has_letter else "✗"
-                
+
+                # Use has_* flags from lightweight query (avoids loading full text)
+                # Falls back to checking full text if flags not present (legacy support)
+                has_transcript_flag = recording.get('has_transcript')
+                has_soap_flag = recording.get('has_soap')
+                has_referral_flag = recording.get('has_referral')
+                has_letter_flag = recording.get('has_letter')
+
+                # If flags not present, fall back to checking full text
+                if has_transcript_flag is None:
+                    has_transcript_flag = bool(recording.get('transcript', ''))
+                if has_soap_flag is None:
+                    has_soap_flag = bool(recording.get('soap_note', ''))
+                if has_referral_flag is None:
+                    has_referral_flag = bool(recording.get('referral', ''))
+                if has_letter_flag is None:
+                    has_letter_flag = bool(recording.get('letter', ''))
+
+                # Determine status marks
+                has_transcript = "✓" if has_transcript_flag else "✗"
+                has_soap = "✓" if has_soap_flag else "✗"
+                has_referral_mark = "✓" if has_referral_flag else "✗"
+                has_letter_mark = "✓" if has_letter_flag else "✗"
+
                 # Determine tag
-                if transcript and soap_note:
+                if has_transcript_flag and has_soap_flag:
                     tag = "complete"
-                elif transcript or soap_note:
+                elif has_transcript_flag or has_soap_flag:
                     tag = "partial"
                 else:
                     tag = "empty"

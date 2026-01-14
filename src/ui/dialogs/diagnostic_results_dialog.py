@@ -610,6 +610,30 @@ class DiagnosticResultsDialog:
             self._db = Database()
         return self._db
 
+    def _count_differentials_from_text(self, result_text: str) -> int:
+        """Count differential diagnoses from result text.
+
+        This is a fallback when structured_differentials is not available.
+        Matches the counting logic used in diagnostic_history_dialog.py.
+        """
+        if not result_text or 'DIFFERENTIAL DIAGNOSES:' not in result_text:
+            return 0
+
+        try:
+            diff_section = result_text.split('DIFFERENTIAL DIAGNOSES:')[1]
+            # Find the end of the section
+            for end_marker in ['RED FLAGS:', 'RECOMMENDED INVESTIGATIONS:', 'CLINICAL PEARLS:', 'MEDICATION CONSIDERATIONS:']:
+                if end_marker in diff_section:
+                    diff_section = diff_section.split(end_marker)[0]
+                    break
+            # Count numbered or bulleted items
+            import re
+            numbered = re.findall(r'^\s*\d+\.', diff_section, re.MULTILINE)
+            bulleted = re.findall(r'^\s*[-•]', diff_section, re.MULTILINE)
+            return len(numbered) or len(bulleted) or 0
+        except Exception:
+            return 0
+
     def _save_to_database(self):
         """Save the diagnostic analysis to the database, including structured data."""
         try:
@@ -620,6 +644,11 @@ class DiagnosticResultsDialog:
 
             # Prepare metadata dict with ICD validation results if available
             metadata_dict = dict(self.metadata) if self.metadata else {}
+
+            # Pre-compute differential_count for efficient history display
+            # This avoids re-parsing the full result_text when loading history
+            structured_diffs = self.metadata.get('structured_differentials', []) if self.metadata else []
+            metadata_dict['differential_count'] = len(structured_diffs) if structured_diffs else self._count_differentials_from_text(self.analysis_text)
 
             # Save to database
             analysis_id = db.save_analysis_result(

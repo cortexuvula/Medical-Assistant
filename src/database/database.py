@@ -4,7 +4,7 @@ import json
 import threading
 import logging
 import re
-from typing import Optional, Dict, List, Any, Union, Set, FrozenSet
+from typing import Optional, Dict, List, Any, Union, Set, FrozenSet, Generator
 from contextlib import contextmanager
 from managers.data_folder_manager import data_folder_manager
 from utils.retry_decorator import db_retry
@@ -675,6 +675,92 @@ class Database:
 
             return [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in recordings]
 
+    def iter_recordings_batched(
+        self,
+        batch_size: int = 100,
+        order_by: str = "timestamp",
+        descending: bool = True,
+        lightweight: bool = True
+    ) -> Generator[List[Dict[str, Any]], None, None]:
+        """Generator that yields recordings in batches for memory-efficient processing.
+
+        Unlike get_all_recordings() which loads everything at once (potentially 100MB+
+        with 10k recordings), this method streams results in batches, keeping memory
+        usage under ~1MB per batch.
+
+        Args:
+            batch_size: Number of recordings per batch (default: 100)
+            order_by: Column to order by (must be a valid column name)
+            descending: If True, order descending (newest first)
+            lightweight: If True, use lightweight columns (recommended for UI lists)
+
+        Yields:
+            List of recording dictionaries for each batch
+
+        Example:
+            for batch in db.iter_recordings_batched(batch_size=100):
+                for recording in batch:
+                    process(recording)
+        """
+        # Validate order_by column to prevent SQL injection
+        valid_columns = {"id", "timestamp", "filename", "duration", "patient_name", "processing_status"}
+        if order_by not in valid_columns:
+            order_by = "timestamp"
+
+        order_direction = "DESC" if descending else "ASC"
+
+        # Choose columns based on lightweight flag
+        if lightweight:
+            columns = ', '.join(RecordingSchema.LIGHTWEIGHT_COLUMNS)
+            # Add has_* flags for UI compatibility
+            query = f"""
+                SELECT {columns},
+                       CASE WHEN transcript IS NOT NULL AND transcript != '' THEN 1 ELSE 0 END as has_transcript,
+                       CASE WHEN soap_note IS NOT NULL AND soap_note != '' THEN 1 ELSE 0 END as has_soap,
+                       CASE WHEN referral IS NOT NULL AND referral != '' THEN 1 ELSE 0 END as has_referral,
+                       CASE WHEN letter IS NOT NULL AND letter != '' THEN 1 ELSE 0 END as has_letter
+                FROM recordings
+                ORDER BY {order_by} {order_direction}
+                LIMIT ? OFFSET ?
+            """
+            extended_columns = RecordingSchema.LIGHTWEIGHT_COLUMNS + (
+                'has_transcript', 'has_soap', 'has_referral', 'has_letter'
+            )
+        else:
+            columns = ', '.join(RecordingSchema.SELECT_COLUMNS)
+            query = f"SELECT {columns} FROM recordings ORDER BY {order_by} {order_direction} LIMIT ? OFFSET ?"
+            extended_columns = None
+
+        offset = 0
+        while True:
+            with self.connection() as (conn, cursor):
+                cursor.execute(query, (batch_size, offset))
+                rows = cursor.fetchall()
+
+                if not rows:
+                    break
+
+                # Convert to dictionaries
+                if lightweight and extended_columns:
+                    batch = []
+                    for r in rows:
+                        record = dict(zip(extended_columns, r))
+                        record['has_transcript'] = bool(record.get('has_transcript', 0))
+                        record['has_soap'] = bool(record.get('has_soap', 0))
+                        record['has_referral'] = bool(record.get('has_referral', 0))
+                        record['has_letter'] = bool(record.get('has_letter', 0))
+                        batch.append(record)
+                else:
+                    batch = [RecordingSchema.row_to_dict(r, RecordingSchema.SELECT_COLUMNS) for r in rows]
+
+                yield batch
+
+                # If we got fewer rows than requested, we're done
+                if len(rows) < batch_size:
+                    break
+
+                offset += batch_size
+
     def get_recordings_lightweight(
         self,
         limit: int = 100,
@@ -712,11 +798,13 @@ class Database:
         # Use lightweight columns that exclude large text fields
         columns = ', '.join(RecordingSchema.LIGHTWEIGHT_COLUMNS)
 
-        # Also compute has_soap and has_referral as derived columns
+        # Compute has_* flags as derived columns (avoids loading full text)
         query = f"""
             SELECT {columns},
+                   CASE WHEN transcript IS NOT NULL AND transcript != '' THEN 1 ELSE 0 END as has_transcript,
                    CASE WHEN soap_note IS NOT NULL AND soap_note != '' THEN 1 ELSE 0 END as has_soap,
-                   CASE WHEN referral IS NOT NULL AND referral != '' THEN 1 ELSE 0 END as has_referral
+                   CASE WHEN referral IS NOT NULL AND referral != '' THEN 1 ELSE 0 END as has_referral,
+                   CASE WHEN letter IS NOT NULL AND letter != '' THEN 1 ELSE 0 END as has_letter
             FROM recordings
             ORDER BY {order_by} {order_direction}
             LIMIT ? OFFSET ?
@@ -728,12 +816,16 @@ class Database:
 
             # Map results to dictionaries with the extra derived columns
             result = []
-            extended_columns = RecordingSchema.LIGHTWEIGHT_COLUMNS + ('has_soap', 'has_referral')
+            extended_columns = RecordingSchema.LIGHTWEIGHT_COLUMNS + (
+                'has_transcript', 'has_soap', 'has_referral', 'has_letter'
+            )
             for r in recordings:
                 record = dict(zip(extended_columns, r))
                 # Convert boolean flags to Python bools
+                record['has_transcript'] = bool(record.get('has_transcript', 0))
                 record['has_soap'] = bool(record.get('has_soap', 0))
                 record['has_referral'] = bool(record.get('has_referral', 0))
+                record['has_letter'] = bool(record.get('has_letter', 0))
                 result.append(record)
 
             return result
