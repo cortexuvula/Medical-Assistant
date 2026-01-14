@@ -4,7 +4,7 @@ import logging
 import time
 import threading
 from core.config import get_config
-from settings.settings_migrator import get_migrator
+from settings.settings_migration import get_migrator
 from managers.data_folder_manager import data_folder_manager
 
 SETTINGS_FILE = str(data_folder_manager.settings_file_path)

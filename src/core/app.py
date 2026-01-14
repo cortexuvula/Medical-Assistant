@@ -40,7 +40,9 @@ import time
 from core.app_initializer import AppInitializer
 from core.app_settings_mixin import AppSettingsMixin
 from core.app_chat_mixin import AppChatMixin
-from core.navigation_controller import NavigationController
+from core.mixins.app_dialog_mixin import AppDialogMixin
+from core.mixins.app_ui_layout_mixin import AppUiLayoutMixin
+from core.mixins.app_recording_mixin import AppRecordingMixin
 from audio.ffmpeg_utils import configure_pydub
 from ui.menu_manager import MenuManager
 from audio.soap_audio_processor import SOAPAudioProcessor
@@ -89,12 +91,22 @@ def main() -> None:
     # Log application shutdown
     logging.info("Medical Dictation application shutting down")
 
-class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
+class MedicalDictationApp(
+    ttk.Window,
+    AppSettingsMixin,
+    AppChatMixin,
+    AppDialogMixin,
+    AppUiLayoutMixin,
+    AppRecordingMixin
+):
     """Main application class for the Medical Dictation App.
 
     This class inherits from ttk.Window and uses mixins to organize functionality:
     - AppSettingsMixin: Settings dialog and save settings methods
     - AppChatMixin: Chat-related methods and suggestions
+    - AppDialogMixin: Dialog show methods (API keys, settings dialogs)
+    - AppUiLayoutMixin: UI layout methods (collapse, sash adjustment)
+    - AppRecordingMixin: Recording control methods (pause, resume, cancel)
     """
 
     def __init__(self) -> None:
@@ -108,118 +120,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.menu_manager = MenuManager(self)
         self.menu_manager.create_menu()
 
-    def show_api_keys_dialog(self) -> None:
-        """Shows a dialog to update API keys and updates the .env file."""
-        # Delegate to menu manager
-        self.menu_manager.show_api_keys_dialog()
-        
-        # Update local properties
-        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
-        
-        # Update UI components based on API availability
-        security_manager = get_security_manager()
-        has_any_llm = any([
-            security_manager.get_api_key("openai"),
-            security_manager.get_api_key("anthropic"),
-            security_manager.get_api_key("gemini"),
-            os.getenv("OLLAMA_API_URL")
-        ])
-        if has_any_llm:
-            if self.refine_button:
-                self.refine_button.config(state=NORMAL)
-            if self.improve_button:
-                self.improve_button.config(state=NORMAL)
-            if self.soap_button:
-                self.soap_button.config(state=NORMAL)
-        else:
-            if self.refine_button:
-                self.refine_button.config(state=DISABLED)
-            if self.improve_button:
-                self.improve_button.config(state=DISABLED)
-            if self.soap_button:
-                self.soap_button.config(state=DISABLED)
-            
-        # Reinitialize audio handler with new API keys
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
-        )
-        
-        self.status_manager.success("API keys updated successfully")
-
-    def show_about(self) -> None:
-        # Call the refactored function from dialogs.py
-        show_about_dialog(self)
-
-    def show_shortcuts(self) -> None:
-        # Call the refactored function from dialogs.py
-        show_shortcuts_dialog(self)
-        
-    def show_letter_options_dialog(self) -> tuple:
-        # Call the refactored function from dialogs.py
-        return show_letter_options_dialog(self)
-        
-    def show_elevenlabs_settings(self) -> None:
-        # Call the refactored function from dialogs.py
-        show_elevenlabs_settings_dialog(self)
-        
-        # Refresh the audio handler with potentially new settings
-        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
-        )
-        self.status_manager.success("ElevenLabs settings saved successfully")
-        
-    def record_prefix_audio(self) -> None:
-        """Shows a dialog to record and save a prefix audio file."""
-        self.audio_dialog_manager.show_prefix_recording_dialog()
-
-    def show_deepgram_settings(self) -> None:
-        """Show dialog to configure Deepgram settings."""
-        # Call the dialog function
-        show_deepgram_settings_dialog(self)
-        
-        # Refresh the audio handler with potentially new settings
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
-        )
-        self.status_manager.success("Deepgram settings saved successfully")
-
-    def show_groq_settings(self) -> None:
-        """Show dialog to configure Groq settings."""
-        # Call the dialog function
-        show_groq_settings_dialog(self)
-
-        # Refresh the audio handler with potentially new settings
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
-        )
-        self.status_manager.success("Groq settings saved successfully")
-
-    def show_translation_settings(self) -> None:
-        """Show dialog to configure translation settings."""
-        from ui.dialogs.dialogs import show_translation_settings_dialog
-        show_translation_settings_dialog(self)
-        self.status_manager.success("Translation settings saved successfully")
-    
-    def show_tts_settings(self) -> None:
-        """Show dialog to configure TTS settings."""
-        from ui.dialogs.dialogs import show_tts_settings_dialog
-        show_tts_settings_dialog(self)
-        self.status_manager.success("TTS settings saved successfully")
+    # Dialog methods are provided by AppDialogMixin
 
     def set_default_folder(self) -> None:
         """Set the default storage folder using FolderDialogManager."""
@@ -283,8 +184,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         main_container = ttk.Panedwindow(self, orient="horizontal")
         main_container.pack(fill=tk.BOTH, expand=True)
 
-        # Initialize navigation controller
-        self.navigation_controller = NavigationController(self)
+        # Note: navigation_controller is now created by AppInitializer before create_widgets()
 
         # Left sidebar - navigation panel
         self.sidebar = self.ui.create_sidebar(command_map)
@@ -849,34 +749,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             # Fallback to legacy implementation (should not happen in normal use)
             self._toggle_soap_recording_legacy()
 
-    def _finalize_soap_recording(self, recording_data: dict = None):
-        """Complete the SOAP recording process with recording data from RecordingManager."""
-        # Recording data should come from RecordingManager which uses AudioStateManager
-        if not recording_data or not recording_data.get('audio'):
-            self.status_manager.error("No audio data available")
-            self._update_recording_ui_state(recording=False, caller="finalize_no_audio")
-            return
-        
-        # Check if quick continue mode is enabled
-        if SETTINGS.get("quick_continue_mode", True):
-            # Queue for background processing
-            self._queue_recording_for_processing(recording_data)
-            # Reset UI immediately
-            self._reset_ui_for_next_patient()
-            # Show status
-            self.status_manager.info("Recording queued • Ready for next patient")
-            
-            # Trigger recording complete event for auto-save (also when queued)
-            self.event_generate("<<RecordingComplete>>", when="tail")
-        else:
-            # Current behavior - process immediately
-            self.process_soap_recording()
-            # Reset all button states after processing is complete
-            self.after(0, lambda: self._update_recording_ui_state(recording=False, caller="finalize_delayed"))
-            
-            # Trigger recording complete event for auto-save
-            self.event_generate("<<RecordingComplete>>", when="tail")
-
+    # _finalize_soap_recording is provided by AppRecordingMixin
 
     def toggle_soap_pause(self) -> None:
         """Toggle pause for SOAP recording.
@@ -893,145 +766,13 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             else:
                 self.resume_soap_recording()
 
-    def pause_soap_recording(self) -> None:
-        """Pause SOAP recording.
-
-        This method delegates to the RecordingController for centralized recording management.
-        """
-        # Delegate to recording controller if available
-        if hasattr(self, 'recording_controller') and self.recording_controller:
-            self.recording_controller.pause()
-            return
-
-        # Legacy implementation (fallback)
-        if self.soap_stop_listening_function:
-            # Play pause sound (quick beep)
-            self.play_recording_sound(start=False)
-            
-            # Pause the recording manager
-            self.recording_manager.pause_recording()
-            
-            # Stop the current recording
-            self.soap_stop_listening_function()
-            self.soap_stop_listening_function = None
-            
-            # Update UI
-            self._update_recording_ui_state(recording=True, paused=True, caller="pause")
-            self.update_status("SOAP recording paused. Press Resume to continue.", "info")
-
-    def resume_soap_recording(self) -> None:
-        """Resume SOAP recording after pause using the selected microphone.
-
-        This method delegates to the RecordingController for centralized recording management.
-        """
-        # Delegate to recording controller if available
-        if hasattr(self, 'recording_controller') and self.recording_controller:
-            self.recording_controller.resume()
-            return
-
-        # Legacy implementation (fallback)
-        try:
-            # Play resume sound
-            self.play_recording_sound(start=True)
-            
-            # Resume the recording manager
-            self.recording_manager.resume_recording()
-            
-            # Get selected microphone name
-            selected_device = self.mic_combobox.get()
-            
-            # Get the actual device index if using the new naming format
-            from utils.utils import get_device_index_from_name
-            device_index = get_device_index_from_name(selected_device)
-            
-            # Log the selected device information
-            logging.info(f"Resuming SOAP recording with device: {selected_device} (index {device_index})")
-            
-            # Start new recording session
-            self.soap_stop_listening_function = self.audio_handler.listen_in_background(
-                mic_name=selected_device,
-                callback=self.soap_callback,
-                phrase_time_limit=3  # Use 3 seconds for more frequent processing
-            )
-            
-            # Update UI
-            self._update_recording_ui_state(recording=True, paused=False, caller="resume")
-            self.update_status("SOAP recording resumed.", "info")
-            
-        except Exception as e:
-            logging.error("Error resuming SOAP recording", exc_info=True)
-            self.update_status(f"Error resuming SOAP recording: {str(e)}", "error")
+    # pause_soap_recording and resume_soap_recording are provided by AppRecordingMixin
 
     def soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using SOAPAudioProcessor."""
         self.soap_audio_processor.process_soap_callback(audio_data)
                 
-    def cancel_soap_recording(self) -> None:
-        """Cancel the current SOAP note recording without processing.
-
-        This method delegates to the RecordingController for centralized recording management.
-        """
-        # Delegate to recording controller if available
-        if hasattr(self, 'recording_controller') and self.recording_controller:
-            self.recording_controller.cancel()
-            return
-
-        # Legacy implementation (fallback)
-        if not self.soap_recording:
-            return
-
-        # Show confirmation dialog before canceling
-        # Force focus to ensure keyboard shortcuts work
-        self.focus_force()
-        self.update()
-
-        if not messagebox.askyesno("Cancel Recording",
-                                  "Are you sure you want to cancel the current recording?\n\nAll recorded audio will be discarded.",
-                                  icon="warning",
-                                  parent=self):
-            return  # User clicked "No", abort cancellation
-            
-        self.update_status("Cancelling recording...")
-        
-        def cancel_task():
-            # Stop listening with wait_for_stop=True to ensure clean shutdown
-            if self.soap_stop_listening_function:
-                self.soap_stop_listening_function(True)
-                
-            # Wait a small additional time to ensure processing completes
-            time.sleep(0.5)
-                
-            # Update UI on main thread
-            self.after(0, lambda: [
-                self._cancel_soap_recording_finalize()
-            ])
-            
-        # Run the cancellation process in a separate thread to avoid freezing the UI
-        threading.Thread(target=cancel_task, daemon=True).start()
-        
-        # Update status immediately
-        self.update_status("Cancelling SOAP recording...", "info")
-        # Disable main record button during cancellation
-        main_record_btn = self.ui.components.get('main_record_button')
-        if main_record_btn:
-            main_record_btn.config(state=tk.DISABLED)
-
-    def _cancel_soap_recording_finalize(self):
-        """Finalize the cancellation of SOAP recording."""
-        # Stop periodic analysis if running
-        self._stop_periodic_analysis()
-        
-        # Clear content except context when cancelling
-        clear_content_except_context(self)
-        
-        # Reset state variables
-        self.soap_recording = False
-        
-        # Reset UI buttons
-        self._update_recording_ui_state(recording=False, caller="cancel_finalize")
-        
-        # Update status
-        self.status_manager.warning("SOAP note recording cancelled.")
+    # cancel_soap_recording and _cancel_soap_recording_finalize are provided by AppRecordingMixin
 
     def undo_text(self) -> None:
         """Undo text operation. Delegates to TextProcessingController."""
@@ -1057,95 +798,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Clean up resources before closing. Delegates to WindowStateController."""
         self.window_state_controller.on_closing()
 
-    def _toggle_bottom_section(self) -> None:
-        """Toggle collapse/expand of the entire bottom section (Chat + Analysis)."""
-        self._bottom_collapsed = not self._bottom_collapsed
-
-        # Save state to settings
-        SETTINGS["bottom_section_collapsed"] = self._bottom_collapsed
-        save_settings(SETTINGS)
-
-        if self._bottom_collapsed:
-            # Collapse: hide the content
-            self._bottom_content.pack_forget()
-            self._bottom_collapse_btn.config(text="▶")
-        else:
-            # Expand: show the content
-            self._bottom_content.pack(fill=tk.BOTH, expand=True)
-            self._bottom_collapse_btn.config(text="▼")
-
-        # Adjust the sash position
-        self._adjust_bottom_sash()
-
-    def _on_content_paned_configure(self, event=None) -> None:
-        """Handle resize events on content_paned to maintain sash proportions."""
-        try:
-            content_paned = self.ui.components.get('content_paned')
-            if not content_paned:
-                return
-
-            new_height = content_paned.winfo_height()
-            # Only adjust if height changed significantly (avoid jitter)
-            if abs(new_height - self._last_height) > 20:
-                self._last_height = new_height
-                # Use after to debounce rapid resize events
-                if hasattr(self, '_resize_after_id'):
-                    self.after_cancel(self._resize_after_id)
-                self._resize_after_id = self.after(50, self._adjust_bottom_sash)
-        except Exception:
-            pass
-
-    def _adjust_bottom_sash(self) -> None:
-        """Adjust the content_paned sash based on bottom section collapse state."""
-        try:
-            content_paned = self.ui.components.get('content_paned')
-            if not content_paned:
-                return
-
-            content_paned.update_idletasks()
-            total_height = content_paned.winfo_height()
-
-            if total_height <= 1:
-                # Window not fully rendered yet, retry later
-                self.after(200, self._adjust_bottom_sash)
-                return
-
-            if self._bottom_collapsed:
-                # Collapsed - just header visible (~50px for header + padding)
-                new_sash_pos = total_height - 50
-            else:
-                # Expanded - 55% for notebook, 45% for bottom (more space for bottom panels)
-                new_sash_pos = int(total_height * 0.55)
-
-            content_paned.sashpos(0, new_sash_pos)
-            self._last_height = total_height
-            logging.debug(f"Set sash position: {new_sash_pos} of {total_height} (collapsed={self._bottom_collapsed})")
-
-        except Exception as e:
-            logging.debug(f"Could not adjust bottom sash: {e}")
-
-    def _adjust_horizontal_sash(self) -> None:
-        """Adjust the horizontal sash for Chat (25%) vs Analysis (75%) split."""
-        try:
-            bottom_paned = self.ui.components.get('bottom_paned')
-            if not bottom_paned:
-                return
-
-            bottom_paned.update_idletasks()
-            total_width = bottom_paned.winfo_width()
-
-            if total_width <= 1:
-                # Not rendered yet, retry
-                self.after(200, self._adjust_horizontal_sash)
-                return
-
-            # Chat gets 25%, Analysis gets 75%
-            sash_pos = int(total_width * 0.25)
-            bottom_paned.sashpos(0, sash_pos)
-            logging.debug(f"Set horizontal sash: {sash_pos} of {total_width}")
-
-        except Exception as e:
-            logging.debug(f"Could not adjust horizontal sash: {e}")
+    # UI layout methods (_toggle_bottom_section, _on_content_paned_configure,
+    # _adjust_bottom_sash, _adjust_horizontal_sash) are provided by AppUiLayoutMixin
 
     def on_tab_changed(self, event=None) -> None:
         """Handle tab changes. Delegates to WindowStateController."""
@@ -1318,33 +972,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         """Toggle between light and dark themes using ThemeManager."""
         self.theme_manager.toggle_theme()
     
-    def on_workflow_changed(self, workflow: str):
-        """Handle workflow tab changes.
-        
-        Args:
-            workflow: The current workflow tab ("record", "process", "generate", or "recordings")
-        """
-        logging.info(f"Workflow changed to: {workflow}")
-        
-        # Update UI based on workflow
-        if workflow == "record":
-            # Focus on transcript tab
-            self.notebook.select(0)
-        elif workflow == "process":
-            # Ensure there's text to process
-            if not self.transcript_text.get("1.0", tk.END).strip():
-                self.status_manager.info("Load audio or paste text to process")
-        elif workflow == "generate":
-            # Check if we have content to generate from
-            if not self.transcript_text.get("1.0", tk.END).strip():
-                self.status_manager.info("No transcript available for document generation")
-            else:
-                # Show suggestions based on available content
-                self._show_generation_suggestions()
-        elif workflow == "recordings":
-            # Show status when refreshing recordings
-            self.status_manager.info("Refreshing recordings list...")
-    
+    # on_workflow_changed is provided by AppUiLayoutMixin
+
     def _update_recording_ui_state(self, recording: bool, paused: bool = False, caller: str = "unknown"):
         """Update recording UI state for workflow UI.
 
@@ -1364,27 +993,7 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
             # Fallback to direct UI call
             self.ui.set_recording_state(recording, paused)
     
-    def _show_generation_suggestions(self):
-        """Show smart suggestions for document generation."""
-        suggestions = []
-        
-        # Check what content is available
-        has_transcript = bool(self.transcript_text.get("1.0", tk.END).strip())
-        has_soap = bool(self.soap_text.get("1.0", tk.END).strip())
-        has_referral = bool(self.referral_text.get("1.0", tk.END).strip())
-        
-        if has_transcript and not has_soap:
-            suggestions.append("📋 Create SOAP Note from transcript")
-        
-        if has_soap and not has_referral:
-            suggestions.append("🏥 Generate Referral from SOAP note")
-        
-        if has_transcript or has_soap:
-            suggestions.append("✉️ Create Letter from available content")
-        
-        # Update suggestions in UI if available
-        if hasattr(self.ui, 'show_suggestions'):
-            self.ui.show_suggestions(suggestions)
+    # _show_generation_suggestions is provided by AppUiLayoutMixin
 
     def create_referral(self) -> None:
         """Create a referral using DocumentGenerators."""
@@ -1435,12 +1044,8 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         self.window_state_controller.save_window_dimensions()
 
     # Chat-related methods are provided by AppChatMixin
+    # play_recording_sound is provided by AppRecordingMixin
 
-    def play_recording_sound(self, start=True):
-        """Play a sound to indicate recording start/stop."""
-        # Sound disabled - just log the event
-        logging.debug(f"Recording {'started' if start else 'stopped'}")
-    
     def _queue_recording_for_processing(self, recording_data: dict) -> None:
         """Queue recording for processing. Delegates to QueueProcessingController."""
         self.queue_processing_controller.queue_recording_for_processing(recording_data)

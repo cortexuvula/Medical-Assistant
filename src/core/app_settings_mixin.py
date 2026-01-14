@@ -9,17 +9,19 @@ import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
 
+from settings import settings_manager
+
 
 class AppSettingsMixin:
     """Mixin class providing settings-related methods for MedicalDictationApp."""
 
     def show_refine_settings_dialog(self) -> None:
         """Show the refine text settings dialog."""
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        from settings.settings import _DEFAULT_SETTINGS
         from ai.prompts import REFINE_PROMPT, REFINE_SYSTEM_MESSAGE
         from ui.dialogs.dialogs import show_settings_dialog
 
-        cfg = SETTINGS.get("refine_text", {})
+        cfg = settings_manager.get_model_config("refine_text")
         show_settings_dialog(
             parent=self,
             title="Refine Text Settings",
@@ -36,11 +38,11 @@ class AppSettingsMixin:
 
     def show_improve_settings_dialog(self) -> None:
         """Show the improve text settings dialog."""
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        from settings.settings import _DEFAULT_SETTINGS
         from ai.prompts import IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE
         from ui.dialogs.dialogs import show_settings_dialog
 
-        cfg = SETTINGS.get("improve_text", {})
+        cfg = settings_manager.get_model_config("improve_text")
         show_settings_dialog(
             parent=self,
             title="Improve Text Settings",
@@ -57,11 +59,11 @@ class AppSettingsMixin:
 
     def show_soap_settings_dialog(self) -> None:
         """Show the SOAP note settings dialog."""
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        from settings.settings import _DEFAULT_SETTINGS
         from ai.prompts import SOAP_PROMPT_TEMPLATE, SOAP_SYSTEM_MESSAGE, SOAP_PROVIDERS
         from ui.dialogs.dialogs import show_settings_dialog
 
-        cfg = SETTINGS.get("soap_note", {})
+        cfg = settings_manager.get_soap_config()
         default_system_prompt = _DEFAULT_SETTINGS["soap_note"].get("system_message", SOAP_SYSTEM_MESSAGE)
         default_model = _DEFAULT_SETTINGS["soap_note"].get("model", "")
 
@@ -90,10 +92,10 @@ class AppSettingsMixin:
 
     def show_referral_settings_dialog(self) -> None:
         """Show the referral settings dialog."""
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        from settings.settings import _DEFAULT_SETTINGS
         from ui.dialogs.dialogs import show_settings_dialog
 
-        cfg = SETTINGS.get("referral", {})
+        cfg = settings_manager.get_model_config("referral")
         default_prompt = _DEFAULT_SETTINGS["referral"].get("prompt", "")
         default_system_prompt = _DEFAULT_SETTINGS["referral"].get("system_message", "")
         default_model = _DEFAULT_SETTINGS["referral"].get("model", "")
@@ -113,10 +115,10 @@ class AppSettingsMixin:
 
     def show_advanced_analysis_settings_dialog(self) -> None:
         """Show the advanced analysis settings dialog."""
-        from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+        from settings.settings import _DEFAULT_SETTINGS
         from ui.dialogs.dialogs import show_settings_dialog
 
-        cfg = SETTINGS.get("advanced_analysis", {})
+        cfg = settings_manager.get_advanced_analysis_settings()
         default_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("prompt", "")
         default_system_prompt = _DEFAULT_SETTINGS["advanced_analysis"].get("system_message", "")
         default_model = _DEFAULT_SETTINGS["advanced_analysis"].get("model", "")
@@ -148,8 +150,7 @@ class AppSettingsMixin:
         logger = logging.getLogger(__name__)
 
         # Check if advanced settings should be shown based on a setting or default to basic
-        from settings.settings import SETTINGS
-        use_advanced = SETTINGS.get("use_advanced_agent_settings", True)
+        use_advanced = settings_manager.get("use_advanced_agent_settings", True)
 
         try:
             if use_advanced:
@@ -193,10 +194,10 @@ class AppSettingsMixin:
         try:
             from ui.dialogs.mcp_config_dialog import show_mcp_config_dialog
             from ai.mcp.mcp_manager import mcp_manager
-            from settings.settings import SETTINGS
 
             # Show dialog and check if configuration was saved
-            if show_mcp_config_dialog(self, mcp_manager, SETTINGS):
+            # Note: Dialog still needs SETTINGS dict directly for now
+            if show_mcp_config_dialog(self, mcp_manager, settings_manager._settings):
                 # Configuration was saved, reload MCP tools
                 if hasattr(self, 'chat_processor') and self.chat_processor:
                     self.chat_processor.reload_mcp_tools()
@@ -209,32 +210,28 @@ class AppSettingsMixin:
                              ollama_model: str, system_prompt: str,
                              anthropic_model: str, gemini_model: str = "") -> None:
         """Save refine text settings."""
-        from settings.settings import save_settings, SETTINGS
-        SETTINGS["refine_text"] = {
+        settings_manager.set_model_config("refine_text", {
             "prompt": prompt,
             "system_message": system_prompt,
             "model": openai_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
             "gemini_model": gemini_model
-        }
-        save_settings(SETTINGS)
+        })
         self.status_manager.success("Refine text settings saved successfully")
 
     def save_improve_settings(self, prompt: str, openai_model: str,
                               ollama_model: str, system_prompt: str,
                               anthropic_model: str, gemini_model: str = "") -> None:
         """Save improve text settings."""
-        from settings.settings import save_settings, SETTINGS
-        SETTINGS["improve_text"] = {
+        settings_manager.set_model_config("improve_text", {
             "prompt": prompt,
             "system_message": system_prompt,
             "model": openai_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
             "gemini_model": gemini_model
-        }
-        save_settings(SETTINGS)
+        })
         self.status_manager.success("Improve text settings saved successfully")
 
     def save_soap_settings(self, prompt: str, openai_model: str,
@@ -253,39 +250,37 @@ class AppSettingsMixin:
             icd_code_version: ICD code version (ICD-9, ICD-10, or both)
             provider_messages: Dict mapping provider_system_message keys to values
         """
-        from settings.settings import save_settings, SETTINGS
-
-        # Preserve existing temperature settings
-        SETTINGS["soap_note"]["prompt"] = prompt
-        SETTINGS["soap_note"]["model"] = openai_model
-        SETTINGS["soap_note"]["ollama_model"] = ollama_model
-        SETTINGS["soap_note"]["anthropic_model"] = anthropic_model
-        SETTINGS["soap_note"]["gemini_model"] = gemini_model
-        SETTINGS["soap_note"]["icd_code_version"] = icd_code_version
+        # Preserve existing temperature settings by using set_nested for each field
+        settings_manager.set_nested("soap_note.prompt", prompt, auto_save=False)
+        settings_manager.set_nested("soap_note.model", openai_model, auto_save=False)
+        settings_manager.set_nested("soap_note.ollama_model", ollama_model, auto_save=False)
+        settings_manager.set_nested("soap_note.anthropic_model", anthropic_model, auto_save=False)
+        settings_manager.set_nested("soap_note.gemini_model", gemini_model, auto_save=False)
+        settings_manager.set_nested("soap_note.icd_code_version", icd_code_version, auto_save=False)
 
         # Save per-provider system messages
         if provider_messages:
             for key, value in provider_messages.items():
-                SETTINGS["soap_note"][key] = value
+                settings_manager.set_nested(f"soap_note.{key}", value, auto_save=False)
         # Clear legacy system_message since we now use per-provider messages
-        SETTINGS["soap_note"]["system_message"] = ""
+        settings_manager.set_nested("soap_note.system_message", "", auto_save=False)
 
-        save_settings(SETTINGS)
+        # Save all changes at once
+        settings_manager.save()
         self.status_manager.success("SOAP note settings saved successfully")
 
     def save_referral_settings(self, prompt: str, openai_model: str,
                                ollama_model: str, system_prompt: str,
                                anthropic_model: str, gemini_model: str = "") -> None:
         """Save referral settings."""
-        from settings.settings import save_settings, SETTINGS
-        # Preserve existing temperature settings
-        SETTINGS["referral"]["prompt"] = prompt
-        SETTINGS["referral"]["system_message"] = system_prompt
-        SETTINGS["referral"]["model"] = openai_model
-        SETTINGS["referral"]["ollama_model"] = ollama_model
-        SETTINGS["referral"]["anthropic_model"] = anthropic_model
-        SETTINGS["referral"]["gemini_model"] = gemini_model
-        save_settings(SETTINGS)
+        # Preserve existing temperature settings by using set_nested for each field
+        settings_manager.set_nested("referral.prompt", prompt, auto_save=False)
+        settings_manager.set_nested("referral.system_message", system_prompt, auto_save=False)
+        settings_manager.set_nested("referral.model", openai_model, auto_save=False)
+        settings_manager.set_nested("referral.ollama_model", ollama_model, auto_save=False)
+        settings_manager.set_nested("referral.anthropic_model", anthropic_model, auto_save=False)
+        settings_manager.set_nested("referral.gemini_model", gemini_model, auto_save=False)
+        settings_manager.save()
         self.status_manager.success("Referral settings saved successfully")
 
     def save_advanced_analysis_settings(self, prompt: str, openai_model: str,
@@ -303,14 +298,13 @@ class AppSettingsMixin:
             gemini_model: Gemini model to use
             provider: AI provider to use (empty = use global setting)
         """
-        from settings.settings import save_settings, SETTINGS
-        # Preserve existing temperature settings
-        SETTINGS["advanced_analysis"]["prompt"] = prompt
-        SETTINGS["advanced_analysis"]["system_message"] = system_prompt
-        SETTINGS["advanced_analysis"]["model"] = openai_model
-        SETTINGS["advanced_analysis"]["ollama_model"] = ollama_model
-        SETTINGS["advanced_analysis"]["anthropic_model"] = anthropic_model
-        SETTINGS["advanced_analysis"]["gemini_model"] = gemini_model
-        SETTINGS["advanced_analysis"]["provider"] = provider
-        save_settings(SETTINGS)
+        # Preserve existing temperature settings by using set_nested for each field
+        settings_manager.set_nested("advanced_analysis.prompt", prompt, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.system_message", system_prompt, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.model", openai_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.ollama_model", ollama_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.anthropic_model", anthropic_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.gemini_model", gemini_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.provider", provider, auto_save=False)
+        settings_manager.save()
         self.status_manager.success("Advanced analysis settings saved successfully")

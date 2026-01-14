@@ -42,19 +42,12 @@ from processing.processing_queue import ProcessingQueue
 from managers.notification_manager import NotificationManager
 from audio.periodic_analysis import PeriodicAnalyzer
 from ui.scaling_utils import ui_scaler
-from core.recording_controller import RecordingController
 from core.ui_state_manager import UIStateManager
-from core.text_processing_controller import TextProcessingController
-from core.document_export_controller import DocumentExportController
-from core.provider_config_controller import ProviderConfigController
-from core.periodic_analysis_controller import PeriodicAnalysisController
-from core.autosave_controller import AutoSaveController
-from core.recording_recovery_controller import RecordingRecoveryController
-from core.window_state_controller import WindowStateController
-from core.keyboard_shortcuts_controller import KeyboardShortcutsController
-from core.logs_viewer_controller import LogsViewerController
-from core.microphone_controller import MicrophoneController
-from core.queue_processing_controller import QueueProcessingController
+from core.controllers.config_controller import ConfigController
+from core.controllers.window_controller import WindowController
+from core.controllers.persistence_controller import PersistenceController
+from core.controllers.processing_controller import ProcessingController
+from core.controllers.recording_controller import RecordingController
 from utils.security import get_security_manager
 
 
@@ -255,6 +248,13 @@ class AppInitializer:
         Note: This creates widgets but does NOT call initialization methods
         that require controllers. Those are called in _finalize_ui().
         """
+        # Initialize window controller early (needed by create_widgets for navigation)
+        self.app.window_controller = WindowController(self.app)
+        # Backward-compatible aliases
+        self.app.navigation_controller = self.app.window_controller
+        self.app.window_state_controller = self.app.window_controller
+        self.app.logs_viewer_controller = self.app.window_controller
+
         # Create workflow-oriented UI (only UI mode supported)
         self.app.ui = WorkflowUI(self.app)
         self.app.create_menu()
@@ -309,41 +309,34 @@ class AppInitializer:
         # Initialize UI state manager (before recording controller which uses it)
         self.app.ui_state_manager = UIStateManager(self.app)
 
-        # Initialize recording controller
+        # Initialize recording controller (consolidated recording + periodic analysis + recovery)
         self.app.recording_controller = RecordingController(self.app)
+        # Backward-compatible aliases
+        self.app.periodic_analysis_controller = self.app.recording_controller
+        self.app.recording_recovery_controller = self.app.recording_controller
 
-        # Initialize text processing controller
-        self.app.text_processing_controller = TextProcessingController(self.app)
+        # Initialize processing controller (consolidated queue + text + document export)
+        self.app.processing_controller = ProcessingController(self.app)
+        # Backward-compatible aliases
+        self.app.text_processing_controller = self.app.processing_controller
+        self.app.document_export_controller = self.app.processing_controller
+        self.app.queue_processing_controller = self.app.processing_controller
 
-        # Initialize document export controller
-        self.app.document_export_controller = DocumentExportController(self.app)
+        # Initialize config controller (consolidated provider + microphone)
+        self.app.config_controller = ConfigController(self.app)
+        # Backward-compatible aliases
+        self.app.provider_config_controller = self.app.config_controller
+        self.app.microphone_controller = self.app.config_controller
 
-        # Initialize provider config controller
-        self.app.provider_config_controller = ProviderConfigController(self.app)
+        # Initialize persistence controller (consolidated autosave + keyboard shortcuts)
+        self.app.persistence_controller = PersistenceController(self.app)
+        # Backward-compatible aliases
+        self.app.autosave_controller = self.app.persistence_controller
+        self.app.keyboard_shortcuts_controller = self.app.persistence_controller
 
-        # Initialize periodic analysis controller
-        self.app.periodic_analysis_controller = PeriodicAnalysisController(self.app)
-
-        # Initialize autosave controller
-        self.app.autosave_controller = AutoSaveController(self.app)
-
-        # Initialize recording recovery controller (for auto-save during recordings)
-        self.app.recording_recovery_controller = RecordingRecoveryController(self.app)
-
-        # Initialize window state controller
-        self.app.window_state_controller = WindowStateController(self.app)
-
-        # Initialize keyboard shortcuts controller
-        self.app.keyboard_shortcuts_controller = KeyboardShortcutsController(self.app)
-
-        # Initialize logs viewer controller
-        self.app.logs_viewer_controller = LogsViewerController(self.app)
-
-        # Initialize microphone controller
-        self.app.microphone_controller = MicrophoneController(self.app)
-
-        # Initialize queue processing controller
-        self.app.queue_processing_controller = QueueProcessingController(self.app)
+        # Note: window_controller (and aliases: navigation_controller, window_state_controller,
+        # logs_viewer_controller) is initialized in _create_ui() before create_widgets()
+        # Note: queue_processing_controller is an alias for processing_controller
 
         self.app.ai_processor = AIProcessor()  # Uses security manager internally
         self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
