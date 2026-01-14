@@ -88,7 +88,7 @@ class WorkflowUI:
         self.components['workflow_notebook'] = workflow_notebook
         return workflow_notebook
     
-    def create_shared_panel(self, command_map: Dict[str, Callable]) -> ttk.Frame:
+    def create_shared_panel(self, command_map: Dict[str, Callable], show_collapse_button: bool = True) -> ttk.Frame:
         """Create the single shared panel area.
 
         This replaces the old workflow tabs with a single panel that can
@@ -96,6 +96,7 @@ class WorkflowUI:
 
         Args:
             command_map: Dictionary mapping command names to callable functions
+            show_collapse_button: Whether to show individual collapse buttons on panels
 
         Returns:
             ttk.Frame: The shared panel container
@@ -105,7 +106,7 @@ class WorkflowUI:
         container = self.shared_panel_manager.create_container(self.parent)
 
         # Create and register panels
-        analysis_panel = self.record_tab.create_analysis_panel(container, command_map)
+        analysis_panel = self.record_tab.create_analysis_panel(container, command_map, show_collapse_button=show_collapse_button)
         recordings_panel = self.recordings_tab.create_recordings_panel(container)
 
         self.shared_panel_manager.register_panel(

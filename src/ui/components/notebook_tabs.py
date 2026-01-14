@@ -7,6 +7,10 @@ import tkinter as tk
 import ttkbootstrap as ttk
 import logging
 
+from ui.tooltip import ToolTip
+from ui.ui_constants import Icons
+from settings.settings import SETTINGS, save_settings
+
 
 class NotebookTabs:
     """Manages the notebook tabs UI components."""
@@ -187,7 +191,7 @@ class NotebookTabs:
             tk.Text: The main SOAP note text widget
         """
         # Create vertical paned window for top/bottom split
-        soap_paned = ttk.PanedWindow(frame, orient=tk.VERTICAL)
+        soap_paned = ttk.Panedwindow(frame, orient=tk.VERTICAL)
         soap_paned.pack(fill=tk.BOTH, expand=True)
 
         # ===== TOP PANE: SOAP Note (70% height) =====
@@ -213,6 +217,14 @@ class NotebookTabs:
         bottom_frame = ttk.Frame(soap_paned)
         soap_paned.add(bottom_frame, weight=3)
 
+        # Store references for collapse functionality
+        self.components['soap_paned'] = soap_paned
+        self.components['analysis_bottom_frame'] = bottom_frame
+
+        # Get initial collapse state from settings
+        is_collapsed = SETTINGS.get("analysis_panel_collapsed", False)
+        self._analysis_collapsed = is_collapsed
+
         # Header with collapse button
         header_frame = ttk.Frame(bottom_frame)
         header_frame.pack(fill=tk.X, padx=2, pady=2)
@@ -220,21 +232,31 @@ class NotebookTabs:
         header_label = ttk.Label(header_frame, text="Analysis", font=("", 10, "bold"))
         header_label.pack(side=tk.LEFT, padx=5)
 
-        # Store reference for collapse functionality
+        # Analysis content frame
         analysis_content = ttk.Frame(bottom_frame)
-        collapse_var = tk.BooleanVar(value=True)
+        self.components['analysis_content'] = analysis_content
 
+        # Collapse button with arrow icon
+        initial_icon = Icons.COLLAPSE if is_collapsed else Icons.EXPAND
         collapse_btn = ttk.Button(
             header_frame,
-            text="−",
+            text=initial_icon,
             width=3,
             bootstyle="secondary-outline",
-            command=lambda: self._toggle_collapse(analysis_content, collapse_btn, collapse_var)
+            command=self._toggle_analysis_panel
         )
         collapse_btn.pack(side=tk.RIGHT, padx=2)
+        self.components['analysis_collapse_btn'] = collapse_btn
 
-        # Analysis content frame
-        analysis_content.pack(fill=tk.BOTH, expand=True)
+        # Add tooltip
+        self._analysis_collapse_tooltip = ToolTip(
+            collapse_btn,
+            "Expand Analysis Panel" if is_collapsed else "Collapse Analysis Panel"
+        )
+
+        # Analysis content frame - pack if not collapsed
+        if not is_collapsed:
+            analysis_content.pack(fill=tk.BOTH, expand=True)
 
         # Create notebook for analysis tabs
         analysis_notebook = ttk.Notebook(analysis_content)
@@ -343,24 +365,37 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to copy")
 
-    def _toggle_collapse(self, content_frame: ttk.Frame, button: ttk.Button, var: tk.BooleanVar) -> None:
-        """Toggle collapse/expand state of a content frame.
+    def _toggle_analysis_panel(self) -> None:
+        """Toggle collapse/expand state of the Analysis panel.
 
-        Args:
-            content_frame: The frame to collapse/expand
-            button: The button to update text
-            var: Boolean variable tracking collapse state
+        When collapsed, the analysis content is hidden and only the header remains visible.
+        The SOAP note editor expands to fill the available space.
         """
-        if var.get():
-            # Currently expanded, collapse it
-            content_frame.pack_forget()
-            button.config(text="+")
-            var.set(False)
+        self._analysis_collapsed = not self._analysis_collapsed
+
+        # Save state to settings
+        SETTINGS["analysis_panel_collapsed"] = self._analysis_collapsed
+        save_settings(SETTINGS)
+
+        # Get references
+        analysis_content = self.components.get('analysis_content')
+        collapse_btn = self.components.get('analysis_collapse_btn')
+
+        if not analysis_content or not collapse_btn:
+            return
+
+        if self._analysis_collapsed:
+            # Collapse: hide the analysis content
+            analysis_content.pack_forget()
+            collapse_btn.config(text=Icons.COLLAPSE)
+            if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
+                self._analysis_collapse_tooltip.text = "Expand Analysis Panel"
         else:
-            # Currently collapsed, expand it
-            content_frame.pack(fill=tk.BOTH, expand=True)
-            button.config(text="−")
-            var.set(True)
+            # Expand: show the analysis content
+            analysis_content.pack(fill=tk.BOTH, expand=True)
+            collapse_btn.config(text=Icons.EXPAND)
+            if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
+                self._analysis_collapse_tooltip.text = "Collapse Analysis Panel"
 
     def _clear_chat_history(self):
         """Clear the chat conversation history."""

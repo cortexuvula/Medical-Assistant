@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import Dict, Callable, Optional
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
+from ui.ui_constants import Icons
+from settings.settings import SETTINGS, save_settings
 
 
 class RecordTab:
@@ -42,7 +44,7 @@ class RecordTab:
         # For backwards compatibility, delegate to create_analysis_panel
         return self.create_analysis_panel(self.parent, command_map)
 
-    def create_analysis_panel(self, parent, command_map: Optional[Dict[str, Callable]] = None) -> ttk.Frame:
+    def create_analysis_panel(self, parent, command_map: Optional[Dict[str, Callable]] = None, show_collapse_button: bool = True) -> ttk.Frame:
         """Create the Advanced Analysis Results panel.
 
         This is the main panel that shows analysis results during recording.
@@ -51,6 +53,7 @@ class RecordTab:
         Args:
             parent: Parent widget for the panel
             command_map: Optional dictionary of commands
+            show_collapse_button: Whether to show the individual collapse button
 
         Returns:
             ttk.Frame: The analysis panel frame
@@ -59,6 +62,7 @@ class RecordTab:
         if command_map:
             self._command_map = command_map
 
+        self._show_collapse_button = show_collapse_button
         analysis_frame = ttk.Frame(parent)
 
         # Create placeholder components for backwards compatibility
@@ -68,21 +72,57 @@ class RecordTab:
         content_frame = ttk.Frame(analysis_frame)
         content_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
 
-        # Create text area
-        text_frame = ttk.Labelframe(content_frame, text="Advanced Analysis Results", padding=10)
+        # Get initial collapse state from settings - always expanded when unified button is used
+        self._analysis_results_collapsed = SETTINGS.get("advanced_analysis_collapsed", False) if show_collapse_button else False
+
+        # Create header frame with title and optional collapse button
+        if show_collapse_button:
+            header_frame = ttk.Frame(content_frame)
+            header_frame.pack(fill=X, pady=(0, 2))
+
+            # Collapse button on the left
+            initial_icon = Icons.COLLAPSE if self._analysis_results_collapsed else Icons.EXPAND
+            self._analysis_collapse_btn = ttk.Button(
+                header_frame,
+                text=initial_icon,
+                width=3,
+                bootstyle="secondary-outline",
+                command=self._toggle_analysis_results_panel
+            )
+            self._analysis_collapse_btn.pack(side=LEFT, padx=(0, 5))
+            self._analysis_collapse_tooltip = ToolTip(
+                self._analysis_collapse_btn,
+                "Expand Analysis Results" if self._analysis_results_collapsed else "Collapse Analysis Results"
+            )
+            self.components['advanced_analysis_collapse_btn'] = self._analysis_collapse_btn
+
+            # Title label
+            title_label = ttk.Label(header_frame, text="Advanced Analysis Results", font=("", 10, "bold"))
+            title_label.pack(side=LEFT)
+
+        # Create collapsible content frame (using regular frame instead of Labelframe)
+        self._analysis_content_frame = ttk.Frame(content_frame)
+        self.components['advanced_analysis_content'] = self._analysis_content_frame
+
+        # Only pack if not collapsed (or always if using unified button)
+        if not self._analysis_results_collapsed or not show_collapse_button:
+            self._analysis_content_frame.pack(fill=BOTH, expand=True)
+
+        # Create text area inside the content frame
+        text_frame = ttk.Frame(self._analysis_content_frame, padding=10)
         text_frame.pack(fill=BOTH, expand=True)
 
-        # Create header frame with countdown and buttons
-        header_frame = ttk.Frame(text_frame)
-        header_frame.pack(fill=X, pady=(0, 5))
+        # Create controls frame with countdown and buttons
+        controls_frame = ttk.Frame(text_frame)
+        controls_frame.pack(fill=X, pady=(0, 5))
 
         # Countdown label on the left
-        self.countdown_label = ttk.Label(header_frame, text="", width=14, anchor="w")
+        self.countdown_label = ttk.Label(controls_frame, text="", width=14, anchor="w")
         self.countdown_label.pack(side=LEFT)
         self.components['countdown_label'] = self.countdown_label
 
         # Button row on the right
-        button_frame = ttk.Frame(header_frame)
+        button_frame = ttk.Frame(controls_frame)
         button_frame.pack(side=RIGHT)
 
         copy_btn = ttk.Button(
@@ -293,6 +333,125 @@ class RecordTab:
         self._show_empty_state_hint()
         self.update_countdown(0, clear=True)
         self._show_feedback("Cleared")
+
+    def _toggle_analysis_results_panel(self) -> None:
+        """Toggle collapse/expand state of the Advanced Analysis Results panel.
+
+        When collapsed, the content is hidden and only the header remains visible.
+        """
+        # Don't toggle if using unified collapse button (no individual button)
+        if not getattr(self, '_show_collapse_button', True):
+            return
+
+        self._analysis_results_collapsed = not self._analysis_results_collapsed
+        logging.info(f"[PANEL DEBUG] Analysis panel toggled. New state: collapsed={self._analysis_results_collapsed}")
+
+        # Save state to settings
+        SETTINGS["advanced_analysis_collapsed"] = self._analysis_results_collapsed
+        save_settings(SETTINGS)
+
+        if self._analysis_results_collapsed:
+            # Collapse: hide the content
+            self._analysis_content_frame.pack_forget()
+            if hasattr(self, '_analysis_collapse_btn') and self._analysis_collapse_btn:
+                self._analysis_collapse_btn.config(text=Icons.COLLAPSE)
+            if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
+                self._analysis_collapse_tooltip.text = "Expand Analysis Results"
+            logging.info("[PANEL DEBUG] Analysis content frame hidden")
+        else:
+            # Expand: show the content
+            self._analysis_content_frame.pack(fill=BOTH, expand=True)
+            if hasattr(self, '_analysis_collapse_btn') and self._analysis_collapse_btn:
+                self._analysis_collapse_btn.config(text=Icons.EXPAND)
+            if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
+                self._analysis_collapse_tooltip.text = "Collapse Analysis Results"
+            logging.info("[PANEL DEBUG] Analysis content frame shown")
+
+        # Adjust the content paned sash to redistribute space
+        self._adjust_content_paned_sash()
+
+    def _adjust_content_paned_sash(self):
+        """Adjust the content_paned sash position based on collapse states.
+
+        Sizing requirements:
+        - Both expanded: SOAP 60%, bottom 40%
+        - Only Chat expanded: SOAP 90%, bottom 10%
+        - Only Analysis expanded: SOAP 70%, bottom 30%
+        - Both collapsed: SOAP max, bottom headers only (~50px)
+        """
+        logging.info("[PANEL DEBUG] _adjust_content_paned_sash called from record_tab")
+        try:
+            # Get the content_paned from UI components
+            content_paned = self.components.get('content_paned')
+            logging.info(f"[PANEL DEBUG] content_paned from components: {content_paned}")
+            logging.info(f"[PANEL DEBUG] Available components keys: {list(self.components.keys())}")
+
+            if not content_paned:
+                logging.warning("[PANEL DEBUG] content_paned not found in components!")
+                return
+
+            # Check if chat is collapsed
+            chat_collapsed = SETTINGS.get("chat_interface", {}).get("collapsed", False)
+            logging.info(f"[PANEL DEBUG] chat_collapsed={chat_collapsed}, analysis_collapsed={self._analysis_results_collapsed}")
+
+            # Get the total height of the content_paned
+            content_paned.update_idletasks()
+            total_height = content_paned.winfo_height()
+            current_sash = content_paned.sashpos(0)
+            logging.info(f"[PANEL DEBUG] total_height={total_height}, current_sash_pos={current_sash}")
+
+            if total_height <= 1:
+                logging.info("[PANEL DEBUG] total_height <= 1, skipping (not yet rendered)")
+                return
+
+            # Height for collapsed headers only
+            HEADER_ONLY_HEIGHT = 50
+
+            # Calculate sash position based on collapse states (percentage-based)
+            # With horizontal layout, both panels are side by side in bottom section
+            if self._analysis_results_collapsed and chat_collapsed:
+                # Both collapsed - just headers visible (horizontal row)
+                new_sash_pos = total_height - HEADER_ONLY_HEIGHT
+                reason = "both collapsed (headers only)"
+            elif self._analysis_results_collapsed or chat_collapsed:
+                # One expanded - give moderate space for the expanded panel
+                new_sash_pos = int(total_height * 0.75)
+                reason = "one expanded (75/25)"
+            else:
+                # Both expanded - SOAP 60%, bottom 40%
+                new_sash_pos = int(total_height * 0.60)
+                reason = "both expanded (60/40)"
+
+            logging.info(f"[PANEL DEBUG] Calculated new_sash_pos={new_sash_pos} ({reason})")
+
+            # Get the bottom_section to configure its minimum size
+            bottom_section = self.components.get('bottom_section')
+            if bottom_section:
+                # Allow the bottom section to shrink to a small size
+                try:
+                    panes = content_paned.panes()
+                    logging.info(f"[PANEL DEBUG] Panes in content_paned: {panes}")
+                    if len(panes) >= 2:
+                        # Configure the second pane (bottom_section) to have a small minimum size
+                        # Use 'pane' method for ttk.Panedwindow (not 'paneconfig')
+                        min_height = HEADER_ONLY_HEIGHT if (self._analysis_results_collapsed and chat_collapsed) else 100
+                        content_paned.pane(panes[1], weight=0)  # weight=0 prevents auto-resize
+                        logging.info(f"[PANEL DEBUG] Set weight=0 for bottom pane")
+                except Exception as e:
+                    logging.error(f"[PANEL DEBUG] Error configuring pane: {e}")
+
+            # Set the sash position (sash index 0 is between first two panes)
+            content_paned.sashpos(0, new_sash_pos)
+
+            # Force geometry update
+            content_paned.update_idletasks()
+
+            # Verify the change
+            actual_sash = content_paned.sashpos(0)
+            logging.info(f"[PANEL DEBUG] After setting: requested={new_sash_pos}, actual={actual_sash}")
+
+        except Exception as e:
+            logging.error(f"[PANEL DEBUG] Exception in _adjust_content_paned_sash: {e}", exc_info=True)
 
     def _show_feedback(self, message: str):
         """Show brief feedback in the countdown label."""

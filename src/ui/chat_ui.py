@@ -14,17 +14,19 @@ from ui.tooltip import ToolTip
 
 class ChatUI:
     """Manages the chat interface components for LLM interaction"""
-    
-    def __init__(self, parent_frame: ttk.Frame, app):
+
+    def __init__(self, parent_frame: ttk.Frame, app, show_collapse_button: bool = True):
         """
         Initialize the chat UI components.
-        
+
         Args:
             parent_frame: The parent frame to contain the chat UI
             app: Reference to the main application
+            show_collapse_button: Whether to show the individual collapse button
         """
         self.parent_frame = parent_frame
         self.app = app
+        self.show_collapse_button = show_collapse_button
         self.chat_frame = None
         self.input_text = None
         self.send_button = None
@@ -35,22 +37,22 @@ class ChatUI:
         self.is_collapsed = False
         self.collapse_button = None
         self._collapse_tooltip = None
-        
+
         # Callbacks
         self.on_send_callback = None
-        
+
         # Configuration from settings
         from settings.settings import SETTINGS
         chat_config = SETTINGS.get("chat_interface", {})
         self.max_input_length = chat_config.get("max_input_length", 2000)
         self.min_input_lines = 2
         self.max_input_lines = 5
-        # Default to collapsed state on startup
-        self.is_collapsed = chat_config.get("collapsed", True)
-        
+        # Default to not collapsed when using unified collapse button
+        self.is_collapsed = chat_config.get("collapsed", True) if show_collapse_button else False
+
         # Content frame reference
         self.content_frame = None
-        
+
         # Create the UI
         self.create_chat_interface()
         
@@ -58,38 +60,39 @@ class ChatUI:
         """Create the main chat interface components"""
         # Create a container frame for the title row and content
         container_frame = ttk.Frame(self.parent_frame)
-        container_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
-        
-        # Title row with collapse button
-        title_frame = ttk.Frame(container_frame)
-        title_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        # Collapse/expand button
-        self.collapse_button = ttk.Button(
-            title_frame,
-            text="▼",
-            command=self.toggle_collapse,
-            width=3,
-            bootstyle="link"
-        )
-        self.collapse_button.pack(side=tk.LEFT, padx=(0, 5))
-        self._collapse_tooltip = ToolTip(self.collapse_button, "Collapse/Expand AI Assistant Chat")
-        
-        # Title label
-        title_label = ttk.Label(
-            title_frame,
-            text="AI Assistant Chat",
-            font=("Arial", 11, "bold")
-        )
-        title_label.pack(side=tk.LEFT)
-        
+        container_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        # Title row with collapse button - only show if show_collapse_button is True
+        if self.show_collapse_button:
+            title_frame = ttk.Frame(container_frame)
+            title_frame.pack(fill=tk.X, pady=(0, 5))
+
+            # Collapse/expand button
+            self.collapse_button = ttk.Button(
+                title_frame,
+                text="▼",
+                command=self.toggle_collapse,
+                width=3,
+                bootstyle="link"
+            )
+            self.collapse_button.pack(side=tk.LEFT, padx=(0, 5))
+            self._collapse_tooltip = ToolTip(self.collapse_button, "Collapse/Expand AI Assistant Chat")
+
+            # Title label
+            title_label = ttk.Label(
+                title_frame,
+                text="AI Assistant Chat",
+                font=("Arial", 11, "bold")
+            )
+            title_label.pack(side=tk.LEFT)
+
         # Main chat frame with border
         self.chat_frame = ttk.Labelframe(
-            container_frame, 
-            text="",  # No text since we have a separate title
+            container_frame,
+            text="" if self.show_collapse_button else "AI Assistant Chat",
             padding=(10, 10)
         )
-        self.chat_frame.pack(fill=tk.BOTH, expand=False)
+        self.chat_frame.pack(fill=tk.BOTH, expand=True)
         
         # Content frame
         self.content_frame = ttk.Frame(self.chat_frame)
@@ -541,25 +544,39 @@ class ChatUI:
     
     def toggle_collapse(self):
         """Toggle the collapsed state of the chat interface"""
+        import logging
+
+        # Don't toggle if using unified collapse button (no individual button)
+        if not self.show_collapse_button:
+            return
+
         self.is_collapsed = not self.is_collapsed
-        
+        logging.info(f"[PANEL DEBUG] Chat panel toggled. New state: collapsed={self.is_collapsed}")
+
         # Save the state to settings
         from settings.settings import SETTINGS, save_settings
         SETTINGS.setdefault("chat_interface", {})["collapsed"] = self.is_collapsed
         save_settings(SETTINGS)
-        
+
         if self.is_collapsed:
             # Hide the chat frame content
             self.chat_frame.pack_forget()
-            self.collapse_button.config(text="▶")
+            if self.collapse_button:
+                self.collapse_button.config(text="▶")
             if self._collapse_tooltip:
                 self._collapse_tooltip.text = "Expand AI Assistant Chat"
+            logging.info("[PANEL DEBUG] Chat content frame hidden")
         else:
             # Show the chat frame content
-            self.chat_frame.pack(fill=tk.BOTH, expand=False)
-            self.collapse_button.config(text="▼")
+            self.chat_frame.pack(fill=tk.BOTH, expand=True)
+            if self.collapse_button:
+                self.collapse_button.config(text="▼")
             if self._collapse_tooltip:
                 self._collapse_tooltip.text = "Collapse AI Assistant Chat"
+            logging.info("[PANEL DEBUG] Chat content frame shown")
+
+        # Adjust the content paned sash to redistribute space
+        self._adjust_content_paned_sash()
     
     def expand(self):
         """Expand the chat interface if collapsed"""
@@ -570,8 +587,95 @@ class ChatUI:
         """Collapse the chat interface if expanded"""
         if not self.is_collapsed:
             self.toggle_collapse()
-    
-    
+
+    def _adjust_content_paned_sash(self):
+        """Adjust the content_paned sash position based on collapse states.
+
+        Sizing requirements:
+        - Both expanded: SOAP 60%, bottom 40%
+        - Only Chat expanded: SOAP 90%, bottom 10%
+        - Only Analysis expanded: SOAP 70%, bottom 30%
+        - Both collapsed: SOAP max, bottom headers only (~50px)
+        """
+        import logging
+        logging.info("[PANEL DEBUG] _adjust_content_paned_sash called from chat_ui")
+        try:
+            # Get the content_paned from app's UI components
+            if not hasattr(self.app, 'ui') or not hasattr(self.app.ui, 'components'):
+                logging.warning("[PANEL DEBUG] app.ui or app.ui.components not found!")
+                return
+
+            content_paned = self.app.ui.components.get('content_paned')
+            logging.info(f"[PANEL DEBUG] content_paned from components: {content_paned}")
+            logging.info(f"[PANEL DEBUG] Available components keys: {list(self.app.ui.components.keys())}")
+
+            if not content_paned:
+                logging.warning("[PANEL DEBUG] content_paned not found in components!")
+                return
+
+            # Check if analysis panel is collapsed
+            from settings.settings import SETTINGS
+            analysis_collapsed = SETTINGS.get("advanced_analysis_collapsed", False)
+            logging.info(f"[PANEL DEBUG] chat_collapsed={self.is_collapsed}, analysis_collapsed={analysis_collapsed}")
+
+            # Get the total height of the content_paned
+            content_paned.update_idletasks()
+            total_height = content_paned.winfo_height()
+            current_sash = content_paned.sashpos(0)
+            logging.info(f"[PANEL DEBUG] total_height={total_height}, current_sash_pos={current_sash}")
+
+            if total_height <= 1:
+                logging.info("[PANEL DEBUG] total_height <= 1, skipping (not yet rendered)")
+                return
+
+            # Height for collapsed headers only
+            HEADER_ONLY_HEIGHT = 50
+
+            # Calculate sash position based on collapse states (percentage-based)
+            # With horizontal layout, both panels are side by side in bottom section
+            if self.is_collapsed and analysis_collapsed:
+                # Both collapsed - just headers visible (horizontal row)
+                new_sash_pos = total_height - HEADER_ONLY_HEIGHT
+                reason = "both collapsed (headers only)"
+            elif self.is_collapsed or analysis_collapsed:
+                # One expanded - give moderate space for the expanded panel
+                new_sash_pos = int(total_height * 0.75)
+                reason = "one expanded (75/25)"
+            else:
+                # Both expanded - SOAP 60%, bottom 40%
+                new_sash_pos = int(total_height * 0.60)
+                reason = "both expanded (60/40)"
+
+            logging.info(f"[PANEL DEBUG] Calculated new_sash_pos={new_sash_pos} ({reason})")
+
+            # Get the bottom_section to configure its minimum size
+            bottom_section = self.app.ui.components.get('bottom_section')
+            if bottom_section:
+                # Allow the bottom section to shrink to a small size
+                try:
+                    panes = content_paned.panes()
+                    logging.info(f"[PANEL DEBUG] Panes in content_paned: {panes}")
+                    if len(panes) >= 2:
+                        # Configure the second pane (bottom_section) to have a small minimum size
+                        # Use 'pane' method for ttk.Panedwindow (not 'paneconfig')
+                        content_paned.pane(panes[1], weight=0)  # weight=0 prevents auto-resize
+                        logging.info(f"[PANEL DEBUG] Set weight=0 for bottom pane")
+                except Exception as e:
+                    logging.error(f"[PANEL DEBUG] Error configuring pane: {e}")
+
+            # Set the sash position (sash index 0 is between first two panes)
+            content_paned.sashpos(0, new_sash_pos)
+
+            # Force geometry update
+            content_paned.update_idletasks()
+
+            # Verify the change
+            actual_sash = content_paned.sashpos(0)
+            logging.info(f"[PANEL DEBUG] After setting: requested={new_sash_pos}, actual={actual_sash}")
+
+        except Exception as e:
+            logging.error(f"[PANEL DEBUG] Exception in _adjust_content_paned_sash: {e}", exc_info=True)
+
     def _toggle_tools(self):
         """Toggle tool usage on/off."""
         enabled = self.tools_enabled_var.get()

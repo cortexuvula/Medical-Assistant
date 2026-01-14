@@ -31,7 +31,7 @@ log_manager = setup_application_logging()
 
 
 from utils.utils import get_valid_microphones
-from settings.settings import SETTINGS
+from settings.settings import SETTINGS, save_settings
 from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog, show_groq_settings_dialog
 from ui.tooltip import ToolTip
 
@@ -377,14 +377,61 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         (self.notebook, self.transcript_text, self.soap_text, self.referral_text,
          self.letter_text, self.chat_text, self.rag_text, _,
          self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
-        self.content_paned.add(self.notebook, weight=2)
+        self.content_paned.add(self.notebook, weight=1)
 
         # Bottom section frame for chat and shared panel
         bottom_section = ttk.Frame(self.content_paned)
         self.content_paned.add(bottom_section, weight=1)
 
-        # Create chat interface in bottom section
-        self.chat_ui = ChatUI(bottom_section, self)
+        # Store references for collapsible panel coordination
+        self.ui.components['content_paned'] = self.content_paned
+        self.ui.components['bottom_section'] = bottom_section
+
+        # Create header row with single collapse button for entire bottom section
+        bottom_header = ttk.Frame(bottom_section)
+        bottom_header.pack(fill=tk.X, padx=10, pady=(8, 5))
+
+        # Single collapse button for both panels
+        self._bottom_collapsed = SETTINGS.get("bottom_section_collapsed", False)
+        collapse_icon = "▶" if self._bottom_collapsed else "▼"
+        self._bottom_collapse_btn = ttk.Button(
+            bottom_header,
+            text=collapse_icon,
+            width=3,
+            bootstyle="secondary-outline",
+            command=self._toggle_bottom_section
+        )
+        self._bottom_collapse_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Title label
+        bottom_title = ttk.Label(
+            bottom_header,
+            text="AI Assistant & Analysis",
+            font=("", 10, "bold")
+        )
+        bottom_title.pack(side=tk.LEFT)
+        self.ui.components['bottom_header'] = bottom_header
+
+        # Create a horizontal PanedWindow inside bottom_section for chat and analysis
+        # This allows both panels to be visible side by side
+        bottom_paned = ttk.Panedwindow(bottom_section, orient=tk.HORIZONTAL)
+        self.ui.components['bottom_paned'] = bottom_paned
+        self._bottom_content = bottom_paned  # Store reference for collapse toggle
+
+        # Only pack if not collapsed
+        if not self._bottom_collapsed:
+            bottom_paned.pack(fill=tk.BOTH, expand=True)
+
+        # Create frames for each panel in the horizontal paned window
+        chat_container = ttk.Frame(bottom_paned)
+        analysis_container = ttk.Frame(bottom_paned)
+
+        # Add to paned window - chat on left (smaller), analysis on right (larger)
+        bottom_paned.add(chat_container, weight=1)
+        bottom_paned.add(analysis_container, weight=3)
+
+        # Create chat interface in chat container (without its own collapse button)
+        self.chat_ui = ChatUI(chat_container, self, show_collapse_button=False)
         self.chat_ui.set_send_callback(self._handle_chat_message)
 
         # Apply initial theme to chat UI
@@ -393,9 +440,20 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
         # Set initial chat suggestions
         self.after(100, self._update_chat_suggestions)
 
-        # Create shared panel (Analysis/Recordings) in bottom section
-        self.shared_panel = self.ui.create_shared_panel(command_map)
-        self.shared_panel.pack(in_=bottom_section, fill=tk.BOTH, expand=True, pady=(2, 0))
+        # Create shared panel (Analysis/Recordings) in analysis container
+        self.shared_panel = self.ui.create_shared_panel(command_map, show_collapse_button=False)
+        self.shared_panel.pack(in_=analysis_container, fill=tk.BOTH, expand=True)
+
+        # Always adjust sash position on startup to ensure proper sizing
+        # Use longer delay to ensure window is fully rendered
+        self.after(500, self._adjust_bottom_sash)
+
+        # Set horizontal sash position for Chat (25%) vs Analysis (75%)
+        self.after(600, self._adjust_horizontal_sash)
+
+        # Bind Configure event to maintain sash position on resize
+        self._last_height = 0
+        self.content_paned.bind('<Configure>', self._on_content_paned_configure)
         
         # Right side - context panel
         self.context_panel = self.ui.create_context_panel()
@@ -998,6 +1056,96 @@ class MedicalDictationApp(ttk.Window, AppSettingsMixin, AppChatMixin):
     def on_closing(self) -> None:
         """Clean up resources before closing. Delegates to WindowStateController."""
         self.window_state_controller.on_closing()
+
+    def _toggle_bottom_section(self) -> None:
+        """Toggle collapse/expand of the entire bottom section (Chat + Analysis)."""
+        self._bottom_collapsed = not self._bottom_collapsed
+
+        # Save state to settings
+        SETTINGS["bottom_section_collapsed"] = self._bottom_collapsed
+        save_settings(SETTINGS)
+
+        if self._bottom_collapsed:
+            # Collapse: hide the content
+            self._bottom_content.pack_forget()
+            self._bottom_collapse_btn.config(text="▶")
+        else:
+            # Expand: show the content
+            self._bottom_content.pack(fill=tk.BOTH, expand=True)
+            self._bottom_collapse_btn.config(text="▼")
+
+        # Adjust the sash position
+        self._adjust_bottom_sash()
+
+    def _on_content_paned_configure(self, event=None) -> None:
+        """Handle resize events on content_paned to maintain sash proportions."""
+        try:
+            content_paned = self.ui.components.get('content_paned')
+            if not content_paned:
+                return
+
+            new_height = content_paned.winfo_height()
+            # Only adjust if height changed significantly (avoid jitter)
+            if abs(new_height - self._last_height) > 20:
+                self._last_height = new_height
+                # Use after to debounce rapid resize events
+                if hasattr(self, '_resize_after_id'):
+                    self.after_cancel(self._resize_after_id)
+                self._resize_after_id = self.after(50, self._adjust_bottom_sash)
+        except Exception:
+            pass
+
+    def _adjust_bottom_sash(self) -> None:
+        """Adjust the content_paned sash based on bottom section collapse state."""
+        try:
+            content_paned = self.ui.components.get('content_paned')
+            if not content_paned:
+                return
+
+            content_paned.update_idletasks()
+            total_height = content_paned.winfo_height()
+
+            if total_height <= 1:
+                # Window not fully rendered yet, retry later
+                self.after(200, self._adjust_bottom_sash)
+                return
+
+            if self._bottom_collapsed:
+                # Collapsed - just header visible (~50px for header + padding)
+                new_sash_pos = total_height - 50
+            else:
+                # Expanded - 55% for notebook, 45% for bottom (more space for bottom panels)
+                new_sash_pos = int(total_height * 0.55)
+
+            content_paned.sashpos(0, new_sash_pos)
+            self._last_height = total_height
+            logging.debug(f"Set sash position: {new_sash_pos} of {total_height} (collapsed={self._bottom_collapsed})")
+
+        except Exception as e:
+            logging.debug(f"Could not adjust bottom sash: {e}")
+
+    def _adjust_horizontal_sash(self) -> None:
+        """Adjust the horizontal sash for Chat (25%) vs Analysis (75%) split."""
+        try:
+            bottom_paned = self.ui.components.get('bottom_paned')
+            if not bottom_paned:
+                return
+
+            bottom_paned.update_idletasks()
+            total_width = bottom_paned.winfo_width()
+
+            if total_width <= 1:
+                # Not rendered yet, retry
+                self.after(200, self._adjust_horizontal_sash)
+                return
+
+            # Chat gets 25%, Analysis gets 75%
+            sash_pos = int(total_width * 0.25)
+            bottom_paned.sashpos(0, sash_pos)
+            logging.debug(f"Set horizontal sash: {sash_pos} of {total_width}")
+
+        except Exception as e:
+            logging.debug(f"Could not adjust horizontal sash: {e}")
 
     def on_tab_changed(self, event=None) -> None:
         """Handle tab changes. Delegates to WindowStateController."""

@@ -86,7 +86,7 @@ class DiagnosticComparisonDialog:
         ).pack(side=LEFT, padx=(20, 0))
 
         # Paned window for selection and comparison
-        paned = ttk.PanedWindow(main_frame, orient=HORIZONTAL)
+        paned = ttk.Panedwindow(main_frame, orient=HORIZONTAL)
         paned.pack(fill=BOTH, expand=True)
 
         # Left panel - Selection
@@ -136,7 +136,7 @@ class DiagnosticComparisonDialog:
         # Keyboard shortcuts
         self.dialog.bind("<Escape>", lambda e: self.dialog.destroy())
 
-    def _create_selection_panel(self, paned: ttk.PanedWindow) -> None:
+    def _create_selection_panel(self, paned: ttk.Panedwindow) -> None:
         """Create the left panel for analysis selection.
 
         Args:
@@ -212,7 +212,7 @@ class DiagnosticComparisonDialog:
         )
         self.selection_label.pack(anchor=W, pady=(5, 0))
 
-    def _create_comparison_panel(self, paned: ttk.PanedWindow) -> None:
+    def _create_comparison_panel(self, paned: ttk.Panedwindow) -> None:
         """Create the right panel for comparison view.
 
         Args:
