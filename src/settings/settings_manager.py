@@ -361,6 +361,11 @@ class SettingsManager:
         """Check if quick continue mode is enabled."""
         return self.get("quick_continue_mode", True)
 
+    # Alias for compatibility
+    def get_quick_continue_mode(self) -> bool:
+        """Get quick continue mode status (alias for is_quick_continue_mode)."""
+        return self.is_quick_continue_mode()
+
     def set_quick_continue_mode(self, enabled: bool) -> None:
         """Enable or disable quick continue mode."""
         self.set("quick_continue_mode", enabled)
