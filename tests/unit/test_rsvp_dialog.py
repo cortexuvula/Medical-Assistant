@@ -26,20 +26,35 @@ class TestRSVPTextPreprocessing:
 
     def test_preprocess_removes_icd_codes(self):
         """ICD code lines should be removed."""
-        # Import only what we need for preprocessing
+        import re
+
         text = """Subjective: Patient presents with cough.
 ICD-10: J06.9
 ICD-9: 460
 Assessment: Upper respiratory infection."""
 
-        # Simulate the preprocessing logic
+        # Simulate the improved preprocessing logic
         lines = text.split('\n')
         cleaned_lines = []
+        in_icd_section = False
+        icd10_pattern = re.compile(r'^[A-Z]\d{2}\.?\d*\b')
+        icd9_pattern = re.compile(r'^\d{3}\.?\d*\b')
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            if line.upper().startswith(('ICD-9', 'ICD-10', 'ICD CODE')):
+            upper_line = line.upper()
+            if any(marker in upper_line for marker in ['ICD-10', 'ICD-9', 'ICD CODE', 'ICD:', 'DIAGNOSIS CODE']):
+                in_icd_section = True
+                continue
+            if any(upper_line.startswith(section) for section in
+                   ['SUBJECTIVE', 'OBJECTIVE', 'ASSESSMENT', 'PLAN']):
+                in_icd_section = False
+            if in_icd_section:
+                continue
+            test_line = line.lstrip('- ').strip()
+            if icd10_pattern.match(test_line) or icd9_pattern.match(test_line):
                 continue
             cleaned_lines.append(line)
 
@@ -49,6 +64,48 @@ Assessment: Upper respiratory infection."""
         assert 'J06.9' not in result
         assert 'Patient presents with cough' in result
         assert 'Upper respiratory infection' in result
+
+    def test_preprocess_removes_icd_section(self):
+        """Full ICD section with multiple codes should be removed."""
+        import re
+
+        text = """Assessment: Acute bronchitis with cough.
+
+ICD-10 Codes:
+J20.9 - Acute bronchitis, unspecified
+R05 - Cough
+
+Plan: Rest and fluids."""
+
+        lines = text.split('\n')
+        cleaned_lines = []
+        in_icd_section = False
+        icd10_pattern = re.compile(r'^[A-Z]\d{2}\.?\d*\b')
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            upper_line = line.upper()
+            if any(marker in upper_line for marker in ['ICD-10', 'ICD-9', 'ICD CODE', 'ICD:', 'DIAGNOSIS CODE']):
+                in_icd_section = True
+                continue
+            if any(upper_line.startswith(section) for section in
+                   ['SUBJECTIVE', 'OBJECTIVE', 'ASSESSMENT', 'PLAN']):
+                in_icd_section = False
+            if in_icd_section:
+                continue
+            test_line = line.lstrip('- ').strip()
+            if icd10_pattern.match(test_line):
+                continue
+            cleaned_lines.append(line)
+
+        result = ' '.join(cleaned_lines)
+        assert 'ICD-10' not in result
+        assert 'J20.9' not in result
+        assert 'R05' not in result
+        assert 'Acute bronchitis with cough' in result
+        assert 'Rest and fluids' in result
 
     def test_preprocess_removes_not_discussed(self):
         """'Not discussed' entries should be removed."""

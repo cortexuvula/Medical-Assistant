@@ -175,7 +175,7 @@ class RSVPDialog:
         """Clean SOAP note text for better RSVP readability.
 
         Removes:
-        - ICD codes (ICD-9, ICD-10 lines)
+        - ICD codes (ICD-9, ICD-10 lines and actual code patterns)
         - Leading bullet dashes
         - "Not discussed" entries
         - Excess whitespace
@@ -186,8 +186,19 @@ class RSVPDialog:
         Returns:
             Cleaned text suitable for RSVP display
         """
+        import re
+
         lines = text.split('\n')
         cleaned_lines = []
+        in_icd_section = False
+
+        # Pattern for ICD-10 codes: letter followed by digits, optional dot and more digits
+        # Examples: J06.9, M54.5, E11.9, Z00.00
+        icd10_pattern = re.compile(r'^[A-Z]\d{2}\.?\d*\b')
+
+        # Pattern for ICD-9 codes: 3-5 digits with optional dot
+        # Examples: 460, 780.79, 250.00
+        icd9_pattern = re.compile(r'^\d{3}\.?\d*\b')
 
         for line in lines:
             line = line.strip()
@@ -196,8 +207,27 @@ class RSVPDialog:
             if not line:
                 continue
 
-            # Remove ICD code lines
-            if line.upper().startswith(('ICD-9', 'ICD-10', 'ICD CODE')):
+            upper_line = line.upper()
+
+            # Detect ICD section headers
+            if any(marker in upper_line for marker in ['ICD-10', 'ICD-9', 'ICD CODE', 'ICD:', 'DIAGNOSIS CODE']):
+                in_icd_section = True
+                continue
+
+            # Exit ICD section when we hit another major section
+            if any(upper_line.startswith(section) for section in
+                   ['SUBJECTIVE', 'OBJECTIVE', 'ASSESSMENT', 'PLAN', 'FOLLOW',
+                    'CLINICAL', 'DIFFERENTIAL', 'MEDICATIONS', 'ALLERGIES']):
+                in_icd_section = False
+
+            # Skip lines in ICD section
+            if in_icd_section:
+                continue
+
+            # Skip lines that look like standalone ICD codes
+            # Remove leading dash/bullet first for pattern matching
+            test_line = line.lstrip('- ').strip()
+            if icd10_pattern.match(test_line) or icd9_pattern.match(test_line):
                 continue
 
             # Remove "Not discussed" entries
