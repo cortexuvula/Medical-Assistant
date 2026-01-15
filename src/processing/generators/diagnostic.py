@@ -340,10 +340,16 @@ class DiagnosticGeneratorMixin:
                 response = agent_manager.execute_agent_task(AgentType.DIAGNOSTIC, task_data)
 
                 if response and response.success:
-                    # Update panel with results
-                    self.app.after(0, lambda: self._update_analysis_panel(
-                        self.app.differential_analysis_text,
-                        response.result
+                    # Store analysis for View Details functionality
+                    self.app._last_diagnostic_analysis = {
+                        'result': response.result,
+                        'metadata': response.metadata or {}
+                    }
+
+                    # Update panel with formatted results
+                    self.app.after(0, lambda: self._update_diagnostic_panel_formatted(
+                        response.result,
+                        response.metadata or {}
                     ))
                 else:
                     error_msg = response.error if response else "Unknown error"
@@ -363,6 +369,33 @@ class DiagnosticGeneratorMixin:
 
         # Submit task for execution
         self.app.io_executor.submit(task)
+
+    def _update_diagnostic_panel_formatted(self, result: str, metadata: dict) -> None:
+        """Update diagnostic panel with formatted content.
+
+        Args:
+            result: The analysis result text
+            metadata: Analysis metadata for summary
+        """
+        try:
+            from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
+
+            widget = self.app.differential_analysis_text
+            formatter = AnalysisPanelFormatter(widget)
+            formatter.format_diagnostic_panel(result, metadata)
+
+            # Enable View Details button
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
+                view_btn = self.app.ui.components.get('differential_view_details_btn')
+                if view_btn:
+                    view_btn.config(state='normal')
+
+            self.app.status_manager.success("Differential diagnosis complete")
+
+        except Exception as e:
+            logging.error(f"Failed to format diagnostic panel: {e}")
+            # Fall back to plain text update
+            self._update_analysis_panel(self.app.differential_analysis_text, str(result))
 
 
 __all__ = ["DiagnosticGeneratorMixin"]

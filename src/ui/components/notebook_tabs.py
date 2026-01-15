@@ -278,6 +278,17 @@ class NotebookTabs:
         )
         med_copy_btn.pack(side=tk.RIGHT, padx=2)
 
+        # View Details button for full medication dialog
+        med_view_btn = ttk.Button(
+            med_header,
+            text="View Details",
+            bootstyle="success-outline",
+            command=self._open_medication_details,
+            state='disabled'  # Initially disabled until analysis is available
+        )
+        med_view_btn.pack(side=tk.RIGHT, padx=2)
+        self.components['medication_view_details_btn'] = med_view_btn
+
         # Medication analysis scrollbar and text widget
         med_content = ttk.Frame(med_tab)
         med_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
@@ -319,6 +330,17 @@ class NotebookTabs:
             command=lambda: self._copy_to_clipboard(differential_analysis_text)
         )
         diff_copy_btn.pack(side=tk.RIGHT, padx=2)
+
+        # View Details button for full diagnostic dialog
+        diff_view_btn = ttk.Button(
+            diff_header,
+            text="View Details",
+            bootstyle="success-outline",
+            command=self._open_diagnostic_details,
+            state='disabled'  # Initially disabled until analysis is available
+        )
+        diff_view_btn.pack(side=tk.RIGHT, padx=2)
+        self.components['differential_view_details_btn'] = diff_view_btn
 
         # Differential analysis scrollbar and text widget
         diff_content = ttk.Frame(diff_tab)
@@ -475,3 +497,87 @@ class NotebookTabs:
             logging.error(f"Error clearing RAG history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear RAG history")
+
+    def _open_medication_details(self) -> None:
+        """Open full medication results dialog with current analysis."""
+        try:
+            if not hasattr(self.parent, '_last_medication_analysis'):
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("No medication analysis available")
+                return
+
+            from ui.dialogs.medication_results_dialog import MedicationResultsDialog
+
+            analysis = self.parent._last_medication_analysis
+            dialog = MedicationResultsDialog(self.parent)
+            dialog.show_results(
+                analysis.get('result', ''),
+                analysis.get('analysis_type', 'comprehensive'),
+                'SOAP Note',
+                analysis.get('metadata', {})
+            )
+        except Exception as e:
+            logging.error(f"Error opening medication details: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error("Failed to open medication details")
+
+    def _open_diagnostic_details(self) -> None:
+        """Open full diagnostic results dialog with current analysis."""
+        try:
+            if not hasattr(self.parent, '_last_diagnostic_analysis'):
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("No diagnostic analysis available")
+                return
+
+            # For now, show the analysis in a simple dialog
+            # TODO: Create a dedicated DiagnosticResultsDialog if needed
+            from tkinter import messagebox
+
+            analysis = self.parent._last_diagnostic_analysis
+            result = analysis.get('result', 'No analysis available')
+
+            # Create a simple dialog to display the result
+            dialog = tk.Toplevel(self.parent)
+            dialog.title("Differential Diagnosis Details")
+            dialog.geometry("600x500")
+            dialog.transient(self.parent)
+
+            # Create text widget with scrollbar
+            frame = ttk.Frame(dialog)
+            frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            scrollbar = ttk.Scrollbar(frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            text_widget = tk.Text(
+                frame,
+                wrap=tk.WORD,
+                yscrollcommand=scrollbar.set,
+                font=("Segoe UI", 10)
+            )
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
+
+            # Insert the analysis text
+            text_widget.insert('1.0', result)
+            text_widget.config(state='disabled')
+
+            # Add close button
+            close_btn = ttk.Button(
+                dialog,
+                text="Close",
+                command=dialog.destroy,
+                bootstyle="secondary"
+            )
+            close_btn.pack(pady=10)
+
+            # Center the dialog
+            dialog.update_idletasks()
+            x = self.parent.winfo_x() + (self.parent.winfo_width() - dialog.winfo_width()) // 2
+            y = self.parent.winfo_y() + (self.parent.winfo_height() - dialog.winfo_height()) // 2
+            dialog.geometry(f"+{x}+{y}")
+
+        except Exception as e:
+            logging.error(f"Error opening diagnostic details: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error("Failed to open diagnostic details")

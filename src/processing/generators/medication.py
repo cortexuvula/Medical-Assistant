@@ -274,10 +274,17 @@ class MedicationGeneratorMixin:
                 response = agent_manager.execute_agent_task(AgentType.MEDICATION, task_data)
 
                 if response and response.success:
-                    # Update panel with results
-                    self.app.after(0, lambda: self._update_analysis_panel(
-                        self.app.medication_analysis_text,
-                        response.result
+                    # Store analysis for View Details functionality
+                    self.app._last_medication_analysis = {
+                        'result': response.result,
+                        'analysis_type': 'comprehensive',
+                        'metadata': response.metadata or {}
+                    }
+
+                    # Update panel with formatted results
+                    self.app.after(0, lambda: self._update_medication_panel_formatted(
+                        response.result,
+                        response.metadata or {}
                     ))
                 else:
                     error_msg = response.error if response else "Unknown error"
@@ -297,6 +304,33 @@ class MedicationGeneratorMixin:
 
         # Submit task for execution
         self.app.io_executor.submit(task)
+
+    def _update_medication_panel_formatted(self, result: str, metadata: dict) -> None:
+        """Update medication panel with formatted content.
+
+        Args:
+            result: The analysis result text
+            metadata: Analysis metadata for summary
+        """
+        try:
+            from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
+
+            widget = self.app.medication_analysis_text
+            formatter = AnalysisPanelFormatter(widget)
+            formatter.format_medication_panel(result, metadata)
+
+            # Enable View Details button
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
+                view_btn = self.app.ui.components.get('medication_view_details_btn')
+                if view_btn:
+                    view_btn.config(state='normal')
+
+            self.app.status_manager.success("Medication analysis complete")
+
+        except Exception as e:
+            logging.error(f"Failed to format medication panel: {e}")
+            # Fall back to plain text update
+            self._update_analysis_panel(self.app.medication_analysis_text, str(result))
 
 
 __all__ = ["MedicationGeneratorMixin"]
