@@ -159,6 +159,64 @@ The bidirectional translation assistant enables real-time medical translation fo
 - **Storage**: Responses saved in `settings.json` under `translation_canned_responses`
 - **Default Responses**: Pre-populated common medical phrases
 
+## RSVP Reader Implementation Summary
+
+The RSVP (Rapid Serial Visual Presentation) reader provides speed reading functionality for SOAP notes:
+
+### Architecture
+- **RSVPDialog**: Main dialog class in `src/ui/dialogs/rsvp_dialog.py`
+- **ORP Highlighting**: Optimal Recognition Point algorithm for improved reading comprehension
+- **Settings Persistence**: All preferences saved to `settings.json` under "rsvp" key
+- **Integration**: Accessible via "RSVP Reader" button in SOAP tab context menu
+
+### Key Features
+- **Persistent WPM Setting**: Reading speed saved between sessions (50-2000 WPM)
+- **Fullscreen Mode (F11)**: Distraction-free reading experience
+- **Section Navigation**: Jump directly to SOAP sections (Subjective, Objective, Assessment, Plan)
+- **Chunk Mode**: Display 1-3 words at a time for faster reading
+- **Adjustable Font Size**: Slider control for font size (24-96pt)
+- **Auto-Start Option**: Automatically begin playback when dialog opens
+- **Light/Dark Theme Toggle**: RSVP-specific theme independent of main app
+- **Reading Statistics**: Shows elapsed time, average WPM, and word count on completion
+- **Sentence Context Display**: Shows current sentence dimmed in background (optional)
+- **Audio Cue on Section Changes**: Plays sound when entering new section (optional)
+
+### Keyboard Shortcuts
+| Key | Action |
+|-----|--------|
+| Space | Play/Pause |
+| Up/Down | Speed +/- |
+| Left/Right | Previous/Next word |
+| Home/End | Start/End of text |
+| F11 | Toggle fullscreen |
+| Escape | Exit fullscreen first, then close |
+| T | Toggle theme |
+| 1/2/3 | Set chunk size |
+
+### Settings Keys
+```python
+"rsvp": {
+    "wpm": 300,           # Words per minute (50-2000)
+    "font_size": 48,      # Font size for display (24-96)
+    "chunk_size": 1,      # Words to display at once (1-3)
+    "dark_theme": True,   # Dark/light theme
+    "audio_cue": False,   # Sound on section changes
+    "show_context": False # Show sentence context
+}
+```
+
+### Text Preprocessing
+- Removes ICD codes (ICD-9, ICD-10 lines)
+- Removes "Not discussed" entries
+- Strips leading bullet dashes
+- Cleans excess whitespace
+
+### Smart Timing
+- Section headers: 3x delay
+- End of sentence (.!?): 2.5x delay
+- Clause punctuation (,;:): 1.5x delay
+- Regular words: 1x delay
+
 ## TTS (Text-to-Speech) Integration
 
 ### ElevenLabs TTS Provider

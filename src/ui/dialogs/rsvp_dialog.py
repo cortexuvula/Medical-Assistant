@@ -15,6 +15,20 @@ Features:
 - Reading statistics
 - Sentence context display
 - Audio cue on section changes
+
+Code Structure:
+- Lines 30-60: Class constants (colors, limits, defaults)
+- Lines 60-110: __init__ and setup with validated settings loading
+- Lines 110-160: Theme colors and settings validation methods
+- Lines 160-220: Text preprocessing (ICD removal, bullet cleanup)
+- Lines 220-260: Text parsing with punctuation and section detection
+- Lines 260-350: Dialog and widget creation
+- Lines 350-560: Control panel widgets (play, speed, font, chunk, nav, settings)
+- Lines 560-620: Progress section
+- Lines 620-830: Word display methods (single word ORP, chunk mode ORP)
+- Lines 830-920: Playback control and scheduling
+- Lines 920-1050: Navigation and speed control
+- Lines 1050-1180: Theme/settings toggles, help dialog, save/close
 """
 
 import tkinter as tk
@@ -75,15 +89,15 @@ class RSVPDialog:
         self.is_fullscreen = False
         self.timer_id: Optional[str] = None
 
-        # Load settings
+        # Load settings with validation
         rsvp_settings = SETTINGS.get("rsvp", {})
-        self.wpm = rsvp_settings.get("wpm", self.DEFAULT_WPM)
-        self.font_size = rsvp_settings.get("font_size", self.DEFAULT_FONT_SIZE)
-        self.chunk_size = rsvp_settings.get("chunk_size", 1)
-        self.is_dark_theme = rsvp_settings.get("dark_theme", True)
-        self.audio_cue_enabled = rsvp_settings.get("audio_cue", False)
-        self.show_context = rsvp_settings.get("show_context", False)
-        self.auto_start = rsvp_settings.get("auto_start", False)
+        self.wpm = self._validate_wpm(rsvp_settings.get("wpm", self.DEFAULT_WPM))
+        self.font_size = self._validate_font_size(rsvp_settings.get("font_size", self.DEFAULT_FONT_SIZE))
+        self.chunk_size = self._validate_chunk_size(rsvp_settings.get("chunk_size", 1))
+        self.is_dark_theme = self._validate_bool(rsvp_settings.get("dark_theme", True), True)
+        self.audio_cue_enabled = self._validate_bool(rsvp_settings.get("audio_cue", False), False)
+        self.show_context = self._validate_bool(rsvp_settings.get("show_context", False), False)
+        self.auto_start = self._validate_bool(rsvp_settings.get("auto_start", False), False)
 
         # Statistics tracking
         self.start_time: Optional[float] = None
@@ -124,6 +138,38 @@ class RSVPDialog:
             self.CONTROL_BG = self.LIGHT_CONTROL_BG
             self.PROGRESS_BG = self.LIGHT_PROGRESS_BG
             self.CONTEXT_COLOR = self.LIGHT_CONTEXT_TEXT
+
+    def _validate_wpm(self, value) -> int:
+        """Validate WPM setting with bounds checking."""
+        try:
+            wpm = int(value)
+            return max(self.MIN_WPM, min(self.MAX_WPM, wpm))
+        except (TypeError, ValueError):
+            return self.DEFAULT_WPM
+
+    def _validate_font_size(self, value) -> int:
+        """Validate font size setting with bounds checking."""
+        try:
+            size = int(value)
+            return max(self.MIN_FONT_SIZE, min(self.MAX_FONT_SIZE, size))
+        except (TypeError, ValueError):
+            return self.DEFAULT_FONT_SIZE
+
+    def _validate_chunk_size(self, value) -> int:
+        """Validate chunk size setting (1, 2, or 3)."""
+        try:
+            chunk = int(value)
+            if chunk in (1, 2, 3):
+                return chunk
+            return 1
+        except (TypeError, ValueError):
+            return 1
+
+    def _validate_bool(self, value, default: bool) -> bool:
+        """Validate boolean setting."""
+        if isinstance(value, bool):
+            return value
+        return default
 
     def _preprocess_text(self, text: str) -> str:
         """Clean SOAP note text for better RSVP readability.
@@ -537,6 +583,16 @@ class RSVPDialog:
         )
         self.audio_btn.pack(side=tk.LEFT, padx=2)
 
+        # Help button
+        self.help_btn = ttk.Button(
+            settings_frame,
+            text="?",
+            command=self._show_shortcuts_help,
+            width=2,
+            bootstyle="secondary"
+        )
+        self.help_btn.pack(side=tk.LEFT, padx=2)
+
     def _create_progress_section(self) -> None:
         """Create the progress bar and info section."""
         progress_frame = tk.Frame(self.main_frame, bg=self.PROGRESS_BG, height=60)
@@ -701,9 +757,7 @@ class RSVPDialog:
             )
 
     def _display_chunk(self, words: List[str], canvas_width: int, canvas_height: int) -> None:
-        """Display multiple words as a chunk."""
-        chunk_text = '  '.join(words)
-
+        """Display multiple words as a chunk with ORP highlighting on middle word."""
         # Slightly smaller font for multi-word display
         font_size = max(self.MIN_FONT_SIZE, self.font_size - 8)
         font = tkfont.Font(family="Helvetica", size=font_size, weight="bold")
@@ -711,15 +765,110 @@ class RSVPDialog:
         center_x = canvas_width // 2
         center_y = canvas_height // 2
 
-        # Draw centered text
-        self.canvas.create_text(
-            center_x,
-            center_y,
-            text=chunk_text,
-            font=font,
-            fill=self.TEXT_COLOR,
-            anchor=tk.CENTER
+        # Calculate which word is the "focus" word (middle word)
+        focus_idx = len(words) // 2
+
+        # Calculate ORP for the focus word
+        focus_word = words[focus_idx]
+        orp_pos = self._calculate_orp(focus_word)
+
+        # Build the full chunk with spacing
+        spacing = "  "
+
+        # Calculate positions for each word
+        word_widths = [font.measure(w) for w in words]
+        spacing_width = font.measure(spacing)
+        total_width = sum(word_widths) + spacing_width * (len(words) - 1)
+
+        # Calculate where the ORP character of the focus word should be centered
+        # First, find the start position of the focus word
+        focus_word_start = sum(word_widths[:focus_idx]) + spacing_width * focus_idx
+
+        # Calculate position of ORP character within focus word
+        pre_orp = focus_word[:orp_pos]
+        orp_char = focus_word[orp_pos] if orp_pos < len(focus_word) else ''
+        orp_char_width = font.measure(orp_char)
+        pre_orp_width = font.measure(pre_orp)
+
+        # Position of ORP character center within total chunk
+        orp_center_in_chunk = focus_word_start + pre_orp_width + orp_char_width // 2
+
+        # Calculate starting x position so ORP character is centered
+        start_x = center_x - orp_center_in_chunk
+
+        # Draw vertical ORP indicator line
+        self.canvas.create_line(
+            center_x, 10, center_x, canvas_height - 10,
+            fill=self.ORP_COLOR, width=2, dash=(4, 4)
         )
+
+        # Draw small triangle marker at top
+        self.canvas.create_polygon(
+            center_x - 8, 5,
+            center_x + 8, 5,
+            center_x, 15,
+            fill=self.ORP_COLOR
+        )
+
+        # Draw each word
+        current_x = start_x
+        for i, word in enumerate(words):
+            if i == focus_idx:
+                # Draw focus word with ORP highlighting
+                pre = word[:orp_pos]
+                orp = word[orp_pos] if orp_pos < len(word) else ''
+                post = word[orp_pos + 1:] if orp_pos + 1 < len(word) else ''
+
+                # Draw pre-ORP
+                if pre:
+                    self.canvas.create_text(
+                        current_x,
+                        center_y,
+                        text=pre,
+                        font=font,
+                        fill=self.TEXT_COLOR,
+                        anchor=tk.W
+                    )
+                    current_x += font.measure(pre)
+
+                # Draw ORP character (highlighted)
+                if orp:
+                    self.canvas.create_text(
+                        current_x,
+                        center_y,
+                        text=orp,
+                        font=font,
+                        fill=self.ORP_COLOR,
+                        anchor=tk.W
+                    )
+                    current_x += font.measure(orp)
+
+                # Draw post-ORP
+                if post:
+                    self.canvas.create_text(
+                        current_x,
+                        center_y,
+                        text=post,
+                        font=font,
+                        fill=self.TEXT_COLOR,
+                        anchor=tk.W
+                    )
+                    current_x += font.measure(post)
+            else:
+                # Draw regular word
+                self.canvas.create_text(
+                    current_x,
+                    center_y,
+                    text=word,
+                    font=font,
+                    fill=self.TEXT_COLOR,
+                    anchor=tk.W
+                )
+                current_x += word_widths[i]
+
+            # Add spacing after word (except last)
+            if i < len(words) - 1:
+                current_x += spacing_width
 
     def _update_context_display(self) -> None:
         """Update the sentence context display."""
@@ -1034,6 +1183,75 @@ class RSVPDialog:
             bootstyle="info" if self.audio_cue_enabled else "secondary"
         )
         self._save_settings()
+
+    def _show_shortcuts_help(self) -> None:
+        """Show keyboard shortcuts help dialog."""
+        help_text = """RSVP Reader Keyboard Shortcuts
+
+PLAYBACK
+  Space          Play / Pause
+  Up / Down      Increase / Decrease speed
+  Left / Right   Previous / Next word
+  Home / End     Jump to start / end
+
+DISPLAY
+  F11            Toggle fullscreen
+  T              Toggle light/dark theme
+  1 / 2 / 3      Set chunk size (words at once)
+
+NAVIGATION
+  Section buttons jump to SOAP sections
+  Escape exits fullscreen (or closes dialog)
+
+SETTINGS BUTTONS
+  Light/Dark     Toggle theme
+  F11            Fullscreen mode
+  Ctx            Show sentence context
+  Snd            Audio cue on sections"""
+
+        # Create help popup
+        help_popup = tk.Toplevel(self.dialog)
+        help_popup.title("Keyboard Shortcuts")
+        help_popup.geometry("380x400")
+        help_popup.resizable(False, False)
+        help_popup.transient(self.dialog)
+
+        # Center on parent
+        help_popup.update_idletasks()
+        x = self.dialog.winfo_x() + (self.dialog.winfo_width() - 380) // 2
+        y = self.dialog.winfo_y() + (self.dialog.winfo_height() - 400) // 2
+        help_popup.geometry(f"+{x}+{y}")
+
+        # Use current theme colors
+        help_popup.configure(bg=self.BG_COLOR)
+
+        # Help text
+        text_widget = tk.Text(
+            help_popup,
+            wrap=tk.WORD,
+            bg=self.BG_COLOR,
+            fg=self.TEXT_COLOR,
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            padx=15,
+            pady=15,
+            highlightthickness=0
+        )
+        text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
+        text_widget.insert("1.0", help_text)
+        text_widget.config(state=tk.DISABLED)
+
+        # Close button
+        ttk.Button(
+            help_popup,
+            text="Close",
+            command=help_popup.destroy,
+            bootstyle="secondary"
+        ).pack(pady=(5, 15))
+
+        # Close on Escape
+        help_popup.bind('<Escape>', lambda e: help_popup.destroy())
+        help_popup.focus_set()
 
     def _save_settings(self) -> None:
         """Save current RSVP settings."""
