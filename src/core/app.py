@@ -1085,27 +1085,6 @@ class MedicalDictationApp(
     def clear_advanced_analysis_text(self) -> None:
         """Clear analysis text. Delegates to PeriodicAnalysisController."""
         self.periodic_analysis_controller.clear_advanced_analysis_text()
-    
-        """Save voice transcript to database.
-        
-        Args:
-            transcript: Conversation transcript
-        """
-        try:
-            # Create a recording entry for the voice conversation
-            filename = f"voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            
-            recording_id = self.db.add_recording(
-                filename=filename,
-                transcript=transcript,
-                processing_status='completed',
-                patient_name="Voice Conversation"
-            )
-            
-            logging.info(f"Saved voice transcript as recording {recording_id}")
-            
-        except Exception as e:
-            logging.error(f"Failed to save voice transcript: {e}")
 
 if __name__ == "__main__":
     main()

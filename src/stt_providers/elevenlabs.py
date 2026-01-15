@@ -17,6 +17,10 @@ from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
 from utils.http_client_manager import get_http_client_manager
 
+# API endpoint constants
+ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+
+
 class ElevenLabsProvider(BaseSTTProvider):
     """Implementation of the ElevenLabs STT provider."""
 
@@ -153,7 +157,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             segment.export(audio_buffer, format="wav")
             audio_buffer.seek(0)
 
-            url = "https://api.elevenlabs.io/v1/speech-to-text"
+            url = ELEVENLABS_STT_URL
             headers = {
                 'xi-api-key': self.api_key
             }
@@ -224,14 +228,14 @@ class ElevenLabsProvider(BaseSTTProvider):
                 data['keyterms'] = keyterms
 
             # Print API call details to terminal
-            logging.debug("\n===== ELEVENLABS API CALL =====")
-            logging.debug(f"URL: {url}")
-            logging.debug(f"Headers: {{'xi-api-key': '****API_KEY_HIDDEN****'}}")
-            logging.debug(f"Data parameters: {data}")
-            logging.debug(f"File: audio.wav (BytesIO buffer)")
-            logging.debug(f"Audio file size: {file_size_kb:.2f} KB")
-            logging.debug(f"Timeout set to: {timeout_seconds} seconds")
-            logging.debug("===============================\n")
+            self.logger.debug("\n===== ELEVENLABS API CALL =====")
+            self.logger.debug(f"URL: {url}")
+            self.logger.debug(f"Headers: {{'xi-api-key': '****API_KEY_HIDDEN****'}}")
+            self.logger.debug(f"Data parameters: {data}")
+            self.logger.debug(f"File: audio.wav (BytesIO buffer)")
+            self.logger.debug(f"Audio file size: {file_size_kb:.2f} KB")
+            self.logger.debug(f"Timeout set to: {timeout_seconds} seconds")
+            self.logger.debug("===============================\n")
 
             self.logger.info(f"ElevenLabs request data: {data}")
 
@@ -258,39 +262,39 @@ class ElevenLabsProvider(BaseSTTProvider):
                 result = response.json()
                 
                 # Print successful response info to terminal
-                logging.debug("\n===== ELEVENLABS API RESPONSE =====")
-                logging.debug(f"Status: {response.status_code} OK")
-                logging.debug(f"Response size: {len(response.text)} bytes")
+                self.logger.debug("\n===== ELEVENLABS API RESPONSE =====")
+                self.logger.debug(f"Status: {response.status_code} OK")
+                self.logger.debug(f"Response size: {len(response.text)} bytes")
                 
                 if 'words' in result:
                     word_count = len(result['words'])
-                    logging.debug(f"Words transcribed: {word_count}")
+                    self.logger.debug(f"Words transcribed: {word_count}")
                 if 'text' in result:
                     text_preview = result['text'][:100] + "..." if len(result['text']) > 100 else result['text']
-                    logging.debug(f"Text preview: {text_preview}")
+                    self.logger.debug(f"Text preview: {text_preview}")
 
                 # Handle entity detection results (scribe_v2 feature)
                 detected_entities = result.get('entities', [])
                 if detected_entities:
-                    logging.debug(f"\n=== Entity Detection Results ===")
-                    logging.debug(f"Detected {len(detected_entities)} entities:")
+                    self.logger.debug(f"\n=== Entity Detection Results ===")
+                    self.logger.debug(f"Detected {len(detected_entities)} entities:")
                     for entity in detected_entities:
                         entity_type = entity.get('entity_type', 'unknown')
                         entity_text = entity.get('text', '')
                         self.logger.info(f"Detected {entity_type}: '{entity_text}'")
-                        logging.debug(f"  - {entity_type}: '{entity_text}' (chars {entity.get('start_char')}-{entity.get('end_char')})")
+                        self.logger.debug(f"  - {entity_type}: '{entity_text}' (chars {entity.get('start_char')}-{entity.get('end_char')})")
 
                 # Print response structure for debugging
-                logging.debug("\n=== Response Structure ===")
+                self.logger.debug("\n=== Response Structure ===")
                 for key in result:
-                    logging.debug(f"Key: {key}, Type: {type(result[key])}")
+                    self.logger.debug(f"Key: {key}, Type: {type(result[key])}")
                     if key == 'words' and result['words']:
-                        logging.debug(f"Sample word entry: {result['words'][0]}")
-                        logging.debug(f"Available fields in word entry: {list(result['words'][0].keys())}")
+                        self.logger.debug(f"Sample word entry: {result['words'][0]}")
+                        self.logger.debug(f"Available fields in word entry: {list(result['words'][0].keys())}")
                 
                 # More detailed debug info for speaker diarization
-                logging.debug("\n=== Diarization Debug ===")
-                logging.debug(f"Diarization requested: {diarize}")
+                self.logger.debug("\n=== Diarization Debug ===")
+                self.logger.debug(f"Diarization requested: {diarize}")
                 
                 # Check for diarization data in different possible locations
                 has_speaker_info = False
@@ -300,13 +304,13 @@ class ElevenLabsProvider(BaseSTTProvider):
                 if 'speakers' in result:
                     has_speaker_info = True
                     diarization_location = "root.speakers"
-                    logging.debug(f"Found speakers data at root level: {result['speakers']}")
+                    self.logger.debug(f"Found speakers data at root level: {result['speakers']}")
                 
                 # Check if there's a separate 'diarization' field
                 if 'diarization' in result:
                     has_speaker_info = True
                     diarization_location = "root.diarization"
-                    logging.debug(f"Found diarization data: {result['diarization']}")
+                    self.logger.debug(f"Found diarization data: {result['diarization']}")
                 
                 # Check word-level speaker information
                 if 'words' in result and result['words']:
@@ -317,16 +321,16 @@ class ElevenLabsProvider(BaseSTTProvider):
                             has_speaker_info = True
                             diarization_location = f"words.{key}"
                     
-                    logging.debug(f"Word-level fields: {word_fields}")
+                    self.logger.debug(f"Word-level fields: {word_fields}")
                     
                     # Print first 3 words with full details
-                    logging.debug("\nFirst 3 word entries (full details):")
+                    self.logger.debug("\nFirst 3 word entries (full details):")
                     for i, word in enumerate(result['words'][:3]):
-                        logging.debug(f"Word {i+1}: {word}")
+                        self.logger.debug(f"Word {i+1}: {word}")
                 
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
-                    logging.debug(f"\nFound speaker information at: {diarization_location}")
+                    self.logger.debug(f"\nFound speaker information at: {diarization_location}")
                     
                     # Method 1: If we have word-level speaker info
                     if diarization_location and diarization_location.startswith("words."):
@@ -345,29 +349,29 @@ class ElevenLabsProvider(BaseSTTProvider):
                     else:
                         transcript = self._format_diarized_transcript(result['words'])
                     
-                    logging.debug(f"\nGenerated diarized transcript with speaker labels")
+                    self.logger.debug(f"\nGenerated diarized transcript with speaker labels")
                 else:
                     # Use plain text if not diarized
                     transcript = result.get("text", "")
-                    logging.debug(f"\nUsing plain text transcript (no speaker information found)")
+                    self.logger.debug(f"\nUsing plain text transcript (no speaker information found)")
                     
             else:
                 error_msg = f"ElevenLabs API error: {response.status_code} - {response.text}"
                 self.logger.error(error_msg)
-                logging.debug(f"\n===== ELEVENLABS ERROR =====")
-                logging.debug(f"Status: {response.status_code}")
-                logging.debug(f"Response: {response.text}")
-                logging.debug("============================\n")
+                self.logger.debug(f"\n===== ELEVENLABS ERROR =====")
+                self.logger.debug(f"Status: {response.status_code}")
+                self.logger.debug(f"Response: {response.text}")
+                self.logger.debug("============================\n")
                 
         except Exception as e:
             error_msg = f"Error with ElevenLabs transcription: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
 
             # Print exception details to terminal
-            logging.debug("\n===== ELEVENLABS EXCEPTION =====")
-            logging.debug(f"Error: {str(e)}")
-            logging.debug(f"Traceback: {traceback.format_exc()}")
-            logging.debug("================================\n")
+            self.logger.debug("\n===== ELEVENLABS EXCEPTION =====")
+            self.logger.debug(f"Error: {str(e)}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
+            self.logger.debug("================================\n")
 
         # Check for possible truncation
         if transcript and audio_details:
@@ -418,7 +422,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             self.logger.info(f"Created temp file for fallback: {temp_path} ({os.path.getsize(temp_path)} bytes)")
 
             # Read file and send to API
-            url = "https://api.elevenlabs.io/v1/speech-to-text"
+            url = ELEVENLABS_STT_URL
             headers = {'xi-api-key': self.api_key}
 
             elevenlabs_settings = SETTINGS.get("elevenlabs", {})
@@ -477,10 +481,10 @@ class ElevenLabsProvider(BaseSTTProvider):
         current_text = []
         
         # Debug the first few words to understand structure
-        logging.debug("\nFormatting transcript with the following word data structure:")
+        self.logger.debug("\nFormatting transcript with the following word data structure:")
         sample_words = words[:3] if len(words) > 3 else words
         for i, word in enumerate(sample_words):
-            logging.debug(f"Sample word {i}: {word}")
+            self.logger.debug(f"Sample word {i}: {word}")
         
         for word_data in words:
             # Check various possible field names for speaker information
@@ -503,7 +507,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this word or use default
             if speaker is None:
                 # For debugging, print the problematic word data
-                logging.debug(f"Warning: No speaker info found in word data: {word_data}")
+                self.logger.debug(f"Warning: No speaker info found in word data: {word_data}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -562,7 +566,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this word or use default
             if speaker is None:
                 # For debugging, print the problematic word data
-                logging.debug(f"Warning: No speaker info found in word data: {word_data}")
+                self.logger.debug(f"Warning: No speaker info found in word data: {word_data}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -624,7 +628,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this segment or use default
             if speaker is None:
                 # For debugging, print the problematic segment data
-                logging.debug(f"Warning: No speaker info found in segment data: {segment}")
+                self.logger.debug(f"Warning: No speaker info found in segment data: {segment}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
             
@@ -682,7 +686,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # If we can't find any speaker info, skip this speaker or use default
             if speaker_id is None:
                 # For debugging, print the problematic speaker data
-                logging.debug(f"Warning: No speaker info found in speaker data: {speaker}")
+                self.logger.debug(f"Warning: No speaker info found in speaker data: {speaker}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker_id = current_speaker if current_speaker is not None else "Unknown"
             

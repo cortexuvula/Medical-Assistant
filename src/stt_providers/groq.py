@@ -19,6 +19,10 @@ from utils.security_decorators import secure_api_call
 from utils.security import get_security_manager
 from settings.settings import SETTINGS
 
+# API endpoint constants
+GROQ_API_BASE_URL = "https://api.groq.com/openai/v1"
+
+
 class GroqProvider(BaseSTTProvider):
     """Implementation of the GROQ STT provider."""
 
@@ -136,7 +140,7 @@ class GroqProvider(BaseSTTProvider):
 
             # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
             http_client = get_http_client_manager().get_httpx_client("groq", timeout_seconds)
-            client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1", http_client=http_client)
+            client = OpenAI(api_key=api_key, base_url=GROQ_API_BASE_URL, http_client=http_client)
 
             # Get Groq settings
             groq_settings = SETTINGS.get("groq", {})

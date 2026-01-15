@@ -94,11 +94,11 @@ class WhisperProvider(BaseSTTProvider):
             file_size_kb = os.path.getsize(temp_file) / 1024
             
             # Print API call details to terminal
-            logging.debug("\n===== LOCAL WHISPER TRANSCRIPTION =====")
-            logging.debug(f"File: {os.path.basename(temp_file)} (audio/wav)")
-            logging.debug(f"Audio file size: {file_size_kb:.2f} KB")
-            logging.debug(f"Language: {self.language}")
-            logging.debug("======================================\n")
+            self.logger.debug("\n===== LOCAL WHISPER TRANSCRIPTION =====")
+            self.logger.debug(f"File: {os.path.basename(temp_file)} (audio/wav)")
+            self.logger.debug(f"Audio file size: {file_size_kb:.2f} KB")
+            self.logger.debug(f"Language: {self.language}")
+            self.logger.debug("======================================\n")
             
             # Load model - use turbo model (default since 2025, better accuracy than small)
             model = whisper.load_model("turbo")
@@ -115,11 +115,11 @@ class WhisperProvider(BaseSTTProvider):
                 transcript = result["text"].strip()
                 
                 # Print successful response info to terminal
-                logging.debug("\n===== WHISPER RESULT =====")
+                self.logger.debug("\n===== WHISPER RESULT =====")
                 if transcript:
                     text_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
-                    logging.debug(f"Text preview: {text_preview}")
-                logging.debug("========================\n")
+                    self.logger.debug(f"Text preview: {text_preview}")
+                self.logger.debug("========================\n")
             else:
                 self.logger.error("Unexpected response format from Whisper")
             
@@ -128,11 +128,11 @@ class WhisperProvider(BaseSTTProvider):
             self.logger.error(error_msg, exc_info=True)
             
             # Print exception details to terminal
-            logging.debug("\n===== WHISPER EXCEPTION =====")
-            logging.debug(f"Error: {str(e)}")
+            self.logger.debug("\n===== WHISPER EXCEPTION =====")
+            self.logger.debug(f"Error: {str(e)}")
             import traceback
-            logging.debug(f"Traceback: {traceback.format_exc()}")
-            logging.debug("============================\n")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
+            self.logger.debug("============================\n")
             
         finally:
             # Try to clean up temp file

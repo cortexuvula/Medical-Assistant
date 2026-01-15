@@ -117,16 +117,16 @@ class DeepgramProvider(BaseSTTProvider):
             )
             
             # Print API call details to terminal
-            logging.debug("\n===== DEEPGRAM API CALL =====")
-            logging.debug(f"Model: {options.model}")
-            logging.debug(f"Language: {options.language}")
-            logging.debug(f"Smart Format: {options.smart_format}")
-            logging.debug(f"Diarize: {options.diarize}")
-            logging.debug(f"Profanity Filter: {options.profanity_filter}")
-            logging.debug(f"Redact: {options.redact}")
-            logging.debug(f"Alternatives: {options.alternatives}")
-            logging.debug(f"Buffer size: {buf.getbuffer().nbytes / 1024:.2f} KB")
-            logging.debug("==============================\n")
+            self.logger.debug("\n===== DEEPGRAM API CALL =====")
+            self.logger.debug(f"Model: {options.model}")
+            self.logger.debug(f"Language: {options.language}")
+            self.logger.debug(f"Smart Format: {options.smart_format}")
+            self.logger.debug(f"Diarize: {options.diarize}")
+            self.logger.debug(f"Profanity Filter: {options.profanity_filter}")
+            self.logger.debug(f"Redact: {options.redact}")
+            self.logger.debug(f"Alternatives: {options.alternatives}")
+            self.logger.debug(f"Buffer size: {buf.getbuffer().nbytes / 1024:.2f} KB")
+            self.logger.debug("==============================\n")
             
             # Set higher timeout for large files
             config = get_config()
@@ -139,24 +139,24 @@ class DeepgramProvider(BaseSTTProvider):
                 response = self._make_api_call(buf, options, timeout_seconds)
             except (APIError, ServiceUnavailableError) as e:
                 self.logger.error(f"API call failed: {str(e)}")
-                logging.debug(f"\n===== DEEPGRAM ERROR =====")
-                logging.debug(f"Error: {str(e)}")
-                logging.debug("===========================\n")
+                self.logger.debug(f"\n===== DEEPGRAM ERROR =====")
+                self.logger.debug(f"Error: {str(e)}")
+                self.logger.debug("===========================\n")
                 raise TranscriptionError(f"Failed to transcribe audio: {str(e)}")
             
             # Process response
             response_json = json.loads(response.to_json(indent=4))
             
             # Print successful response info to terminal
-            logging.debug("\n===== DEEPGRAM API RESPONSE =====")
-            logging.debug(f"Request ID: {response_json.get('request_id', 'unknown')}")
+            self.logger.debug("\n===== DEEPGRAM API RESPONSE =====")
+            self.logger.debug(f"Request ID: {response_json.get('request_id', 'unknown')}")
             
             # Extract metadata
             if "metadata" in response_json:
                 metadata = response_json["metadata"]
-                logging.debug(f"Duration: {metadata.get('duration', 'unknown')} seconds")
-                logging.debug(f"Channels: {metadata.get('channels', 'unknown')}")
-                logging.debug(f"Sample rate: {metadata.get('sample_rate', 'unknown')} Hz")
+                self.logger.debug(f"Duration: {metadata.get('duration', 'unknown')} seconds")
+                self.logger.debug(f"Channels: {metadata.get('channels', 'unknown')}")
+                self.logger.debug(f"Sample rate: {metadata.get('sample_rate', 'unknown')} Hz")
             
             # Extract transcript for preview
             transcript_preview = ""
@@ -165,9 +165,9 @@ class DeepgramProvider(BaseSTTProvider):
                 if alternatives and "transcript" in alternatives[0]:
                     transcript = alternatives[0]["transcript"]
                     transcript_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
-                    logging.debug(f"Transcript preview: {transcript_preview}")
+                    self.logger.debug(f"Transcript preview: {transcript_preview}")
             
-            logging.debug("=================================\n")
+            self.logger.debug("=================================\n")
             
             # Check if diarization is enabled
             is_diarized = deepgram_settings.get("diarize", False)
