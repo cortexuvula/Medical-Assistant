@@ -64,6 +64,17 @@ DANGEROUS_PATTERNS = [
     re.compile(r';\s*(rm|del|format|shutdown|reboot)', re.IGNORECASE),
     re.compile(r'\$\(.*?\)'),  # Command substitution
     re.compile(r'`.*?`'),  # Backtick command execution
+    # Prompt injection attempts - patterns designed to manipulate AI behavior
+    re.compile(r'ignore\s+(all\s+)?(previous|prior|above)\s+instructions?', re.IGNORECASE),
+    re.compile(r'disregard\s+(all\s+)?(previous|prior|above)', re.IGNORECASE),
+    re.compile(r'forget\s+(everything|all|your)\s+(you|instructions?|context)', re.IGNORECASE),
+    re.compile(r'you\s+are\s+now\s+(a|an|the)', re.IGNORECASE),
+    re.compile(r'new\s+(system\s+)?instructions?:', re.IGNORECASE),
+    re.compile(r'override\s*(:|mode|instructions?)', re.IGNORECASE),
+    re.compile(r'pretend\s+(to\s+be|you\s+are)', re.IGNORECASE),
+    re.compile(r'act\s+as\s+(if|a|an|the)', re.IGNORECASE),
+    re.compile(r'jailbreak', re.IGNORECASE),
+    re.compile(r'bypass\s+(safety|security|filter)', re.IGNORECASE),
 ]
 
 def validate_api_key(provider: str, api_key: str) -> Tuple[bool, Optional[str]]:

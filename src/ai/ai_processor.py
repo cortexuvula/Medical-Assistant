@@ -27,6 +27,7 @@ from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
+from utils.validation import sanitize_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,15 @@ class AIProcessor:
         if not text.strip():
             return OperationResult.failure("No text to refine", error_code="EMPTY_INPUT")
 
+        # Sanitize text to prevent prompt injection
+        sanitized_text = sanitize_prompt(text)
+
         # Note: additional_context parameter is not currently used by
         # adjust_text_with_openai() which reads prompt from SETTINGS internally.
         # TODO: Refactor adjust_text_with_openai() to accept custom prompt parameter
 
         # Process text (reads prompt and temperature from SETTINGS internally)
-        refined_text = adjust_text_with_openai(text)
+        refined_text = adjust_text_with_openai(sanitized_text)
 
         logger.info("Text refined successfully")
         return OperationResult.success({"text": refined_text})
@@ -86,12 +90,15 @@ class AIProcessor:
         if not text.strip():
             return OperationResult.failure("No text to improve", error_code="EMPTY_INPUT")
 
+        # Sanitize text to prevent prompt injection
+        sanitized_text = sanitize_prompt(text)
+
         # Note: additional_context parameter is not currently used by
         # improve_text_with_openai() which reads prompt from SETTINGS internally.
         # TODO: Refactor improve_text_with_openai() to accept custom prompt parameter
 
         # Process text (reads prompt and temperature from SETTINGS internally)
-        improved_text = improve_text_with_openai(text)
+        improved_text = improve_text_with_openai(sanitized_text)
 
         logger.info("Text improved successfully")
         return OperationResult.success({"text": improved_text})
@@ -111,15 +118,19 @@ class AIProcessor:
         if not transcript.strip():
             return OperationResult.failure("No transcript provided", error_code="EMPTY_INPUT")
 
+        # Sanitize transcript and context to prevent prompt injection
+        sanitized_transcript = sanitize_prompt(transcript)
+        sanitized_context = sanitize_prompt(context) if context else ""
+
         # Get SOAP prompt from settings or use default
         soap_settings = SETTINGS.get("soap_note", {})
         soap_prompt = soap_settings.get("prompt", SOAP_PROMPT_TEMPLATE)
 
         # Include context if provided
-        if context:
-            full_transcript = f"Previous medical information:\n{context}\n\nCurrent transcript:\n{transcript}"
+        if sanitized_context:
+            full_transcript = f"Previous medical information:\n{sanitized_context}\n\nCurrent transcript:\n{sanitized_transcript}"
         else:
-            full_transcript = transcript
+            full_transcript = sanitized_transcript
 
         # Get temperature setting
         temperature = SETTINGS.get("soap_temperature", 0.2)
@@ -165,6 +176,9 @@ class AIProcessor:
         if not text.strip():
             return OperationResult.failure("No text provided", error_code="EMPTY_INPUT")
 
+        # Sanitize text to prevent prompt injection
+        sanitized_text = sanitize_prompt(text)
+
         # Get referral prompt from settings or use default
         referral_settings = SETTINGS.get("referral", {})
         referral_prompt = referral_settings.get(
@@ -173,7 +187,7 @@ class AIProcessor:
         )
 
         # Build the referral context
-        context_parts = [f"Source text:\n{text}\n"]
+        context_parts = [f"Source text:\n{sanitized_text}\n"]
 
         if letter_options.get("referring_provider"):
             context_parts.append(f"Referring Provider: {letter_options['referring_provider']}")
@@ -215,6 +229,9 @@ class AIProcessor:
         if not text.strip():
             return OperationResult.failure("No text provided", error_code="EMPTY_INPUT")
 
+        # Sanitize text to prevent prompt injection
+        sanitized_text = sanitize_prompt(text)
+
         # Get letter prompt based on type
         letter_prompt = SETTINGS.get(
             f"{letter_type}_letter_prompt",
@@ -222,7 +239,7 @@ class AIProcessor:
         )
 
         # Build the letter context
-        context_parts = [f"Source text:\n{text}\n"]
+        context_parts = [f"Source text:\n{sanitized_text}\n"]
 
         # Add all provided options to context
         for key, value in letter_options.items():
@@ -284,11 +301,14 @@ class AIProcessor:
                 error_code="AGENT_DISABLED"
             )
 
+        # Sanitize text to prevent prompt injection
+        sanitized_text = sanitize_prompt(text) if text else ""
+
         # Prepare input data based on task type
         input_data = additional_data or {}
 
         if task_type == "extract":
-            input_data["clinical_text"] = text
+            input_data["clinical_text"] = sanitized_text
             task_desc = "Extract medications from clinical text"
         elif task_type == "check_interactions":
             if "medications" not in input_data:
@@ -312,7 +332,7 @@ class AIProcessor:
                 )
             task_desc = "Suggest alternative medications"
         else:  # comprehensive
-            input_data["clinical_text"] = text
+            input_data["clinical_text"] = sanitized_text
             task_desc = "Perform comprehensive medication analysis"
 
         # Create task
@@ -395,6 +415,9 @@ class AIProcessor:
         if not transcript.strip():
             return OperationResult.failure("No transcript to analyze", error_code="EMPTY_INPUT")
 
+        # Sanitize transcript to prevent prompt injection
+        sanitized_transcript = sanitize_prompt(transcript)
+
         # Force reload settings to get latest provider selection
         from settings.settings import load_settings
         current_settings = load_settings(force_refresh=True)
@@ -407,8 +430,8 @@ class AIProcessor:
             "Create a 5 differential diagnosis list, possible investigations "
             "and treatment plan for the provided transcript:")
 
-        # Create the full prompt
-        prompt = f"{prompt_template}\n\n{transcript}"
+        # Create the full prompt with sanitized transcript
+        prompt = f"{prompt_template}\n\n{sanitized_transcript}"
 
         # Get system message from settings
         system_message = analysis_settings.get("system_message",
