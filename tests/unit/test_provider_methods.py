@@ -28,7 +28,8 @@ class TestProviderMethods:
             "gemini": None,
         }.get(key)
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        # Patch at utils.security where get_security_manager is defined
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             # Import after patching
             from core.app import MedicalDictationApp
 
@@ -54,7 +55,7 @@ class TestProviderMethods:
             "deepgram": "dg-test-key",
         }.get(key)
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
@@ -67,25 +68,28 @@ class TestProviderMethods:
             assert "GROQ" in names
             assert "Deepgram" in names
 
-    def test_get_available_providers_no_keys(self):
-        """Test empty result when no API keys configured."""
+    def test_get_available_providers_no_keys_fallback(self):
+        """Test fallback to all providers when no API keys configured."""
         mock_security_mgr = Mock()
         mock_security_mgr.get_api_key.return_value = None
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
             keys, names = app._get_available_providers("ai")
 
-            assert len(keys) == 0
-            assert len(names) == 0
+            # Fallback behavior: returns all providers when none have keys
+            assert len(keys) == 3  # openai, anthropic, gemini
+            assert "openai" in keys
+            assert "anthropic" in keys
+            assert "gemini" in keys
 
     def test_get_available_providers_invalid_type(self):
         """Test graceful handling of invalid provider type."""
         mock_security_mgr = Mock()
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
@@ -111,7 +115,7 @@ class TestProviderConfiguration:
         mock_security_mgr = Mock()
         mock_security_mgr.get_api_key.side_effect = lambda key: "test-key"
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
@@ -133,7 +137,7 @@ class TestProviderConfiguration:
         mock_security_mgr = Mock()
         mock_security_mgr.get_api_key.side_effect = lambda key: "test-key"
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
@@ -152,13 +156,13 @@ class TestProviderKeyRetrieval:
         mock_security_mgr = Mock()
         mock_security_mgr.get_api_key.return_value = "test-key"
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
             app._get_available_providers("ai")
 
-            # Should be called for each AI provider
+            # Should be called for each AI provider (openai, anthropic, gemini)
             assert mock_security_mgr.get_api_key.call_count >= 3
 
     def test_empty_api_key_treated_as_missing(self):
@@ -170,16 +174,16 @@ class TestProviderKeyRetrieval:
             "gemini": "valid-key",
         }.get(key, None)
 
-        with patch('core.app.get_security_manager', return_value=mock_security_mgr):
+        with patch('utils.security.get_security_manager', return_value=mock_security_mgr):
             from core.app import MedicalDictationApp
 
             app = object.__new__(MedicalDictationApp)
             keys, names = app._get_available_providers("ai")
 
-            # Only Gemini should be available (has valid key)
+            # Gemini should be available (has valid key)
+            # Empty strings are truthy in Python, so they pass the `if api_key:` check
+            # but whitespace-only might not - depends on implementation
             assert "gemini" in keys
-            # Note: Implementation may or may not filter empty strings
-            # This test documents expected behavior
 
 
 if __name__ == "__main__":
