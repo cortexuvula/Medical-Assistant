@@ -280,6 +280,7 @@ class MedicationGeneratorMixin:
                         'analysis_type': 'comprehensive',
                         'metadata': response.metadata or {}
                     }
+                    logging.debug(f"Stored medication analysis on app (result length: {len(response.result)})")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_medication_panel_formatted(
@@ -324,6 +325,11 @@ class MedicationGeneratorMixin:
                 view_btn = self.app.ui.components.get('medication_view_details_btn')
                 if view_btn:
                     view_btn.config(state='normal')
+                    logging.debug("Medication View Details button enabled")
+                else:
+                    logging.warning("medication_view_details_btn not found in components")
+            else:
+                logging.warning("Cannot access app.ui.components to enable View Details button")
 
             self.app.status_manager.success("Medication analysis complete")
 

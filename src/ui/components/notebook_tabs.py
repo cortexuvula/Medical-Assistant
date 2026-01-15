@@ -501,32 +501,49 @@ class NotebookTabs:
     def _open_medication_details(self) -> None:
         """Open full medication results dialog with current analysis."""
         try:
-            if not hasattr(self.parent, '_last_medication_analysis'):
+            logging.debug("View Details button clicked - opening medication details")
+
+            # Check if analysis exists and has content
+            analysis = getattr(self.parent, '_last_medication_analysis', None)
+            if not analysis:
+                logging.warning("No medication analysis available on parent")
                 if hasattr(self.parent, 'status_manager'):
-                    self.parent.status_manager.warning("No medication analysis available")
+                    self.parent.status_manager.warning("No medication analysis available. Generate a SOAP note first.")
+                return
+
+            result = analysis.get('result', '')
+            if not result:
+                logging.warning("Medication analysis exists but result is empty")
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("Medication analysis is empty")
                 return
 
             from ui.dialogs.medication_results_dialog import MedicationResultsDialog
 
-            analysis = self.parent._last_medication_analysis
+            logging.debug(f"Opening MedicationResultsDialog with result length: {len(result)}")
             dialog = MedicationResultsDialog(self.parent)
             dialog.show_results(
-                analysis.get('result', ''),
+                result,
                 analysis.get('analysis_type', 'comprehensive'),
                 'SOAP Note',
                 analysis.get('metadata', {})
             )
         except Exception as e:
-            logging.error(f"Error opening medication details: {e}")
+            logging.error(f"Error opening medication details: {e}", exc_info=True)
             if hasattr(self.parent, 'status_manager'):
-                self.parent.status_manager.error("Failed to open medication details")
+                self.parent.status_manager.error(f"Failed to open medication details: {str(e)}")
 
     def _open_diagnostic_details(self) -> None:
         """Open full diagnostic results dialog with current analysis."""
         try:
-            if not hasattr(self.parent, '_last_diagnostic_analysis'):
+            logging.debug("View Details button clicked - opening diagnostic details")
+
+            # Check if analysis exists and has content
+            analysis = getattr(self.parent, '_last_diagnostic_analysis', None)
+            if not analysis:
+                logging.warning("No diagnostic analysis available on parent")
                 if hasattr(self.parent, 'status_manager'):
-                    self.parent.status_manager.warning("No diagnostic analysis available")
+                    self.parent.status_manager.warning("No diagnostic analysis available. Generate a SOAP note first.")
                 return
 
             # For now, show the analysis in a simple dialog

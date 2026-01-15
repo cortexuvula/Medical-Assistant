@@ -345,6 +345,7 @@ class DiagnosticGeneratorMixin:
                         'result': response.result,
                         'metadata': response.metadata or {}
                     }
+                    logging.debug(f"Stored diagnostic analysis on app (result length: {len(response.result)})")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_diagnostic_panel_formatted(
@@ -389,6 +390,11 @@ class DiagnosticGeneratorMixin:
                 view_btn = self.app.ui.components.get('differential_view_details_btn')
                 if view_btn:
                     view_btn.config(state='normal')
+                    logging.debug("Diagnostic View Details button enabled")
+                else:
+                    logging.warning("differential_view_details_btn not found in components")
+            else:
+                logging.warning("Cannot access app.ui.components to enable View Details button")
 
             self.app.status_manager.success("Differential diagnosis complete")
 
