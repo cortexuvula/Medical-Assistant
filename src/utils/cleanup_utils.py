@@ -16,27 +16,43 @@ if TYPE_CHECKING:
 def clear_all_content(app_instance: "MedicalDictationApp") -> None:
     """
     Clear all content in the application, including text widgets and audio segments.
-    
+
     This function provides a centralized way to clear all application content
     when starting a new session, loading a new file, or recording a new SOAP note.
-    
+
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """
     logging.info("Clearing all application content")
-    
+
     # Clear all text widgets
     widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
-    
+
     # Add chat_text if it exists
     if hasattr(app_instance, 'chat_text'):
         widgets_to_clear.append(app_instance.chat_text)
-    
+
     for widget in widgets_to_clear:
         if widget:
             widget.delete("1.0", tk.END)
             widget.edit_reset()  # Clear undo/redo history
-    
+
+    # Clear analysis tabs (Medication Analysis and Differential Diagnosis)
+    # These are disabled by default, so we need to enable them first
+    if hasattr(app_instance, 'ui') and hasattr(app_instance.ui, 'components'):
+        analysis_widgets = [
+            app_instance.ui.components.get('medication_analysis_text'),
+            app_instance.ui.components.get('differential_analysis_text')
+        ]
+        for widget in analysis_widgets:
+            if widget:
+                try:
+                    widget.config(state='normal')
+                    widget.delete("1.0", tk.END)
+                    widget.config(state='disabled')
+                except tk.TclError:
+                    pass  # Widget may not exist or be destroyed
+
     # Clear audio state via AudioStateManager
     if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
         app_instance.audio_state_manager.clear_all()

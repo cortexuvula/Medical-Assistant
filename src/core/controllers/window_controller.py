@@ -153,6 +153,12 @@ class WindowController:
         logging.debug("Showing record view")
 
         try:
+            # Expand the bottom section if it's collapsed
+            if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
+                logging.debug("Expanding bottom section for record view")
+                if hasattr(self.app, '_toggle_bottom_section'):
+                    self.app._toggle_bottom_section()
+
             # Show analysis panel in shared panel area
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'shared_panel_manager'):
                 from ui.components.shared_panel_manager import SharedPanelManager
@@ -197,6 +203,12 @@ class WindowController:
         logging.debug("Showing advanced analysis view")
 
         try:
+            # Expand the bottom section if it's collapsed
+            if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
+                logging.debug("Expanding bottom section for advanced analysis view")
+                if hasattr(self.app, '_toggle_bottom_section'):
+                    self.app._toggle_bottom_section()
+
             # Show analysis panel in shared panel area
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'shared_panel_manager'):
                 from ui.components.shared_panel_manager import SharedPanelManager
