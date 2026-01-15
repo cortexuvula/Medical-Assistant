@@ -7,7 +7,7 @@ Displays the results of medication analysis in a formatted, user-friendly dialog
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED, WORD
 from tkinter import messagebox, filedialog
 import pyperclip
 import logging
