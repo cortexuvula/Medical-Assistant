@@ -195,6 +195,10 @@ class RecordingController:
             # Start periodic analysis if enabled
             if hasattr(self.app.ui, 'advanced_analysis_var') and self.app.ui.advanced_analysis_var.get():
                 self.start_periodic_analysis()
+                # Expand the bottom section if it's collapsed
+                if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
+                    if hasattr(self.app, '_toggle_bottom_section'):
+                        self.app._toggle_bottom_section()
                 # Show the analysis panel in the shared panel area
                 if hasattr(self.app.ui, 'shared_panel_manager') and self.app.ui.shared_panel_manager:
                     self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
