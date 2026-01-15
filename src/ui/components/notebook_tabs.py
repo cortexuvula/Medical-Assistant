@@ -501,26 +501,33 @@ class NotebookTabs:
     def _open_medication_details(self) -> None:
         """Open full medication results dialog with current analysis."""
         try:
-            logging.debug("View Details button clicked - opening medication details")
+            logging.info("View Details button clicked - opening medication details")
+            logging.info(f"self.parent type: {type(self.parent)}, id: {id(self.parent)}")
 
             # Check if analysis exists and has content
             analysis = getattr(self.parent, '_last_medication_analysis', None)
+            logging.info(f"_last_medication_analysis found: {analysis is not None}")
+
             if not analysis:
                 logging.warning("No medication analysis available on parent")
+                logging.info(f"Parent attributes starting with '_last': {[a for a in dir(self.parent) if a.startswith('_last')]}")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No medication analysis available. Generate a SOAP note first.")
                 return
 
             result = analysis.get('result', '')
+            logging.info(f"Analysis result type: {type(result)}, length: {len(result) if result else 0}")
+
             if not result:
                 logging.warning("Medication analysis exists but result is empty")
+                logging.info(f"Analysis keys: {list(analysis.keys())}")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("Medication analysis is empty")
                 return
 
             from ui.dialogs.medication_results_dialog import MedicationResultsDialog
 
-            logging.debug(f"Opening MedicationResultsDialog with result length: {len(result)}")
+            logging.info(f"Opening MedicationResultsDialog with result length: {len(result)}")
             dialog = MedicationResultsDialog(self.parent)
             dialog.show_results(
                 result,
@@ -528,6 +535,7 @@ class NotebookTabs:
                 'SOAP Note',
                 analysis.get('metadata', {})
             )
+            logging.info("MedicationResultsDialog.show_results() completed")
         except Exception as e:
             logging.error(f"Error opening medication details: {e}", exc_info=True)
             if hasattr(self.parent, 'status_manager'):

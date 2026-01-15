@@ -280,7 +280,8 @@ class MedicationGeneratorMixin:
                         'analysis_type': 'comprehensive',
                         'metadata': response.metadata or {}
                     }
-                    logging.debug(f"Stored medication analysis on app (result length: {len(response.result)})")
+                    logging.info(f"Stored medication analysis on app id={id(self.app)} (result length: {len(response.result)})")
+                    logging.info(f"self.app type: {type(self.app)}")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_medication_panel_formatted(
@@ -322,14 +323,16 @@ class MedicationGeneratorMixin:
 
             # Enable View Details button
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
+                logging.info(f"Looking for medication_view_details_btn in app.ui.components")
+                logging.info(f"Available component keys: {list(self.app.ui.components.keys())}")
                 view_btn = self.app.ui.components.get('medication_view_details_btn')
                 if view_btn:
                     view_btn.config(state='normal')
-                    logging.debug("Medication View Details button enabled")
+                    logging.info("Medication View Details button enabled (state='normal')")
                 else:
                     logging.warning("medication_view_details_btn not found in components")
             else:
-                logging.warning("Cannot access app.ui.components to enable View Details button")
+                logging.warning(f"Cannot access app.ui.components: has ui={hasattr(self.app, 'ui')}, has components={hasattr(self.app.ui, 'components') if hasattr(self.app, 'ui') else 'N/A'}")
 
             self.app.status_manager.success("Medication analysis complete")
 

@@ -295,6 +295,17 @@ class MedicalDictationApp(
         copy_btn.pack(side=LEFT, padx=(10, 0))
         ToolTip(copy_btn, "Copy current text to clipboard (Ctrl+C)")
 
+        # RSVP button - speed reading
+        rsvp_btn = ttk.Button(
+            provider_frame,
+            text="RSVP",
+            command=self.show_rsvp_reader,
+            width=10,
+            bootstyle="info"
+        )
+        rsvp_btn.pack(side=LEFT, padx=(10, 0))
+        ToolTip(rsvp_btn, "Speed read SOAP note (Rapid Serial Visual Presentation)")
+
         # Theme toggle
         self.theme_btn = ttk.Button(
             provider_frame,
@@ -651,6 +662,23 @@ class MedicalDictationApp(
     def copy_text(self) -> None:
         """Copy text to clipboard. Delegates to TextProcessingController."""
         self.text_processing_controller.copy_text()
+
+    def show_rsvp_reader(self) -> None:
+        """Open RSVP reader with current SOAP note content."""
+        from ui.dialogs.rsvp_dialog import RSVPDialog
+
+        # Get SOAP note content
+        soap_content = self.soap_text.get("1.0", "end").strip()
+
+        if not soap_content:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "No Content",
+                "Please generate a SOAP note first before using RSVP reader."
+            )
+            return
+
+        RSVPDialog(self, soap_content)
 
     def clear_text(self) -> None:
         """Clear transcript text. Delegates to TextProcessingController."""
