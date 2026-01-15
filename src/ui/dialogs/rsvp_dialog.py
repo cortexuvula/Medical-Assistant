@@ -101,18 +101,18 @@ class RSVPDialog:
         """Create the main dialog window."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("RSVP Reader")
-        self.dialog.geometry("700x450")
+        self.dialog.geometry("800x500")
         self.dialog.configure(bg=self.BG_COLOR)
         self.dialog.resizable(True, True)
-        self.dialog.minsize(500, 350)
+        self.dialog.minsize(700, 400)
 
         # Center on screen
         self.dialog.update_idletasks()
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
-        x = (screen_width // 2) - (700 // 2)
-        y = (screen_height // 2) - (450 // 2)
-        self.dialog.geometry(f"700x450+{x}+{y}")
+        x = (screen_width // 2) - (800 // 2)
+        y = (screen_height // 2) - (500 // 2)
+        self.dialog.geometry(f"800x500+{x}+{y}")
 
         # Make modal
         self.dialog.transient(self.parent)
@@ -167,7 +167,7 @@ class RSVPDialog:
 
         # Speed control section
         speed_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        speed_frame.pack(side=tk.LEFT, padx=20, pady=15)
+        speed_frame.pack(side=tk.LEFT, padx=10, pady=15)
 
         ttk.Label(
             speed_frame,
@@ -192,11 +192,11 @@ class RSVPDialog:
             from_=self.MIN_WPM,
             to=self.MAX_WPM,
             orient=tk.HORIZONTAL,
-            length=150,
+            length=120,
             variable=self.speed_var,
             command=self._on_speed_change
         )
-        self.speed_slider.pack(side=tk.LEFT, padx=5)
+        self.speed_slider.pack(side=tk.LEFT, padx=3)
 
         # Speed up button
         ttk.Button(
@@ -219,7 +219,7 @@ class RSVPDialog:
 
         # Navigation buttons
         nav_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        nav_frame.pack(side=tk.LEFT, padx=20, pady=15)
+        nav_frame.pack(side=tk.LEFT, padx=10, pady=15)
 
         ttk.Button(
             nav_frame,
@@ -254,7 +254,7 @@ class RSVPDialog:
         ).pack(side=tk.LEFT, padx=2)
 
         # Progress section
-        progress_frame = tk.Frame(main_frame, bg=self.PROGRESS_BG, height=50)
+        progress_frame = tk.Frame(main_frame, bg=self.PROGRESS_BG, height=60)
         progress_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         progress_frame.pack_propagate(False)
 
@@ -359,22 +359,23 @@ class RSVPDialog:
             fill=self.ORP_COLOR
         )
 
-        # Calculate starting position for text
-        # The ORP character should be centered
-        text_start_x = center_x - pre_width - (orp_width // 2)
+        # Position text so ORP character is centered on the line
+        # Pre-ORP text: right-aligned, ending at left edge of ORP char
+        orp_left_edge = center_x - (orp_width // 2)
+        orp_right_edge = center_x + (orp_width // 2)
 
-        # Draw pre-ORP text
+        # Draw pre-ORP text (right-aligned to ORP left edge)
         if pre:
             self.canvas.create_text(
-                text_start_x + pre_width // 2,
+                orp_left_edge,
                 center_y,
                 text=pre,
                 font=font,
                 fill=self.TEXT_COLOR,
-                anchor=tk.CENTER
+                anchor=tk.E  # Right-align (east anchor)
             )
 
-        # Draw ORP character (highlighted)
+        # Draw ORP character (highlighted, centered)
         if orp_char:
             self.canvas.create_text(
                 center_x,
@@ -385,17 +386,15 @@ class RSVPDialog:
                 anchor=tk.CENTER
             )
 
-        # Draw post-ORP text
+        # Draw post-ORP text (left-aligned from ORP right edge)
         if post:
-            post_start_x = center_x + (orp_width // 2)
-            post_width = font.measure(post)
             self.canvas.create_text(
-                post_start_x + post_width // 2,
+                orp_right_edge,
                 center_y,
                 text=post,
                 font=font,
                 fill=self.TEXT_COLOR,
-                anchor=tk.CENTER
+                anchor=tk.W  # Left-align (west anchor)
             )
 
     def _show_complete(self) -> None:
