@@ -415,6 +415,15 @@ IMMEDIATE ACTIONS:
             # Example entries - users can add their own
             # Format: "find_text": {"replacement": "...", "category": "...", "specialty": "...", ...}
         }
+    },
+    "rsvp": {
+        "wpm": 300,                   # Words per minute (50-2000)
+        "font_size": 48,              # Font size for word display (24-96)
+        "chunk_size": 1,              # Number of words to display at once (1-3)
+        "auto_start": False,          # Auto-start playback when dialog opens
+        "dark_theme": True,           # Use dark theme (True) or light theme (False)
+        "audio_cue": False,           # Play sound on section changes
+        "show_context": False         # Show current sentence in background
     }
 }
 
