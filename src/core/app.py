@@ -193,9 +193,67 @@ class MedicalDictationApp(
         # Center - main content area
         left_frame = ttk.Frame(main_container)
         main_container.add(left_frame, weight=3)
+
+        # Create top bar with provider selection and controls
+        self._create_top_bar(left_frame)
         
-        # Top bar with provider settings
-        top_bar = ttk.Frame(left_frame)
+        # Create prominent recording header at top (matches reference design)
+        self.recording_header = self.ui.create_recording_header(command_map, parent=left_frame)
+        self.recording_header.pack(fill=tk.X)
+
+        # Redirect mic_combobox to use recording header's device selector
+        # This maintains compatibility with existing code that uses self.mic_combobox
+        self.mic_combobox = self.ui.components.get('header_device_combo')
+
+        # Create a vertical PanedWindow for resizable layout
+        self.content_paned = ttk.Panedwindow(left_frame, orient=tk.VERTICAL)
+        self.content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
+
+        # Create the text notebook (for transcripts, SOAP, etc.)
+        # SOAP tab includes split layout with medication and differential analysis panels
+        (self.notebook, self.transcript_text, self.soap_text, self.referral_text,
+         self.letter_text, self.chat_text, self.rag_text, _,
+         self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
+        self.content_paned.add(self.notebook, weight=1)
+
+        # Create bottom section with chat and analysis panels
+        self._create_bottom_section(command_map)
+        
+        # Right side - context panel
+        self.context_panel = self.ui.create_context_panel()
+        main_container.add(self.context_panel, weight=1)
+        
+        # Get context text widget from UI
+        self.context_text = self.ui.components['context_text']
+        
+        # Set initial active text widget
+        self.active_text_widget = self.transcript_text
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+
+        # Track content modifications for background update protection
+        self._content_modified = {
+            'transcript': False,
+            'soap': False,
+            'referral': False,
+            'letter': False
+        }
+        self._current_recording_id: Optional[int] = None
+        self._setup_modification_tracking()
+
+        # Store button references for compatibility
+        self._store_workflow_button_references()
+
+        # Note: _initialize_provider_selections() and _initialize_autosave()
+        # are now called from AppInitializer._finalize_ui() after controllers
+        # are created, so they can properly delegate to their controllers.
+
+    def _create_top_bar(self, parent_frame: ttk.Frame) -> None:
+        """Create the top bar with provider selection and controls.
+
+        Args:
+            parent_frame: Parent frame to add the top bar to
+        """
+        top_bar = ttk.Frame(parent_frame)
         top_bar.pack(side=TOP, fill=tk.X, padx=10, pady=5)
 
         # Provider selection frame
@@ -225,7 +283,7 @@ class MedicalDictationApp(
         )
         self.stt_combobox.pack(side=LEFT)
         self.stt_combobox.bind("<<ComboboxSelected>>", self._on_stt_change)
-        
+
         # Copy button - easily accessible
         copy_btn = ttk.Button(
             provider_frame,
@@ -236,7 +294,7 @@ class MedicalDictationApp(
         )
         copy_btn.pack(side=LEFT, padx=(10, 0))
         ToolTip(copy_btn, "Copy current text to clipboard (Ctrl+C)")
-        
+
         # Theme toggle
         self.theme_btn = ttk.Button(
             provider_frame,
@@ -247,7 +305,7 @@ class MedicalDictationApp(
         self.theme_btn.pack(side=LEFT, padx=(10, 0))
         self.theme_label = ttk.Label(provider_frame, text="(Light Mode)", width=12)
         self.theme_label.pack(side=LEFT, padx=(5, 0))
-        
+
         # Restore auto-save button (initially hidden)
         self.restore_btn = ttk.Button(
             provider_frame,
@@ -259,26 +317,13 @@ class MedicalDictationApp(
         self.restore_btn.pack(side=LEFT, padx=(10, 0))
         self.restore_btn.pack_forget()  # Initially hidden
         ToolTip(self.restore_btn, "Restore from auto-saved session")
-        
-        # Create prominent recording header at top (matches reference design)
-        self.recording_header = self.ui.create_recording_header(command_map, parent=left_frame)
-        self.recording_header.pack(fill=tk.X)
 
-        # Redirect mic_combobox to use recording header's device selector
-        # This maintains compatibility with existing code that uses self.mic_combobox
-        self.mic_combobox = self.ui.components.get('header_device_combo')
+    def _create_bottom_section(self, command_map: dict) -> None:
+        """Create the bottom section with chat and analysis panels.
 
-        # Create a vertical PanedWindow for resizable layout
-        self.content_paned = ttk.Panedwindow(left_frame, orient=tk.VERTICAL)
-        self.content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
-
-        # Create the text notebook (for transcripts, SOAP, etc.)
-        # SOAP tab includes split layout with medication and differential analysis panels
-        (self.notebook, self.transcript_text, self.soap_text, self.referral_text,
-         self.letter_text, self.chat_text, self.rag_text, _,
-         self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
-        self.content_paned.add(self.notebook, weight=1)
-
+        Args:
+            command_map: Dictionary of command callbacks
+        """
         # Bottom section frame for chat and shared panel
         bottom_section = ttk.Frame(self.content_paned)
         self.content_paned.add(bottom_section, weight=1)
@@ -354,35 +399,7 @@ class MedicalDictationApp(
         # Bind Configure event to maintain sash position on resize
         self._last_height = 0
         self.content_paned.bind('<Configure>', self._on_content_paned_configure)
-        
-        # Right side - context panel
-        self.context_panel = self.ui.create_context_panel()
-        main_container.add(self.context_panel, weight=1)
-        
-        # Get context text widget from UI
-        self.context_text = self.ui.components['context_text']
-        
-        # Set initial active text widget
-        self.active_text_widget = self.transcript_text
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
-        # Track content modifications for background update protection
-        self._content_modified = {
-            'transcript': False,
-            'soap': False,
-            'referral': False,
-            'letter': False
-        }
-        self._current_recording_id: Optional[int] = None
-        self._setup_modification_tracking()
-
-        # Store button references for compatibility
-        self._store_workflow_button_references()
-
-        # Note: _initialize_provider_selections() and _initialize_autosave()
-        # are now called from AppInitializer._finalize_ui() after controllers
-        # are created, so they can properly delegate to their controllers.
-    
     def _store_workflow_button_references(self):
         """Store workflow button references for compatibility with existing code."""
         # Map workflow UI buttons to expected button names
@@ -502,8 +519,14 @@ class MedicalDictationApp(
 
         return False
 
-    def _get_available_ai_providers(self):
-        """Get list of AI providers that have API keys configured.
+    def _get_available_providers(self, provider_type: str) -> tuple:
+        """Get list of providers that have API keys configured.
+
+        Args:
+            provider_type: Either "ai" or "stt"
+
+        Returns:
+            Tuple of (available_keys, display_names)
 
         Note: This method is called during create_widgets before controllers exist,
         so it cannot delegate to ProviderConfigController.
@@ -511,12 +534,21 @@ class MedicalDictationApp(
         from utils.security import get_security_manager
         security_mgr = get_security_manager()
 
-        all_providers = [
-            ("openai", "OpenAI"),
-            ("anthropic", "Anthropic"),
-            ("gemini", "Gemini"),
-        ]
+        # Define provider configurations
+        provider_configs = {
+            "ai": [
+                ("openai", "OpenAI"),
+                ("anthropic", "Anthropic"),
+                ("gemini", "Gemini"),
+            ],
+            "stt": [
+                ("groq", "GROQ"),
+                ("elevenlabs", "ElevenLabs"),
+                ("deepgram", "Deepgram"),
+            ]
+        }
 
+        all_providers = provider_configs.get(provider_type, [])
         available = []
         display_names = []
 
@@ -527,42 +559,19 @@ class MedicalDictationApp(
                 display_names.append(display_name)
 
         if not available:
-            logging.warning("No AI providers have API keys configured, showing all options")
+            logging.warning(f"No {provider_type.upper()} providers have API keys configured, showing all options")
             available = [p[0] for p in all_providers]
             display_names = [p[1] for p in all_providers]
 
         return available, display_names
+
+    def _get_available_ai_providers(self):
+        """Get list of AI providers that have API keys configured."""
+        return self._get_available_providers("ai")
 
     def _get_available_stt_providers(self):
-        """Get list of STT providers that have API keys configured.
-
-        Note: This method is called during create_widgets before controllers exist,
-        so it cannot delegate to ProviderConfigController.
-        """
-        from utils.security import get_security_manager
-        security_mgr = get_security_manager()
-
-        all_providers = [
-            ("groq", "GROQ"),
-            ("elevenlabs", "ElevenLabs"),
-            ("deepgram", "Deepgram"),
-        ]
-
-        available = []
-        display_names = []
-
-        for provider_key, display_name in all_providers:
-            api_key = security_mgr.get_api_key(provider_key)
-            if api_key:
-                available.append(provider_key)
-                display_names.append(display_name)
-
-        if not available:
-            logging.warning("No STT providers have API keys configured, showing all options")
-            available = [p[0] for p in all_providers]
-            display_names = [p[1] for p in all_providers]
-
-        return available, display_names
+        """Get list of STT providers that have API keys configured."""
+        return self._get_available_providers("stt")
 
     def _initialize_provider_selections(self) -> None:
         """Initialize provider selections. Delegates to ProviderConfigController."""

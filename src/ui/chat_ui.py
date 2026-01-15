@@ -544,14 +544,11 @@ class ChatUI:
     
     def toggle_collapse(self):
         """Toggle the collapsed state of the chat interface"""
-        import logging
-
         # Don't toggle if using unified collapse button (no individual button)
         if not self.show_collapse_button:
             return
 
         self.is_collapsed = not self.is_collapsed
-        logging.info(f"[PANEL DEBUG] Chat panel toggled. New state: collapsed={self.is_collapsed}")
 
         # Save the state to settings
         from settings.settings import SETTINGS, save_settings
@@ -565,7 +562,6 @@ class ChatUI:
                 self.collapse_button.config(text="▶")
             if self._collapse_tooltip:
                 self._collapse_tooltip.text = "Expand AI Assistant Chat"
-            logging.info("[PANEL DEBUG] Chat content frame hidden")
         else:
             # Show the chat frame content
             self.chat_frame.pack(fill=tk.BOTH, expand=True)
@@ -573,7 +569,6 @@ class ChatUI:
                 self.collapse_button.config(text="▼")
             if self._collapse_tooltip:
                 self._collapse_tooltip.text = "Collapse AI Assistant Chat"
-            logging.info("[PANEL DEBUG] Chat content frame shown")
 
         # Adjust the content paned sash to redistribute space
         self._adjust_content_paned_sash()
@@ -597,35 +592,24 @@ class ChatUI:
         - Only Analysis expanded: SOAP 70%, bottom 30%
         - Both collapsed: SOAP max, bottom headers only (~50px)
         """
-        import logging
-        logging.info("[PANEL DEBUG] _adjust_content_paned_sash called from chat_ui")
         try:
             # Get the content_paned from app's UI components
             if not hasattr(self.app, 'ui') or not hasattr(self.app.ui, 'components'):
-                logging.warning("[PANEL DEBUG] app.ui or app.ui.components not found!")
                 return
 
             content_paned = self.app.ui.components.get('content_paned')
-            logging.info(f"[PANEL DEBUG] content_paned from components: {content_paned}")
-            logging.info(f"[PANEL DEBUG] Available components keys: {list(self.app.ui.components.keys())}")
-
             if not content_paned:
-                logging.warning("[PANEL DEBUG] content_paned not found in components!")
                 return
 
             # Check if analysis panel is collapsed
             from settings.settings import SETTINGS
             analysis_collapsed = SETTINGS.get("advanced_analysis_collapsed", False)
-            logging.info(f"[PANEL DEBUG] chat_collapsed={self.is_collapsed}, analysis_collapsed={analysis_collapsed}")
 
             # Get the total height of the content_paned
             content_paned.update_idletasks()
             total_height = content_paned.winfo_height()
-            current_sash = content_paned.sashpos(0)
-            logging.info(f"[PANEL DEBUG] total_height={total_height}, current_sash_pos={current_sash}")
 
             if total_height <= 1:
-                logging.info("[PANEL DEBUG] total_height <= 1, skipping (not yet rendered)")
                 return
 
             # Height for collapsed headers only
@@ -636,17 +620,12 @@ class ChatUI:
             if self.is_collapsed and analysis_collapsed:
                 # Both collapsed - just headers visible (horizontal row)
                 new_sash_pos = total_height - HEADER_ONLY_HEIGHT
-                reason = "both collapsed (headers only)"
             elif self.is_collapsed or analysis_collapsed:
                 # One expanded - give moderate space for the expanded panel
                 new_sash_pos = int(total_height * 0.75)
-                reason = "one expanded (75/25)"
             else:
                 # Both expanded - SOAP 60%, bottom 40%
                 new_sash_pos = int(total_height * 0.60)
-                reason = "both expanded (60/40)"
-
-            logging.info(f"[PANEL DEBUG] Calculated new_sash_pos={new_sash_pos} ({reason})")
 
             # Get the bottom_section to configure its minimum size
             bottom_section = self.app.ui.components.get('bottom_section')
@@ -654,14 +633,11 @@ class ChatUI:
                 # Allow the bottom section to shrink to a small size
                 try:
                     panes = content_paned.panes()
-                    logging.info(f"[PANEL DEBUG] Panes in content_paned: {panes}")
                     if len(panes) >= 2:
                         # Configure the second pane (bottom_section) to have a small minimum size
-                        # Use 'pane' method for ttk.Panedwindow (not 'paneconfig')
                         content_paned.pane(panes[1], weight=0)  # weight=0 prevents auto-resize
-                        logging.info(f"[PANEL DEBUG] Set weight=0 for bottom pane")
-                except Exception as e:
-                    logging.error(f"[PANEL DEBUG] Error configuring pane: {e}")
+                except Exception:
+                    pass
 
             # Set the sash position (sash index 0 is between first two panes)
             content_paned.sashpos(0, new_sash_pos)
@@ -669,12 +645,8 @@ class ChatUI:
             # Force geometry update
             content_paned.update_idletasks()
 
-            # Verify the change
-            actual_sash = content_paned.sashpos(0)
-            logging.info(f"[PANEL DEBUG] After setting: requested={new_sash_pos}, actual={actual_sash}")
-
-        except Exception as e:
-            logging.error(f"[PANEL DEBUG] Exception in _adjust_content_paned_sash: {e}", exc_info=True)
+        except Exception:
+            pass
 
     def _toggle_tools(self):
         """Toggle tool usage on/off."""

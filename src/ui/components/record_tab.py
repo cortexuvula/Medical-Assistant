@@ -344,7 +344,6 @@ class RecordTab:
             return
 
         self._analysis_results_collapsed = not self._analysis_results_collapsed
-        logging.info(f"[PANEL DEBUG] Analysis panel toggled. New state: collapsed={self._analysis_results_collapsed}")
 
         # Save state to settings
         SETTINGS["advanced_analysis_collapsed"] = self._analysis_results_collapsed
@@ -357,7 +356,6 @@ class RecordTab:
                 self._analysis_collapse_btn.config(text=Icons.COLLAPSE)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Expand Analysis Results"
-            logging.info("[PANEL DEBUG] Analysis content frame hidden")
         else:
             # Expand: show the content
             self._analysis_content_frame.pack(fill=BOTH, expand=True)
@@ -365,7 +363,6 @@ class RecordTab:
                 self._analysis_collapse_btn.config(text=Icons.EXPAND)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Collapse Analysis Results"
-            logging.info("[PANEL DEBUG] Analysis content frame shown")
 
         # Adjust the content paned sash to redistribute space
         self._adjust_content_paned_sash()
@@ -379,29 +376,20 @@ class RecordTab:
         - Only Analysis expanded: SOAP 70%, bottom 30%
         - Both collapsed: SOAP max, bottom headers only (~50px)
         """
-        logging.info("[PANEL DEBUG] _adjust_content_paned_sash called from record_tab")
         try:
             # Get the content_paned from UI components
             content_paned = self.components.get('content_paned')
-            logging.info(f"[PANEL DEBUG] content_paned from components: {content_paned}")
-            logging.info(f"[PANEL DEBUG] Available components keys: {list(self.components.keys())}")
-
             if not content_paned:
-                logging.warning("[PANEL DEBUG] content_paned not found in components!")
                 return
 
             # Check if chat is collapsed
             chat_collapsed = SETTINGS.get("chat_interface", {}).get("collapsed", False)
-            logging.info(f"[PANEL DEBUG] chat_collapsed={chat_collapsed}, analysis_collapsed={self._analysis_results_collapsed}")
 
             # Get the total height of the content_paned
             content_paned.update_idletasks()
             total_height = content_paned.winfo_height()
-            current_sash = content_paned.sashpos(0)
-            logging.info(f"[PANEL DEBUG] total_height={total_height}, current_sash_pos={current_sash}")
 
             if total_height <= 1:
-                logging.info("[PANEL DEBUG] total_height <= 1, skipping (not yet rendered)")
                 return
 
             # Height for collapsed headers only
@@ -412,17 +400,12 @@ class RecordTab:
             if self._analysis_results_collapsed and chat_collapsed:
                 # Both collapsed - just headers visible (horizontal row)
                 new_sash_pos = total_height - HEADER_ONLY_HEIGHT
-                reason = "both collapsed (headers only)"
             elif self._analysis_results_collapsed or chat_collapsed:
                 # One expanded - give moderate space for the expanded panel
                 new_sash_pos = int(total_height * 0.75)
-                reason = "one expanded (75/25)"
             else:
                 # Both expanded - SOAP 60%, bottom 40%
                 new_sash_pos = int(total_height * 0.60)
-                reason = "both expanded (60/40)"
-
-            logging.info(f"[PANEL DEBUG] Calculated new_sash_pos={new_sash_pos} ({reason})")
 
             # Get the bottom_section to configure its minimum size
             bottom_section = self.components.get('bottom_section')
@@ -430,15 +413,11 @@ class RecordTab:
                 # Allow the bottom section to shrink to a small size
                 try:
                     panes = content_paned.panes()
-                    logging.info(f"[PANEL DEBUG] Panes in content_paned: {panes}")
                     if len(panes) >= 2:
                         # Configure the second pane (bottom_section) to have a small minimum size
-                        # Use 'pane' method for ttk.Panedwindow (not 'paneconfig')
-                        min_height = HEADER_ONLY_HEIGHT if (self._analysis_results_collapsed and chat_collapsed) else 100
                         content_paned.pane(panes[1], weight=0)  # weight=0 prevents auto-resize
-                        logging.info(f"[PANEL DEBUG] Set weight=0 for bottom pane")
-                except Exception as e:
-                    logging.error(f"[PANEL DEBUG] Error configuring pane: {e}")
+                except Exception:
+                    pass
 
             # Set the sash position (sash index 0 is between first two panes)
             content_paned.sashpos(0, new_sash_pos)
@@ -446,12 +425,8 @@ class RecordTab:
             # Force geometry update
             content_paned.update_idletasks()
 
-            # Verify the change
-            actual_sash = content_paned.sashpos(0)
-            logging.info(f"[PANEL DEBUG] After setting: requested={new_sash_pos}, actual={actual_sash}")
-
-        except Exception as e:
-            logging.error(f"[PANEL DEBUG] Exception in _adjust_content_paned_sash: {e}", exc_info=True)
+        except Exception:
+            pass
 
     def _show_feedback(self, message: str):
         """Show brief feedback in the countdown label."""
