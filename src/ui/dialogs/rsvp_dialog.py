@@ -35,7 +35,8 @@ class RSVPDialog:
             text: Text to display word-by-word
         """
         self.parent = parent
-        self.text = text
+        self.original_text = text
+        self.text = self._preprocess_text(text)  # Clean text for better readability
         self.words: List[Tuple[str, str]] = []  # (word, punct_type)
         self.current_index = 0
         self.is_playing = False
@@ -53,19 +54,74 @@ class RSVPDialog:
         self._display_word()
         self._update_progress()
 
+    def _preprocess_text(self, text: str) -> str:
+        """Clean SOAP note text for better RSVP readability.
+
+        Removes:
+        - ICD codes (ICD-9, ICD-10 lines)
+        - Leading bullet dashes
+        - "Not discussed" entries
+        - Excess whitespace
+
+        Args:
+            text: Raw SOAP note text
+
+        Returns:
+            Cleaned text suitable for RSVP display
+        """
+        lines = text.split('\n')
+        cleaned_lines = []
+
+        for line in lines:
+            line = line.strip()
+
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Remove ICD code lines
+            if line.upper().startswith(('ICD-9', 'ICD-10', 'ICD CODE')):
+                continue
+
+            # Remove "Not discussed" entries
+            if 'not discussed' in line.lower():
+                continue
+
+            # Remove leading dashes (bullet points)
+            if line.startswith('- '):
+                line = line[2:]
+            elif line.startswith('-'):
+                line = line[1:].lstrip()
+
+            if line:
+                cleaned_lines.append(line)
+
+        return ' '.join(cleaned_lines)
+
     def _parse_text(self) -> None:
         """Parse text into words with punctuation type for smart pausing."""
         raw_words = self.text.split()
+
+        # Section headers that get extra pause
+        section_keywords = {
+            'subjective:', 'objective:', 'assessment:', 'plan:',
+            'differential', 'diagnosis:', 'follow', 'up:',
+            'clinical', 'synopsis:'
+        }
 
         for word in raw_words:
             if not word:
                 continue
 
+            lower_word = word.lower()
+
+            # Check for section headers (longest pause)
+            if lower_word in section_keywords or lower_word.rstrip(':') + ':' in section_keywords:
+                punct_type = 'section'
             # Determine punctuation type for timing
-            last_char = word[-1:] if word else ''
-            if last_char in '.!?':
+            elif word[-1:] in '.!?':
                 punct_type = 'sentence'  # Long pause
-            elif last_char in ',;:':
+            elif word[-1:] in ',;:':
                 punct_type = 'clause'    # Medium pause
             else:
                 punct_type = 'none'      # Normal timing
@@ -458,6 +514,7 @@ class RSVPDialog:
         _, punct_type = self.words[self.current_index]
 
         multipliers = {
+            'section': 3.0,   # Section headers (Subjective:, Objective:, etc.)
             'sentence': 2.5,  # Period, !, ?
             'clause': 1.5,    # Comma, semicolon, colon
             'none': 1.0       # Regular word
