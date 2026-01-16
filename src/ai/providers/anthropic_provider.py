@@ -8,6 +8,45 @@ import httpx
 from typing import List, Dict, Callable
 
 from anthropic import Anthropic
+
+
+# Mapping of deprecated Anthropic models to their current replacements
+# These models have been sunset or renamed by Anthropic
+DEPRECATED_MODEL_MAPPING = {
+    # Claude 3 models (deprecated in late 2024/early 2025)
+    "claude-3-opus-20240229": "claude-opus-4-20250514",
+    "claude-3-sonnet-20240229": "claude-sonnet-4-20250514",
+    "claude-3-haiku-20240307": "claude-haiku-4-20250514",
+    "claude-3-5-sonnet-20240620": "claude-sonnet-4-20250514",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4-20250514",
+    "claude-3-5-haiku-20241022": "claude-haiku-4-20250514",
+    # Older Claude 2 models
+    "claude-2": "claude-sonnet-4-20250514",
+    "claude-2.0": "claude-sonnet-4-20250514",
+    "claude-instant-1": "claude-haiku-4-20250514",
+    "claude-instant-1.2": "claude-haiku-4-20250514",
+}
+
+
+def _normalize_model_name(model: str) -> str:
+    """Normalize deprecated model names to current equivalents.
+
+    Args:
+        model: Model name (may be deprecated)
+
+    Returns:
+        Current model name
+    """
+    if model in DEPRECATED_MODEL_MAPPING:
+        new_model = DEPRECATED_MODEL_MAPPING[model]
+        logging.warning(
+            f"Model '{model}' is deprecated, using '{new_model}' instead. "
+            f"Please update your settings to use the new model name."
+        )
+        return new_model
+    return model
+
+
 from anthropic.types import Message as AnthropicMessage
 
 from ai.logging_utils import log_api_call_debug
@@ -104,6 +143,9 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     Returns:
         AI-generated response as a string
     """
+    # Normalize deprecated model names to current equivalents
+    model = _normalize_model_name(model)
+
     # Get security manager
     security_manager = get_security_manager()
 
@@ -189,6 +231,9 @@ def call_anthropic_streaming(
     Returns:
         Complete response text
     """
+    # Normalize deprecated model names to current equivalents
+    model = _normalize_model_name(model)
+
     security_manager = get_security_manager()
 
     # Get API key
