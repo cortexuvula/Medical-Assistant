@@ -14,6 +14,7 @@ from deep_translator.exceptions import (
 
 from .base import BaseTranslationProvider
 from utils.exceptions import TranslationError, APIError, RateLimitError
+from utils.error_handling import ErrorContext
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
 from settings.settings import SETTINGS
@@ -247,13 +248,39 @@ class DeepTranslatorProvider(BaseTranslationProvider):
             # Re-raise these as they're already handled
             raise
         except NotValidLength as e:
-            self.logger.error(f"Text too long for translation: {e}")
+            ctx = ErrorContext.capture(
+                operation="Translate text",
+                exception=e,
+                error_code="TRANSLATION_TEXT_TOO_LONG",
+                provider=self.provider_type,
+                text_length=len(text),
+                source_lang=source_lang,
+                target_lang=target_lang
+            )
+            ctx.log()
             raise TranslationError(f"Text exceeds maximum length for {self.provider_type}")
         except LanguageNotSupportedException as e:
-            self.logger.error(f"Language not supported: {e}")
+            ctx = ErrorContext.capture(
+                operation="Translate text",
+                exception=e,
+                error_code="TRANSLATION_LANGUAGE_NOT_SUPPORTED",
+                provider=self.provider_type,
+                source_lang=source_lang,
+                target_lang=target_lang
+            )
+            ctx.log()
             raise TranslationError(f"Language pair {source_lang}->{target_lang} not supported by {self.provider_type}")
         except Exception as e:
-            self.logger.error(f"Translation error: {e}", exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Translate text",
+                exception=e,
+                error_code="TRANSLATION_UNEXPECTED_ERROR",
+                provider=self.provider_type,
+                text_length=len(text),
+                source_lang=source_lang,
+                target_lang=target_lang
+            )
+            ctx.log()
             raise TranslationError(f"Translation failed: {str(e)}")
     
     def get_supported_languages(self) -> List[Tuple[str, str]]:

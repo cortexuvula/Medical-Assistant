@@ -3,9 +3,12 @@ Background Processing Queue Module
 
 Manages asynchronous processing of recordings to allow immediate
 continuation with next patient consultation.
+
+Logging:
+    Uses structured logging with context for better debugging.
+    Key context fields: task_id, recording_id, batch_id, duration_ms
 """
 
-import logging
 import uuid
 import time
 import os
@@ -18,13 +21,21 @@ import traceback
 
 from database.database import Database
 from settings.settings import SETTINGS
-from utils.error_handling import ErrorContext
+from utils.error_handling import ErrorContext, OperationResult
 from utils.exceptions import (
+    MedicalAssistantError,
     ProcessingError,
     TranscriptionError,
     AudioSaveError,
     DocumentGenerationError,
+    APIError,
+    APITimeoutError,
+    DatabaseError,
 )
+from utils.structured_logging import get_logger
+
+# Module-level structured logger
+logger = get_logger(__name__)
 
 
 def _thread_exception_hook(args):
@@ -32,9 +43,11 @@ def _thread_exception_hook(args):
 
     This captures unhandled exceptions in threads that would otherwise be silent.
     """
-    logging.error(
-        f"Unhandled exception in thread '{args.thread.name}': "
-        f"{args.exc_type.__name__}: {args.exc_value}",
+    logger.error(
+        "Unhandled exception in thread",
+        thread_name=args.thread.name,
+        exception_type=args.exc_type.__name__,
+        exception_value=str(args.exc_value),
         exc_info=(args.exc_type, args.exc_value, args.exc_traceback)
     )
 
@@ -109,7 +122,7 @@ class ProcessingQueue:
         self.processor_thread = Thread(target=self._process_queue, daemon=True)
         self.processor_thread.start()
 
-        logging.info(f"ProcessingQueue initialized with {self.max_workers} workers")
+        logger.info("ProcessingQueue initialized", max_workers=self.max_workers)
     
     def add_recording(self, recording_data: Dict[str, Any]) -> Optional[str]:
         """Add a recording to the processing queue.
@@ -137,9 +150,11 @@ class ProcessingQueue:
                 # Verify the task is still active
                 if existing_task_id in self.active_tasks:
                     existing_status = self.active_tasks[existing_task_id].get("status", "unknown")
-                    logging.warning(
-                        f"Recording {recording_id} already queued as task {existing_task_id} "
-                        f"(status: {existing_status}). Skipping duplicate."
+                    logger.warning(
+                        "Recording already queued, skipping duplicate",
+                        recording_id=recording_id,
+                        existing_task_id=existing_task_id,
+                        existing_status=existing_status
                     )
                     self.stats["total_deduplicated"] += 1
                     return None
@@ -184,7 +199,7 @@ class ProcessingQueue:
         # Notify status update
         self._notify_status_update(task_id, "queued", len(self.active_tasks))
 
-        logging.info(f"Recording {recording_id} added to queue as task {task_id}")
+        logger.info("Recording added to queue", recording_id=recording_id, task_id=task_id)
 
         return task_id
     
@@ -203,14 +218,17 @@ class ProcessingQueue:
         """
         # SECURITY: Enforce batch size limit to prevent resource exhaustion
         if len(recordings) > self.MAX_BATCH_SIZE:
-            error_msg = f"Batch size {len(recordings)} exceeds maximum allowed ({self.MAX_BATCH_SIZE})"
-            logging.error(error_msg)
-            raise ValueError(error_msg)
+            logger.error(
+                "Batch size exceeds maximum allowed",
+                batch_size=len(recordings),
+                max_batch_size=self.MAX_BATCH_SIZE
+            )
+            raise ValueError(f"Batch size {len(recordings)} exceeds maximum allowed ({self.MAX_BATCH_SIZE})")
 
         batch_id = str(uuid.uuid4())
         batch_priority = batch_options.get("priority", 5) if batch_options else 5
 
-        logging.info(f"Adding batch {batch_id} with {len(recordings)} recordings")
+        logger.info("Adding batch", batch_id=batch_id, recording_count=len(recordings))
         
         # Initialize batch tracking
         with self.lock:
@@ -233,9 +251,9 @@ class ProcessingQueue:
                     (batch_id, total_count, completed_count, failed_count, created_at, started_at, options, status)
                     VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'processing')
                 """, (batch_id, len(recordings), options_json))
-                logging.info(f"Persisted batch {batch_id} to database")
+                logger.info("Persisted batch to database", batch_id=batch_id)
             except Exception as e:
-                logging.warning(f"Failed to persist batch to database: {e}")
+                logger.warning("Failed to persist batch to database", batch_id=batch_id, error=str(e))
         
         # Add each recording with batch info
         task_ids = []
@@ -269,7 +287,7 @@ class ProcessingQueue:
     
     def _process_queue(self):
         """Main queue processing loop - runs in separate thread."""
-        logging.info("Processing queue started")
+        logger.info("Processing queue started")
         
         while not self.shutdown_event.is_set():
             try:
@@ -293,17 +311,22 @@ class ProcessingQueue:
                 continue
             except RuntimeError as e:
                 # Thread pool or executor error - may need to exit
-                logging.error(f"Queue processor thread error: {e}", exc_info=True)
+                logger.error("Queue processor thread error", error=str(e), exc_info=True)
                 if "shutdown" in str(e).lower() or "cannot schedule" in str(e).lower():
-                    logging.warning("Executor shutting down, exiting queue processor")
+                    logger.warning("Executor shutting down, exiting queue processor")
                     break
             except (OSError, IOError) as e:
                 # System-level I/O errors
-                logging.error(f"I/O error in queue processor: {e}", exc_info=True)
+                logger.error("I/O error in queue processor", error=str(e), exc_info=True)
                 time.sleep(0.5)  # Back off before retrying
             except Exception as e:
                 # Unexpected error - log but don't crash the queue processor
-                logging.error(f"Unexpected error in queue processor: {type(e).__name__}: {e}", exc_info=True)
+                logger.error(
+                    "Unexpected error in queue processor",
+                    exception_type=type(e).__name__,
+                    error=str(e),
+                    exc_info=True
+                )
                 time.sleep(0.1)  # Brief back-off to prevent tight error loops
     
     def _process_recording(self, task_id: str, recording_data: Dict[str, Any]):
@@ -312,7 +335,7 @@ class ProcessingQueue:
         recording_id = recording_data.get("recording_id")
         
         try:
-            logging.info(f"Starting processing for task {task_id}, recording {recording_id}")
+            logger.info("Starting processing for task", task_id=task_id, recording_id=recording_id)
             
             # Update status
             recording_data["status"] = "processing"
@@ -337,7 +360,7 @@ class ProcessingQueue:
                 transcript = recording_data.get("transcript", "")
                 if not transcript and recording_data.get("audio_data"):
                     # Transcribe the audio
-                    logging.info(f"Transcribing audio for recording {recording_id}")
+                    logger.info("Transcribing audio for recording", recording_id=recording_id)
                     audio_data = recording_data.get("audio_data")
                     
                     # Save audio file before transcription
@@ -348,19 +371,22 @@ class ProcessingQueue:
                         
                         # Get storage folder
                         storage_folder = SETTINGS.get("storage_folder")
-                        logging.info(f"[Queue] Storage folder from settings: {storage_folder}")
-                        
+                        logger.debug("Storage folder from settings", storage_folder=storage_folder)
+
                         if not storage_folder:
                             storage_folder = SETTINGS.get("default_storage_folder")
-                            logging.info(f"[Queue] Using default_storage_folder instead: {storage_folder}")
-                        
+                            logger.debug("Using default_storage_folder", storage_folder=storage_folder)
+
                         if not storage_folder or not os.path.exists(storage_folder):
-                            logging.warning(f"[Queue] Storage folder '{storage_folder}' not found or not set, using default")
+                            logger.warning(
+                                "Storage folder not found or not set, using default",
+                                configured_folder=storage_folder
+                            )
                             storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                             os.makedirs(storage_folder, exist_ok=True)
-                            logging.info(f"[Queue] Created/using default storage folder: {storage_folder}")
+                            logger.info("Created/using default storage folder", storage_folder=storage_folder)
                         else:
-                            logging.info(f"[Queue] Using configured storage folder: {storage_folder}")
+                            logger.debug("Using configured storage folder", storage_folder=storage_folder)
                         
                         # Create filename with patient name using secure approach
                         import tempfile
@@ -377,36 +403,63 @@ class ProcessingQueue:
                         audio_path = os.path.join(storage_folder, final_filename)
 
                         # Save audio using audio handler
-                        logging.info(f"[Queue] Attempting to save audio to: {audio_path}")
+                        logger.info("Attempting to save audio", audio_path=audio_path)
                         if hasattr(self.app, 'audio_handler'):
                             # Convert audio_data to list if needed
                             audio_segments = [audio_data] if not isinstance(audio_data, list) else audio_data
                             save_result = self.app.audio_handler.save_audio(audio_segments, audio_path)
-                            logging.info(f"[Queue] Audio save result: {save_result}")
-                            
+                            logger.debug("Audio save result", save_result=save_result, audio_path=audio_path)
+
                             if save_result:
                                 # Verify file was actually created
                                 if os.path.exists(audio_path):
                                     file_size = os.path.getsize(audio_path)
-                                    logging.info(f"[Queue] Audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+                                    logger.info(
+                                        "Audio saved successfully",
+                                        audio_path=audio_path,
+                                        file_size_bytes=file_size
+                                    )
                                 else:
-                                    logging.error(f"[Queue] Audio save reported success but file not found: {audio_path}")
+                                    logger.error(
+                                        "Audio save reported success but file not found",
+                                        audio_path=audio_path
+                                    )
                             else:
-                                logging.error(f"[Queue] Failed to save audio to: {audio_path}")
+                                logger.error("Failed to save audio", audio_path=audio_path)
+                    except (OSError, IOError) as e:
+                        # File system errors during audio save
+                        ctx = ErrorContext.capture(
+                            operation="Save audio file",
+                            exception=e,
+                            error_code="AUDIO_SAVE_IO_ERROR",
+                            audio_path=audio_path if 'audio_path' in locals() else None,
+                            storage_folder=storage_folder if 'storage_folder' in locals() else None
+                        )
+                        ctx.log()
+                        # Continue with transcription even if audio save fails
                     except Exception as e:
-                        logging.error(f"[Queue] Error saving audio file: {str(e)}", exc_info=True)
+                        # Unexpected error - log with full context
+                        ctx = ErrorContext.capture(
+                            operation="Save audio file",
+                            exception=e,
+                            error_code="AUDIO_SAVE_UNEXPECTED",
+                            audio_path=audio_path if 'audio_path' in locals() else None
+                        )
+                        ctx.log()
                         # Continue with transcription even if audio save fails
                     
                     # Log comprehensive audio data info for debugging
                     if hasattr(audio_data, 'duration_seconds'):
-                        logging.info(f"Audio duration: {audio_data.duration_seconds} seconds")
+                        logger.debug("Audio duration", duration_seconds=audio_data.duration_seconds)
                     # Log additional audio parameters to help diagnose truncation issues
                     if hasattr(audio_data, 'frame_rate'):
-                        logging.info(f"[Queue] Audio params before transcription: "
-                                   f"duration_ms={len(audio_data) if hasattr(audio_data, '__len__') else 'N/A'}, "
-                                   f"frame_rate={audio_data.frame_rate}, "
-                                   f"channels={audio_data.channels}, "
-                                   f"sample_width={audio_data.sample_width}")
+                        logger.debug(
+                            "Audio params before transcription",
+                            duration_ms=len(audio_data) if hasattr(audio_data, '__len__') else None,
+                            frame_rate=audio_data.frame_rate,
+                            channels=audio_data.channels,
+                            sample_width=audio_data.sample_width
+                        )
 
                     # Use the app's audio handler to transcribe
                     if hasattr(self.app, 'audio_handler'):
@@ -416,46 +469,69 @@ class ProcessingQueue:
                                 # Update the recording data and database
                                 recording_data["transcript"] = transcript
                                 self.app.db.update_recording(recording_id, transcript=transcript)
-                                logging.info(f"Transcription completed for recording {recording_id}: {len(transcript)} characters")
+                                logger.info(
+                                    "Transcription completed",
+                                    recording_id=recording_id,
+                                    transcript_length=len(transcript)
+                                )
                             else:
                                 raise TranscriptionError("Transcription returned empty result")
                         except TranscriptionError:
                             raise  # Re-raise our custom exception as-is
                         except (ConnectionError, TimeoutError) as e:
                             # Network errors during transcription
-                            logging.error(f"Network error during transcription: {e}", exc_info=True)
+                            logger.error(
+                                "Network error during transcription",
+                                recording_id=recording_id,
+                                error=str(e),
+                                exc_info=True
+                            )
                             raise TranscriptionError(f"Network error during transcription: {e}")
                         except Exception as e:
                             # Wrap unexpected errors in TranscriptionError
-                            logging.error(f"Transcription failed: {type(e).__name__}: {e}", exc_info=True)
+                            logger.error(
+                                "Transcription failed",
+                                recording_id=recording_id,
+                                exception_type=type(e).__name__,
+                                error=str(e),
+                                exc_info=True
+                            )
                             raise TranscriptionError(f"Transcription failed: {type(e).__name__}: {e}")
                     else:
-                        logging.error("Audio handler not available for transcription")
+                        logger.error("Audio handler not available for transcription")
                         raise TranscriptionError("Audio handler not available for transcription")
                 else:
                     if transcript:
-                        logging.info(f"Using existing transcript for recording {recording_id}: {len(transcript)} characters")
+                        logger.info(
+                            "Using existing transcript",
+                            recording_id=recording_id,
+                            transcript_length=len(transcript)
+                        )
                     else:
-                        logging.warning(f"No transcript or audio data for recording {recording_id}")
+                        logger.warning("No transcript or audio data", recording_id=recording_id)
                 
                 # Generate SOAP note if requested
                 if process_options.get("generate_soap", True):
                     if transcript:
-                        logging.info(f"Generating SOAP note for recording {recording_id}")
+                        logger.info("Generating SOAP note", recording_id=recording_id)
                         # Get context from recording_data (passed from UI)
                         context = recording_data.get("context", "")
                         if context:
-                            logging.info(f"Including context ({len(context)} chars) in SOAP generation")
+                            logger.info("Including context in SOAP generation", context_length=len(context))
                         soap_result = self._generate_soap_note(transcript, context)
                         if soap_result:
                             results["soap_note"] = soap_result
                             # Update database
                             self.app.db.update_recording(recording_id, soap_note=soap_result)
-                            logging.info(f"SOAP note generated for recording {recording_id}: {len(soap_result)} characters")
+                            logger.info(
+                                "SOAP note generated",
+                                recording_id=recording_id,
+                                soap_note_length=len(soap_result)
+                            )
                         else:
-                            logging.warning(f"SOAP generation returned empty result for recording {recording_id}")
+                            logger.warning("SOAP generation returned empty result", recording_id=recording_id)
                     else:
-                        logging.warning(f"No transcript available for SOAP generation for recording {recording_id}")
+                        logger.warning("No transcript available for SOAP generation", recording_id=recording_id)
                 
                 # Generate referral if requested
                 if process_options.get("generate_referral") and results.get("soap_note"):
@@ -476,7 +552,11 @@ class ProcessingQueue:
                             self.app.db.update_recording(recording_id, letter=letter_result)
                 
                 # Log final results
-                logging.info(f"Processing results for recording {recording_id}: {list(results.keys())}")
+                logger.info(
+                    "Processing results for recording",
+                    recording_id=recording_id,
+                    generated_documents=list(results.keys())
+                )
                 
                 # Format results for callback with expected structure
                 callback_result = {
@@ -492,19 +572,94 @@ class ProcessingQueue:
                 self._mark_completed(task_id, recording_data, callback_result, time.time() - start_time)
                 
             else:
-                logging.error("No app context available for processing")
+                logger.error("No app context available for processing", task_id=task_id)
                 raise Exception("No app context available")
                 
-        except Exception as e:
-            # Handle processing error
-            error_msg = f"Processing failed: {str(e)}"
-            logging.error(f"Task {task_id} failed: {error_msg}", exc_info=True)
-            
-            # Check retry logic
+        except TranscriptionError as e:
+            # Transcription-specific failure
+            ctx = ErrorContext.capture(
+                operation="Transcribe audio",
+                exception=e,
+                error_code="TRANSCRIPTION_FAILED",
+                task_id=task_id,
+                recording_id=recording_id
+            )
+            ctx.log()
             if self._should_retry(recording_data):
-                self._retry_task(task_id, recording_data, error_msg)
+                self._retry_task(task_id, recording_data, ctx.user_message)
             else:
-                self._mark_failed(task_id, recording_data, error_msg)
+                self._mark_failed(task_id, recording_data, ctx.user_message)
+        except DocumentGenerationError as e:
+            # Document generation failure (SOAP, referral, letter)
+            ctx = ErrorContext.capture(
+                operation="Generate documents",
+                exception=e,
+                error_code="DOCUMENT_GENERATION_FAILED",
+                task_id=task_id,
+                recording_id=recording_id
+            )
+            ctx.log()
+            if self._should_retry(recording_data):
+                self._retry_task(task_id, recording_data, ctx.user_message)
+            else:
+                self._mark_failed(task_id, recording_data, ctx.user_message)
+        except (APIError, APITimeoutError) as e:
+            # API errors (retryable)
+            ctx = ErrorContext.capture(
+                operation="API call during processing",
+                exception=e,
+                error_code=getattr(e, 'error_code', 'API_ERROR'),
+                task_id=task_id,
+                recording_id=recording_id,
+                service=getattr(e, 'service', None)
+            )
+            ctx.log()
+            if self._should_retry(recording_data):
+                self._retry_task(task_id, recording_data, ctx.user_message)
+            else:
+                self._mark_failed(task_id, recording_data, ctx.user_message)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            # Network/system errors (potentially retryable)
+            ctx = ErrorContext.capture(
+                operation="Network/system operation",
+                exception=e,
+                error_code="NETWORK_ERROR",
+                task_id=task_id,
+                recording_id=recording_id
+            )
+            ctx.log()
+            if self._should_retry(recording_data):
+                self._retry_task(task_id, recording_data, ctx.user_message)
+            else:
+                self._mark_failed(task_id, recording_data, ctx.user_message)
+        except MedicalAssistantError as e:
+            # Other application-specific errors
+            ctx = ErrorContext.capture(
+                operation="Processing recording",
+                exception=e,
+                error_code=getattr(e, 'error_code', 'PROCESSING_ERROR'),
+                task_id=task_id,
+                recording_id=recording_id
+            )
+            ctx.log()
+            self._mark_failed(task_id, recording_data, ctx.user_message)
+        except Exception as e:
+            # Unexpected error - log full details and don't retry
+            ctx = ErrorContext.capture(
+                operation="Processing recording",
+                exception=e,
+                error_code="UNEXPECTED_PROCESSING_ERROR",
+                task_id=task_id,
+                recording_id=recording_id
+            )
+            ctx.log()
+            logger.error(
+                "Unexpected error processing task",
+                task_id=task_id,
+                exception_type=type(e).__name__,
+                exc_info=True
+            )
+            self._mark_failed(task_id, recording_data, f"Unexpected error: {type(e).__name__}: {e}")
     
     def _mark_completed(self, task_id: str, recording_data: Dict, result: Dict, processing_time: float):
         """Mark a task as completed successfully."""
@@ -550,7 +705,7 @@ class ProcessingQueue:
         self._notify_completion(task_id, recording_data, result)
         self._notify_status_update(task_id, "completed", len(self.active_tasks))
         
-        logging.info(f"Task {task_id} completed in {processing_time:.2f} seconds")
+        logger.info("Task completed", task_id=task_id, processing_time_seconds=round(processing_time, 2))
 
         # Prune old tasks to prevent memory growth
         self._prune_completed_tasks()
@@ -569,7 +724,7 @@ class ProcessingQueue:
                 tasks_to_remove = len(self.completed_tasks) - self.MAX_COMPLETED_TASKS
                 for task_id, _ in sorted_tasks[:tasks_to_remove]:
                     del self.completed_tasks[task_id]
-                logging.debug(f"Pruned {tasks_to_remove} old completed tasks")
+                logger.debug("Pruned old completed tasks", count=tasks_to_remove)
 
             # Prune failed tasks (use same limit)
             if len(self.failed_tasks) > self.MAX_COMPLETED_TASKS:
@@ -580,7 +735,7 @@ class ProcessingQueue:
                 tasks_to_remove = len(self.failed_tasks) - self.MAX_COMPLETED_TASKS
                 for task_id, _ in sorted_tasks[:tasks_to_remove]:
                     del self.failed_tasks[task_id]
-                logging.debug(f"Pruned {tasks_to_remove} old failed tasks")
+                logger.debug("Pruned old failed tasks", count=tasks_to_remove)
 
     def _mark_failed(self, task_id: str, recording_data: Dict, error_msg: str):
         """Mark a task as failed."""
@@ -619,8 +774,8 @@ class ProcessingQueue:
         # Notify failure
         self._notify_error(task_id, recording_data, error_msg)
         self._notify_status_update(task_id, "failed", len(self.active_tasks))
-        
-        logging.error(f"Task {task_id} failed: {error_msg}")
+
+        logger.error("Task failed", task_id=task_id, error=error_msg)
 
         # Prune old tasks to prevent memory growth
         self._prune_completed_tasks()
@@ -645,8 +800,8 @@ class ProcessingQueue:
         
         with self.lock:
             self.stats["total_retried"] += 1
-        
-        logging.info(f"Retrying task {task_id} (attempt {retry_count}) after {delay} seconds")
+
+        logger.info("Retrying task", task_id=task_id, attempt=retry_count, delay_seconds=delay)
         
         # Schedule retry
         def delayed_retry():
@@ -758,7 +913,7 @@ class ProcessingQueue:
                     # Remove from deduplication tracking
                     if recording_id is not None and recording_id in self._recording_to_task:
                         del self._recording_to_task[recording_id]
-                    logging.info(f"Task {task_id} cancelled")
+                    logger.info("Task cancelled", task_id=task_id, status="queued")
                     return True
                 elif "future" in task:
                     # Try to cancel running task
@@ -768,7 +923,7 @@ class ProcessingQueue:
                         # Remove from deduplication tracking
                         if recording_id is not None and recording_id in self._recording_to_task:
                             del self._recording_to_task[recording_id]
-                        logging.info(f"Task {task_id} cancelled")
+                        logger.info("Task cancelled", task_id=task_id, status="running")
                         return True
         return False
 
@@ -785,11 +940,11 @@ class ProcessingQueue:
         with self.lock:
             batch = self.batch_tasks.get(batch_id)
             if not batch:
-                logging.warning(f"Batch {batch_id} not found for cancellation")
+                logger.warning("Batch not found for cancellation", batch_id=batch_id)
                 return 0
 
             task_ids = batch.get("task_ids", [])
-            logging.info(f"Attempting to cancel batch {batch_id} with {len(task_ids)} tasks")
+            logger.info("Attempting to cancel batch", batch_id=batch_id, task_count=len(task_ids))
 
             for task_id in task_ids:
                 # Only cancel if task is still in active_tasks
@@ -803,7 +958,7 @@ class ProcessingQueue:
                         if recording_id is not None and recording_id in self._recording_to_task:
                             del self._recording_to_task[recording_id]
                         cancelled_count += 1
-                        logging.info(f"Cancelled queued task {task_id} in batch {batch_id}")
+                        logger.debug("Cancelled queued task in batch", task_id=task_id, batch_id=batch_id)
                     elif "future" in task:
                         # Try to cancel running task
                         future: Future = task["future"]
@@ -813,27 +968,27 @@ class ProcessingQueue:
                             if recording_id is not None and recording_id in self._recording_to_task:
                                 del self._recording_to_task[recording_id]
                             cancelled_count += 1
-                            logging.info(f"Cancelled running task {task_id} in batch {batch_id}")
+                            logger.debug("Cancelled running task in batch", task_id=task_id, batch_id=batch_id)
 
-            logging.info(f"Cancelled {cancelled_count} tasks in batch {batch_id}")
+            logger.info("Batch cancellation complete", batch_id=batch_id, cancelled_count=cancelled_count)
 
         return cancelled_count
 
     def shutdown(self, wait: bool = True):
         """Shutdown the processing queue gracefully."""
-        logging.info("Shutting down processing queue...")
-        
+        logger.info("Shutting down processing queue", wait=wait)
+
         # Signal shutdown
         self.shutdown_event.set()
-        
+
         # Wait for processor thread
         if wait:
             self.processor_thread.join(timeout=5)
-        
+
         # Shutdown executor
         self.executor.shutdown(wait=wait)
-        
-        logging.info("Processing queue shutdown complete")
+
+        logger.info("Processing queue shutdown complete")
     
     def _check_batch_completion(self, batch_id: str):
         """Check if a batch is complete and notify if so."""
@@ -854,7 +1009,7 @@ class ProcessingQueue:
                     WHERE batch_id = ?
                 """, (completed, failed, batch_id))
             except Exception as e:
-                logging.warning(f"Failed to update batch progress in database: {e}")
+                logger.warning("Failed to update batch progress in database", batch_id=batch_id, error=str(e))
 
         # Notify progress
         if self.batch_callback:
@@ -888,9 +1043,9 @@ class ProcessingQueue:
                         SET completed_count = ?, failed_count = ?, completed_at = CURRENT_TIMESTAMP, status = 'completed'
                         WHERE batch_id = ?
                     """, (completed, failed, batch_id))
-                    logging.info(f"Marked batch {batch_id} as completed in database")
+                    logger.info("Marked batch as completed in database", batch_id=batch_id)
                 except Exception as e:
-                    logging.warning(f"Failed to mark batch as completed in database: {e}")
+                    logger.warning("Failed to mark batch as completed in database", batch_id=batch_id, error=str(e))
 
             # Notify completion
             if self.batch_callback:
@@ -909,7 +1064,13 @@ class ProcessingQueue:
                     )
                     ctx.log()
             
-            logging.info(f"Batch {batch_id} completed: {completed} successful, {failed} failed, {duration:.2f}s")
+            logger.info(
+                "Batch completed",
+                batch_id=batch_id,
+                successful=completed,
+                failed=failed,
+                duration_seconds=round(duration, 2)
+            )
     
     def get_batch_status(self, batch_id: str) -> Optional[Dict]:
         """Get the status of a batch.
@@ -953,6 +1114,10 @@ class ProcessingQueue:
 
         Returns:
             Generated SOAP note or None if failed
+
+        Note:
+            Returns None on failure rather than raising to allow partial
+            processing to continue. Errors are logged with full context.
         """
         try:
             from ai.ai import create_soap_note_with_openai
@@ -964,34 +1129,87 @@ class ProcessingQueue:
             # Generate SOAP note with context if provided
             soap_note = create_soap_note_with_openai(transcript, context)
             return soap_note
+        except (APIError, APITimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate SOAP note",
+                exception=e,
+                error_code=getattr(e, 'error_code', 'SOAP_API_ERROR'),
+                transcript_length=len(transcript),
+                has_context=bool(context)
+            )
+            ctx.log()
+            return None
+        except (ConnectionError, TimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate SOAP note",
+                exception=e,
+                error_code="SOAP_NETWORK_ERROR",
+                transcript_length=len(transcript)
+            )
+            ctx.log()
+            return None
         except Exception as e:
-            logging.error(f"Error generating SOAP note: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Generate SOAP note",
+                exception=e,
+                error_code="SOAP_UNEXPECTED_ERROR",
+                transcript_length=len(transcript)
+            )
+            ctx.log()
             return None
     
     def _generate_referral(self, soap_note: str) -> Optional[str]:
         """Generate referral from SOAP note.
-        
+
         Args:
             soap_note: The SOAP note text
-            
+
         Returns:
             Generated referral or None if failed
+
+        Note:
+            Returns None on failure rather than raising to allow partial
+            processing to continue. Errors are logged with full context.
         """
         try:
             from ai.ai import create_referral_with_openai
             from settings.settings import SETTINGS
-            
+
             provider = SETTINGS.get("ai_provider", "openai")
             model = SETTINGS.get(f"{provider}_model", "gpt-4")
-            
+
             # For batch processing, use a default condition
             conditions = "Based on the clinical findings in the SOAP note"
-            
+
             # Generate referral
             referral = create_referral_with_openai(soap_note, conditions)
             return referral
+        except (APIError, APITimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate referral",
+                exception=e,
+                error_code=getattr(e, 'error_code', 'REFERRAL_API_ERROR'),
+                soap_note_length=len(soap_note)
+            )
+            ctx.log()
+            return None
+        except (ConnectionError, TimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate referral",
+                exception=e,
+                error_code="REFERRAL_NETWORK_ERROR",
+                soap_note_length=len(soap_note)
+            )
+            ctx.log()
+            return None
         except Exception as e:
-            logging.error(f"Error generating referral: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Generate referral",
+                exception=e,
+                error_code="REFERRAL_UNEXPECTED_ERROR",
+                soap_note_length=len(soap_note)
+            )
+            ctx.log()
             return None
     
     def _generate_letter(self, content: str, recipient_type: str = "other", specs: str = "") -> Optional[str]:
@@ -1004,6 +1222,10 @@ class ProcessingQueue:
 
         Returns:
             Generated letter or None if failed
+
+        Note:
+            Returns None on failure rather than raising to allow partial
+            processing to continue. Errors are logged with full context.
         """
         try:
             from ai.ai import create_letter_with_ai
@@ -1015,8 +1237,33 @@ class ProcessingQueue:
             # Generate letter with recipient type and specs
             letter = create_letter_with_ai(content, recipient_type, specs)
             return letter
+        except (APIError, APITimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate letter",
+                exception=e,
+                error_code=getattr(e, 'error_code', 'LETTER_API_ERROR'),
+                content_length=len(content),
+                recipient_type=recipient_type
+            )
+            ctx.log()
+            return None
+        except (ConnectionError, TimeoutError) as e:
+            ctx = ErrorContext.capture(
+                operation="Generate letter",
+                exception=e,
+                error_code="LETTER_NETWORK_ERROR",
+                content_length=len(content)
+            )
+            ctx.log()
+            return None
         except Exception as e:
-            logging.error(f"Error generating letter: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Generate letter",
+                exception=e,
+                error_code="LETTER_UNEXPECTED_ERROR",
+                content_length=len(content)
+            )
+            ctx.log()
             return None
     
     def reprocess_failed_recording(self, recording_id: int) -> Optional[str]:
@@ -1031,17 +1278,21 @@ class ProcessingQueue:
         try:
             # Get recording from database
             if not self.app or not hasattr(self.app, 'db'):
-                logging.error("No app context available for reprocessing")
+                logger.error("No app context available for reprocessing", recording_id=recording_id)
                 return None
-            
+
             recording = self.app.db.get_recording(recording_id)
             if not recording:
-                logging.error(f"Recording {recording_id} not found")
+                logger.error("Recording not found", recording_id=recording_id)
                 return None
-            
+
             # Check if it's actually failed
             if recording.get('processing_status') != 'failed':
-                logging.warning(f"Recording {recording_id} is not in failed status (current: {recording.get('processing_status')})")
+                logger.warning(
+                    "Recording is not in failed status",
+                    recording_id=recording_id,
+                    current_status=recording.get('processing_status')
+                )
                 return None
             
             # Load audio from file if available
@@ -1052,9 +1303,14 @@ class ProcessingQueue:
                 try:
                     from pydub import AudioSegment
                     audio_data = AudioSegment.from_mp3(audio_path)
-                    logging.info(f"Loaded audio from {audio_path} for reprocessing")
+                    logger.info("Loaded audio for reprocessing", audio_path=audio_path, recording_id=recording_id)
                 except Exception as e:
-                    logging.error(f"Failed to load audio from {audio_path}: {str(e)}")
+                    logger.error(
+                        "Failed to load audio for reprocessing",
+                        audio_path=audio_path,
+                        recording_id=recording_id,
+                        error=str(e)
+                    )
                     # Continue without audio - transcript might be available
             
             # Reset processing fields
@@ -1086,13 +1342,38 @@ class ProcessingQueue:
             # Add to queue
             task_id = self.add_recording(task_data)
             
-            logging.info(f"Recording {recording_id} queued for reprocessing as task {task_id}")
+            logger.info("Recording queued for reprocessing", recording_id=recording_id, task_id=task_id)
             return task_id
             
-        except Exception as e:
-            logging.error(f"Error reprocessing recording {recording_id}: {str(e)}", exc_info=True)
+        except DatabaseError as e:
+            ctx = ErrorContext.capture(
+                operation="Reprocess failed recording",
+                exception=e,
+                error_code="REPROCESS_DB_ERROR",
+                recording_id=recording_id
+            )
+            ctx.log()
             return None
-    
+        except (OSError, IOError) as e:
+            ctx = ErrorContext.capture(
+                operation="Load audio for reprocessing",
+                exception=e,
+                error_code="REPROCESS_FILE_ERROR",
+                recording_id=recording_id,
+                audio_path=audio_path if 'audio_path' in locals() else None
+            )
+            ctx.log()
+            return None
+        except Exception as e:
+            ctx = ErrorContext.capture(
+                operation="Reprocess failed recording",
+                exception=e,
+                error_code="REPROCESS_UNEXPECTED_ERROR",
+                recording_id=recording_id
+            )
+            ctx.log()
+            return None
+
     def reprocess_multiple_failed_recordings(self, recording_ids: List[int]) -> Dict[int, Optional[str]]:
         """Reprocess multiple failed recordings.
         

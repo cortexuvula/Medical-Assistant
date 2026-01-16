@@ -1,6 +1,11 @@
 """Anthropic Provider Module.
 
 Handles all API calls to Anthropic's Claude models including streaming support.
+
+Return Types:
+    - call_anthropic: Returns AIResult for type-safe error handling
+    - call_anthropic_streaming: Returns AIResult for type-safe error handling
+    - str(result) provides backward compatibility with code expecting strings
 """
 
 import logging
@@ -52,7 +57,10 @@ from anthropic.types import Message as AnthropicMessage
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_api_key, validate_model_name
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
+from utils.exceptions import (
+    APIError, RateLimitError, AuthenticationError, ServiceUnavailableError,
+    APITimeoutError, AIResult
+)
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -131,7 +139,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
             raise APIError(f"Anthropic API error: {error_msg}")
 
 
-def call_anthropic(model: str, system_message: str, prompt: str, temperature: float) -> str:
+def call_anthropic(model: str, system_message: str, prompt: str, temperature: float) -> AIResult:
     """Call Anthropic's Claude API with explicit timeout.
 
     Args:
@@ -141,7 +149,9 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         temperature: Temperature parameter (0.0 to 1.0)
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     # Normalize deprecated model names to current equivalents
     model = _normalize_model_name(model)
@@ -154,20 +164,20 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     if not api_key:
         logging.error("Anthropic API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Validate API key format
     is_valid, error = validate_api_key("anthropic", api_key)
     if not is_valid:
         logging.error(f"Invalid Anthropic API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Validate model name
     is_valid, error = validate_model_name(model, "anthropic")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -193,20 +203,21 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         ]
 
         response = _anthropic_api_call(client, model, messages, temperature)
-        return response.content[0].text.strip()
+        text = response.content[0].text.strip()
+        return AIResult.success(text, model=model, provider="anthropic")
     except APITimeoutError as e:
         logging.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Anthropic API error with model {model}: {str(e)}")
         error_code, details = format_api_error("anthropic", e)
         title, message = get_error_message(error_code, details, model)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
         logging.error(f"Unexpected error calling Anthropic: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
 
 
 def call_anthropic_streaming(
@@ -215,7 +226,7 @@ def call_anthropic_streaming(
     prompt: str,
     temperature: float,
     on_chunk: Callable[[str], None]
-) -> str:
+) -> AIResult:
     """Call Anthropic API with streaming response.
 
     Displays response progressively instead of waiting for complete response.
@@ -229,7 +240,9 @@ def call_anthropic_streaming(
         on_chunk: Callback function called with each text chunk
 
     Returns:
-        Complete response text
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     # Normalize deprecated model names to current equivalents
     model = _normalize_model_name(model)
@@ -239,22 +252,22 @@ def call_anthropic_streaming(
     # Get API key
     api_key = security_manager.get_api_key("anthropic")
     if not api_key:
-        error_msg = "[Error] Anthropic API key not found"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure("Anthropic API key not found", error_code="API_KEY_MISSING")
+        on_chunk(str(result))
+        return result
 
     # Validate inputs
     is_valid, error = validate_api_key("anthropic", api_key)
     if not is_valid:
-        error_msg = f"[Error] Invalid Anthropic API key: {error}"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure(f"Invalid Anthropic API key: {error}", error_code="API_KEY_INVALID")
+        on_chunk(str(result))
+        return result
 
     is_valid, error = validate_model_name(model, "anthropic")
     if not is_valid:
-        error_msg = f"[Error] Invalid model: {error}"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure(f"Invalid model: {error}", error_code="CFG_INVALID_SETTINGS")
+        on_chunk(str(result))
+        return result
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -280,10 +293,10 @@ def call_anthropic_streaming(
                 full_response += text
                 on_chunk(text)
 
-        return full_response.strip()
+        return AIResult.success(full_response.strip(), model=model, provider="anthropic")
 
     except Exception as e:
         logging.error(f"Streaming Anthropic error with model {model}: {str(e)}")
-        error_msg = f"[Error] {str(e)}"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure(str(e), error_code="STREAMING_ERROR", exception=e)
+        on_chunk(str(result))
+        return result

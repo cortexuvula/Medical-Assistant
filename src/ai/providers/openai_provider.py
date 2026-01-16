@@ -1,11 +1,16 @@
 """OpenAI Provider Module.
 
 Handles all API calls to OpenAI's GPT models including streaming support.
+
+Return Types:
+    - call_openai: Returns AIResult for type-safe error handling
+    - call_openai_streaming: Returns AIResult for type-safe error handling
+    - str(result) provides backward compatibility with code expecting strings
 """
 
 import logging
 import httpx
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Union
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
@@ -13,7 +18,10 @@ from openai.types.chat import ChatCompletion
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_model_name
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
+from utils.exceptions import (
+    APIError, RateLimitError, AuthenticationError, ServiceUnavailableError,
+    APITimeoutError, AIResult
+)
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -79,7 +87,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
             raise APIError(f"OpenAI API error: {error_msg}")
 
 
-def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> str:
+def call_openai(model: str, system_message: str, prompt: str, temperature: float) -> AIResult:
     """Call OpenAI API to generate a response.
 
     Args:
@@ -89,7 +97,9 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         temperature: Temperature parameter (0.0 to 1.0)
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     # Get security manager
     security_manager = get_security_manager()
@@ -98,7 +108,7 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     is_valid, error = validate_model_name(model, "openai")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -116,21 +126,21 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         ]
 
         response = _openai_api_call(model, messages, temperature)
-        return response.choices[0].message.content.strip()
+        text = response.choices[0].message.content.strip()
+        return AIResult.success(text, model=model, provider="openai")
     except APITimeoutError as e:
         logging.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"OpenAI API error with model {model}: {str(e)}")
         error_code, details = format_api_error("openai", e)
         title, message = get_error_message(error_code, details, model)
-        # Return error message that includes troubleshooting hints
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
         logging.error(f"Unexpected error calling OpenAI: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
 
 
 def call_openai_streaming(
@@ -139,7 +149,7 @@ def call_openai_streaming(
     prompt: str,
     temperature: float,
     on_chunk: Callable[[str], None]
-) -> str:
+) -> AIResult:
     """Call OpenAI API with streaming response.
 
     Displays response progressively instead of waiting for complete response.
@@ -153,7 +163,9 @@ def call_openai_streaming(
         on_chunk: Callback function called with each text chunk
 
     Returns:
-        Complete response text
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     security_manager = get_security_manager()
 
@@ -161,9 +173,9 @@ def call_openai_streaming(
     is_valid, error = validate_model_name(model, "openai")
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
-        error_msg = f"[Error: {title}] {message}"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure(message, error_code=title)
+        on_chunk(str(result))
+        return result
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -195,10 +207,10 @@ def call_openai_streaming(
                     full_response += text
                     on_chunk(text)
 
-        return full_response.strip()
+        return AIResult.success(full_response.strip(), model=model, provider="openai")
 
     except Exception as e:
         logging.error(f"Streaming OpenAI error with model {model}: {str(e)}")
-        error_msg = f"[Error] {str(e)}"
-        on_chunk(error_msg)
-        return error_msg
+        result = AIResult.failure(str(e), error_code="STREAMING_ERROR", exception=e)
+        on_chunk(str(result))
+        return result

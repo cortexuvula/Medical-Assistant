@@ -41,7 +41,8 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
             new_prompt,
             0.7
         )
-        return clean_text(result, remove_citations=False)
+        # AIResult.text gives the text content; str(result) also works for backward compatibility
+        return clean_text(result.text, remove_citations=False)
     except Exception as e:
         logging.error(f"Error creating referral: {str(e)}")
         title, message = get_error_message("UNKNOWN_ERROR", f"Failed to create referral: {str(e)}")
@@ -61,8 +62,8 @@ def get_possible_conditions(text: str) -> str:
               "Keep the condition names simple and specific and not longer that 3 words. "
               "Return them as a comma-separated list. Text: " + text)
     result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7)
-    # Clean both markdown and citations
-    return clean_text(result)
+    # Clean both markdown and citations; use result.text to get the text content
+    return clean_text(result.text)
 
 
 def _get_recipient_guidance(recipient_type: str) -> dict:
@@ -349,7 +350,8 @@ def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str =
     result = call_ai("gpt-4o", system_message, prompt, 0.7)
 
     # Clean up any markdown formatting and citations from the result
-    return clean_text(result)
+    # Use result.text to get the text content from AIResult
+    return clean_text(result.text)
 
 
 def create_letter_streaming(
@@ -386,4 +388,5 @@ def create_letter_streaming(
         result = call_ai("gpt-4o", system_message, prompt, 0.7)
 
     # Clean up any markdown formatting and citations from the result
-    return clean_text(result)
+    # Use result.text to get the text content from AIResult
+    return clean_text(result.text)

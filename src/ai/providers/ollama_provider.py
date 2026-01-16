@@ -1,6 +1,11 @@
 """Ollama Provider Module.
 
 Handles all API calls to local Ollama models.
+
+Return Types:
+    - call_ollama: Returns AIResult for type-safe error handling
+    - fallback_ollama_chat: Returns AIResult for type-safe error handling
+    - str(result) provides backward compatibility with code expecting strings
 """
 
 import os
@@ -12,11 +17,12 @@ from ai.logging_utils import log_api_call_debug
 from ai.providers.base import get_model_key_for_task
 from utils.error_codes import get_error_message
 from utils.validation import sanitize_prompt
+from utils.exceptions import AIResult
 from utils.http_client_manager import get_http_client_manager
 from settings.settings import SETTINGS
 
 
-def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
+def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResult:
     """Call local Ollama API to generate a response.
 
     Args:
@@ -25,7 +31,9 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
         temperature: Temperature parameter (0.0 to 1.0)
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     # Sanitize inputs first
     prompt = sanitize_prompt(prompt)
@@ -72,14 +80,14 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
                     logging.error(f"Ollama service health check failed: {health_check.status_code}")
                     if attempt == max_retries - 1:  # Last attempt
                         title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", f"Service at {ollama_url} returned status {health_check.status_code}")
-                        return f"[Error: {title}] {message}"
+                        return AIResult.failure(message, error_code=title)
                     time.sleep(2)  # Wait before next retry
                     continue
             except Exception as e:
                 logging.error(f"Ollama service health check error: {str(e)}")
                 if attempt == max_retries - 1:  # Last attempt
                     title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", str(e))
-                    return f"[Error: {title}] {message}"
+                    return AIResult.failure(message, error_code=title, exception=e)
                 time.sleep(2)  # Wait before next retry
                 continue
 
@@ -114,7 +122,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
 
                 # Extract the response based on generate API format
                 if "response" in result:
-                    return result["response"].strip()
+                    return AIResult.success(result["response"].strip(), model=model, provider="ollama")
                 else:
                     logging.warning(f"Unexpected Ollama API response format: {result}")
                     # Fallback to chat API if generate fails
@@ -134,7 +142,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
                 logging.error(f"Ollama API timeout with model {model} (attempt {attempt+1}/{max_retries})")
                 if attempt == max_retries - 1:  # Last attempt
                     title, message = get_error_message("CONN_TIMEOUT", f"Model '{model}' took longer than {timeout_values[attempt]} seconds to respond")
-                    return f"[Error: {title}] {message}"
+                    return AIResult.failure(message, error_code=title, exception=e)
                 time.sleep(2)  # Wait before next retry
                 continue
 
@@ -145,16 +153,16 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> str:
                     title, message = get_error_message("CFG_MODEL_NOT_INSTALLED", str(e), model)
                 else:
                     title, message = get_error_message("UNKNOWN_ERROR", str(e))
-                return f"[Error: {title}] {message}"
+                return AIResult.failure(message, error_code=title, exception=e)
             time.sleep(2)  # Wait before next retry
             continue
 
     # If all retries failed
     title, message = get_error_message("CONN_SERVICE_DOWN", f"Failed after {max_retries} attempts with model '{model}'")
-    return f"[Error: {title}] {message}"
+    return AIResult.failure(message, error_code=title)
 
 
-def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperature: float, timeout: int) -> str:
+def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperature: float, timeout: int) -> AIResult:
     """Fallback method to use the chat API endpoint if generate fails.
 
     Args:
@@ -165,7 +173,9 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
         timeout: Request timeout in seconds
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
     base_url = ollama_url.rstrip("/")
@@ -198,12 +208,23 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
         try:
             result = json.loads(response.text.strip())
             if "message" in result and "content" in result["message"]:
-                return result["message"]["content"].strip()
+                return AIResult.success(result["message"]["content"].strip(), model=model, provider="ollama")
             else:
-                return f"Error: Unable to get proper response from Ollama. Raw response: {response.text[:100]}..."
-        except json.JSONDecodeError:
-            return f"Error: Could not parse Ollama response as JSON. Please try a different model or check Ollama installation."
+                return AIResult.failure(
+                    f"Unable to get proper response from Ollama. Raw response: {response.text[:100]}...",
+                    error_code="OLLAMA_INVALID_RESPONSE"
+                )
+        except json.JSONDecodeError as e:
+            return AIResult.failure(
+                "Could not parse Ollama response as JSON. Please try a different model or check Ollama installation.",
+                error_code="OLLAMA_PARSE_ERROR",
+                exception=e
+            )
 
     except Exception as e:
         logging.error(f"Fallback Ollama chat API error: {str(e)}")
-        return f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed."
+        return AIResult.failure(
+            f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed.",
+            error_code="OLLAMA_API_ERROR",
+            exception=e
+        )

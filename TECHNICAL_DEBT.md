@@ -24,13 +24,13 @@ Excellent error handling infrastructure exists but is underutilized. Most code u
 
 ### Files Needing Updates
 
-| File | Issue | Priority | Suggested Fix |
-|------|-------|----------|---------------|
-| `src/processing/processing_queue.py` | 26+ bare `except Exception` catches | P1 | Catch specific exceptions, use ErrorContext |
-| `src/translation/deep_translator_provider.py` | Multiple broad Exception catches | P2 | Catch TranslationError, APIError specifically |
-| `src/ui/dialogs/*.py` | Many files use `messagebox.showerror()` directly | P2 | Use `status_manager.error()` for consistency |
-| `src/audio/audio.py` | Some silently swallowed errors | P2 | Log errors even if gracefully handling |
-| `src/database/database.py` | Migration errors not always re-raised | P2 | Ensure critical errors propagate |
+| File | Issue | Priority | Status |
+|------|-------|----------|--------|
+| `src/processing/processing_queue.py` | 26+ bare `except Exception` catches | P1 | ✅ Fixed - Uses ErrorContext, specific exceptions |
+| `src/translation/deep_translator_provider.py` | Multiple broad Exception catches | P2 | ✅ Fixed - Uses ErrorContext |
+| `src/ui/dialogs/*.py` | Many files use `messagebox.showerror()` directly | P2 | Pending |
+| `src/audio/audio.py` | Some silently swallowed errors | P2 | ✅ Fixed - Uses ErrorContext |
+| `src/database/database.py` | Migration errors not always re-raised | P2 | ✅ Fixed - Uses ErrorContext, documented design |
 
 ### Pattern to Follow
 ```python
@@ -71,33 +71,39 @@ Functions inconsistently return `OperationResult`, `AIResult`, dicts, strings, o
 
 ### Current State
 ```python
-# Pattern 1: OperationResult (good)
+# Pattern 1: OperationResult (good) - for high-level operations
 def refine_text(self) -> OperationResult[Dict]: ...
 
-# Pattern 2: AIResult (good but different)
+# Pattern 2: AIResult (good) - for AI provider calls
 def call_ai() -> AIResult: ...
+# Use result.text for content, result.is_success to check status
+# str(result) provides backward compatibility
 
-# Pattern 3: Dict (legacy)
+# Pattern 3: Dict (legacy) - avoid in new code
 return {"success": False, "error": "..."}
 
-# Pattern 4: String with error prefix (legacy)
-return "[Error: API_TIMEOUT] Request timed out"
-
-# Pattern 5: Raise exception
+# Pattern 4: Raise exception - for unrecoverable errors
 raise TranscriptionError("Failed")
 ```
 
 ### Recommendation
-Standardize on `OperationResult[T]` for operations that can fail gracefully, exceptions for unrecoverable errors.
+- `OperationResult[T]` for high-level operations with complex return data
+- `AIResult` for AI provider calls (already implemented)
+- Exceptions for unrecoverable errors
 
-### Files to Migrate
+### Files Status
 
-| File | Current Pattern | Priority |
-|------|-----------------|----------|
-| `src/ai/ai_processor.py` | Mixed OperationResult and strings | P2 |
-| `src/ai/providers/*.py` | Return error strings | P2 |
-| `src/processing/document_generators.py` | Mixed patterns | P2 |
-| `src/managers/*.py` | Various return styles | P3 |
+| File | Current Pattern | Priority | Status |
+|------|-----------------|----------|--------|
+| `src/ai/ai_processor.py` | OperationResult | P2 | ✅ Already standardized |
+| `src/ai/providers/openai_provider.py` | AIResult | P2 | ✅ Updated |
+| `src/ai/providers/anthropic_provider.py` | AIResult | P2 | ✅ Updated |
+| `src/ai/providers/gemini_provider.py` | AIResult | P2 | ✅ Updated |
+| `src/ai/providers/ollama_provider.py` | AIResult | P2 | ✅ Updated |
+| `src/ai/providers/router.py` | AIResult | P2 | ✅ Updated |
+| `src/ai/letter_generation.py` | Uses AIResult.text | P2 | ✅ Updated |
+| `src/processing/document_generators.py` | Via AIResult | P2 | ✅ Inherited |
+| `src/managers/*.py` | Various return styles | P3 | Pending |
 
 ---
 
@@ -124,12 +130,12 @@ logger.error(
 
 ### Files Using Basic Logging (Sample)
 
-| File | Lines with basic logging | Priority |
-|------|-------------------------|----------|
-| `src/processing/processing_queue.py` | ~15 | P2 |
-| `src/ai/ai_processor.py` | ~10 | P2 |
-| `src/audio/recording_manager.py` | ~8 | P3 |
-| `src/database/database.py` | ~12 | P3 |
+| File | Lines with basic logging | Priority | Status |
+|------|-------------------------|----------|--------|
+| `src/processing/processing_queue.py` | ~67 | P2 | ✅ Fixed - Uses structured logger with context |
+| `src/ai/ai_processor.py` | ~10 | P2 | ✅ Fixed - Uses structured logger with context |
+| `src/audio/recording_manager.py` | ~18 | P3 | ✅ Fixed - Uses structured logger with context |
+| `src/database/database.py` | ~12 | P3 | Pending |
 
 ### Migration Strategy
 1. Replace `import logging` with `from utils.structured_logging import get_logger`
@@ -272,6 +278,16 @@ Logging:
 | CommandRegistry for app.py decoupling | 2024 | CommandRegistry commit |
 | Settings domain organization | 2024 | Settings refactor |
 | Exception consolidation (APITimeoutError) | 2024 | Exception consolidation |
+| Error handling: processing_queue.py (P1) | 2026-01 | ErrorContext + specific exceptions |
+| Error handling: deep_translator_provider.py (P2) | 2026-01 | ErrorContext adoption |
+| Error handling: audio.py (P2) | 2026-01 | ErrorContext adoption |
+| Error handling: database.py (P2) | 2026-01 | ErrorContext + documented design |
+| Return type: AI providers use AIResult (P2) | 2026-01 | All providers return AIResult |
+| Return type: router.py uses AIResult (P2) | 2026-01 | call_ai, call_ai_streaming |
+| Return type: letter_generation.py (P2) | 2026-01 | Uses AIResult.text |
+| Logging: processing_queue.py (P2) | 2026-01 | Structured logger with context |
+| Logging: ai_processor.py (P2) | 2026-01 | Structured logger with context |
+| Logging: recording_manager.py (P3) | 2026-01 | Structured logger with context |
 
 ---
 

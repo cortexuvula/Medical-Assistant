@@ -1,6 +1,10 @@
 """Gemini Provider Module.
 
 Handles all API calls to Google's Gemini models.
+
+Return Types:
+    - call_gemini: Returns AIResult for type-safe error handling
+    - str(result) provides backward compatibility with code expecting strings
 """
 
 import os
@@ -11,7 +15,10 @@ import google.generativeai as genai
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_api_key
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
+from utils.exceptions import (
+    APIError, RateLimitError, AuthenticationError, ServiceUnavailableError,
+    APITimeoutError, AIResult
+)
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -66,7 +73,7 @@ def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generati
             raise APIError(f"Gemini API error: {error_msg}")
 
 
-def call_gemini(model_name: str, system_message: str, prompt: str, temperature: float) -> str:
+def call_gemini(model_name: str, system_message: str, prompt: str, temperature: float) -> AIResult:
     """Call Google Gemini API.
 
     Args:
@@ -76,7 +83,9 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
         temperature: Temperature parameter (0.0 to 1.0)
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     # Get security manager
     security_manager = get_security_manager()
@@ -89,14 +98,14 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
     if not api_key:
         logging.error("Gemini API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Gemini API key not found")
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Validate API key format
     is_valid, error = validate_api_key("gemini", api_key)
     if not is_valid:
         logging.error(f"Invalid Gemini API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title)
 
     # Enhanced sanitization
     prompt = security_manager.sanitize_input(prompt, "prompt")
@@ -125,18 +134,18 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
 
         # Make the API call
         response_text = _gemini_api_call(model, prompt, generation_config)
-        return response_text.strip()
+        return AIResult.success(response_text.strip(), model=model_name, provider="gemini")
 
     except APITimeoutError as e:
         logging.error(f"Gemini API timeout with model {model_name}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logging.error(f"Gemini API error with model {model_name}: {str(e)}")
         error_code, details = format_api_error("gemini", e)
         title, message = get_error_message(error_code, details, model_name)
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
         logging.error(f"Unexpected error calling Gemini: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
-        return f"[Error: {title}] {message}"
+        return AIResult.failure(message, error_code=title, exception=e)

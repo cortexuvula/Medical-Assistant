@@ -9,8 +9,8 @@ Use result.to_dict() for backward compatibility with code expecting
 {"success": bool, "text": str} or {"success": bool, "error": str}.
 """
 
-import logging
 from typing import Dict, Any, Optional, Tuple, Union
+from utils.structured_logging import get_logger
 from utils.security import get_security_manager
 from settings.settings import SETTINGS
 from ai.ai import (
@@ -29,7 +29,7 @@ from utils.constants import (
 )
 from utils.validation import sanitize_prompt
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AIProcessor:
@@ -150,7 +150,7 @@ class AIProcessor:
                 if conditions:
                     possible_conditions = f"\n\nPossible Conditions:\n{conditions}"
             except Exception as e:
-                logger.warning(f"Failed to get possible conditions: {e}")
+                logger.warning("Failed to get possible conditions", error=str(e))
 
         full_soap_note = soap_note + possible_conditions
 
@@ -260,7 +260,7 @@ class AIProcessor:
             temperature=temperature
         )
 
-        logger.info(f"{letter_type} letter created successfully")
+        logger.info("Letter created successfully", letter_type=letter_type)
         return OperationResult.success({"text": letter})
     
     @handle_errors(ErrorSeverity.WARNING, error_message="API key validation failed", return_type="bool")
@@ -345,14 +345,14 @@ class AIProcessor:
         response = agent_manager.execute_agent_task(AgentType.MEDICATION, task)
 
         if response and response.success:
-            logger.info(f"Medication {task_type} completed successfully")
+            logger.info("Medication task completed successfully", task_type=task_type)
             return OperationResult.success({
                 "text": response.result,
                 "metadata": response.metadata
             })
         else:
             error_msg = response.error if response else "Medication agent not available"
-            logger.error(f"Medication {task_type} failed: {error_msg}")
+            logger.error("Medication task failed", task_type=task_type, error=error_msg)
             return OperationResult.failure(error_msg, error_code="MEDICATION_FAILED")
     
     def extract_medications_from_soap(self, soap_note: str) -> OperationResult[Dict[str, Any]]:
@@ -455,10 +455,10 @@ class AIProcessor:
         analysis_provider = analysis_settings.get("provider", "")
         if analysis_provider:
             ai_provider = analysis_provider
-            logger.info(f"Advanced Analysis using specific provider: {ai_provider}")
+            logger.info("Advanced Analysis using specific provider", provider=ai_provider)
         else:
             ai_provider = current_settings.get("ai_provider", "openai")
-            logger.info(f"Advanced Analysis using global provider: {ai_provider}")
+            logger.info("Advanced Analysis using global provider", provider=ai_provider)
 
         # Select the appropriate model based on provider
         if ai_provider == PROVIDER_OPENAI:
@@ -481,5 +481,5 @@ class AIProcessor:
         # Generate analysis - pass the provider to override global setting
         analysis = call_ai(model, system_message, prompt, temperature, provider=ai_provider)
 
-        logger.info(f"Generated differential diagnosis successfully using provider: {ai_provider}")
+        logger.info("Generated differential diagnosis successfully", provider=ai_provider)
         return OperationResult.success({"text": analysis})

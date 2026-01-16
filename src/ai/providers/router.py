@@ -1,6 +1,11 @@
 """AI Provider Router Module.
 
 Routes API calls to the appropriate provider based on settings.
+
+Return Types:
+    - call_ai: Returns AIResult for type-safe error handling
+    - call_ai_streaming: Returns AIResult for type-safe error handling
+    - str(result) provides backward compatibility with code expecting strings
 """
 
 import logging
@@ -16,6 +21,7 @@ from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC,
     PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
+from utils.exceptions import AIResult
 
 
 def call_ai_streaming(
@@ -24,7 +30,7 @@ def call_ai_streaming(
     prompt: str,
     temperature: float,
     on_chunk: Callable[[str], None]
-) -> str:
+) -> AIResult:
     """Route streaming API calls to the appropriate provider.
 
     Args:
@@ -35,7 +41,9 @@ def call_ai_streaming(
         on_chunk: Callback for each text chunk
 
     Returns:
-        Complete response text
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     from settings.settings import load_settings
     current_settings = load_settings()
@@ -56,12 +64,12 @@ def call_ai_streaming(
         # Fall back to non-streaming for unsupported providers
         logging.info(f"Streaming not supported for {provider}, using non-streaming")
         result = call_ai(model, system_message, prompt, temperature)
-        on_chunk(result)
+        on_chunk(str(result))  # Use str() for backward compatibility with on_chunk
         return result
 
 
 def call_ai(model: str, system_message: str, prompt: str, temperature: float,
-            provider: str = None) -> str:
+            provider: str = None) -> AIResult:
     """Route API calls to the appropriate provider based on the selected AI provider in settings.
 
     Args:
@@ -72,7 +80,9 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         provider: Optional override for AI provider (if None, uses global ai_provider setting)
 
     Returns:
-        AI-generated response as a string
+        AIResult: Type-safe result wrapper. Use result.text for content,
+                  result.is_success to check status. str(result) returns
+                  text or error string for backward compatibility.
     """
     from settings.settings import SETTINGS, load_settings
     from utils.validation import sanitize_for_logging

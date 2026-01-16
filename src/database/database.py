@@ -3,6 +3,11 @@ Database Module
 
 Thread-safe database wrapper using thread-local connections with automatic cleanup.
 This module uses mixins to organize functionality while maintaining a unified interface.
+
+Error Handling:
+    - Migration failures are logged but don't prevent app startup (graceful degradation)
+    - Critical column additions log with ErrorContext for debugging
+    - Database connection errors should propagate to callers
 """
 
 import sqlite3
@@ -12,6 +17,7 @@ import re
 from typing import Dict, List, FrozenSet
 
 from managers.data_folder_manager import data_folder_manager
+from utils.error_handling import ErrorContext
 
 # Import centralized schema definitions
 from database.schema import (
@@ -142,8 +148,15 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                 migration_manager.migrate()
                 logging.info("Database migrations applied successfully")
         except Exception as e:
-            logging.error(f"Failed to apply database migrations: {e}")
+            ctx = ErrorContext.capture(
+                operation="Apply database migrations",
+                exception=e,
+                error_code="DATABASE_MIGRATION_ERROR",
+                db_path=self.db_path
+            )
+            ctx.log()
             # Don't raise - allow app to continue even if migrations fail
+            # The app may still function with an older schema
 
         # Ensure critical columns exist (fixes cases where migration recorded but column missing)
         self._ensure_critical_columns()
@@ -173,9 +186,23 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                         logging.info(f"Successfully added column '{column_name}'")
                     except sqlite3.OperationalError as e:
                         if "duplicate column" not in str(e).lower():
-                            logging.error(f"Failed to add column '{column_name}': {e}")
+                            ctx = ErrorContext.capture(
+                                operation="Add database column",
+                                exception=e,
+                                error_code="DATABASE_ALTER_TABLE_ERROR",
+                                column_name=column_name,
+                                column_type=column_type,
+                                db_path=self.db_path
+                            )
+                            ctx.log()
         except Exception as e:
-            logging.error(f"Error checking/adding critical columns: {e}")
+            ctx = ErrorContext.capture(
+                operation="Ensure critical database columns",
+                exception=e,
+                error_code="DATABASE_SCHEMA_CHECK_ERROR",
+                db_path=self.db_path
+            )
+            ctx.log()
 
         # Also ensure analysis_results table exists
         self._ensure_analysis_results_table()
@@ -214,7 +241,14 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                 conn.commit()
                 logging.info("Created analysis_results table successfully")
         except Exception as e:
-            logging.error(f"Error ensuring analysis_results table: {e}")
+            ctx = ErrorContext.capture(
+                operation="Ensure analysis_results table",
+                exception=e,
+                error_code="DATABASE_TABLE_CREATE_ERROR",
+                table_name="analysis_results",
+                db_path=self.db_path
+            )
+            ctx.log()
 
     @classmethod
     def cleanup_all_instances(cls) -> None:

@@ -5,9 +5,12 @@ Handles all SOAP recording functionality including start/stop/pause/resume,
 audio segment management, and recording processing.
 """
 
-import logging
 import threading
 import time
+from utils.structured_logging import get_logger
+
+# Module-level structured logger
+logger = get_logger(__name__)
 from datetime import datetime as dt
 from typing import Optional, List, Callable, Dict, Any
 import numpy as np
@@ -84,11 +87,11 @@ class RecordingManager:
             self.recording_thread.daemon = True
             self.recording_thread.start()
             
-            logging.info("SOAP recording started")
+            logger.info("SOAP recording started")
             return True
-            
+
         except Exception as e:
-            logging.error(f"Failed to start recording: {e}")
+            logger.error("Failed to start recording", error=str(e))
             return False
     
     def stop_recording(self) -> Optional[Dict[str, Any]]:
@@ -115,7 +118,7 @@ class RecordingManager:
         pending, chunks, total = self.audio_state_manager.get_segment_stats()
         
         # Log segment count for debugging
-        logging.info(f"RecordingManager: Stopping with {total} total segments")
+        logger.info("Stopping recording", total_segments=total)
         
         recording_data = {
             'audio': combined_audio,
@@ -126,9 +129,13 @@ class RecordingManager:
         }
         
         if combined_audio:
-            logging.info(f"SOAP recording stopped. Duration: {metadata['recording_duration']:.1f}s, Segments: {total}")
+            logger.info(
+                "SOAP recording stopped",
+                duration_seconds=round(metadata['recording_duration'], 1),
+                segments=total
+            )
         else:
-            logging.warning("RecordingManager: No audio segments recorded")
+            logger.warning("No audio segments recorded")
         
         return recording_data
     
@@ -140,34 +147,34 @@ class RecordingManager:
         """
         try:
             self.audio_state_manager.pause_recording()
-            logging.info("SOAP recording paused")
+            logger.info("SOAP recording paused")
             return True
         except RuntimeError:
             return False
-    
+
     def resume_recording(self) -> bool:
         """Resume SOAP recording.
-        
+
         Returns:
             bool: True if resumed successfully
         """
         try:
             self.audio_state_manager.resume_recording()
-            logging.info("SOAP recording resumed")
+            logger.info("SOAP recording resumed")
             return True
         except RuntimeError:
             return False
-    
+
     def cancel_recording(self) -> None:
         """Cancel SOAP recording without processing."""
         # Clear all audio data
         self.audio_state_manager.clear_all()
-        
+
         # Wait for recording thread
         if self.recording_thread and self.recording_thread.is_alive():
             self.recording_thread.join(timeout=2.0)
-            
-        logging.info("SOAP recording cancelled")
+
+        logger.info("SOAP recording cancelled")
     
     def add_audio_segment(self, audio_data: np.ndarray) -> None:
         """Add audio segment to recording.
@@ -221,7 +228,7 @@ class RecordingManager:
             }
             
         except Exception as e:
-            logging.error(f"Failed to process recording: {e}")
+            logger.error("Failed to process recording", error=str(e))
             return {
                 'success': False,
                 'error': str(e),
@@ -260,7 +267,11 @@ class RecordingManager:
                 available_devices = self._get_available_devices()
                 if not available_devices:
                     self._device_error_count += 1
-                    logging.warning(f"No audio devices available (error {self._device_error_count}/{self._max_device_errors})")
+                    logger.warning(
+                        "No audio devices available",
+                        error_count=self._device_error_count,
+                        max_errors=self._max_device_errors
+                    )
                 else:
                     self._device_error_count = 0  # Reset on success
                     return True
@@ -273,7 +284,12 @@ class RecordingManager:
                     return True
                 else:
                     self._device_error_count += 1
-                    logging.warning(f"Device '{device_name}' not found (error {self._device_error_count}/{self._max_device_errors})")
+                    logger.warning(
+                        "Device not found",
+                        device_name=device_name,
+                        error_count=self._device_error_count,
+                        max_errors=self._max_device_errors
+                    )
 
             # Check if we've exceeded max errors
             if self._device_error_count >= self._max_device_errors:
@@ -288,7 +304,7 @@ class RecordingManager:
         except DeviceDisconnectedError:
             raise
         except Exception as e:
-            logging.error(f"Error checking device health: {e}")
+            logger.error("Error checking device health", error=str(e))
             self._device_error_count += 1
             return self._device_error_count < self._max_device_errors
 
@@ -323,7 +339,7 @@ class RecordingManager:
 
             return False
         except Exception as e:
-            logging.debug(f"Error checking stream active status: {e}")
+            logger.debug("Error checking stream active status", error=str(e))
             return False
 
     def _find_device_by_name(self, device_name: str) -> bool:
@@ -420,7 +436,7 @@ class RecordingManager:
             return devices
 
         except Exception as e:
-            logging.error(f"Error getting available devices: {e}")
+            logger.error("Error getting available devices", error=str(e))
             # Return cached devices if available, otherwise empty list
             return self._device_cache if self._device_cache else []
 
@@ -435,7 +451,7 @@ class RecordingManager:
         Args:
             error: The DeviceDisconnectedError that was raised
         """
-        logging.error(f"Device disconnected: {error}")
+        logger.error("Device disconnected", device_name=error.device_name, error=str(error))
 
         # Pause recording to preserve data
         try:
@@ -448,7 +464,7 @@ class RecordingManager:
             try:
                 self.on_device_disconnected(error.device_name or "Unknown")
             except Exception as e:
-                logging.error(f"Error in device disconnection callback: {e}")
+                logger.error("Error in device disconnection callback", error=str(e))
 
         # Update status
         if self.status_manager:
@@ -480,7 +496,7 @@ class RecordingManager:
                     time.sleep(0.1)  # Check less frequently when paused
 
             except Exception as e:
-                logging.error(f"Error in recording loop: {e}")
+                logger.error("Error in recording loop", error=str(e))
                 time.sleep(0.1)  # Prevent tight error loop
     
     

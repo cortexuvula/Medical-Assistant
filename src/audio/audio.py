@@ -11,6 +11,7 @@ from settings.settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
 from managers.vocabulary_manager import vocabulary_manager
 from core.config import get_config
+from utils.error_handling import ErrorContext
 from audio.constants import (
     DEFAULT_SAMPLE_RATE,
     DEFAULT_SAMPLE_WIDTH,
@@ -386,7 +387,13 @@ class AudioHandler:
                 return ""
                 
         except Exception as e:
-            logging.error(f"Error with {provider} transcription: {str(e)}", exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Transcribe audio with provider",
+                exception=e,
+                error_code="TRANSCRIPTION_PROVIDER_ERROR",
+                provider=provider
+            )
+            ctx.log()
             return ""
 
     def process_audio_data(self, audio_data: Union[AudioData, np.ndarray]) -> tuple[Optional[AudioSegment], str]:
@@ -499,8 +506,14 @@ class AudioHandler:
             return segment, transcript
                 
         except Exception as e:
-            error_msg = f"Audio processing error: {str(e)}"
-            logging.error(error_msg, exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Process audio data",
+                exception=e,
+                error_code="AUDIO_PROCESSING_ERROR",
+                audio_data_type=type(audio_data).__name__,
+                soap_mode=self.soap_mode
+            )
+            ctx.log()
             return None, ""
 
     def load_audio_file(self, file_path: str) -> tuple[Optional[AudioSegment], str]:
@@ -524,7 +537,13 @@ class AudioHandler:
             return seg, transcript
             
         except Exception as e:
-            logging.error(f"Error loading audio file: {str(e)}", exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Load audio file",
+                exception=e,
+                error_code="AUDIO_FILE_LOAD_ERROR",
+                file_path=file_path
+            )
+            ctx.log()
             return None, ""
 
     def save_audio(self, segments: List[AudioSegment], file_path: str) -> bool:
@@ -565,7 +584,14 @@ class AudioHandler:
                 return True
             return False
         except Exception as e:
-            logging.error(f"Error saving audio: {str(e)}", exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Save audio file",
+                exception=e,
+                error_code="AUDIO_FILE_SAVE_ERROR",
+                file_path=file_path,
+                segment_count=len(segments) if segments else 0
+            )
+            ctx.log()
             return False
             
     def get_input_devices(self) -> List[Dict[str, Any]]:
