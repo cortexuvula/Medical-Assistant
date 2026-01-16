@@ -920,6 +920,7 @@ class SidebarNavigation:
             "diagnostic": "create_diagnostic_analysis",
             "workflow": "manage_workflow",
             "data_extraction": "extract_clinical_data",
+            "rsvp_reader": "open_rsvp_reader",
         }
 
         command_key = tool_commands.get(tool_id)

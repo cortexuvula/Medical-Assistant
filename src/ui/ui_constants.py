@@ -365,6 +365,7 @@ class Icons:
     TOOL_ANALYTICS = "⊙"
     TOOL_ADMIN = "⊠"
     TOOL_FEEDBACK = "✦"
+    TOOL_RSVP = "◉"
 
     # File operation icons
     FILE_NEW = "○"
@@ -502,6 +503,7 @@ class SidebarConfig:
         {"id": "workflow", "label": "Workflow", "icon": "TOOL_WORKFLOW"},
         {"id": "translation", "label": "Translation", "icon": "TOOL_TRANSLATION"},
         {"id": "data_extraction", "label": "Data Extract", "icon": "TOOL_DATA"},
+        {"id": "rsvp_reader", "label": "RSVP Reader", "icon": "TOOL_RSVP"},
     ]
 
     @classmethod

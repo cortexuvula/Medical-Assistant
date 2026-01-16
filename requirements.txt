@@ -33,3 +33,6 @@ pygame>=2.5.0  # For audio playback in TTS
 simpleeval>=0.9.13  # For safe expression evaluation (replaces unsafe eval)
 fhir.resources>=8.0.0  # For FHIR R4 resource models (healthcare interoperability)
 python-docx>=0.8.11  # For Word document (.docx) export
+pdfplumber>=0.10.0  # Text-based PDF extraction for RSVP Reader
+pytesseract>=0.3.10  # OCR for scanned PDFs in RSVP Reader
+pdf2image>=1.16.0  # Convert PDF pages to images for OCR

@@ -680,6 +680,15 @@ class MedicalDictationApp(
 
         RSVPDialog(self, soap_content)
 
+    def open_rsvp_reader(self) -> None:
+        """Open the standalone RSVP reader dialog.
+
+        This opens the RSVP reader tool that allows users to paste text,
+        upload PDFs (with OCR support), or load text files for speed reading.
+        """
+        from ui.dialogs.standalone_rsvp_dialog import StandaloneRSVPDialog
+        StandaloneRSVPDialog(self)
+
     def clear_text(self) -> None:
         """Clear transcript text. Delegates to TextProcessingController."""
         self.text_processing_controller.clear_text()
