@@ -1,60 +1,119 @@
+"""
+Settings Management Module
+
+This module provides centralized settings management for the Medical Assistant
+application. Settings are organized into logical domains for easier maintenance.
+
+Organization:
+- _DEFAULTS_*: Domain-specific default settings constants
+- _DEFAULT_SETTINGS: Combined settings dict (built from domain constants)
+- load_settings/save_settings: Core I/O functions
+- SETTINGS: Global settings dict (loaded on import)
+"""
+
 import os
 import json
 import logging
 import time
 import threading
+from typing import Dict, Any, Optional
 from core.config import get_config
 from settings.settings_migration import get_migrator
 from managers.data_folder_manager import data_folder_manager
 
+logger = logging.getLogger(__name__)
+
 SETTINGS_FILE = str(data_folder_manager.settings_file_path)
 
 # Settings cache for avoiding repeated file reads (saves 10-50ms per access)
-_settings_cache: dict = None
+_settings_cache: Optional[Dict[str, Any]] = None
 _settings_cache_time: float = 0.0
 _settings_cache_lock = threading.Lock()
-SETTINGS_CACHE_TTL = 60.0  # Cache valid for 60 seconds (settings rarely change during session)
+SETTINGS_CACHE_TTL = 60.0  # Cache valid for 60 seconds
+
+# Global defaults
 DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
-
-# NEW: Default AI Provider setting (default is OpenAI)
 DEFAULT_AI_PROVIDER = "openai"
-# NEW: Default Speech-to-Text provider setting (updated to include GROQ as default)
 DEFAULT_STT_PROVIDER = "groq"
-# NEW: Default theme setting
-DEFAULT_THEME = "flatly"  # Light theme default
+DEFAULT_THEME = "flatly"
 
-_DEFAULT_SETTINGS = {
-    "ai_config": {
-        "synopsis_enabled": True,
-        "synopsis_max_words": 200
+
+# =============================================================================
+# HELPER FUNCTIONS FOR SETTINGS GENERATION
+# =============================================================================
+
+def _make_provider_model_config(
+    openai_model: str = "gpt-3.5-turbo",
+    ollama_model: str = "llama3",
+    anthropic_model: str = "claude-sonnet-4-20250514",
+    gemini_model: str = "gemini-2.0-flash",
+    temperature: float = 0.7
+) -> Dict[str, Any]:
+    """Generate provider-specific model and temperature configuration.
+
+    Reduces duplication for settings that need model/temperature per provider.
+
+    Args:
+        openai_model: OpenAI model name
+        ollama_model: Ollama model name
+        anthropic_model: Anthropic model name
+        gemini_model: Gemini model name
+        temperature: Default temperature for all providers
+
+    Returns:
+        Dict with model and temperature keys for each provider
+    """
+    return {
+        "model": openai_model,
+        "ollama_model": ollama_model,
+        "anthropic_model": anthropic_model,
+        "gemini_model": gemini_model,
+        "temperature": temperature,
+        "openai_temperature": temperature,
+        "ollama_temperature": temperature,
+        "anthropic_temperature": temperature,
+        "gemini_temperature": temperature,
+    }
+
+
+# =============================================================================
+# DOMAIN-SPECIFIC DEFAULT SETTINGS
+# =============================================================================
+
+# AI Configuration defaults
+_DEFAULTS_AI_CONFIG = {
+    "synopsis_enabled": True,
+    "synopsis_max_words": 200
+}
+
+# Agent Configuration defaults
+_DEFAULTS_AGENT_CONFIG = {
+    "synopsis": {
+        "enabled": True,
+        "provider": "openai",
+        "model": "gpt-4",
+        "temperature": 0.3,
+        "max_tokens": 300,
+        "system_prompt": """You are a medical documentation specialist. Your task is to create concise,
+    clinically relevant synopses from SOAP notes. The synopsis should:
+
+    1. Be under 200 words
+    2. Capture the key clinical findings and plan
+    3. Use clear, professional medical language
+    4. Focus on the most important diagnostic and treatment information
+    5. Maintain the clinical context and patient safety considerations
+
+    Format the synopsis as a single paragraph that a healthcare provider could quickly read
+    to understand the essential clinical picture."""
     },
-    "agent_config": {
-        "synopsis": {
-            "enabled": True,
-            "provider": "openai",
-            "model": "gpt-4",
-            "temperature": 0.3,
-            "max_tokens": 300,
-            "system_prompt": """You are a medical documentation specialist. Your task is to create concise, 
-        clinically relevant synopses from SOAP notes. The synopsis should:
-        
-        1. Be under 200 words
-        2. Capture the key clinical findings and plan
-        3. Use clear, professional medical language
-        4. Focus on the most important diagnostic and treatment information
-        5. Maintain the clinical context and patient safety considerations
-        
-        Format the synopsis as a single paragraph that a healthcare provider could quickly read
-        to understand the essential clinical picture."""
-        },
-        "diagnostic": {
-            "enabled": False,
-            "provider": "openai",
-            "model": "gpt-4",
-            "temperature": 0.1,
-            "max_tokens": 800,
-            "auto_run_after_soap": False,
-            "system_prompt": """You are a medical diagnostic assistant with expertise in differential diagnosis.
+    "diagnostic": {
+        "enabled": False,
+        "provider": "openai",
+        "model": "gpt-4",
+        "temperature": 0.1,
+        "max_tokens": 800,
+        "auto_run_after_soap": False,
+        "system_prompt": """You are a medical diagnostic assistant with expertise in differential diagnosis.
 
 Your role is to:
 1. Analyze symptoms, signs, and clinical findings
@@ -97,102 +156,90 @@ Format your response as:
    - Priority 3 (Routine): Non-urgent workup
 
 5. CLINICAL PEARLS: Key points to remember for this presentation"""
-        },
-        "medication": {
-            "enabled": False,
-            "provider": "openai",
-            "model": "gpt-4",
-            "temperature": 0.2,
-            "max_tokens": 400,
-            "system_prompt": "You are a medication management assistant. Help with medication selection, dosing, and interaction checking. Always emphasize the importance of clinical judgment and patient-specific factors. Include warnings about contraindications and potential side effects."
-        },
-        "referral": {
-            "enabled": False,
-            "provider": "openai",
-            "model": "gpt-4",
-            "temperature": 0.3,
-            "max_tokens": 350,
-            "system_prompt": "You are a referral letter specialist. Generate professional, concise referral letters that include: 1. Clear reason for referral 2. Relevant clinical history 3. Current medications 4. Specific questions or requests 5. Urgency level. Format letters professionally and appropriately for the specialty."
-        },
-        "data_extraction": {
-            "enabled": False,
-            "provider": "openai",
-            "model": "gpt-3.5-turbo",
-            "temperature": 0.0,
-            "max_tokens": 300,
-            "system_prompt": "You are a clinical data extraction specialist. Extract structured data from clinical text including: Vital signs, Laboratory values, Medications with dosages, Diagnoses with ICD codes, Procedures. Return data in a structured, consistent format."
-        },
-        "workflow": {
-            "enabled": False,
-            "provider": "openai",
-            "model": "gpt-4",
-            "temperature": 0.3,
-            "max_tokens": 500,
-            "system_prompt": "You are a clinical workflow coordinator. Help manage multi-step medical processes including: Patient intake workflows, Diagnostic workup planning, Treatment protocols, Follow-up scheduling. Provide clear, step-by-step guidance while maintaining flexibility for clinical judgment."
-        }
     },
+    "medication": {
+        "enabled": False,
+        "provider": "openai",
+        "model": "gpt-4",
+        "temperature": 0.2,
+        "max_tokens": 400,
+        "system_prompt": "You are a medication management assistant. Help with medication selection, dosing, and interaction checking. Always emphasize the importance of clinical judgment and patient-specific factors. Include warnings about contraindications and potential side effects."
+    },
+    "referral": {
+        "enabled": False,
+        "provider": "openai",
+        "model": "gpt-4",
+        "temperature": 0.3,
+        "max_tokens": 350,
+        "system_prompt": "You are a referral letter specialist. Generate professional, concise referral letters that include: 1. Clear reason for referral 2. Relevant clinical history 3. Current medications 4. Specific questions or requests 5. Urgency level. Format letters professionally and appropriately for the specialty."
+    },
+    "data_extraction": {
+        "enabled": False,
+        "provider": "openai",
+        "model": "gpt-3.5-turbo",
+        "temperature": 0.0,
+        "max_tokens": 300,
+        "system_prompt": "You are a clinical data extraction specialist. Extract structured data from clinical text including: Vital signs, Laboratory values, Medications with dosages, Diagnoses with ICD codes, Procedures. Return data in a structured, consistent format."
+    },
+    "workflow": {
+        "enabled": False,
+        "provider": "openai",
+        "model": "gpt-4",
+        "temperature": 0.3,
+        "max_tokens": 500,
+        "system_prompt": "You are a clinical workflow coordinator. Help manage multi-step medical processes including: Patient intake workflows, Diagnostic workup planning, Treatment protocols, Follow-up scheduling. Provide clear, step-by-step guidance while maintaining flexibility for clinical judgment."
+    }
+}
+
+# Text processing defaults (refine, improve, referral)
+_DEFAULTS_TEXT_PROCESSING = {
     "refine_text": {
         "prompt": """Refine the punctuation and capitalization of the following text so that any voice command cues like 'full stop' are replaced with the appropriate punctuation and sentences start with a capital letter.""",
-        "model": "gpt-3.5-turbo",  # OpenAI model
-        "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
-        "gemini_model": "gemini-2.0-flash",  # Gemini model
-        "temperature": 0.0,  # Default temperature for refine_text
-        "openai_temperature": 0.0,  # OpenAI-specific temperature
-        "ollama_temperature": 0.0,   # Ollama-specific temperature
-        "anthropic_temperature": 0.0,  # Anthropic-specific temperature
-        "gemini_temperature": 0.0  # Gemini-specific temperature
+        **_make_provider_model_config(
+            openai_model="gpt-3.5-turbo",
+            temperature=0.0
+        )
     },
     "improve_text": {
         "prompt": "Improve the clarity, readability, and overall quality of the following transcript text.",
-        "model": "gpt-3.5-turbo",  # OpenAI model
-        "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
-        "gemini_model": "gemini-2.0-flash",  # Gemini model
-        "temperature": 0.7,  # Default temperature for improve_text
-        "openai_temperature": 0.7,  # OpenAI-specific temperature
-        "ollama_temperature": 0.7,   # Ollama-specific temperature
-        "anthropic_temperature": 0.7,  # Anthropic-specific temperature
-        "gemini_temperature": 0.7  # Gemini-specific temperature
-    },
-    "soap_note": {
-        "system_message": "",  # DEPRECATED - legacy field, use per-provider fields below
-        # Per-provider system messages (empty = use provider-optimized default)
-        "openai_system_message": "",
-        "anthropic_system_message": "",
-        "ollama_system_message": "",
-        "gemini_system_message": "",
-        "icd_code_version": "ICD-9",  # Options: "ICD-9", "ICD-10", "both"
-        "model": "gpt-3.5-turbo",  # OpenAI model
-        "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
-        "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for SOAP notes)
-        "temperature": 0.4,  # Default temperature for soap_note (lower for more consistent output)
-        "openai_temperature": 0.4,  # OpenAI-specific temperature
-        "ollama_temperature": 0.4,   # Ollama-specific temperature
-        "anthropic_temperature": 0.4,  # Anthropic-specific temperature
-        "gemini_temperature": 0.4  # Gemini-specific temperature
+        **_make_provider_model_config(
+            openai_model="gpt-3.5-turbo",
+            temperature=0.7
+        )
     },
     "referral": {
         "prompt": "Write a referral paragraph using the SOAP Note given to you",
-        "model": "gpt-3.5-turbo",  # OpenAI model
-        "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
-        "gemini_model": "gemini-2.0-flash",  # Gemini model
-        "temperature": 0.7,  # Default temperature for referral
-        "openai_temperature": 0.7,  # OpenAI-specific temperature
-        "ollama_temperature": 0.7,   # Ollama-specific temperature
-        "anthropic_temperature": 0.7,  # Anthropic-specific temperature
-        "gemini_temperature": 0.7  # Gemini-specific temperature
-    },
-    "advanced_analysis": {
-        "provider": "",  # Empty = use global ai_provider, or "openai", "anthropic", etc.
-        "prompt": """Analyze this medical encounter transcript and provide a clinical assessment.
+        **_make_provider_model_config(
+            openai_model="gpt-3.5-turbo",
+            temperature=0.7
+        )
+    }
+}
+
+# SOAP note generation defaults
+_DEFAULTS_SOAP_NOTE = {
+    "system_message": "",  # DEPRECATED - legacy field, use per-provider fields below
+    "openai_system_message": "",
+    "anthropic_system_message": "",
+    "ollama_system_message": "",
+    "gemini_system_message": "",
+    "icd_code_version": "ICD-9",  # Options: "ICD-9", "ICD-10", "both"
+    **_make_provider_model_config(
+        openai_model="gpt-3.5-turbo",
+        gemini_model="gemini-1.5-pro",  # Pro for SOAP notes
+        temperature=0.4  # Lower for consistent output
+    )
+}
+
+# Advanced analysis defaults
+_DEFAULTS_ADVANCED_ANALYSIS = {
+    "provider": "",  # Empty = use global ai_provider
+    "prompt": """Analyze this medical encounter transcript and provide a clinical assessment.
 
 If patient context is provided, incorporate it into your differential.
 
 TRANSCRIPT:""",
-        "system_message": """You are an experienced clinical decision support AI assisting with real-time differential diagnosis during patient encounters.
+    "system_message": """You are an experienced clinical decision support AI assisting with real-time differential diagnosis during patient encounters.
 
 INSTRUCTIONS:
 1. Analyze the transcript carefully, noting key symptoms, history, and clinical findings
@@ -247,57 +294,53 @@ QUESTIONS TO ASK:
 
 IMMEDIATE ACTIONS:
 [Any urgent interventions or consults needed, or "Routine evaluation appropriate"]""",
-        "model": "gpt-4",  # OpenAI model
-        "ollama_model": "llama3",   # Ollama model
-        "anthropic_model": "claude-sonnet-4-20250514",  # Anthropic model
-        "gemini_model": "gemini-1.5-pro",  # Gemini model (Pro for advanced analysis)
-        "temperature": 0.3,  # Default temperature for advanced analysis
-        "openai_temperature": 0.3,  # OpenAI-specific temperature
-        "ollama_temperature": 0.3,   # Ollama-specific temperature
-        "anthropic_temperature": 0.3,  # Anthropic-specific temperature
-        "gemini_temperature": 0.3  # Gemini-specific temperature
-    },
+    **_make_provider_model_config(
+        openai_model="gpt-4",
+        gemini_model="gemini-1.5-pro",  # Pro for advanced analysis
+        temperature=0.3
+    )
+}
+
+# STT provider defaults
+_DEFAULTS_STT_PROVIDERS = {
     "elevenlabs": {
-        "model_id": "scribe_v2",  # Updated to scribe_v2 - 90+ languages, up to 48 speakers
-        "language_code": "",  # Empty string for auto-detection
+        "model_id": "scribe_v2",
+        "language_code": "",  # Auto-detection
         "tag_audio_events": True,
-        "num_speakers": None,  # None means auto-detection (up to 48 speakers supported)
-        "timestamps_granularity": "word",  # Options: none, word, character
+        "num_speakers": None,  # Auto-detection (up to 48)
+        "timestamps_granularity": "word",
         "diarize": True,
-        "entity_detection": [],  # Array of entity types: "phi", "pii", "pci", "offensive"
-        "keyterms": []  # Up to 100 medical terms to bias recognition
+        "entity_detection": [],
+        "keyterms": []
     },
     "deepgram": {
-        "model": "nova-2-medical",  # Options: nova-2, nova-2-medical, enhanced, etc.
-        "language": "en-US",        # Language code
-        "smart_format": True,       # Enable smart formatting for better punctuation
-        "diarize": False,           # Speaker diarization
-        "profanity_filter": False,  # Filter profanity
-        "redact": False,            # Redact PII (personally identifiable information)
-        "alternatives": 1           # Number of alternative transcriptions
-    },
-    "storage_folder": DEFAULT_STORAGE_FOLDER,
-    "ai_provider": DEFAULT_AI_PROVIDER,
-    "stt_provider": DEFAULT_STT_PROVIDER,
-    "theme": DEFAULT_THEME,
-    "custom_context_templates": {},  # User-defined context templates
-    "window_width": 0,  # Will be set based on user preference, 0 means use default calculation
-    "window_height": 0,  # Will be set based on user preference, 0 means use default calculation
+        "model": "nova-2-medical",
+        "language": "en-US",
+        "smart_format": True,
+        "diarize": False,
+        "profanity_filter": False,
+        "redact": False,
+        "alternatives": 1
+    }
+}
+
+# Chat interface defaults
+_DEFAULTS_CHAT = {
     "chat_interface": {
         "enabled": True,
         "max_input_length": 2000,
         "max_context_length": 8000,
         "max_history_items": 10,
         "show_suggestions": True,
-        "auto_apply_changes": True,  # Whether to auto-apply AI suggestions to documents
-        "temperature": 0.3  # AI temperature for chat responses
+        "auto_apply_changes": True,
+        "temperature": 0.3
     },
     "custom_chat_suggestions": {
         "global": [
             {"text": "Explain in simple terms", "favorite": False},
             {"text": "What are the next steps?", "favorite": False},
             {"text": "Check for errors", "favorite": False}
-        ],  # Always available suggestions
+        ],
         "transcript": {
             "with_content": [
                 {"text": "Highlight key medical findings", "favorite": False},
@@ -338,94 +381,133 @@ IMMEDIATE ACTIONS:
                 {"text": "Create follow-up letter", "favorite": False}
             ]
         }
-    },
-    "quick_continue_mode": True,  # Enable background processing by default
-    "max_background_workers": 2,
-    "show_processing_notifications": True,
-    "auto_retry_failed": True,
-    "max_retry_attempts": 3,
-    "notification_style": "toast",  # toast, statusbar, popup
-    "auto_update_ui_on_completion": True,  # Auto-populate tabs when processing completes
-    "autosave_enabled": True,  # Enable auto-save by default
-    "autosave_interval": 300,  # Auto-save every 5 minutes (300 seconds)
-    "recording_autosave_enabled": True,  # Enable recording auto-save during recordings
-    "recording_autosave_interval": 60,   # Save recording every 60 seconds
+    }
+}
+
+# Translation and TTS defaults
+_DEFAULTS_TRANSLATION_TTS = {
     "translation": {
-        "provider": "deep_translator",  # Translation provider (deep_translator)
-        "sub_provider": "google",       # Sub-provider (google, deepl, microsoft)
-        "patient_language": "es",       # Default patient language (Spanish)
-        "doctor_language": "en",        # Default doctor language (English)
-        "auto_detect": True,           # Auto-detect patient language
-        "input_device": "",            # Translation-specific microphone
-        "output_device": "",           # Translation-specific speaker/output device
-        # LLM-based medical translation refinement (hybrid approach)
-        "llm_refinement_enabled": False,  # Enable LLM refinement for medical terms
-        "refinement_provider": "openai",  # AI provider for refinement
-        "refinement_model": "gpt-3.5-turbo",  # Model for refinement (cost-efficient)
-        "refinement_temperature": 0.1   # Low temp for consistent translations
+        "provider": "deep_translator",
+        "sub_provider": "google",
+        "patient_language": "es",
+        "doctor_language": "en",
+        "auto_detect": True,
+        "input_device": "",
+        "output_device": "",
+        "llm_refinement_enabled": False,
+        "refinement_provider": "openai",
+        "refinement_model": "gpt-3.5-turbo",
+        "refinement_temperature": 0.1
     },
     "tts": {
-        "provider": "pyttsx3",         # TTS provider (pyttsx3, elevenlabs, google)
-        "voice": "default",            # Voice ID/name (provider-specific)
-        "rate": 150,                   # Speech rate (words per minute)
-        "volume": 1.0,                 # Volume level (0.0 to 1.0)
-        "language": "en",              # Default TTS language
-        "elevenlabs_model": "eleven_turbo_v2_5"  # ElevenLabs model (eleven_turbo_v2_5, eleven_multilingual_v2, eleven_monolingual_v1)
+        "provider": "pyttsx3",
+        "voice": "default",
+        "rate": 150,
+        "volume": 1.0,
+        "language": "en",
+        "elevenlabs_model": "eleven_turbo_v2_5"
     },
     "translation_canned_responses": {
         "categories": ["greeting", "symptom", "history", "instruction", "clarify", "general"],
         "responses": {
-            # Greetings/General
             "How are you feeling today?": "greeting",
             "How can I help you?": "greeting",
             "Everything looks normal": "general",
             "I understand your concern": "general",
-            
-            # Symptom questions
             "Can you describe your symptoms?": "symptom",
             "How long have you had these symptoms?": "symptom",
             "Does it hurt when I press here?": "symptom",
             "On a scale of 1-10, how severe is the pain?": "symptom",
             "Is the pain constant or does it come and go?": "symptom",
-            
-            # Medical history
             "Are you taking any medications?": "history",
             "Do you have any allergies?": "history",
             "Have you had this problem before?": "history",
             "Do you have any medical conditions?": "history",
-            
-            # Instructions
             "I need to examine you": "instruction",
             "Please take a deep breath": "instruction",
             "Open your mouth and say 'Ah'": "instruction",
             "Take this medication twice a day": "instruction",
             "Please follow up in one week": "instruction",
             "Rest and drink plenty of fluids": "instruction",
-            
-            # Clarifications
             "Can you show me where it hurts?": "clarify",
             "When did this start?": "clarify",
             "Is there anything else bothering you?": "clarify"
         }
-    },
-    "custom_vocabulary": {
-        "enabled": True,              # Enable vocabulary corrections
-        "default_specialty": "general",  # Default medical specialty
-        "corrections": {
-            # Example entries - users can add their own
-            # Format: "find_text": {"replacement": "...", "category": "...", "specialty": "...", ...}
-        }
-    },
-    "rsvp": {
-        "wpm": 300,                   # Words per minute (50-2000)
-        "font_size": 48,              # Font size for word display (24-96)
-        "chunk_size": 1,              # Number of words to display at once (1-3)
-        "auto_start": False,          # Auto-start playback when dialog opens
-        "dark_theme": True,           # Use dark theme (True) or light theme (False)
-        "audio_cue": False,           # Play sound on section changes
-        "show_context": False         # Show current sentence in background
     }
 }
+
+# Feature and processing defaults
+_DEFAULTS_FEATURES = {
+    "quick_continue_mode": True,
+    "max_background_workers": 2,
+    "show_processing_notifications": True,
+    "auto_retry_failed": True,
+    "max_retry_attempts": 3,
+    "notification_style": "toast",
+    "auto_update_ui_on_completion": True,
+    "autosave_enabled": True,
+    "autosave_interval": 300,
+    "recording_autosave_enabled": True,
+    "recording_autosave_interval": 60
+}
+
+# UI and storage defaults
+_DEFAULTS_UI_STORAGE = {
+    "storage_folder": DEFAULT_STORAGE_FOLDER,
+    "ai_provider": DEFAULT_AI_PROVIDER,
+    "stt_provider": DEFAULT_STT_PROVIDER,
+    "theme": DEFAULT_THEME,
+    "custom_context_templates": {},
+    "window_width": 0,
+    "window_height": 0
+}
+
+# Custom vocabulary defaults
+_DEFAULTS_VOCABULARY = {
+    "custom_vocabulary": {
+        "enabled": True,
+        "default_specialty": "general",
+        "corrections": {}
+    }
+}
+
+# RSVP reader defaults
+_DEFAULTS_RSVP = {
+    "rsvp": {
+        "wpm": 300,
+        "font_size": 48,
+        "chunk_size": 1,
+        "auto_start": False,
+        "dark_theme": True,
+        "audio_cue": False,
+        "show_context": False
+    }
+}
+
+
+# =============================================================================
+# COMBINED DEFAULT SETTINGS
+# =============================================================================
+
+_DEFAULT_SETTINGS: Dict[str, Any] = {
+    "ai_config": _DEFAULTS_AI_CONFIG,
+    "agent_config": _DEFAULTS_AGENT_CONFIG,
+    **_DEFAULTS_TEXT_PROCESSING,
+    "soap_note": _DEFAULTS_SOAP_NOTE,
+    "advanced_analysis": _DEFAULTS_ADVANCED_ANALYSIS,
+    **_DEFAULTS_STT_PROVIDERS,
+    **_DEFAULTS_UI_STORAGE,
+    **_DEFAULTS_CHAT,
+    **_DEFAULTS_FEATURES,
+    **_DEFAULTS_TRANSLATION_TTS,
+    **_DEFAULTS_VOCABULARY,
+    **_DEFAULTS_RSVP,
+}
+
+
+# =============================================================================
+# SETTINGS I/O FUNCTIONS
+# =============================================================================
 
 def merge_settings_with_defaults(settings: dict, defaults: dict) -> dict:
     """Recursively merge settings with defaults, ensuring all default keys exist."""
