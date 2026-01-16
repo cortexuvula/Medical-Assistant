@@ -487,9 +487,17 @@ class ContextPanel:
             name_label.bind("<ButtonRelease-3>", show_context_menu)
 
     def _apply_template(self, text: str):
-        """Apply a template to the context text area."""
-        self.components['context_text'].delete("1.0", tk.END)
-        self.components['context_text'].insert("1.0", text)
+        """Append a template to the context text area."""
+        # Get current content
+        current_content = self.components['context_text'].get("1.0", tk.END).strip()
+
+        if current_content:
+            # Append with separator if there's existing content
+            self.components['context_text'].insert(tk.END, "\n\n" + text)
+        else:
+            # If empty, just insert the template
+            self.components['context_text'].delete("1.0", tk.END)
+            self.components['context_text'].insert("1.0", text)
     
     def _toggle_context_panel(self):
         """Toggle the context panel visibility."""

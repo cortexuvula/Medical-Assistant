@@ -23,12 +23,14 @@ Code Structure:
 - Lines 160-220: Text preprocessing (ICD removal, bullet cleanup)
 - Lines 220-260: Text parsing with punctuation and section detection
 - Lines 260-350: Dialog and widget creation
-- Lines 350-560: Control panel widgets (play, speed, font, chunk, nav, settings)
-- Lines 560-620: Progress section
-- Lines 620-830: Word display methods (single word ORP, chunk mode ORP)
-- Lines 830-920: Playback control and scheduling
-- Lines 920-1050: Navigation and speed control
-- Lines 1050-1180: Theme/settings toggles, help dialog, save/close
+- Lines 350-640: Control panel widgets in two-row layout
+  - Row 1: Play, Speed, Navigation
+  - Row 2: Font, Words/Chunk, Settings buttons
+- Lines 640-700: Progress section
+- Lines 700-920: Word display methods (single word ORP, chunk mode ORP)
+- Lines 920-1000: Playback control and scheduling
+- Lines 1000-1130: Navigation and speed control
+- Lines 1130-1250: Theme/settings toggles, help dialog, save/close
 """
 
 import tkinter as tk
@@ -326,18 +328,18 @@ class RSVPDialog:
         """Create the main dialog window."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("RSVP Reader")
-        self.dialog.geometry("900x600")
+        self.dialog.geometry("900x650")
         self.dialog.configure(bg=self.BG_COLOR)
         self.dialog.resizable(True, True)
-        self.dialog.minsize(800, 500)
+        self.dialog.minsize(800, 550)
 
         # Center on screen
         self.dialog.update_idletasks()
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
         x = (screen_width // 2) - (900 // 2)
-        y = (screen_height // 2) - (600 // 2)
-        self.dialog.geometry(f"900x600+{x}+{y}")
+        y = (screen_height // 2) - (650 // 2)
+        self.dialog.geometry(f"900x650+{x}+{y}")
 
         # Make modal
         self.dialog.transient(self.parent)
@@ -357,8 +359,9 @@ class RSVPDialog:
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Context display area (above main word, shows current sentence)
-        self.context_frame = tk.Frame(self.main_frame, bg=self.BG_COLOR, height=40)
-        self.context_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
+        # Height accommodates ~3 lines of truncated context text
+        self.context_frame = tk.Frame(self.main_frame, bg=self.BG_COLOR, height=80)
+        self.context_frame.pack(fill=tk.X, padx=20, pady=(15, 0))
         self.context_frame.pack_propagate(False)
 
         self.context_label = tk.Label(
@@ -366,10 +369,11 @@ class RSVPDialog:
             text="",
             bg=self.BG_COLOR,
             fg=self.CONTEXT_COLOR,
-            font=("Helvetica", 12),
-            wraplength=860
+            font=("Helvetica", 10),
+            wraplength=820,
+            justify=tk.CENTER
         )
-        self.context_label.pack(expand=True)
+        self.context_label.pack(expand=True, fill=tk.BOTH, padx=15, pady=8)
 
         # Word display area (canvas for custom rendering)
         self.display_frame = tk.Frame(self.main_frame, bg=self.BG_COLOR, height=250)
@@ -397,12 +401,12 @@ class RSVPDialog:
 
     def _create_section_buttons(self) -> None:
         """Create section navigation buttons."""
-        section_frame = tk.Frame(self.main_frame, bg=self.CONTROL_BG, height=45)
+        section_frame = tk.Frame(self.main_frame, bg=self.CONTROL_BG, height=55)
         section_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
         section_frame.pack_propagate(False)
 
         inner_frame = tk.Frame(section_frame, bg=self.CONTROL_BG)
-        inner_frame.pack(expand=True, pady=8)
+        inner_frame.pack(expand=True, pady=12)
 
         ttk.Label(
             inner_frame,
@@ -434,18 +438,22 @@ class RSVPDialog:
             ).pack(side=tk.LEFT, padx=10)
 
     def _create_control_panel(self) -> None:
-        """Create the main control panel with all controls."""
-        control_frame = tk.Frame(self.main_frame, bg=self.CONTROL_BG, height=70)
-        control_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
-        control_frame.pack_propagate(False)
+        """Create the main control panel with all controls in two rows."""
+        # Main control frame - increased height for two rows
+        self.control_frame = tk.Frame(self.main_frame, bg=self.CONTROL_BG, height=100)
+        self.control_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self.control_frame.pack_propagate(False)
 
-        # Inner control frame for centering
-        inner_control = tk.Frame(control_frame, bg=self.CONTROL_BG)
-        inner_control.pack(expand=True, pady=10)
+        # ROW 1: Play, Speed, Navigation
+        self.row1 = tk.Frame(self.control_frame, bg=self.CONTROL_BG)
+        self.row1.pack(fill=tk.X, pady=(8, 4))
+
+        row1_inner = tk.Frame(self.row1, bg=self.CONTROL_BG)
+        row1_inner.pack(expand=True)
 
         # Play/Pause button
         self.play_btn = ttk.Button(
-            inner_control,
+            row1_inner,
             text="Play",
             command=self._toggle_playback,
             width=10,
@@ -454,18 +462,18 @@ class RSVPDialog:
         self.play_btn.pack(side=tk.LEFT, padx=8)
 
         # Speed control section
-        speed_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        speed_frame.pack(side=tk.LEFT, padx=8)
+        self.speed_frame = tk.Frame(row1_inner, bg=self.CONTROL_BG)
+        self.speed_frame.pack(side=tk.LEFT, padx=8)
 
         ttk.Label(
-            speed_frame,
+            self.speed_frame,
             text="Speed:",
             background=self.CONTROL_BG,
             foreground=self.TEXT_COLOR
         ).pack(side=tk.LEFT, padx=(0, 3))
 
         ttk.Button(
-            speed_frame,
+            self.speed_frame,
             text="-",
             command=self._speed_down,
             width=2,
@@ -474,7 +482,7 @@ class RSVPDialog:
 
         self.speed_var = tk.IntVar(value=self.wpm)
         self.speed_slider = ttk.Scale(
-            speed_frame,
+            self.speed_frame,
             from_=self.MIN_WPM,
             to=self.MAX_WPM,
             orient=tk.HORIZONTAL,
@@ -485,7 +493,7 @@ class RSVPDialog:
         self.speed_slider.pack(side=tk.LEFT, padx=2)
 
         ttk.Button(
-            speed_frame,
+            self.speed_frame,
             text="+",
             command=self._speed_up,
             width=2,
@@ -493,7 +501,7 @@ class RSVPDialog:
         ).pack(side=tk.LEFT)
 
         self.wpm_label = ttk.Label(
-            speed_frame,
+            self.speed_frame,
             text=f"{self.wpm} WPM",
             width=9,
             background=self.CONTROL_BG,
@@ -501,12 +509,33 @@ class RSVPDialog:
         )
         self.wpm_label.pack(side=tk.LEFT, padx=(5, 0))
 
+        # Navigation buttons
+        self.nav_frame = tk.Frame(row1_inner, bg=self.CONTROL_BG)
+        self.nav_frame.pack(side=tk.LEFT, padx=8)
+
+        for symbol, cmd in [("<<", self._go_to_start), ("<", self._prev_word),
+                           (">", self._next_word), (">>", self._go_to_end)]:
+            ttk.Button(
+                self.nav_frame,
+                text=symbol,
+                command=cmd,
+                width=3,
+                bootstyle="secondary"
+            ).pack(side=tk.LEFT, padx=1)
+
+        # ROW 2: Font, Chunk/Words, Settings buttons
+        self.row2 = tk.Frame(self.control_frame, bg=self.CONTROL_BG)
+        self.row2.pack(fill=tk.X, pady=(4, 8))
+
+        row2_inner = tk.Frame(self.row2, bg=self.CONTROL_BG)
+        row2_inner.pack(expand=True)
+
         # Font size control
-        font_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        font_frame.pack(side=tk.LEFT, padx=8)
+        self.font_frame = tk.Frame(row2_inner, bg=self.CONTROL_BG)
+        self.font_frame.pack(side=tk.LEFT, padx=8)
 
         ttk.Label(
-            font_frame,
+            self.font_frame,
             text="Font:",
             background=self.CONTROL_BG,
             foreground=self.TEXT_COLOR
@@ -514,7 +543,7 @@ class RSVPDialog:
 
         self.font_var = tk.IntVar(value=self.font_size)
         self.font_slider = ttk.Scale(
-            font_frame,
+            self.font_frame,
             from_=self.MIN_FONT_SIZE,
             to=self.MAX_FONT_SIZE,
             orient=tk.HORIZONTAL,
@@ -525,7 +554,7 @@ class RSVPDialog:
         self.font_slider.pack(side=tk.LEFT, padx=2)
 
         self.font_label = ttk.Label(
-            font_frame,
+            self.font_frame,
             text=f"{self.font_size}pt",
             width=5,
             background=self.CONTROL_BG,
@@ -534,11 +563,11 @@ class RSVPDialog:
         self.font_label.pack(side=tk.LEFT, padx=(3, 0))
 
         # Chunk size control
-        chunk_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        chunk_frame.pack(side=tk.LEFT, padx=8)
+        self.chunk_frame = tk.Frame(row2_inner, bg=self.CONTROL_BG)
+        self.chunk_frame.pack(side=tk.LEFT, padx=8)
 
         ttk.Label(
-            chunk_frame,
+            self.chunk_frame,
             text="Words:",
             background=self.CONTROL_BG,
             foreground=self.TEXT_COLOR
@@ -547,7 +576,7 @@ class RSVPDialog:
         self.chunk_var = tk.IntVar(value=self.chunk_size)
         for i in [1, 2, 3]:
             rb = ttk.Radiobutton(
-                chunk_frame,
+                self.chunk_frame,
                 text=str(i),
                 variable=self.chunk_var,
                 value=i,
@@ -556,27 +585,13 @@ class RSVPDialog:
             )
             rb.pack(side=tk.LEFT, padx=1)
 
-        # Navigation buttons
-        nav_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        nav_frame.pack(side=tk.LEFT, padx=8)
-
-        for symbol, cmd in [("<<", self._go_to_start), ("<", self._prev_word),
-                           (">", self._next_word), (">>", self._go_to_end)]:
-            ttk.Button(
-                nav_frame,
-                text=symbol,
-                command=cmd,
-                width=3,
-                bootstyle="secondary"
-            ).pack(side=tk.LEFT, padx=1)
-
         # Settings buttons (theme, fullscreen, etc.)
-        settings_frame = tk.Frame(inner_control, bg=self.CONTROL_BG)
-        settings_frame.pack(side=tk.LEFT, padx=8)
+        self.settings_frame = tk.Frame(row2_inner, bg=self.CONTROL_BG)
+        self.settings_frame.pack(side=tk.LEFT, padx=8)
 
         # Theme toggle
         self.theme_btn = ttk.Button(
-            settings_frame,
+            self.settings_frame,
             text="Light" if self.is_dark_theme else "Dark",
             command=self._toggle_theme,
             width=6,
@@ -586,7 +601,7 @@ class RSVPDialog:
 
         # Fullscreen toggle
         ttk.Button(
-            settings_frame,
+            self.settings_frame,
             text="F11",
             command=self._toggle_fullscreen,
             width=4,
@@ -595,7 +610,7 @@ class RSVPDialog:
 
         # Context toggle
         self.context_btn = ttk.Button(
-            settings_frame,
+            self.settings_frame,
             text="Ctx" if not self.show_context else "Ctx*",
             command=self._toggle_context,
             width=4,
@@ -605,7 +620,7 @@ class RSVPDialog:
 
         # Audio toggle
         self.audio_btn = ttk.Button(
-            settings_frame,
+            self.settings_frame,
             text="Snd" if not self.audio_cue_enabled else "Snd*",
             command=self._toggle_audio_cue,
             width=4,
@@ -615,7 +630,7 @@ class RSVPDialog:
 
         # Help button
         self.help_btn = ttk.Button(
-            settings_frame,
+            self.settings_frame,
             text="?",
             command=self._show_shortcuts_help,
             width=2,
@@ -648,19 +663,19 @@ class RSVPDialog:
         info_frame = tk.Frame(progress_inner, bg=self.PROGRESS_BG)
         info_frame.pack(side=tk.RIGHT, padx=(15, 0))
 
-        self.word_count_label = ttk.Label(
+        self.word_count_label = tk.Label(
             info_frame,
             text=f"0 / {len(self.words)} words",
-            background=self.PROGRESS_BG,
-            foreground=self.TEXT_COLOR
+            bg=self.PROGRESS_BG,
+            fg=self.TEXT_COLOR
         )
         self.word_count_label.pack(anchor=tk.E)
 
-        self.time_label = ttk.Label(
+        self.time_label = tk.Label(
             info_frame,
             text="",
-            background=self.PROGRESS_BG,
-            foreground=self.TEXT_COLOR
+            bg=self.PROGRESS_BG,
+            fg=self.TEXT_COLOR
         )
         self.time_label.pack(anchor=tk.E)
 
@@ -677,9 +692,9 @@ class RSVPDialog:
         self.dialog.bind('<F11>', lambda e: self._toggle_fullscreen())
         self.dialog.bind('<t>', lambda e: self._toggle_theme())
         self.dialog.bind('<T>', lambda e: self._toggle_theme())
-        self.dialog.bind('<1>', lambda e: self._set_chunk_size(1))
-        self.dialog.bind('<2>', lambda e: self._set_chunk_size(2))
-        self.dialog.bind('<3>', lambda e: self._set_chunk_size(3))
+        self.dialog.bind('<Key-1>', lambda e: self._set_chunk_size(1))
+        self.dialog.bind('<Key-2>', lambda e: self._set_chunk_size(2))
+        self.dialog.bind('<Key-3>', lambda e: self._set_chunk_size(3))
 
         # Focus the dialog to capture key events
         self.dialog.focus_set()
@@ -901,13 +916,48 @@ class RSVPDialog:
                 current_x += spacing_width
 
     def _update_context_display(self) -> None:
-        """Update the sentence context display."""
+        """Update the sentence context display with truncation for long sentences."""
         if not self.show_context:
             self.context_label.config(text="")
             return
 
         sentence = self._get_current_sentence()
+
+        # Truncate long sentences to fit in context area (max ~200 chars)
+        max_length = 200
+        if len(sentence) > max_length:
+            # Try to show the portion around the current word
+            # Find approximate position of current word in sentence
+            words_before = self.current_index - self._get_sentence_start_index()
+            approx_char_pos = words_before * 6  # ~6 chars per word average
+
+            # Calculate window around current position
+            half_window = max_length // 2
+            start = max(0, approx_char_pos - half_window)
+            end = min(len(sentence), start + max_length)
+
+            # Adjust start if we're near the end
+            if end == len(sentence):
+                start = max(0, end - max_length)
+
+            truncated = sentence[start:end]
+
+            # Add ellipsis indicators
+            if start > 0:
+                truncated = "..." + truncated.lstrip()
+            if end < len(sentence):
+                truncated = truncated.rstrip() + "..."
+
+            sentence = truncated
+
         self.context_label.config(text=sentence)
+
+    def _get_sentence_start_index(self) -> int:
+        """Get the word index where the current sentence starts."""
+        for start, end, _ in self.sentences:
+            if start <= self.current_index <= end:
+                return start
+        return 0
 
     def _get_current_sentence(self) -> str:
         """Get the sentence containing the current word."""
@@ -1190,6 +1240,26 @@ class RSVPDialog:
         self.display_frame.configure(bg=self.BG_COLOR)
         self.context_frame.configure(bg=self.BG_COLOR)
         self.context_label.configure(bg=self.BG_COLOR, fg=self.CONTEXT_COLOR)
+        self.word_count_label.configure(bg=self.PROGRESS_BG, fg=self.TEXT_COLOR)
+        self.time_label.configure(bg=self.PROGRESS_BG, fg=self.TEXT_COLOR)
+
+        # Update control panel frames (two-row layout)
+        self.control_frame.configure(bg=self.CONTROL_BG)
+        self.row1.configure(bg=self.CONTROL_BG)
+        self.row2.configure(bg=self.CONTROL_BG)
+        self.speed_frame.configure(bg=self.CONTROL_BG)
+        self.nav_frame.configure(bg=self.CONTROL_BG)
+        self.font_frame.configure(bg=self.CONTROL_BG)
+        self.chunk_frame.configure(bg=self.CONTROL_BG)
+        self.settings_frame.configure(bg=self.CONTROL_BG)
+
+        # Update inner frames (children of row1 and row2)
+        for child in self.row1.winfo_children():
+            if isinstance(child, tk.Frame):
+                child.configure(bg=self.CONTROL_BG)
+        for child in self.row2.winfo_children():
+            if isinstance(child, tk.Frame):
+                child.configure(bg=self.CONTROL_BG)
 
         self.theme_btn.configure(text="Light" if self.is_dark_theme else "Dark")
         self._display_word()
