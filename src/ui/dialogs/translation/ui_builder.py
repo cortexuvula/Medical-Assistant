@@ -7,7 +7,7 @@ Provides UI creation for patient section, doctor section, and button bar.
 import tkinter as tk
 from tkinter.constants import WORD
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, W, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, W
 import logging
 from typing import TYPE_CHECKING, Optional, Dict
 
@@ -217,7 +217,7 @@ class UIBuilderMixin:
 
         self.patient_original_text = tk.Text(
             left_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=10,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
@@ -239,7 +239,7 @@ class UIBuilderMixin:
 
         self.patient_translated_text = tk.Text(
             right_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=10,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
@@ -319,7 +319,7 @@ class UIBuilderMixin:
 
         self.doctor_input_text = tk.Text(
             left_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=8,
             yscrollcommand=scroll1.set,
             font=("Consolas", 11),
@@ -349,7 +349,7 @@ class UIBuilderMixin:
 
         self.doctor_translated_text = tk.Text(
             right_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=8,
             yscrollcommand=scroll2.set,
             font=("Consolas", 11),
@@ -374,7 +374,7 @@ class UIBuilderMixin:
             command=self._send_doctor_response,
             bootstyle="primary",
             width=8,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.send_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.send_button, "Add response to history without playing audio (Ctrl+Enter)")
@@ -386,7 +386,7 @@ class UIBuilderMixin:
             command=self._preview_translation,
             bootstyle="info",
             width=10,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.preview_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.preview_button, "Preview translation audio")
@@ -397,7 +397,7 @@ class UIBuilderMixin:
             command=self._play_doctor_response,
             bootstyle="success",
             width=8,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.play_button.pack(side=LEFT, padx=(0, 3))
         ToolTip(self.play_button, "Play translation for patient (Ctrl+P)")
@@ -408,7 +408,7 @@ class UIBuilderMixin:
             command=self._stop_playback,
             bootstyle="secondary",
             width=6,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.stop_button.pack(side=LEFT, padx=(0, 5))
         ToolTip(self.stop_button, "Stop audio playback")
@@ -505,7 +505,7 @@ class UIBuilderMixin:
             command=self._undo_last_entry,
             bootstyle="outline-warning",
             width=7,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.undo_button.pack(side=RIGHT, padx=(0, 10))
         ToolTip(self.undo_button, "Undo last history entry (Ctrl+Z)")

@@ -23,7 +23,7 @@ Usage:
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED, END
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT
 from tkinter import messagebox, filedialog
 import pyperclip
 import logging
@@ -306,15 +306,15 @@ class BaseResultsDialog(ABC):
         Args:
             text: Formatted results text
         """
-        self.result_text.config(state=NORMAL)
-        self.result_text.delete("1.0", END)
+        self.result_text.config(state=tk.NORMAL)
+        self.result_text.delete("1.0", tk.END)
 
         # Parse and format lines
         lines = text.split('\n')
         for line in lines:
             self._format_line(line)
 
-        self.result_text.config(state=DISABLED)
+        self.result_text.config(state=tk.DISABLED)
 
     def _format_line(self, line: str) -> None:
         """Format and insert a single line into the text widget.
@@ -326,29 +326,29 @@ class BaseResultsDialog(ABC):
         """
         # Check for heading (ALL CAPS ending with :)
         if line.upper() == line and line.endswith(':') and line.strip():
-            self.result_text.insert(END, line + '\n', "heading")
+            self.result_text.insert(tk.END, line + '\n', "heading")
         # Warning indicators
         elif line.startswith('⚠') or line.startswith('[WARNING]'):
-            self.result_text.insert(END, line + '\n', "warning")
+            self.result_text.insert(tk.END, line + '\n', "warning")
         # Error indicators
         elif line.startswith('❌') or line.startswith('[ERROR]'):
-            self.result_text.insert(END, line + '\n', "error")
+            self.result_text.insert(tk.END, line + '\n', "error")
         # Success indicators
         elif line.startswith('✓') or line.startswith('[OK]'):
-            self.result_text.insert(END, line + '\n', "success")
+            self.result_text.insert(tk.END, line + '\n', "success")
         # Bullet points
         elif line.startswith('•') or line.startswith('-'):
             parts = line.split(' ', 1)
-            self.result_text.insert(END, parts[0] + ' ')
+            self.result_text.insert(tk.END, parts[0] + ' ')
             if len(parts) > 1:
-                self.result_text.insert(END, parts[1], "item")
-            self.result_text.insert(END, '\n')
+                self.result_text.insert(tk.END, parts[1], "item")
+            self.result_text.insert(tk.END, '\n')
         # Indented details
         elif line.startswith('  '):
-            self.result_text.insert(END, line + '\n', "detail")
+            self.result_text.insert(tk.END, line + '\n', "detail")
         # Normal text
         else:
-            self.result_text.insert(END, line + '\n')
+            self.result_text.insert(tk.END, line + '\n')
 
     def _create_buttons(self) -> None:
         """Create the action buttons."""
@@ -476,7 +476,7 @@ class BaseResultsDialog(ABC):
                 new_content = f"--- {section_title} ---\n\n{self.results_text}"
 
             # Update the text widget
-            target_widget.delete("1.0", END)
+            target_widget.delete("1.0", tk.END)
             target_widget.insert("1.0", new_content)
 
             # Switch to the appropriate tab

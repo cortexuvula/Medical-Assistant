@@ -8,7 +8,7 @@ and the source of content to analyze.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, BOTTOM, W, NORMAL
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, BOTTOM, W
 from typing import Optional, Dict
 
 
@@ -173,7 +173,7 @@ class MedicationAnalysisDialog:
             text="Use current transcript",
             variable=self.source_var,
             value="transcript",
-            state=NORMAL if self.has_transcript else DISABLED
+            state=tk.NORMAL if self.has_transcript else DISABLED
         )
         transcript_radio.pack(anchor=W, pady=5)
         
@@ -190,7 +190,7 @@ class MedicationAnalysisDialog:
             text="Use current SOAP note",
             variable=self.source_var,
             value="soap",
-            state=NORMAL if self.has_soap else DISABLED
+            state=tk.NORMAL if self.has_soap else DISABLED
         )
         soap_radio.pack(anchor=W, pady=5)
         
@@ -207,7 +207,7 @@ class MedicationAnalysisDialog:
             text="Use context information",
             variable=self.source_var,
             value="context",
-            state=NORMAL if self.has_context else DISABLED
+            state=tk.NORMAL if self.has_context else DISABLED
         )
         context_radio.pack(anchor=W, pady=5)
         
@@ -329,7 +329,7 @@ class MedicationAnalysisDialog:
         self.custom_text = tk.Text(
             text_frame,
             height=3,
-            wrap=WORD,
+            wrap=tk.WORD,
             yscrollcommand=scrollbar.set
         )
         self.custom_text.pack(side=LEFT, fill=BOTH, expand=True)

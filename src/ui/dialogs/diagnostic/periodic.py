@@ -6,7 +6,7 @@ Provides periodic analysis panel and evolution display functionality.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import X, BOTH, Y, VERTICAL, LEFT, RIGHT, W, END, WORD, DISABLED
+from ttkbootstrap.constants import X, BOTH, Y, VERTICAL, LEFT, RIGHT, W
 import json
 import logging
 from tkinter import messagebox
@@ -210,7 +210,7 @@ class PeriodicMixin:
 
         text = tk.Text(
             text_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             font=("Segoe UI", 10),
             padx=10,
             pady=10
@@ -233,17 +233,17 @@ class PeriodicMixin:
         # Parse and format the text
         for line in result_text.split('\n'):
             if line.startswith('Analysis #') or 'recording time:' in line:
-                text.insert(END, line + '\n', "header")
+                text.insert(tk.END, line + '\n', "header")
             elif '📈 NEW' in line or '✨ NEW' in line or '🆕' in line:
-                text.insert(END, line + '\n', "new")
+                text.insert(tk.END, line + '\n', "new")
             elif '❌ REMOVED' in line or '🔻' in line:
-                text.insert(END, line + '\n', "removed")
+                text.insert(tk.END, line + '\n', "removed")
             elif line.strip().startswith('─'):
-                text.insert(END, line + '\n', "separator")
+                text.insert(tk.END, line + '\n', "separator")
             else:
-                text.insert(END, line + '\n')
+                text.insert(tk.END, line + '\n')
 
-        text.config(state=DISABLED)
+        text.config(state=tk.DISABLED)
 
         # Buttons
         button_frame = ttk.Frame(main)

@@ -7,7 +7,7 @@ for use in referral generation.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W
 import logging
 from typing import Dict, List, Optional, Any
 from tkinter import messagebox
@@ -251,7 +251,7 @@ class ManageRecipientsDialog:
             action_frame,
             text="Edit",
             command=self._edit_selected,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.edit_btn.pack(side=LEFT, padx=(0, 5))
 
@@ -260,7 +260,7 @@ class ManageRecipientsDialog:
             text="Delete",
             command=self._delete_selected,
             bootstyle="danger",
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.delete_btn.pack(side=LEFT, padx=(0, 5))
 
@@ -269,7 +269,7 @@ class ManageRecipientsDialog:
             text="Toggle Favorite",
             command=self._toggle_favorite,
             bootstyle="warning",
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.favorite_btn.pack(side=LEFT)
 
@@ -368,14 +368,14 @@ class ManageRecipientsDialog:
             self.selection_var.set(f"Selected: {name}" + (f" - {specialty}" if specialty else ""))
 
             # Enable buttons
-            self.edit_btn.config(state=NORMAL)
-            self.delete_btn.config(state=NORMAL)
-            self.favorite_btn.config(state=NORMAL)
+            self.edit_btn.config(state=tk.NORMAL)
+            self.delete_btn.config(state=tk.NORMAL)
+            self.favorite_btn.config(state=tk.NORMAL)
         else:
             self.selection_var.set("No contact selected")
-            self.edit_btn.config(state=DISABLED)
-            self.delete_btn.config(state=DISABLED)
-            self.favorite_btn.config(state=DISABLED)
+            self.edit_btn.config(state=tk.DISABLED)
+            self.delete_btn.config(state=tk.DISABLED)
+            self.favorite_btn.config(state=tk.DISABLED)
 
     def _show_context_menu(self, event):
         """Show context menu on right-click."""
@@ -699,7 +699,7 @@ class RecipientEditDialog:
         """Create notes section."""
         self._create_section_label("Notes")
 
-        self.notes_text = tk.Text(self.form_frame, height=4, wrap=WORD)
+        self.notes_text = tk.Text(self.form_frame, height=4, wrap=tk.WORD)
         self.notes_text.pack(fill=X, pady=(0, 10))
 
         if self.recipient.get("notes"):

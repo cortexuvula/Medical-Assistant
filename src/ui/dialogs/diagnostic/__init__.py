@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter.constants import END, WORD
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
 import logging
 from typing import Dict, List, Optional
 
@@ -251,7 +251,7 @@ class DiagnosticResultsDialog(
 
         self.result_text = tk.Text(
             text_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             font=("Segoe UI", 11),
             padx=10,
             pady=10,
@@ -271,7 +271,7 @@ class DiagnosticResultsDialog(
         self._format_analysis(analysis)
 
         # Make text read-only
-        self.result_text.config(state=DISABLED)
+        self.result_text.config(state=tk.DISABLED)
 
     def _create_button_frames(
         self, main_frame: ttk.Frame, dialog: tk.Toplevel

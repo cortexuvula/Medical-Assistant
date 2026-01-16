@@ -6,7 +6,7 @@ Provides conversation history panel, session management, and export functionalit
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NW, W, DISABLED, NORMAL, HORIZONTAL
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NW, W, HORIZONTAL
 import threading
 import logging
 import json
@@ -299,8 +299,8 @@ class HistoryMixin:
             return
 
         # Update button states for playback
-        self.play_button.config(state=DISABLED, text="🔊 Playing...")
-        self.stop_button.config(state=NORMAL)
+        self.play_button.config(state=tk.DISABLED, text="🔊 Playing...")
+        self.stop_button.config(state=tk.NORMAL)
         self.recording_status.config(text="Replaying...", foreground="blue")
 
         def play_audio():

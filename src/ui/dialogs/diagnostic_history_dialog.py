@@ -7,7 +7,7 @@ Displays saved diagnostic analyses with the ability to view, re-open, or delete 
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, CENTER, W, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, CENTER, W
 from tkinter import messagebox
 import logging
 import re
@@ -186,10 +186,10 @@ class DiagnosticHistoryDialog:
 
         self.preview_text = tk.Text(
             preview_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=6,
             font=("Segoe UI", 10),
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.preview_text.pack(fill=X)
 
@@ -376,10 +376,10 @@ class DiagnosticHistoryDialog:
             # Update preview (first 500 chars)
             preview = result_text[:500] + "..." if len(result_text) > 500 else result_text
 
-            self.preview_text.config(state=NORMAL)
-            self.preview_text.delete("1.0", END)
+            self.preview_text.config(state=tk.NORMAL)
+            self.preview_text.delete("1.0", tk.END)
             self.preview_text.insert("1.0", preview)
-            self.preview_text.config(state=DISABLED)
+            self.preview_text.config(state=tk.DISABLED)
 
     def _view_selected(self):
         """View the full selected analysis."""
@@ -457,7 +457,7 @@ class DiagnosticHistoryDialog:
 
         text = tk.Text(
             text_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             font=("Segoe UI", 11),
             padx=10,
             pady=10
@@ -469,7 +469,7 @@ class DiagnosticHistoryDialog:
         text.config(yscrollcommand=scrollbar.set)
 
         text.insert("1.0", analysis.get('result_text', ''))
-        text.config(state=DISABLED)
+        text.config(state=tk.DISABLED)
 
         # Close button
         ttk.Button(

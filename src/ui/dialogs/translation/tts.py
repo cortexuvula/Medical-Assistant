@@ -6,7 +6,7 @@ Provides text-to-speech playback functionality.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import DISABLED, NORMAL
+
 import threading
 import logging
 from typing import TYPE_CHECKING, Optional, Callable
@@ -43,8 +43,8 @@ class TTSMixin:
             return
 
         # Update button states
-        self.play_button.config(state=DISABLED, text="🔊 Playing...")
-        self.stop_button.config(state=NORMAL)
+        self.play_button.config(state=tk.DISABLED, text="🔊 Playing...")
+        self.stop_button.config(state=tk.NORMAL)
         self.recording_status.config(text="Playing response...", foreground="blue")
 
         def synthesize_and_play():
@@ -68,8 +68,8 @@ class TTSMixin:
 
     def _on_playback_complete(self):
         """Handle TTS playback completion."""
-        self.play_button.config(state=NORMAL, text="🔊 Play")
-        self.stop_button.config(state=DISABLED)
+        self.play_button.config(state=tk.NORMAL, text="🔊 Play")
+        self.stop_button.config(state=tk.DISABLED)
         self.recording_status.config(text="Playback complete", foreground="green")
 
     def _on_playback_error(self, error: str):
@@ -78,16 +78,16 @@ class TTSMixin:
         Args:
             error: Error message
         """
-        self.play_button.config(state=NORMAL, text="🔊 Play")
-        self.stop_button.config(state=DISABLED)
+        self.play_button.config(state=tk.NORMAL, text="🔊 Play")
+        self.stop_button.config(state=tk.DISABLED)
         self.recording_status.config(text=f"Playback error: {error[:40]}", foreground="red")
 
     def _stop_playback(self):
         """Stop current TTS playback."""
         try:
             self.tts_manager.stop_playback()
-            self.play_button.config(state=NORMAL, text="🔊 Play")
-            self.stop_button.config(state=DISABLED)
+            self.play_button.config(state=tk.NORMAL, text="🔊 Play")
+            self.stop_button.config(state=tk.DISABLED)
             self.recording_status.config(text="Playback stopped", foreground="orange")
         except Exception as e:
             self.logger.error(f"Failed to stop playback: {e}")
@@ -98,8 +98,8 @@ class TTSMixin:
         if not translated_text:
             return
 
-        self.preview_button.config(state=DISABLED, text="👂 Previewing...")
-        self.stop_button.config(state=NORMAL)
+        self.preview_button.config(state=tk.DISABLED, text="👂 Previewing...")
+        self.stop_button.config(state=tk.NORMAL)
         self.recording_status.config(text="Previewing translation...", foreground="blue")
 
         def preview_audio():
@@ -123,8 +123,8 @@ class TTSMixin:
 
     def _on_preview_complete(self):
         """Handle preview completion."""
-        self.preview_button.config(state=NORMAL, text="👂 Preview")
-        self.stop_button.config(state=DISABLED)
+        self.preview_button.config(state=tk.NORMAL, text="👂 Preview")
+        self.stop_button.config(state=tk.DISABLED)
         self.recording_status.config(text="Preview complete", foreground="green")
 
     def _on_preview_error(self, error: str):
@@ -133,8 +133,8 @@ class TTSMixin:
         Args:
             error: Error message
         """
-        self.preview_button.config(state=NORMAL, text="👂 Preview")
-        self.stop_button.config(state=DISABLED)
+        self.preview_button.config(state=tk.NORMAL, text="👂 Preview")
+        self.stop_button.config(state=tk.DISABLED)
         self.recording_status.config(text=f"Preview error: {error[:40]}", foreground="red")
 
 

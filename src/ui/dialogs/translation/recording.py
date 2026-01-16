@@ -6,7 +6,7 @@ Provides audio recording functionality for patient and doctor speech.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import LEFT, DISABLED, NORMAL
+from ttkbootstrap.constants import LEFT
 import threading
 import logging
 from datetime import datetime

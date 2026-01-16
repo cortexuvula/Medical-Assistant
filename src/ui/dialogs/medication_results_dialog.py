@@ -7,7 +7,7 @@ Displays the results of medication analysis in a formatted, user-friendly dialog
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED, WORD, END
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT
 from tkinter import messagebox, filedialog
 import pyperclip
 import logging
@@ -168,7 +168,7 @@ class MedicationResultsDialog:
         # Create text widget with scrollbar
         self.result_text = tk.Text(
             text_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             font=("Segoe UI", 11),
             padx=10,
             pady=10
@@ -183,7 +183,7 @@ class MedicationResultsDialog:
         self._display_formatted_analysis(self.analysis_text)
         
         # Make text read-only
-        self.result_text.config(state=DISABLED)
+        self.result_text.config(state=tk.DISABLED)
         
         # Button frame
         button_frame = ttk.Frame(main_frame)
@@ -302,8 +302,8 @@ class MedicationResultsDialog:
         Args:
             text: Formatted analysis text
         """
-        self.result_text.config(state=NORMAL)
-        self.result_text.delete("1.0", END)
+        self.result_text.config(state=tk.NORMAL)
+        self.result_text.delete("1.0", tk.END)
 
         # Configure tags for formatting
         self.result_text.tag_configure("heading", font=("Segoe UI", 12, "bold"), spacing3=5)
@@ -366,40 +366,40 @@ class MedicationResultsDialog:
 
             if line.upper() == line and line.endswith(':') and line.strip():
                 # Heading
-                self.result_text.insert(END, line + '\n', "heading")
+                self.result_text.insert(tk.END, line + '\n', "heading")
             elif severity_tag:
                 # Line contains severity indicator - apply colored tag
-                self.result_text.insert(END, line + '\n', severity_tag)
+                self.result_text.insert(tk.END, line + '\n', severity_tag)
             elif line.startswith('⚠') or "warning" in line_lower:
                 # Warning
-                self.result_text.insert(END, line + '\n', "warning")
+                self.result_text.insert(tk.END, line + '\n', "warning")
             elif line.startswith('❌') or "contraindicated" in line_lower:
                 # Error/Contraindicated
-                self.result_text.insert(END, line + '\n', "severity_contraindicated")
+                self.result_text.insert(tk.END, line + '\n', "severity_contraindicated")
             elif "allergy" in line_lower or "allergic" in line_lower:
                 # Allergy warning
-                self.result_text.insert(END, line + '\n', "allergy_warning")
+                self.result_text.insert(tk.END, line + '\n', "allergy_warning")
             elif "renal" in line_lower or "kidney" in line_lower or "egfr" in line_lower:
                 # Renal-related
-                self.result_text.insert(END, line + '\n', "renal_warning")
+                self.result_text.insert(tk.END, line + '\n', "renal_warning")
             elif "hepatic" in line_lower or "liver" in line_lower or "child-pugh" in line_lower:
                 # Hepatic-related
-                self.result_text.insert(END, line + '\n', "hepatic_warning")
+                self.result_text.insert(tk.END, line + '\n', "hepatic_warning")
             elif line.startswith('•'):
                 # Medication or bullet point
                 parts = line.split(' ', 1)
-                self.result_text.insert(END, parts[0] + ' ')
+                self.result_text.insert(tk.END, parts[0] + ' ')
                 if len(parts) > 1:
-                    self.result_text.insert(END, parts[1], "medication")
-                self.result_text.insert(END, '\n')
+                    self.result_text.insert(tk.END, parts[1], "medication")
+                self.result_text.insert(tk.END, '\n')
             elif line.startswith('  -') or line.startswith('  '):
                 # Detail
-                self.result_text.insert(END, line + '\n', "detail")
+                self.result_text.insert(tk.END, line + '\n', "detail")
             else:
                 # Normal text
-                self.result_text.insert(END, line + '\n')
+                self.result_text.insert(tk.END, line + '\n')
 
-        self.result_text.config(state=DISABLED)
+        self.result_text.config(state=tk.DISABLED)
 
     def _detect_severity_tag(self, line: str) -> str:
         """
@@ -475,7 +475,7 @@ class MedicationResultsDialog:
                 new_content = f"--- Medication Analysis ---\n\n{self.analysis_text}"
             
             # Update the text widget
-            target_widget.delete("1.0", END)
+            target_widget.delete("1.0", tk.END)
             target_widget.insert("1.0", new_content)
             
             # Switch to the appropriate tab

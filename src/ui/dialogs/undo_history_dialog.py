@@ -7,7 +7,7 @@ undoing to a specific point in history.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
 from typing import TYPE_CHECKING, Optional, Callable
 
 from ui.dialogs.dialog_utils import create_toplevel_dialog
@@ -87,10 +87,10 @@ def show_undo_history_dialog(
     if history:
         for i, entry in enumerate(history):
             display_text = entry.get_display_text()
-            listbox.insert(END, f"  {i + 1}. {display_text}")
+            listbox.insert(tk.END, f"  {i + 1}. {display_text}")
     else:
-        listbox.insert(END, "  No undo history available")
-        listbox.config(state=DISABLED)
+        listbox.insert(tk.END, "  No undo history available")
+        listbox.config(state=tk.DISABLED)
 
     # Info label
     info_label = ttk.Label(
@@ -136,10 +136,10 @@ def show_undo_history_dialog(
         """Clear all history for this widget."""
         history_manager.clear_history(active_widget_name)
         listbox.delete(0, END)
-        listbox.insert(END, "  History cleared")
-        listbox.config(state=DISABLED)
-        undo_to_btn.config(state=DISABLED)
-        clear_btn.config(state=DISABLED)
+        listbox.insert(tk.END, "  History cleared")
+        listbox.config(state=tk.DISABLED)
+        undo_to_btn.config(state=tk.DISABLED)
+        clear_btn.config(state=tk.DISABLED)
 
     # Undo to Here button
     undo_to_btn = ttk.Button(
@@ -173,8 +173,8 @@ def show_undo_history_dialog(
 
     # Disable buttons if no history
     if not history:
-        undo_to_btn.config(state=DISABLED)
-        clear_btn.config(state=DISABLED)
+        undo_to_btn.config(state=tk.DISABLED)
+        clear_btn.config(state=tk.DISABLED)
 
     # Select first item by default
     if history:

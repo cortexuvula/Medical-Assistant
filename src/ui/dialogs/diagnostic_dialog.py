@@ -9,7 +9,7 @@ for diagnostic analysis.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NORMAL, DISABLED, W
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
 from tkinter import messagebox, filedialog
 from typing import Optional, Dict, List
 import json
@@ -136,7 +136,7 @@ class DiagnosticAnalysisDialog:
             text="Use current transcript",
             variable=self.source_var,
             value="transcript",
-            state=NORMAL if self.has_transcript else DISABLED
+            state=tk.NORMAL if self.has_transcript else DISABLED
         )
         transcript_radio.pack(anchor=W, pady=3)
 
@@ -153,7 +153,7 @@ class DiagnosticAnalysisDialog:
             text="Use current SOAP note (recommended - more structured)",
             variable=self.source_var,
             value="soap",
-            state=NORMAL if self.has_soap else DISABLED
+            state=tk.NORMAL if self.has_soap else DISABLED
         )
         soap_radio.pack(anchor=W, pady=3)
 
@@ -258,16 +258,16 @@ class DiagnosticAnalysisDialog:
             demo_frame,
             text="Pregnant",
             variable=self.pregnant_var,
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.pregnant_check.pack(side=LEFT, padx=(5, 0))
 
         # Enable pregnancy checkbox for females
         def on_sex_change(*args):
             if self.sex_var.get() == "Female":
-                self.pregnant_check.config(state=NORMAL)
+                self.pregnant_check.config(state=tk.NORMAL)
             else:
-                self.pregnant_check.config(state=DISABLED)
+                self.pregnant_check.config(state=tk.DISABLED)
                 self.pregnant_var.set(False)
         self.sex_var.trace('w', on_sex_change)
 
@@ -276,7 +276,7 @@ class DiagnosticAnalysisDialog:
         pmh_frame.pack(fill=X, pady=(5, 5))
 
         ttk.Label(pmh_frame, text="Past Medical History:").pack(anchor=W)
-        self.pmh_text = tk.Text(pmh_frame, height=2, wrap=WORD, font=("Segoe UI", 10))
+        self.pmh_text = tk.Text(pmh_frame, height=2, wrap=tk.WORD, font=("Segoe UI", 10))
         self.pmh_text.pack(fill=X, pady=(3, 0))
         self.pmh_text.insert("1.0", "e.g., HTN, DM2, asthma...")
         self.pmh_text.tag_add("hint", "1.0", "end")
@@ -293,7 +293,7 @@ class DiagnosticAnalysisDialog:
         meds_frame.pack(fill=X, pady=(5, 5))
 
         ttk.Label(meds_frame, text="Current Medications:").pack(anchor=W)
-        self.meds_text = tk.Text(meds_frame, height=2, wrap=WORD, font=("Segoe UI", 10))
+        self.meds_text = tk.Text(meds_frame, height=2, wrap=tk.WORD, font=("Segoe UI", 10))
         self.meds_text.pack(fill=X, pady=(3, 0))
         self.meds_text.insert("1.0", "e.g., metformin 500mg BID, lisinopril 10mg daily...")
         self.meds_text.tag_add("hint", "1.0", "end")
@@ -319,7 +319,7 @@ class DiagnosticAnalysisDialog:
         psh_frame.pack(fill=X, pady=(5, 5))
 
         ttk.Label(psh_frame, text="Past Surgical History:").pack(anchor=W)
-        self.psh_text = tk.Text(psh_frame, height=2, wrap=WORD, font=("Segoe UI", 10))
+        self.psh_text = tk.Text(psh_frame, height=2, wrap=tk.WORD, font=("Segoe UI", 10))
         self.psh_text.pack(fill=X, pady=(3, 0))
         self.psh_text.insert("1.0", "e.g., appendectomy 2015, cholecystectomy 2018...")
         self.psh_text.tag_add("hint", "1.0", "end")
@@ -336,7 +336,7 @@ class DiagnosticAnalysisDialog:
         fhx_frame.pack(fill=X, pady=(5, 5))
 
         ttk.Label(fhx_frame, text="Family History:").pack(anchor=W)
-        self.fhx_text = tk.Text(fhx_frame, height=2, wrap=WORD, font=("Segoe UI", 10))
+        self.fhx_text = tk.Text(fhx_frame, height=2, wrap=tk.WORD, font=("Segoe UI", 10))
         self.fhx_text.pack(fill=X, pady=(3, 0))
         self.fhx_text.insert("1.0", "e.g., Father: MI at 55, Mother: DM2, breast cancer...")
         self.fhx_text.tag_add("hint", "1.0", "end")
@@ -353,7 +353,7 @@ class DiagnosticAnalysisDialog:
         shx_frame.pack(fill=X, pady=(5, 5))
 
         ttk.Label(shx_frame, text="Social History:").pack(anchor=W)
-        self.shx_text = tk.Text(shx_frame, height=2, wrap=WORD, font=("Segoe UI", 10))
+        self.shx_text = tk.Text(shx_frame, height=2, wrap=tk.WORD, font=("Segoe UI", 10))
         self.shx_text.pack(fill=X, pady=(3, 0))
         self.shx_text.insert("1.0", "e.g., Smoker 20 pack-years, quit 2020; 2 drinks/week; retired teacher...")
         self.shx_text.tag_add("hint", "1.0", "end")
@@ -508,7 +508,7 @@ class DiagnosticAnalysisDialog:
 
         self.custom_text = tk.Text(
             text_frame,
-            wrap=WORD,
+            wrap=tk.WORD,
             height=8,
             font=("Segoe UI", 11)
         )
@@ -540,10 +540,10 @@ class DiagnosticAnalysisDialog:
         # Enable/disable custom text based on selection
         def on_source_change(*args):
             if self.source_var.get() == "custom":
-                self.custom_text.config(state=NORMAL)
+                self.custom_text.config(state=tk.NORMAL)
                 clear_example()
             else:
-                self.custom_text.config(state=DISABLED)
+                self.custom_text.config(state=tk.DISABLED)
 
         self.source_var.trace('w', on_source_change)
         on_source_change()

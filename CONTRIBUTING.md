@@ -55,34 +55,46 @@ src/
 
 ### Tkinter Constants
 
-**Always import constants explicitly from `ttkbootstrap.constants`:**
+**Use `tk.*` prefix for tkinter constants:**
+
+The codebase standardizes on using `tk.END`, `tk.DISABLED`, `tk.NORMAL` etc. with the `tk.` prefix.
+This is clearer about where constants come from and only requires `import tkinter as tk`.
 
 ```python
-# CORRECT
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, END, NORMAL, DISABLED, WORD, VERTICAL
+# CORRECT - use tk.* prefix
+text_widget.delete("1.0", tk.END)
+button.configure(state=tk.DISABLED)
+button.configure(state=tk.NORMAL)
 
-# WRONG - will cause NameError
-text_widget.delete("1.0", END)  # END not imported!
+# WRONG - bare constant without import causes NameError
+text_widget.delete("1.0", END)  # NameError: name 'END' is not defined
 
-# WRONG - inconsistent with codebase
-text_widget.delete("1.0", tk.END)  # Works but inconsistent
+# ACCEPTABLE but discouraged - explicit import from ttkbootstrap
+from ttkbootstrap.constants import END, DISABLED, NORMAL
+text_widget.delete("1.0", END)  # Works, but inconsistent with codebase
 ```
 
-**Standard tkinter constant imports for dialogs:**
+**Standard imports for dialog files:**
 
 ```python
 import tkinter as tk
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import (
-    BOTH, X, Y,                    # Pack/grid fill options
-    LEFT, RIGHT, TOP, BOTTOM,      # Side options
-    VERTICAL, HORIZONTAL,          # Orient options
-    NORMAL, DISABLED,              # State options
-    END, WORD,                     # Text widget options
-    W, E, N, S, NW, NE, SW, SE    # Anchor options
-)
 from tkinter import messagebox, filedialog
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, VERTICAL  # Layout only
+from typing import Optional, Dict, Any
 ```
+
+**Common tk constants reference:**
+
+| Constant | Usage |
+|----------|-------|
+| `tk.END` | Text widget end position |
+| `tk.NORMAL` | Widget enabled state |
+| `tk.DISABLED` | Widget disabled state |
+| `tk.WORD` | Text widget word wrap |
+| `tk.LEFT`, `tk.RIGHT`, `tk.TOP`, `tk.BOTTOM` | Pack side options |
+| `tk.W`, `tk.E`, `tk.N`, `tk.S` | Grid sticky options |
+| `tk.BOTH`, `tk.X`, `tk.Y` | Fill options |
 
 ### Module Imports
 

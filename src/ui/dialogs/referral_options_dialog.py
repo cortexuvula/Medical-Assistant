@@ -13,7 +13,7 @@ Provides a dialog for users to configure referral generation options including:
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, BOTTOM, W, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, BOTTOM, W
 from typing import Optional, Dict, List, Any
 
 
@@ -199,7 +199,7 @@ class ReferralOptionsDialog:
                 text=text,
                 variable=self.source_var,
                 value=value,
-                state=NORMAL if available else DISABLED
+                state=tk.NORMAL if available else DISABLED
             )
             radio.pack(anchor=W, pady=2)
 

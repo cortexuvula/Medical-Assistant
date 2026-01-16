@@ -8,7 +8,7 @@ differential evolution and compare findings across time or specialties.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, BOTTOM, CENTER, N, S, W, DISABLED, EW
+from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, BOTTOM, CENTER, N, S, W, EW
 from tkinter import messagebox
 import logging
 import re
@@ -426,7 +426,7 @@ class DiagnosticComparisonDialog:
         preview.geometry("600x400")
         preview.transient(self.dialog)
 
-        text = tk.Text(preview, wrap=WORD, font=("Segoe UI", 10), padx=10, pady=10)
+        text = tk.Text(preview, wrap=tk.WORD, font=("Segoe UI", 10), padx=10, pady=10)
         text.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
         scrollbar = ttk.Scrollbar(text, orient=VERTICAL, command=text.yview)
@@ -434,7 +434,7 @@ class DiagnosticComparisonDialog:
         text.config(yscrollcommand=scrollbar.set)
 
         text.insert("1.0", analysis.get('result_text', 'No content'))
-        text.config(state=DISABLED)
+        text.config(state=tk.DISABLED)
 
         ttk.Button(
             preview,
@@ -536,7 +536,7 @@ class DiagnosticComparisonDialog:
 
             text = tk.Text(
                 text_frame,
-                wrap=WORD,
+                wrap=tk.WORD,
                 font=("Segoe UI", 9),
                 padx=5,
                 pady=5,
@@ -552,7 +552,7 @@ class DiagnosticComparisonDialog:
             result_text = analysis.get('result_text', '')
             diff_section = self._extract_section(result_text, 'DIFFERENTIAL DIAGNOSES:')
             text.insert("1.0", diff_section or "No differentials found")
-            text.config(state=DISABLED)
+            text.config(state=tk.DISABLED)
 
     def _extract_section(self, text: str, section_name: str) -> str:
         """Extract a section from analysis text.

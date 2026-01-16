@@ -8,7 +8,7 @@ saved recipients database for use in referral generation.
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W, NORMAL, DISABLED
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
 from typing import Optional, Dict, List, Any
 
 from managers.recipient_manager import get_recipient_manager
@@ -180,7 +180,7 @@ class ImportContactsDialog:
             text="Import Contacts",
             command=self._import,
             style="primary.TButton",
-            state=DISABLED
+            state=tk.DISABLED
         )
         self.import_btn.pack(side=RIGHT)
 
@@ -252,11 +252,11 @@ class ImportContactsDialog:
                 ))
 
             # Enable import button
-            self.import_btn.config(state=NORMAL)
+            self.import_btn.config(state=tk.NORMAL)
 
         except Exception as e:
             self.status_var.set(f"Error reading file: {str(e)}")
-            self.import_btn.config(state=DISABLED)
+            self.import_btn.config(state=tk.DISABLED)
 
     def _import(self):
         """Perform the import."""
@@ -274,7 +274,7 @@ class ImportContactsDialog:
 
         # Show progress
         self.status_var.set("Importing contacts...")
-        self.import_btn.config(state=DISABLED)
+        self.import_btn.config(state=tk.DISABLED)
         self.dialog.update()
 
         # Perform import
