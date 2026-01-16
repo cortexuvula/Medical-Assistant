@@ -62,8 +62,10 @@ class ServiceUnavailableError(APIError):
         super().__init__(message, status_code=503, **kwargs)
 
 
-class TimeoutError(APIError):
+class APITimeoutError(APIError):
     """Raised when an API call times out.
+
+    Note: Named APITimeoutError to avoid shadowing Python's built-in TimeoutError.
 
     Attributes:
         timeout_seconds: The timeout value that was exceeded
@@ -73,6 +75,10 @@ class TimeoutError(APIError):
         super().__init__(message, status_code=408, **kwargs)
         self.timeout_seconds = timeout_seconds
         self.service = service
+
+
+# Alias for backward compatibility (deprecated - use APITimeoutError directly)
+TimeoutError = APITimeoutError
 
 
 class ConfigurationError(MedicalAssistantError):
@@ -103,6 +109,29 @@ class DeviceDisconnectedError(AudioError):
         super().__init__(message, **kwargs)
         self.device_name = device_name
 
+
+# =============================================================================
+# Processing Queue Exceptions
+# =============================================================================
+
+class ProcessingError(MedicalAssistantError):
+    """Base exception for processing queue errors."""
+    pass
+
+
+class AudioSaveError(ProcessingError):
+    """Raised when saving audio to file fails."""
+    pass
+
+
+class DocumentGenerationError(ProcessingError):
+    """Raised when document generation (SOAP, referral, letter) fails."""
+    pass
+
+
+# =============================================================================
+# Result Wrapper Classes
+# =============================================================================
 
 class AIResult:
     """

@@ -11,7 +11,7 @@ import google.generativeai as genai
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_api_key
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, TimeoutError as AppTimeoutError
+from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -39,7 +39,7 @@ def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generati
 
     Raises:
         APIError: On API failures
-        AppTimeoutError: On request timeout
+        APITimeoutError: On request timeout
     """
     timeout_seconds = get_timeout("gemini")
 
@@ -57,7 +57,7 @@ def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generati
         elif "api key" in error_msg.lower() or "invalid" in error_msg.lower() or "permission" in error_msg.lower():
             raise AuthenticationError(f"Gemini authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
-            raise AppTimeoutError(
+            raise APITimeoutError(
                 f"Gemini request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
                 service="gemini"
@@ -127,7 +127,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
         response_text = _gemini_api_call(model, prompt, generation_config)
         return response_text.strip()
 
-    except AppTimeoutError as e:
+    except APITimeoutError as e:
         logging.error(f"Gemini API timeout with model {model_name}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return f"[Error: {title}] {message}"

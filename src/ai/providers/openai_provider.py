@@ -13,7 +13,7 @@ from openai.types.chat import ChatCompletion
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_model_name
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, TimeoutError as AppTimeoutError
+from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -42,7 +42,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
 
     Raises:
         APIError: On API failures
-        AppTimeoutError: On request timeout
+        APITimeoutError: On request timeout
     """
     timeout_seconds = get_timeout("openai")
 
@@ -58,7 +58,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
         )
         return response
     except httpx.TimeoutException as e:
-        raise AppTimeoutError(
+        raise APITimeoutError(
             f"OpenAI request timed out after {timeout_seconds}s: {e}",
             timeout_seconds=timeout_seconds,
             service="openai"
@@ -70,7 +70,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
         elif "authentication" in error_msg.lower() or "invalid api key" in error_msg.lower():
             raise AuthenticationError(f"OpenAI authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower():
-            raise AppTimeoutError(
+            raise APITimeoutError(
                 f"OpenAI request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
                 service="openai"
@@ -117,7 +117,7 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
 
         response = _openai_api_call(model, messages, temperature)
         return response.choices[0].message.content.strip()
-    except AppTimeoutError as e:
+    except APITimeoutError as e:
         logging.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return f"[Error: {title}] {message}"

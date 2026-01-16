@@ -19,27 +19,12 @@ import traceback
 from database.database import Database
 from settings.settings import SETTINGS
 from utils.error_handling import ErrorContext
-
-
-# Custom exceptions for more specific error handling
-class ProcessingError(Exception):
-    """Base exception for processing queue errors."""
-    pass
-
-
-class TranscriptionError(ProcessingError):
-    """Raised when audio transcription fails."""
-    pass
-
-
-class AudioSaveError(ProcessingError):
-    """Raised when saving audio fails."""
-    pass
-
-
-class DocumentGenerationError(ProcessingError):
-    """Raised when document generation (SOAP, referral, letter) fails."""
-    pass
+from utils.exceptions import (
+    ProcessingError,
+    TranscriptionError,
+    AudioSaveError,
+    DocumentGenerationError,
+)
 
 
 def _thread_exception_hook(args):

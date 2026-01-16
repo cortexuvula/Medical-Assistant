@@ -52,7 +52,7 @@ from anthropic.types import Message as AnthropicMessage
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
 from utils.validation import validate_api_key, validate_model_name
-from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, TimeoutError as AppTimeoutError
+from utils.exceptions import APIError, RateLimitError, AuthenticationError, ServiceUnavailableError, APITimeoutError
 from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
@@ -83,7 +83,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
 
     Raises:
         APIError: On API failures
-        AppTimeoutError: On request timeout
+        APITimeoutError: On request timeout
     """
     timeout_seconds = get_timeout("anthropic")
 
@@ -110,7 +110,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
         )
         return response
     except httpx.TimeoutException as e:
-        raise AppTimeoutError(
+        raise APITimeoutError(
             f"Anthropic request timed out after {timeout_seconds}s: {e}",
             timeout_seconds=timeout_seconds,
             service="anthropic"
@@ -122,7 +122,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
         elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
             raise AuthenticationError(f"Anthropic authentication failed: {error_msg}")
         elif "timeout" in error_msg.lower():
-            raise AppTimeoutError(
+            raise APITimeoutError(
                 f"Anthropic request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
                 service="anthropic"
@@ -194,7 +194,7 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
 
         response = _anthropic_api_call(client, model, messages, temperature)
         return response.content[0].text.strip()
-    except AppTimeoutError as e:
+    except APITimeoutError as e:
         logging.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return f"[Error: {title}] {message}"
