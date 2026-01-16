@@ -1195,9 +1195,19 @@ class StandaloneRSVPDialog:
     def pause(self) -> None:
         """Pause playback."""
         self.is_playing = False
-        self.play_btn.configure(text="Play", bootstyle="success")
+
+        # Only update play button if it exists (reading mode) and dialog is valid
+        if hasattr(self, 'play_btn') and self.play_btn:
+            try:
+                self.play_btn.configure(text="Play", bootstyle="success")
+            except tk.TclError:
+                pass  # Widget may have been destroyed
+
         if self.timer_id:
-            self.dialog.after_cancel(self.timer_id)
+            try:
+                self.dialog.after_cancel(self.timer_id)
+            except tk.TclError:
+                pass  # Dialog may have been destroyed
             self.timer_id = None
 
     def _schedule_next_word(self) -> None:
@@ -1485,7 +1495,10 @@ SETTINGS BUTTONS
     def _on_close(self) -> None:
         """Handle dialog close."""
         self.pause()
-        self.dialog.destroy()
+        try:
+            self.dialog.destroy()
+        except tk.TclError:
+            pass  # Dialog may already be destroyed
 
 
 __all__ = ["StandaloneRSVPDialog"]
