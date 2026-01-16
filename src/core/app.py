@@ -43,6 +43,7 @@ from core.app_chat_mixin import AppChatMixin
 from core.mixins.app_dialog_mixin import AppDialogMixin
 from core.mixins.app_ui_layout_mixin import AppUiLayoutMixin
 from core.mixins.app_recording_mixin import AppRecordingMixin
+from core.command_registry import get_command_registry
 from audio.ffmpeg_utils import configure_pydub
 from ui.menu_manager import MenuManager
 from audio.soap_audio_processor import SOAPAudioProcessor
@@ -152,29 +153,10 @@ class MedicalDictationApp(
 
     def create_widgets(self) -> None:
         """Create widgets for the workflow UI mode."""
-        # Define command mapping for buttons
-        command_map = {
-            "new_session": self.new_session,
-            "undo_text": self.undo_text,
-            "redo_text": self.redo_text,
-            "copy_text": self.copy_text,
-            "save_text": self.save_text,
-            "load_audio_file": self.load_audio_file,
-            "refine_text": self.refine_text,
-            "improve_text": self.improve_text,
-            "create_soap_note": self.create_soap_note,
-            "create_referral": self.create_referral,
-            "create_letter": self.create_letter,
-            "create_diagnostic_analysis": self.create_diagnostic_analysis,
-            "analyze_medications": self.analyze_medications,
-            "extract_clinical_data": self.extract_clinical_data,
-            "manage_workflow": self.manage_workflow,
-            "open_translation": self.open_translation_dialog,
-            "toggle_soap_recording": self.toggle_soap_recording,
-            "toggle_soap_pause": self.toggle_soap_pause,
-            "cancel_soap_recording": self.cancel_soap_recording,
-            "clear_advanced_analysis": self.clear_advanced_analysis_text
-        }
+        # Get command map from centralized registry
+        command_registry = get_command_registry()
+        command_registry.bind_app(self)
+        command_map = command_registry.get_command_map()
         
         # Create status bar at the bottom FIRST (so it stays at bottom)
         status_frame, self.status_icon_label, self.status_label, self.provider_indicator, self.progress_bar = self.ui.create_status_bar()
