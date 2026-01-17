@@ -141,9 +141,19 @@ class TranslationDialog(
             *args: Arguments to pass to callback
         """
         logger.info(f"_safe_after called: delay={delay}, callback={callback.__name__ if hasattr(callback, '__name__') else 'lambda'}, dialog_exists={self._dialog_exists()}")
+
+        def wrapped_callback():
+            """Wrapper to catch and log any exceptions in the callback."""
+            try:
+                logger.info(f"_safe_after: executing callback")
+                callback(*args)
+                logger.info(f"_safe_after: callback completed successfully")
+            except Exception as e:
+                logger.error(f"_safe_after: Exception in callback: {e}", exc_info=True)
+
         if self._dialog_exists():
             try:
-                self.dialog.after(delay, callback, *args)
+                self.dialog.after(delay, wrapped_callback)
                 logger.info("_safe_after: callback scheduled successfully")
             except tk.TclError as e:
                 logger.error(f"_safe_after: TclError when scheduling callback: {e}")
