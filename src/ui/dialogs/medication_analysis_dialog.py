@@ -8,7 +8,7 @@ and the source of content to analyze.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, BOTTOM, W
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, BOTTOM, W, DISABLED
 from typing import Optional, Dict
 
 
@@ -78,10 +78,25 @@ class MedicationAnalysisDialog:
         main_container = ttk.Frame(self.dialog)
         main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
         
-        # Create button frame first (at bottom)
+        # Create button frame first (at bottom) with buttons
         button_frame = ttk.Frame(main_container)
         button_frame.pack(fill=X, side=BOTTOM, pady=(10, 0))
-        
+
+        # Add buttons immediately so frame has proper size
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._cancel,
+            style="secondary.TButton"
+        ).pack(side=RIGHT, padx=(5, 0))
+
+        ttk.Button(
+            button_frame,
+            text="Analyze",
+            command=self._analyze,
+            style="primary.TButton"
+        ).pack(side=RIGHT)
+
         # Create frame for scrollable content
         scroll_container = ttk.Frame(main_container)
         scroll_container.pack(fill=BOTH, expand=True)
@@ -343,22 +358,7 @@ class MedicationAnalysisDialog:
             font=("Segoe UI", 9, "italic")
         )
         example_text.pack(anchor=W, pady=(10, 0))
-        
-        # Add buttons to the button frame created earlier
-        ttk.Button(
-            button_frame,
-            text="Cancel",
-            command=self._cancel,
-            style="secondary.TButton"
-        ).pack(side=RIGHT, padx=(5, 0))
-        
-        ttk.Button(
-            button_frame,
-            text="Analyze",
-            command=self._analyze,
-            style="primary.TButton"
-        ).pack(side=RIGHT)
-        
+
         # Focus on custom text if that's selected
         if self.source_var.get() == "custom":
             self.custom_text.focus_set()
