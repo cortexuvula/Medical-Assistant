@@ -883,14 +883,16 @@ def run_in_thread(
             result = func()
             if callback:
                 if app:
-                    safe_ui_update(app, lambda: callback(result))
+                    res = result  # Capture result before lambda
+                    safe_ui_update(app, lambda r=res: callback(r))
                 else:
                     callback(result)
         except Exception as e:
             logger.error(f"Error in background thread: {e}", exc_info=True)
             if error_callback:
                 if app:
-                    safe_ui_update(app, lambda: error_callback(e))
+                    err = e  # Capture exception before lambda
+                    safe_ui_update(app, lambda error=err: error_callback(error))
                 else:
                     error_callback(e)
 

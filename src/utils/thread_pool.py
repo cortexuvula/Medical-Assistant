@@ -231,7 +231,8 @@ def run_in_background(
             result = fn(*args, **kwargs)
             if on_complete:
                 if app:
-                    app.after(0, lambda: on_complete(result))
+                    res = result  # Capture result before lambda
+                    app.after(0, lambda r=res: on_complete(r))
                 else:
                     on_complete(result)
             return result
@@ -239,7 +240,8 @@ def run_in_background(
             logger.error(f"Error in background task {fn.__name__}: {e}", exc_info=True)
             if on_error:
                 if app:
-                    app.after(0, lambda: on_error(e))
+                    err = e  # Capture exception before lambda
+                    app.after(0, lambda error=err: on_error(error))
                 else:
                     on_error(e)
             raise

@@ -277,9 +277,10 @@ def with_loading(
     def task():
         try:
             result = async_func()
-            container.after(0, lambda: _complete(result))
+            container.after(0, lambda r=result: _complete(r))
         except Exception as e:
-            container.after(0, lambda: _complete(None, error=e))
+            err = e  # Capture exception before lambda
+            container.after(0, lambda error=err: _complete(None, error=error))
 
     def _complete(result, error=None):
         indicator.hide()
