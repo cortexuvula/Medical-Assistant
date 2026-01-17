@@ -9,7 +9,7 @@ for diagnostic analysis.
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W, BOTTOM, DISABLED
 from tkinter import messagebox, filedialog
 from typing import Optional, Dict, List
 import json
@@ -95,10 +95,38 @@ class DiagnosticAnalysisDialog:
         except tk.TclError:
             pass
 
+        # Create main container
+        main_container = ttk.Frame(self.dialog)
+        main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+        # Create button frame first (at bottom) with buttons
+        button_frame = ttk.Frame(main_container)
+        button_frame.pack(fill=X, side=BOTTOM, pady=(10, 0))
+
+        # Add buttons immediately so frame has proper size
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._on_cancel,
+            width=15
+        ).pack(side=RIGHT)
+
+        ttk.Button(
+            button_frame,
+            text="Analyze",
+            command=self._on_analyze,
+            bootstyle="primary",
+            width=15
+        ).pack(side=RIGHT, padx=(0, 5))
+
+        # Create scroll container for content
+        scroll_container = ttk.Frame(main_container)
+        scroll_container.pack(fill=BOTH, expand=True)
+
         # Create scrollable main frame
-        canvas = tk.Canvas(self.dialog)
-        scrollbar = ttk.Scrollbar(self.dialog, orient=VERTICAL, command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, padding=20)
+        canvas = tk.Canvas(scroll_container)
+        scrollbar = ttk.Scrollbar(scroll_container, orient=VERTICAL, command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, padding=10)
 
         scrollable_frame.bind(
             "<Configure>",
@@ -549,25 +577,6 @@ class DiagnosticAnalysisDialog:
 
         self.source_var.trace('w', on_source_change)
         on_source_change()
-
-        # ==================== BUTTONS ====================
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=X, pady=(10, 0))
-
-        ttk.Button(
-            button_frame,
-            text="Analyze",
-            command=self._on_analyze,
-            bootstyle="primary",
-            width=15
-        ).pack(side=RIGHT, padx=(5, 0))
-
-        ttk.Button(
-            button_frame,
-            text="Cancel",
-            command=self._on_cancel,
-            width=15
-        ).pack(side=RIGHT)
 
         # Keyboard bindings
         self.dialog.bind("<Return>", lambda e: self._on_analyze())
