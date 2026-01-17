@@ -570,7 +570,8 @@ class TestProviderCacheKey:
         call_count = [0]
 
         def mock_get(key, default=None):
-            if call_count[0] < 2:
+            # After first provider creation (call_count[0] >= 1), return deepl settings
+            if call_count[0] < 1:
                 return {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}.get(key, default)
             else:
                 return {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}}.get(key, default)
@@ -584,11 +585,11 @@ class TestProviderCacheKey:
 
             mock_create.side_effect = create_effect
 
-            # First call creates provider
+            # First call creates provider (with google)
             self.manager.get_provider()
             assert mock_create.call_count == 1
 
-            # Change sub_provider - should trigger recreation
+            # Second call with changed sub_provider (deepl) - should trigger recreation
             self.manager.get_provider()
             assert mock_create.call_count == 2
 
