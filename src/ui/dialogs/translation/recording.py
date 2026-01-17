@@ -256,10 +256,10 @@ class RecordingMixin:
             return
 
         try:
-            # Process the audio data into a segment
-            logger.info(f"Processing audio data: {type(audio_data)}")
-            segment, _ = self.audio_handler.process_audio_data(audio_data)
-            logger.info(f"process_audio_data returned segment={segment is not None}")
+            # Convert audio data to segment WITHOUT transcribing (saves API calls)
+            logger.info(f"Converting audio data: {type(audio_data)}")
+            segment = self.audio_handler.convert_audio_to_segment(audio_data)
+            logger.info(f"convert_audio_to_segment returned segment={segment is not None}")
             if segment:
                 # Add to segments list
                 self.audio_segments.append(segment)
@@ -460,7 +460,8 @@ class RecordingMixin:
             return
 
         try:
-            segment, _ = self.audio_handler.process_audio_data(audio_data)
+            # Convert audio data to segment WITHOUT transcribing (saves API calls)
+            segment = self.audio_handler.convert_audio_to_segment(audio_data)
             if segment:
                 self.doctor_audio_segments.append(segment)
         except Exception as e:

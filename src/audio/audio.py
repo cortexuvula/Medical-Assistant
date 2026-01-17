@@ -399,12 +399,71 @@ class AudioHandler:
             ctx.log()
             return ""
 
-    def process_audio_data(self, audio_data: Union[AudioData, np.ndarray]) -> tuple[Optional[AudioSegment], str]:
-        """Process audio data to get an AudioSegment and transcription.
-        
+    def convert_audio_to_segment(self, audio_data: Union[AudioData, np.ndarray]) -> Optional[AudioSegment]:
+        """Convert audio data to AudioSegment without transcribing.
+
+        Use this for accumulating audio segments during recording when you
+        want to transcribe the combined audio later (e.g., translation dialog).
+
         Args:
             audio_data: AudioData object or numpy array from sounddevice
-            
+
+        Returns:
+            AudioSegment or None if conversion failed
+        """
+        try:
+            # Handle different input types
+            if isinstance(audio_data, AudioData):
+                # Legacy AudioData handling
+                channels = getattr(audio_data, "channels", 1)
+                sample_width = getattr(audio_data, "sample_width", None)
+                sample_rate = getattr(audio_data, "sample_rate", None)
+
+                if not audio_data.get_raw_data():
+                    logger.warning("Empty audio data received")
+                    return None
+
+                return AudioSegment(
+                    data=audio_data.get_raw_data(),
+                    sample_width=sample_width,
+                    frame_rate=sample_rate,
+                    channels=channels
+                )
+            elif isinstance(audio_data, np.ndarray):
+                if audio_data.size == 0:
+                    logger.warning("Empty audio data received")
+                    return None
+
+                # Convert float32 to int16 for compatibility
+                if audio_data.dtype == np.float32:
+                    audio_clipped = np.clip(audio_data, -1.0, 1.0)
+                    audio_int16 = (audio_clipped * 32767).astype(np.int16)
+                elif audio_data.dtype == np.int16:
+                    audio_int16 = audio_data
+                else:
+                    audio_int16 = audio_data.astype(np.int16)
+
+                raw_data = audio_int16.tobytes()
+
+                return AudioSegment(
+                    data=raw_data,
+                    sample_width=2,
+                    frame_rate=self.sample_rate,
+                    channels=self.channels
+                )
+            else:
+                logger.error(f"Unsupported audio data type: {type(audio_data)}")
+                return None
+        except Exception as e:
+            logger.error(f"Error converting audio to segment: {e}", exc_info=True)
+            return None
+
+    def process_audio_data(self, audio_data: Union[AudioData, np.ndarray]) -> tuple[Optional[AudioSegment], str]:
+        """Process audio data to get an AudioSegment and transcription.
+
+        Args:
+            audio_data: AudioData object or numpy array from sounddevice
+
         Returns:
             Tuple of (AudioSegment, transcription_text)
         """
