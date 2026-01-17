@@ -20,6 +20,16 @@ import threading
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
+def mock_settings_manager(settings_dict):
+    """Create a mock settings manager that returns values from settings_dict."""
+    def get_side_effect(key, default=None):
+        return settings_dict.get(key, default)
+
+    mock = Mock()
+    mock.get = Mock(side_effect=get_side_effect)
+    return mock
+
+
 class MockApp:
     """Mock application for testing ChatProcessor."""
 
@@ -56,17 +66,17 @@ class MockApp:
 class TestChatProcessorInitialization:
     """Test ChatProcessor initialization."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {
-        'chat_interface': {
+    @patch('src.ai.chat_processor.mcp_manager')
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_initialization_with_custom_settings(self, mock_settings, mock_mcp):
+        """Test initialization with custom settings."""
+        mock_settings.get_chat_settings.return_value = {
             'max_context_length': 5000,
             'max_history_items': 5,
             'temperature': 0.5,
             'enable_tools': False
         }
-    })
-    @patch('src.ai.chat_processor.mcp_manager')
-    def test_initialization_with_custom_settings(self, mock_mcp):
-        """Test initialization with custom settings."""
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -79,16 +89,14 @@ class TestChatProcessorInitialization:
         assert processor.chat_agent is None
         assert processor.conversation_history == []
 
-    @patch('src.ai.chat_processor.SETTINGS', {
-        'chat_interface': {
-            'enable_tools': True
-        }
-    })
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    def test_initialization_with_tools_enabled(self, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_initialization_with_tools_enabled(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test initialization with tools enabled."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -98,10 +106,12 @@ class TestChatProcessorInitialization:
         mock_executor.assert_called_once()
         mock_agent.assert_called_once()
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_initialization_with_default_settings(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_initialization_with_default_settings(self, mock_settings, mock_mcp):
         """Test initialization with default settings."""
+        mock_settings.get_chat_settings.return_value = {}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -116,10 +126,12 @@ class TestChatProcessorInitialization:
 class TestContextExtraction:
     """Test context extraction from UI."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_context_from_transcript_tab(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_context_from_transcript_tab(self, mock_settings, mock_mcp):
         """Test context extraction from transcript tab."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -134,10 +146,12 @@ class TestContextExtraction:
         assert context["has_content"] is True
         assert "chest pain" in context["content"]
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_context_from_soap_tab(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_context_from_soap_tab(self, mock_settings, mock_mcp):
         """Test context extraction from SOAP tab."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -150,10 +164,12 @@ class TestContextExtraction:
         assert context["tab_name"] == "soap"
         assert context["tab_index"] == 1
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False, 'max_context_length': 100}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_context_truncates_long_content(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_context_truncates_long_content(self, mock_settings, mock_mcp):
         """Test that long content is truncated."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False, 'max_context_length': 100}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -166,10 +182,12 @@ class TestContextExtraction:
         assert "[truncated]" in context["content"]
         assert len(context["content"]) < 200
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_context_with_empty_content(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_context_with_empty_content(self, mock_settings, mock_mcp):
         """Test context extraction with empty content."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -185,10 +203,12 @@ class TestContextExtraction:
 class TestPromptConstruction:
     """Test prompt construction."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_construct_prompt_for_transcript(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_construct_prompt_for_transcript(self, mock_settings, mock_mcp):
         """Test prompt construction for transcript tab."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -207,10 +227,12 @@ class TestPromptConstruction:
         assert "Patient reports headache" in prompt
         assert "Summarize this" in prompt
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_construct_prompt_includes_history(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_construct_prompt_includes_history(self, mock_settings, mock_mcp):
         """Test that prompt includes conversation history."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -226,10 +248,12 @@ class TestPromptConstruction:
         assert "Previous question" in prompt
         assert "Previous answer" in prompt
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_construct_prompt_for_chat_tab(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_construct_prompt_for_chat_tab(self, mock_settings, mock_mcp):
         """Test prompt construction for chat tab."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -245,12 +269,14 @@ class TestPromptConstruction:
 class TestToolDetection:
     """Test tool usage detection."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    def test_should_use_tools_for_calculation(self, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_use_tools_for_calculation(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test tool detection for calculation requests."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -260,12 +286,14 @@ class TestToolDetection:
         assert processor._should_use_tools("compute the drug dosage") is True
         assert processor._should_use_tools("what is 2 + 2?") is True
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    def test_should_use_tools_for_time_date(self, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_use_tools_for_time_date(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test tool detection for time/date queries."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -274,12 +302,14 @@ class TestToolDetection:
         assert processor._should_use_tools("what time is it?") is True
         assert processor._should_use_tools("what is today's date?") is True
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    def test_should_use_tools_for_medical_guidelines(self, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_use_tools_for_medical_guidelines(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test tool detection for medical guideline queries."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -289,12 +319,14 @@ class TestToolDetection:
         assert processor._should_use_tools("check drug interaction between aspirin and warfarin") is True
         assert processor._should_use_tools("what is the target A1C for diabetic patients?") is True
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    def test_should_not_use_tools_for_simple_conversation(self, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_not_use_tools_for_simple_conversation(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test that simple conversation doesn't trigger tools."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -305,10 +337,12 @@ class TestToolDetection:
         assert processor._should_use_tools("thank you for your help") is False
         assert processor._should_use_tools("I understand") is False
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_should_use_tools_disabled(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_use_tools_disabled(self, mock_settings, mock_mcp):
         """Test that tools are not used when disabled."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -321,10 +355,12 @@ class TestToolDetection:
 class TestHistoryManagement:
     """Test conversation history management."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False, 'max_history_items': 4}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_add_to_history(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_add_to_history(self, mock_settings, mock_mcp):
         """Test adding messages to history."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False, 'max_history_items': 4}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -338,10 +374,12 @@ class TestHistoryManagement:
         assert processor.conversation_history[0]["message"] == "Hello"
         assert processor.conversation_history[1]["role"] == "assistant"
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False, 'max_history_items': 4}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_history_limit_enforced(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_history_limit_enforced(self, mock_settings, mock_mcp):
         """Test that history limit is enforced."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False, 'max_history_items': 4}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -355,10 +393,12 @@ class TestHistoryManagement:
         # Should keep the most recent
         assert processor.conversation_history[-1]["message"] == "Message 9"
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_clear_history(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_clear_history(self, mock_settings, mock_mcp):
         """Test clearing history."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -370,10 +410,12 @@ class TestHistoryManagement:
 
         assert len(processor.conversation_history) == 0
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_get_history(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_get_history(self, mock_settings, mock_mcp):
         """Test getting history copy."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -386,10 +428,12 @@ class TestHistoryManagement:
         history.clear()
         assert len(processor.conversation_history) == 1
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_get_context_from_history(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_get_context_from_history(self, mock_settings, mock_mcp):
         """Test getting context from history."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -408,10 +452,12 @@ class TestHistoryManagement:
 class TestDocumentModificationDetection:
     """Test detection of document modification requests."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_should_apply_for_modification_keywords(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_apply_for_modification_keywords(self, mock_settings, mock_mcp):
         """Test detection of modification requests via keywords."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -430,10 +476,12 @@ class TestDocumentModificationDetection:
             result = processor._should_apply_to_document(msg, "")
             assert result is True, f"Failed for: {msg}"
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_should_apply_for_ai_response_markers(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_apply_for_ai_response_markers(self, mock_settings, mock_mcp):
         """Test detection via AI response markers."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -450,10 +498,12 @@ class TestDocumentModificationDetection:
             result = processor._should_apply_to_document("Please help", response)
             assert result is True, f"Failed for response: {response[:30]}"
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_should_not_apply_for_questions(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_should_not_apply_for_questions(self, mock_settings, mock_mcp):
         """Test that questions don't trigger document modification."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -474,10 +524,12 @@ class TestDocumentModificationDetection:
 class TestContentExtraction:
     """Test content extraction from AI responses."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_content_with_header(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_content_with_header(self, mock_settings, mock_mcp):
         """Test extracting content after a header."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -488,10 +540,12 @@ class TestContentExtraction:
 
         assert content == "Clean content without speaker labels."
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_content_from_code_block(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_content_from_code_block(self, mock_settings, mock_mcp):
         """Test extracting content from code blocks."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -510,10 +564,12 @@ Explanation here."""
         assert "Multiple lines" in content
         assert "Explanation" not in content
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_extract_content_removes_explanations(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_extract_content_removes_explanations(self, mock_settings, mock_mcp):
         """Test that explanations are removed from extracted content."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -535,10 +591,12 @@ Note: I've removed the speaker labels and cleaned up the formatting."""
 class TestChatCommands:
     """Test chat command handling."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_clear_command_handling(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_clear_command_handling(self, mock_settings, mock_mcp):
         """Test /clear command handling."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -550,10 +608,12 @@ class TestChatCommands:
         assert result is True
         assert len(processor.conversation_history) == 0
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_clear_chat_history_command(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_clear_chat_history_command(self, mock_settings, mock_mcp):
         """Test 'clear chat history' command."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -562,10 +622,12 @@ class TestChatCommands:
         result = processor._handle_chat_command("clear chat history")
         assert result is True
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_normal_message_not_command(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_normal_message_not_command(self, mock_settings, mock_mcp):
         """Test that normal messages aren't treated as commands."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -578,10 +640,12 @@ class TestChatCommands:
 class TestMessageProcessing:
     """Test message processing flow."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_process_message_sets_processing_flag(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_process_message_sets_processing_flag(self, mock_settings, mock_mcp):
         """Test that processing flag is set during message processing."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -599,10 +663,12 @@ class TestMessageProcessing:
         processor._process_message_async = tracking_process
         processor.process_message("Test message")
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_process_message_ignores_when_already_processing(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_process_message_ignores_when_already_processing(self, mock_settings, mock_mcp):
         """Test that new messages are ignored during processing."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -616,11 +682,12 @@ class TestMessageProcessing:
 class TestToolSettings:
     """Test tool enable/disable functionality."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    @patch('settings.settings.save_settings')
-    def test_enable_tools(self, mock_save, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_enable_tools(self, mock_settings, mock_mcp):
         """Test enabling tools."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -631,15 +698,16 @@ class TestToolSettings:
                 processor.set_tools_enabled(True)
 
         assert processor.use_tools is True
-        mock_save.assert_called()
+        mock_settings.set_nested.assert_called()
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
-    @patch('settings.settings.save_settings')
-    def test_disable_tools(self, mock_save, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_disable_tools(self, mock_settings, mock_agent, mock_executor, mock_mcp):
         """Test disabling tools."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -653,10 +721,12 @@ class TestToolSettings:
 class TestCopyToClipboard:
     """Test clipboard functionality."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': False}})
     @patch('src.ai.chat_processor.mcp_manager')
-    def test_copy_to_clipboard(self, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_copy_to_clipboard(self, mock_settings, mock_mcp):
         """Test copying text to clipboard."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -676,14 +746,14 @@ class TestCopyToClipboard:
 class TestMCPIntegration:
     """Test MCP (Model Context Protocol) integration."""
 
-    @patch('src.ai.chat_processor.SETTINGS', {
-        'chat_interface': {'enable_tools': False},
-        'mcp_config': {'enabled': True}
-    })
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.register_mcp_tools', return_value=3)
-    def test_mcp_initialization(self, mock_register, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_mcp_initialization(self, mock_settings, mock_register, mock_mcp):
         """Test MCP initialization when enabled."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+        mock_settings.get.return_value = {'enabled': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()
@@ -691,13 +761,15 @@ class TestMCPIntegration:
 
         mock_mcp.load_config.assert_called_once()
 
-    @patch('src.ai.chat_processor.SETTINGS', {'chat_interface': {'enable_tools': True}})
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
     @patch('src.ai.chat_processor.ChatAgent')
     @patch('src.ai.chat_processor.tool_registry')
-    def test_reload_mcp_tools(self, mock_registry, mock_agent, mock_executor, mock_mcp):
+    @patch('src.ai.chat_processor.settings_manager')
+    def test_reload_mcp_tools(self, mock_settings, mock_registry, mock_agent, mock_executor, mock_mcp):
         """Test reloading MCP tools."""
+        mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+
         from src.ai.chat_processor import ChatProcessor
 
         app = MockApp()

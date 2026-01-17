@@ -56,16 +56,24 @@ class TestGetProvider:
             mock_security.return_value = Mock()
             self.manager = TranslationManager()
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}})
-    def test_get_provider_creates_instance(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_get_provider_creates_instance(self, mock_settings):
         """Test that get_provider creates a new instance."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}
+        }.get(key, default)
+
         with patch.object(self.manager, '_create_provider') as mock_create:
             self.manager.get_provider()
             mock_create.assert_called_once_with('deep_translator', 'google')
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}})
-    def test_get_provider_caches_instance(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_get_provider_caches_instance(self, mock_settings):
         """Test that provider instance is cached."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}
+        }.get(key, default)
+
         mock_provider = Mock()
 
         with patch.object(self.manager, '_create_provider') as mock_create:
@@ -78,9 +86,13 @@ class TestGetProvider:
             mock_create.assert_not_called()
             assert result is mock_provider
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}})
-    def test_get_provider_recreates_on_sub_provider_change(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_get_provider_recreates_on_sub_provider_change(self, mock_settings):
         """Test that provider is recreated when sub_provider changes."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}
+        }.get(key, default)
+
         self.manager._current_provider = 'deep_translator:google'
         self.manager._provider_instance = Mock()
 
@@ -88,16 +100,24 @@ class TestGetProvider:
             self.manager.get_provider()
             mock_create.assert_called_once_with('deep_translator', 'deepl')
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {}})
-    def test_get_provider_uses_defaults(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_get_provider_uses_defaults(self, mock_settings):
         """Test that default provider settings are used."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {}
+        }.get(key, default)
+
         with patch.object(self.manager, '_create_provider') as mock_create:
             self.manager.get_provider()
             mock_create.assert_called_once_with('deep_translator', 'google')
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator'}})
-    def test_get_provider_handles_exception(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_get_provider_handles_exception(self, mock_settings):
         """Test that exceptions are wrapped in TranslationError."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator'}
+        }.get(key, default)
+
         from utils.exceptions import TranslationError
 
         with patch.object(self.manager, '_create_provider') as mock_create:
@@ -258,9 +278,13 @@ class TestTranslate:
 
         assert result == ""
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_with_auto_detect(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_with_auto_detect(self, mock_settings):
         """Test translation with automatic language detection."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider.detect_language.return_value = "fr"
         self.mock_provider.translate.return_value = "Translated text"
 
@@ -270,9 +294,13 @@ class TestTranslate:
         self.mock_provider.translate.assert_called_once_with("Bonjour le monde", "fr", "en")
         assert result == "Translated text"
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_with_explicit_languages(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_with_explicit_languages(self, mock_settings):
         """Test translation with explicit language codes."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider.translate.return_value = "Translated text"
 
         result = self.manager.translate("Hello", source_lang="en", target_lang="de")
@@ -281,18 +309,26 @@ class TestTranslate:
         self.mock_provider.translate.assert_called_once_with("Hello", "en", "de")
         assert result == "Translated text"
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_uses_default_target_lang(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_uses_default_target_lang(self, mock_settings):
         """Test that default target language is used from settings."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider.translate.return_value = "Texto traducido"
 
         result = self.manager.translate("Hello world", source_lang="en")
 
         self.mock_provider.translate.assert_called_once_with("Hello world", "en", "en")
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_uses_fallback_source_lang(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_uses_fallback_source_lang(self, mock_settings):
         """Test fallback to settings when language detection fails."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider.detect_language.return_value = None
         self.mock_provider.translate.return_value = "Translated"
 
@@ -301,9 +337,13 @@ class TestTranslate:
         # Should use patient_language from settings as fallback
         self.mock_provider.translate.assert_called_once_with("Some text", "es", "en")
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_raises_on_error(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_raises_on_error(self, mock_settings):
         """Test that translation errors are propagated."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider.detect_language.return_value = "en"
         self.mock_provider.translate.side_effect = Exception("Translation API error")
 
@@ -434,19 +474,17 @@ class TestUpdateSettings:
         self.manager._current_provider = 'deep_translator:google'
         self.manager._provider_instance = Mock()
 
-    @patch('src.managers.translation_manager.SETTINGS', {})
-    def test_update_settings_updates_settings_dict(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_update_settings_updates_settings_dict(self, mock_settings):
         """Test that settings dictionary is updated."""
-        from src.managers.translation_manager import SETTINGS
-
         new_settings = {'provider': 'deep_translator', 'sub_provider': 'deepl'}
 
         self.manager.update_settings(new_settings)
 
-        assert SETTINGS['translation'] == new_settings
+        mock_settings.set.assert_called_with('translation', new_settings)
 
-    @patch('src.managers.translation_manager.SETTINGS', {})
-    def test_update_settings_clears_provider(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_update_settings_clears_provider(self, mock_settings):
         """Test that current provider is cleared on settings update."""
         self.manager.update_settings({'provider': 'deep_translator'})
 
@@ -493,46 +531,66 @@ class TestProviderCacheKey:
             mock_security.return_value = Mock()
             self.manager = TranslationManager()
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}})
-    def test_cache_key_includes_provider_and_sub_provider(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_cache_key_includes_provider_and_sub_provider(self, mock_settings):
         """Test that cache key includes both provider and sub_provider."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}
+        }.get(key, default)
+
         with patch.object(self.manager, '_create_provider') as mock_create:
             self.manager.get_provider()
 
             assert self.manager._current_provider == 'deep_translator:google'
 
-    def test_provider_not_recreated_when_same_key(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_provider_not_recreated_when_same_key(self, mock_settings):
         """Test provider is not recreated when key matches."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}
+        }.get(key, default)
+
         mock_provider = Mock()
 
         with patch.object(self.manager, '_create_provider') as mock_create:
             mock_create.side_effect = lambda p, s: setattr(self.manager, '_provider_instance', mock_provider)
 
             # First call creates provider
-            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
-                self.manager.get_provider()
-                assert mock_create.call_count == 1
+            self.manager.get_provider()
+            assert mock_create.call_count == 1
 
-                # Second call with same settings should not recreate
-                self.manager.get_provider()
-                assert mock_create.call_count == 1
+            # Second call with same settings should not recreate
+            self.manager.get_provider()
+            assert mock_create.call_count == 1
 
-    def test_provider_recreated_when_key_changes(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_provider_recreated_when_key_changes(self, mock_settings):
         """Test provider is recreated when key changes."""
         mock_provider = Mock()
+        call_count = [0]
+
+        def mock_get(key, default=None):
+            if call_count[0] < 2:
+                return {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}.get(key, default)
+            else:
+                return {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}}.get(key, default)
+
+        mock_settings.get.side_effect = mock_get
 
         with patch.object(self.manager, '_create_provider') as mock_create:
-            mock_create.side_effect = lambda p, s: setattr(self.manager, '_provider_instance', mock_provider)
+            def create_effect(p, s):
+                call_count[0] += 1
+                setattr(self.manager, '_provider_instance', mock_provider)
+
+            mock_create.side_effect = create_effect
 
             # First call creates provider
-            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}}):
-                self.manager.get_provider()
-                assert mock_create.call_count == 1
+            self.manager.get_provider()
+            assert mock_create.call_count == 1
 
             # Change sub_provider - should trigger recreation
-            with patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'deepl'}}):
-                self.manager.get_provider()
-                assert mock_create.call_count == 2
+            self.manager.get_provider()
+            assert mock_create.call_count == 2
 
 
 class TestEdgeCases:
@@ -546,16 +604,22 @@ class TestEdgeCases:
             mock_security.return_value = Mock()
             self.manager = TranslationManager()
 
-    @patch('src.managers.translation_manager.SETTINGS', {})
-    def test_empty_settings_uses_defaults(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_empty_settings_uses_defaults(self, mock_settings):
         """Test that empty settings use default values."""
+        mock_settings.get.side_effect = lambda key, default=None: {}.get(key, default)
+
         with patch.object(self.manager, '_create_provider') as mock_create:
             self.manager.get_provider()
             mock_create.assert_called_with('deep_translator', 'google')
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}})
-    def test_translate_whitespace_only(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_whitespace_only(self, mock_settings):
         """Test translation of whitespace-only text."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'provider': 'deep_translator', 'sub_provider': 'google'}
+        }.get(key, default)
+
         # Whitespace is not empty, so should be translated
         self.mock_provider = Mock()
         self.mock_provider.detect_language.return_value = "en"
@@ -568,9 +632,13 @@ class TestEdgeCases:
         # Provider should be called for whitespace
         self.mock_provider.translate.assert_called_once()
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_very_long_text(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_very_long_text(self, mock_settings):
         """Test translation of very long text."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider = Mock()
         self.mock_provider.detect_language.return_value = "en"
         self.mock_provider.translate.return_value = "Translated"
@@ -586,9 +654,13 @@ class TestEdgeCases:
         call_args = self.mock_provider.translate.call_args
         assert len(call_args[0][0]) == len(long_text)
 
-    @patch('src.managers.translation_manager.SETTINGS', {'translation': {'patient_language': 'es', 'doctor_language': 'en'}})
-    def test_translate_with_special_characters(self):
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_with_special_characters(self, mock_settings):
         """Test translation of text with special characters."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
         self.mock_provider = Mock()
         self.mock_provider.detect_language.return_value = "en"
         self.mock_provider.translate.return_value = "Translated"

@@ -11,6 +11,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from stt_providers.base import BaseSTTProvider
+from utils.structured_logging import StructuredLogger
 
 
 class TestBaseSTTProvider:
@@ -55,7 +56,7 @@ class TestBaseSTTProvider:
 
         assert provider.api_key == api_key
         assert provider.language == language
-        assert isinstance(provider.logger, logging.Logger)
+        assert isinstance(provider.logger, StructuredLogger)
         assert provider.logger.name == "ConcreteProvider"
 
     def test_initialization_without_api_key(self, concrete_provider):
@@ -64,7 +65,7 @@ class TestBaseSTTProvider:
 
         assert provider.api_key == ""
         assert provider.language == "en-US"
-        assert isinstance(provider.logger, logging.Logger)
+        assert isinstance(provider.logger, StructuredLogger)
 
     def test_initialization_with_custom_language(self, concrete_provider):
         """Test provider initialization with custom language."""
