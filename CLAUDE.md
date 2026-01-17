@@ -429,10 +429,11 @@ pip install -r requirements-dev.txt  # For development/testing
 - `deepgram.py`, `elevenlabs.py`, `groq.py`, `whisper.py`
 - Each implements `transcribe()` and `test_connection()` methods
 
-**Security Layer**: 
+**Security Layer**:
 - API keys encrypted via `src/utils/security.py` using Fernet encryption
 - Security decorators in `src/utils/security_decorators.py` for rate limiting and input sanitization
 - Keys stored in `AppData/api_keys.enc` with machine-specific derivation
+- See [Security Features](#security-features) section for comprehensive details
 
 **Database Architecture**:
 - SQLite with version-controlled migrations in `src/database/db_migrations.py`
@@ -616,3 +617,51 @@ All source code is now organized under the `src/` directory:
 - `src/tts_providers/` - Text-to-speech providers
   - `base.py` - Base TTS provider class
   - `elevenlabs_tts.py` - ElevenLabs TTS with voice selection
+
+## Security Features
+
+The application implements multiple layers of security to protect sensitive medical data (PHI):
+
+### API Key Encryption
+- **Fernet Encryption**: API keys encrypted at rest using `cryptography` library
+- **PBKDF2 Key Derivation**: 100,000 iterations with SHA-256 for master key derivation
+- **Per-Installation Salt**: Unique 256-bit salt generated for each installation (stored in `salt.bin`)
+- **Machine-Specific Keys**: Encryption keys derived from machine identifiers (machine-id, filesystem UUID)
+- **Location**: `src/utils/security/key_storage.py`
+
+### Database File Protection
+- **POSIX Permissions**: Database file set to 0600 (owner read/write only) on Linux/macOS
+- **WAL/SHM Protection**: Write-ahead log files also secured with restrictive permissions
+- **Automatic Enforcement**: Permissions checked and corrected on each application startup
+- **Location**: `src/database/database.py` → `_secure_database_file()`
+
+### HTTP Client Security
+- **Explicit TLS Verification**: All HTTPS clients explicitly enable certificate verification
+- **Centralized Client Manager**: `src/utils/http_client_manager.py` manages connection pooling
+- **Defense-in-Depth**: `verify=True` set explicitly even though it's the default
+- **Connection Pooling**: Per-provider connection pools with configurable limits
+
+### Input Validation & Sanitization
+- **SQL Injection Prevention**: Field allowlists and parameterized queries
+- **Prompt Injection Blocking**: Input sanitization for AI prompts
+- **Path Traversal Protection**: Validated file paths for all file operations
+- **SSRF Protection**: URL validation for external requests
+
+### Rate Limiting
+- **API Call Throttling**: Configurable rate limits per provider
+- **Decorator-Based**: `@rate_limited` decorator in `src/utils/security_decorators.py`
+
+### Legacy Salt Migration
+- **Automatic Migration**: Keys encrypted with old static salt automatically migrated to per-install salt
+- **Version Tracking**: Salt version stored in key metadata for migration detection
+- **Deprecation Warnings**: Legacy salt usage logged for audit trail
+- **Location**: `src/utils/security/key_storage.py` → `_migrate_legacy_keys_if_needed()`
+
+### Security Implementation Files
+| File | Purpose |
+|------|---------|
+| `src/utils/security.py` | Main security manager, API key operations |
+| `src/utils/security/key_storage.py` | Encrypted key storage with migration |
+| `src/utils/security_decorators.py` | Rate limiting and input sanitization decorators |
+| `src/utils/http_client_manager.py` | Secure HTTP client management |
+| `src/database/database.py` | Database file permission enforcement |
