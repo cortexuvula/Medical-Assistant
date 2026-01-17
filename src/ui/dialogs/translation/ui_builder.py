@@ -11,7 +11,7 @@ from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, W
 from typing import TYPE_CHECKING, Optional, Dict
 
 from ui.tooltip import ToolTip
-from utils.structured_logging import get_logger
+from utils.structured_logging import get_logger, StructuredLogger
 
 if TYPE_CHECKING:
     pass
@@ -21,7 +21,7 @@ class UIBuilderMixin:
     """Mixin for building translation dialog UI components."""
 
     dialog: Optional[tk.Toplevel]
-    logger: logging.Logger
+    logger: StructuredLogger
     colors: Dict[str, str]
 
     # Settings
