@@ -140,11 +140,15 @@ class TranslationDialog(
             callback: Function to call
             *args: Arguments to pass to callback
         """
+        logger.info(f"_safe_after called: delay={delay}, callback={callback.__name__ if hasattr(callback, '__name__') else 'lambda'}, dialog_exists={self._dialog_exists()}")
         if self._dialog_exists():
             try:
                 self.dialog.after(delay, callback, *args)
-            except tk.TclError:
-                pass
+                logger.info("_safe_after: callback scheduled successfully")
+            except tk.TclError as e:
+                logger.error(f"_safe_after: TclError when scheduling callback: {e}")
+        else:
+            logger.warning("_safe_after: dialog does not exist, skipping callback")
 
     def _safe_ui_update(self, callback: Callable):
         """Execute UI update only if dialog still exists.
