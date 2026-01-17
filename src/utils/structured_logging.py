@@ -198,6 +198,17 @@ class StructuredLogger:
         """
         self._log(level, message, **kwargs)
 
+    def isEnabledFor(self, level: int) -> bool:
+        """Check if the logger is enabled for the specified level.
+
+        Args:
+            level: Logging level to check
+
+        Returns:
+            True if the logger would process a message at this level
+        """
+        return self.logger.isEnabledFor(level)
+
     def set_context(self, **kwargs) -> None:
         """Set persistent context that will be included in all log messages.
 

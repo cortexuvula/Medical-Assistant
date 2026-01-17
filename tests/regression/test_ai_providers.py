@@ -2,6 +2,9 @@
 
 These tests verify that all AI providers work correctly
 with mocked API responses.
+
+Note: AI providers now return AIResult objects instead of strings.
+Use str(result) for backward compatibility or result.text for the content.
 """
 import pytest
 import sys
@@ -10,6 +13,8 @@ from unittest.mock import patch, MagicMock, Mock
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.utils.exceptions import AIResult
 
 
 class TestOpenAIProvider:
@@ -25,8 +30,8 @@ class TestOpenAIProvider:
         mock_response.usage.completion_tokens = 20
         return mock_response
 
-    def test_call_openai_returns_string(self, mock_openai_response, mock_api_keys):
-        """call_openai should return a string."""
+    def test_call_openai_returns_airesult(self, mock_openai_response, mock_api_keys):
+        """call_openai should return an AIResult."""
         from src.ai.ai import call_openai
 
         with patch('ai.providers.openai_provider._openai_api_call') as mock_api_call:
@@ -39,8 +44,9 @@ class TestOpenAIProvider:
                 temperature=0.7
             )
 
-        # Result should always be a string (either response or error message)
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
     def test_call_openai_handles_error(self, mock_api_keys):
         """call_openai should handle API errors gracefully."""
@@ -56,8 +62,9 @@ class TestOpenAIProvider:
                 temperature=0.7
             )
 
-        # Should return error message, not raise exception
-        assert isinstance(result, str)
+        # Should return AIResult (possibly with error), not raise exception
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
 
 class TestAnthropicProvider:
@@ -73,8 +80,8 @@ class TestAnthropicProvider:
         mock_response.usage.output_tokens = 20
         return mock_response
 
-    def test_call_anthropic_returns_string(self, mock_anthropic_response, mock_api_keys):
-        """call_anthropic should return a string."""
+    def test_call_anthropic_returns_airesult(self, mock_anthropic_response, mock_api_keys):
+        """call_anthropic should return an AIResult."""
         from src.ai.ai import call_anthropic
 
         result = call_anthropic(
@@ -84,8 +91,9 @@ class TestAnthropicProvider:
             temperature=0.7
         )
 
-        # Result should always be a string (either response or error message)
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
     def test_call_anthropic_handles_error(self, mock_api_keys):
         """call_anthropic should handle API errors gracefully."""
@@ -101,15 +109,16 @@ class TestAnthropicProvider:
                 temperature=0.7
             )
 
-        # Should return error message, not raise exception
-        assert isinstance(result, str)
+        # Should return AIResult (possibly with error), not raise exception
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
 
 class TestGeminiProvider:
     """Tests for Google Gemini AI provider."""
 
-    def test_call_gemini_returns_string(self, mock_api_keys):
-        """call_gemini should return a string."""
+    def test_call_gemini_returns_airesult(self, mock_api_keys):
+        """call_gemini should return an AIResult."""
         from src.ai.ai import call_gemini
 
         result = call_gemini(
@@ -119,8 +128,9 @@ class TestGeminiProvider:
             temperature=0.7
         )
 
-        # Result should always be a string (either response or error message)
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
 
 class TestAIProviderSelection:
@@ -130,7 +140,8 @@ class TestAIProviderSelection:
         """call_ai should route based on settings."""
         from src.ai.ai import call_ai
 
-        with patch('ai.ai.call_openai', return_value="OpenAI response") as mock_openai:
+        mock_result = AIResult.success("OpenAI response")
+        with patch('ai.ai.call_openai', return_value=mock_result) as mock_openai:
             with patch('settings.settings.SETTINGS', {'ai_provider': 'openai'}):
                 result = call_ai(
                     model="gpt-4",
@@ -139,11 +150,12 @@ class TestAIProviderSelection:
                     temperature=0.7
                 )
 
-        # Result should always be a string
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
-    def test_call_ai_returns_string(self, mock_api_keys):
-        """call_ai should always return a string."""
+    def test_call_ai_returns_airesult(self, mock_api_keys):
+        """call_ai should always return an AIResult."""
         from src.ai.ai import call_ai
 
         result = call_ai(
@@ -153,8 +165,9 @@ class TestAIProviderSelection:
             temperature=0.7
         )
 
-        # Result should always be a string (either response or error)
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
 
 class TestSOAPNoteGeneration:
@@ -226,8 +239,9 @@ class TestLetterGeneration:
         """create_letter_with_ai should return string."""
         from src.ai.ai import create_letter_with_ai
 
+        mock_result = AIResult.success("Letter content")
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Letter content"
+            mock_call.return_value = mock_result
 
             result = create_letter_with_ai(
                 text="SOAP note content",
@@ -242,8 +256,9 @@ class TestLetterGeneration:
 
         recipient_types = ["patient", "employer", "insurance", "other"]
 
+        mock_result = AIResult.success("Letter content")
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Letter content"
+            mock_call.return_value = mock_result
 
             for recipient in recipient_types:
                 result = create_letter_with_ai(
@@ -257,7 +272,7 @@ class TestTimeoutHandling:
     """Tests for timeout handling in AI calls."""
 
     def test_timeout_returns_error_message(self, mock_api_keys):
-        """Timeout should return error message, not raise exception."""
+        """Timeout should return AIResult with error, not raise exception."""
         from src.ai.ai import call_openai
         from utils.exceptions import TimeoutError as AppTimeoutError
 
@@ -271,9 +286,11 @@ class TestTimeoutHandling:
                 temperature=0.7
             )
 
-        assert isinstance(result, str)
+        # Should return AIResult (possibly with error)
+        assert isinstance(result, AIResult)
+        result_str = str(result)
         # Should contain error indication
-        assert "error" in result.lower() or "timeout" in result.lower() or "[" in result
+        assert "error" in result_str.lower() or "timeout" in result_str.lower() or "[" in result_str
 
 
 class TestRateLimitHandling:
@@ -294,8 +311,9 @@ class TestRateLimitHandling:
                 temperature=0.7
             )
 
-        # Should return error message
-        assert isinstance(result, str)
+        # Should return AIResult (possibly with error), not raise exception
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
 
 @pytest.mark.regression
@@ -330,8 +348,8 @@ class TestAIProviderRegressionSuite:
         for func_name in required_functions:
             assert hasattr(ai, func_name), f"Missing function: {func_name}"
 
-    def test_ai_response_is_always_string(self, mock_api_keys):
-        """AI functions should always return string."""
+    def test_ai_response_is_always_airesult(self, mock_api_keys):
+        """AI functions should always return AIResult."""
         from src.ai.ai import call_ai
 
         result = call_ai(
@@ -341,7 +359,9 @@ class TestAIProviderRegressionSuite:
             temperature=0.7
         )
 
-        assert isinstance(result, str)
+        # Result should be AIResult, with str() for backward compatibility
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
     def test_temperature_parameter_accepted(self, mock_api_keys):
         """AI functions should accept temperature parameter."""
@@ -355,8 +375,9 @@ class TestAIProviderRegressionSuite:
             temperature=0.5
         )
 
-        # Result is always a string (may be error due to validation, but that's ok)
-        assert isinstance(result, str)
+        # Result is AIResult (may be error due to validation, but that's ok)
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
     def test_empty_prompt_handled(self, mock_api_keys):
         """Empty prompt should be handled gracefully."""
@@ -369,8 +390,9 @@ class TestAIProviderRegressionSuite:
             temperature=0.7
         )
 
-        # Should return something (empty string or error)
-        assert isinstance(result, str)
+        # Should return AIResult (empty string or error)
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
 
     def test_very_long_prompt_handled(self, mock_api_keys):
         """Very long prompts should be handled."""
@@ -385,5 +407,6 @@ class TestAIProviderRegressionSuite:
             temperature=0.7
         )
 
-        # Should not raise exception
-        assert isinstance(result, str)
+        # Should not raise exception, returns AIResult
+        assert isinstance(result, AIResult)
+        assert isinstance(str(result), str)
