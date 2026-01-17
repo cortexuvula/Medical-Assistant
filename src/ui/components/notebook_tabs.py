@@ -556,8 +556,7 @@ class NotebookTabs:
                     self.parent.status_manager.warning("No diagnostic analysis available. Generate a SOAP note first.")
                 return
 
-            # For now, show the analysis in a simple dialog
-            # TODO: Create a dedicated DiagnosticResultsDialog if needed
+            # Simple inline dialog (DiagnosticResultsDialog available for full-featured display)
             from tkinter import messagebox
 
             analysis = self.parent._last_diagnostic_analysis

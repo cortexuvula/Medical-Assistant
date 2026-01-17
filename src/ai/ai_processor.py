@@ -66,26 +66,24 @@ class AIProcessor:
             self.api_key = security_manager.get_api_key("openai")
         
     @handle_errors(ErrorSeverity.ERROR, error_message="Failed to refine text", return_type="result")
-    def refine_text(self, text: str, additional_context: str = "") -> OperationResult[Dict[str, str]]:
+    def refine_text(self, text: str) -> OperationResult[Dict[str, str]]:
         """Refine text using AI.
 
         Args:
             text: Text to refine
-            additional_context: Additional context for refinement
 
         Returns:
             OperationResult containing refined text on success.
             Use result.to_dict() for backward compatibility.
+
+        Note:
+            Prompt customization available via Settings → Prompt Settings → Refine Prompt.
         """
         if not text.strip():
             return OperationResult.failure("No text to refine", error_code="EMPTY_INPUT")
 
         # Sanitize text to prevent prompt injection
         sanitized_text = sanitize_prompt(text)
-
-        # Note: additional_context parameter is not currently used by
-        # adjust_text_with_openai() which reads prompt from SETTINGS internally.
-        # TODO: Refactor adjust_text_with_openai() to accept custom prompt parameter
 
         # Process text (reads prompt and temperature from SETTINGS internally)
         refined_text = adjust_text_with_openai(sanitized_text)
@@ -94,26 +92,24 @@ class AIProcessor:
         return OperationResult.success({"text": refined_text})
     
     @handle_errors(ErrorSeverity.ERROR, error_message="Failed to improve text", return_type="result")
-    def improve_text(self, text: str, additional_context: str = "") -> OperationResult[Dict[str, str]]:
+    def improve_text(self, text: str) -> OperationResult[Dict[str, str]]:
         """Improve text using AI.
 
         Args:
             text: Text to improve
-            additional_context: Additional context for improvement
 
         Returns:
             OperationResult containing improved text on success.
             Use result.to_dict() for backward compatibility.
+
+        Note:
+            Prompt customization available via Settings → Prompt Settings → Improve Prompt.
         """
         if not text.strip():
             return OperationResult.failure("No text to improve", error_code="EMPTY_INPUT")
 
         # Sanitize text to prevent prompt injection
         sanitized_text = sanitize_prompt(text)
-
-        # Note: additional_context parameter is not currently used by
-        # improve_text_with_openai() which reads prompt from SETTINGS internally.
-        # TODO: Refactor improve_text_with_openai() to accept custom prompt parameter
 
         # Process text (reads prompt and temperature from SETTINGS internally)
         improved_text = improve_text_with_openai(sanitized_text)
