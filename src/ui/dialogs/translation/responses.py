@@ -8,7 +8,7 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, LEFT, RIGHT
 from typing import TYPE_CHECKING, Optional, Dict, List, Callable
-from utils.structured_logging import get_logger, Logger
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
 from settings.settings_manager import settings_manager
