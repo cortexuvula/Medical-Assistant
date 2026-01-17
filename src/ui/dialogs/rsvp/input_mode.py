@@ -251,12 +251,15 @@ class InputModePanel:
                     )
 
             except ImportError as e:
-                self.parent.after(0, lambda: self._show_error(str(e)))
+                error_msg = str(e)
+                self.parent.after(0, lambda msg=error_msg: self._show_error(msg))
             except RuntimeError as e:
-                self.parent.after(0, lambda: self._show_error(str(e)))
+                error_msg = str(e)
+                self.parent.after(0, lambda msg=error_msg: self._show_error(msg))
             except Exception as e:
                 logger.error(f"PDF extraction error: {e}")
-                self.parent.after(0, lambda: self._show_error(f"Failed to extract PDF: {e}"))
+                error_msg = f"Failed to extract PDF: {e}"
+                self.parent.after(0, lambda msg=error_msg: self._show_error(msg))
 
         # Run extraction in thread
         thread = threading.Thread(target=extract_pdf, daemon=True)
