@@ -166,7 +166,7 @@ Format your response as:
         "system_prompt": "You are a medication management assistant. Help with medication selection, dosing, and interaction checking. Always emphasize the importance of clinical judgment and patient-specific factors. Include warnings about contraindications and potential side effects."
     },
     "referral": {
-        "enabled": False,
+        "enabled": True,
         "provider": "openai",
         "model": "gpt-4",
         "temperature": 0.3,
