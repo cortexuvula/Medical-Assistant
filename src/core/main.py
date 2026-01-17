@@ -24,9 +24,11 @@ from utils.exceptions import ConfigurationError, DatabaseError
 import os
 from managers.data_folder_manager import data_folder_manager
 
-# Set up structured logging
+# Set up structured logging (console) and file logging
 from utils.structured_logging import setup_logging, get_logger
-setup_logging()
+from managers.log_manager import setup_application_logging
+setup_logging()  # Console logging
+setup_application_logging()  # File logging with rotation
 logger = get_logger(__name__)
 
 # Initialize configuration
