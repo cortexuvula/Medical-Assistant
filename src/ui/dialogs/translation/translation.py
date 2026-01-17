@@ -186,10 +186,15 @@ class TranslationMixin:
 
             except Exception as e:
                 logger.error(f"Doctor translation failed: {e}", exc_info=True)
-                self._safe_after(0, lambda: self._safe_ui_update(lambda: [
-                    self.doctor_translation_indicator.pack_forget(),
-                    self.recording_status.config(text=f"Translation error: {str(e)[:30]}", foreground="red")
-                ]))
+                error_msg = str(e)[:30]  # Capture error message before lambda
+
+                def show_error():
+                    if not self._dialog_exists():
+                        return
+                    self.doctor_translation_indicator.pack_forget()
+                    self.recording_status.config(text=f"Translation error: {error_msg}", foreground="red")
+
+                self._safe_after(0, show_error)
 
         threading.Thread(target=translate, daemon=True).start()
 

@@ -134,12 +134,13 @@ class DeepTranslatorProvider(BaseTranslationProvider):
     
     def __init__(self, provider_type: str = "google", api_key: str = ""):
         """Initialize the Deep Translator provider.
-        
+
         Args:
             provider_type: Type of translator backend ('google', 'deepl', 'microsoft')
             api_key: API key for the translation service (required for DeepL and Microsoft)
         """
         super().__init__(api_key)
+        self.logger = get_logger(__name__)
         self.provider_type = provider_type.lower()
         self._translator = None
         self._initialize_translator()
