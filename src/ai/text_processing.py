@@ -57,7 +57,11 @@ def adjust_text_with_openai(text: str) -> str:
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
     # Get temperature from settings or use a reasonable default
     temperature = refine_config.get("temperature", 0.0)
-    return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, temperature)
+    result = call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, temperature)
+    # Extract text from AIResult
+    if hasattr(result, 'text'):
+        return result.text
+    return str(result)
 
 
 def improve_text_with_openai(text: str) -> str:
@@ -75,4 +79,8 @@ def improve_text_with_openai(text: str) -> str:
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
     # Get temperature from settings or use a reasonable default
     temperature = improve_config.get("temperature", 0.5)
-    return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, temperature)
+    result = call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, temperature)
+    # Extract text from AIResult
+    if hasattr(result, 'text'):
+        return result.text
+    return str(result)
