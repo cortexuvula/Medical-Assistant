@@ -61,12 +61,14 @@ class TranslationDialog(
         """
         self.parent = parent
         # Create a separate audio handler instance for translation
+        logger.info(f"Creating AudioHandler for translation with keys: elevenlabs={bool(audio_handler.elevenlabs_api_key)}, deepgram={bool(audio_handler.deepgram_api_key)}, groq={bool(audio_handler.groq_api_key)}")
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=audio_handler.elevenlabs_api_key,
             deepgram_api_key=audio_handler.deepgram_api_key,
             recognition_language=audio_handler.recognition_language,
             groq_api_key=audio_handler.groq_api_key
         )
+        logger.info(f"AudioHandler created for translation dialog")
         self.translation_manager = get_translation_manager()
         self.tts_manager = get_tts_manager()
         self.session_manager = get_translation_session_manager()
@@ -222,7 +224,7 @@ class TranslationDialog(
                     except tk.TclError:
                         pass
         except Exception as e:
-            self.logger.debug(f"Error hiding tooltips: {e}")
+            self.logger.info(f"Error hiding tooltips: {e}")
 
     def show(self):
         """Show the translation dialog."""
@@ -602,7 +604,7 @@ class TranslationDialog(
             self.logger.error(ctx.to_log_string())
 
         try:
-            self.audio_handler.cleanup()
+            self.audio_handler.cleanup_resources()
         except Exception as e:
             ctx = ErrorContext.capture(
                 operation="Cleaning up audio handler",

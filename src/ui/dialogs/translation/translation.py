@@ -57,9 +57,11 @@ class TranslationMixin:
         Args:
             transcript: Transcribed text
         """
+        logger.info(f"_process_patient_speech called with transcript: '{transcript[:100] if transcript else '(empty)'}...'")
         # Insert original text
         self.patient_original_text.delete("1.0", tk.END)
         self.patient_original_text.insert("1.0", transcript)
+        logger.info("Inserted transcript into patient_original_text widget")
 
         # Detect or use configured language
         if self.auto_detect_var.get():
@@ -74,12 +76,13 @@ class TranslationMixin:
                         break
 
         # Translate to doctor's language
+        logger.info(f"Starting translation: patient_lang={self.patient_language}, doctor_lang={self.doctor_language}")
         self.recording_status.config(text="Translating...", foreground="blue")
         self.patient_translation_indicator.pack(side=tk.LEFT, padx=(10, 0))
 
         def translate():
             try:
-                logger.debug(f"Translating from {self.patient_language} to {self.doctor_language}")
+                logger.info(f"translate() thread started - from {self.patient_language} to {self.doctor_language}")
                 # Use LLM refinement if enabled
                 refine_medical = self.llm_refinement_var.get() if hasattr(self, 'llm_refinement_var') else None
                 translated = self.translation_manager.translate(
@@ -88,9 +91,11 @@ class TranslationMixin:
                     target_lang=self.doctor_language,
                     refine_medical=refine_medical
                 )
+                logger.info(f"Translation result: '{translated[:100] if translated else '(empty)'}...'")
 
                 # Add entry to session history
                 def update_ui():
+                    logger.info("update_ui() called to display translated text")
                     self.patient_translation_indicator.pack_forget()
                     self.patient_translated_text.delete("1.0", tk.END)
                     self.patient_translated_text.insert("1.0", translated)

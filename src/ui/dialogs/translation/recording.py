@@ -18,6 +18,8 @@ from utils.error_handling import ErrorContext
 if TYPE_CHECKING:
     from audio.audio import AudioHandler
 
+logger = get_logger(__name__)
+
 
 class RecordingMixin:
     """Mixin for audio recording functionality."""
@@ -65,12 +67,15 @@ class RecordingMixin:
 
     def _start_recording(self):
         """Start recording patient speech."""
+        logger.info("TRANSLATION: _start_recording called")
         if self.is_recording:
+            logger.info("TRANSLATION: Already recording, returning")
             return
 
         try:
             # Update UI
             self.is_recording = True
+            logger.info("TRANSLATION: Set is_recording=True")
             self.record_button.config(text="⏹ Stop Recording", bootstyle="secondary")
             self.recording_status.config(text="Recording...", foreground="red")
 
@@ -87,19 +92,23 @@ class RecordingMixin:
 
             # Get selected microphone from dropdown
             mic_name = self.selected_microphone.get()
+            logger.info(f"Selected microphone: {mic_name}")
             if not mic_name:
                 raise ValueError("No microphone selected")
 
             # Clear audio segments
             self.audio_segments = []
+            logger.info("Cleared audio_segments list")
 
             # Start recording with shorter phrase time limit for conversational speech
+            logger.info(f"Calling listen_in_background with mic={mic_name}, phrase_time_limit=3")
             self.stop_recording_func = self.audio_handler.listen_in_background(
                 mic_name,
                 self._on_audio_data,
                 phrase_time_limit=3,
                 stream_purpose="translation"
             )
+            logger.info(f"listen_in_background returned, stop_func={self.stop_recording_func is not None}")
 
             # Play start sound
             if hasattr(self.parent, 'play_recording_sound'):
@@ -118,7 +127,9 @@ class RecordingMixin:
 
     def _stop_recording(self):
         """Stop recording and process the audio."""
+        logger.info(f"_stop_recording called, is_recording={self.is_recording}, stop_func={self.stop_recording_func is not None}")
         if not self.is_recording or not self.stop_recording_func:
+            logger.info("Not recording or no stop func, returning early")
             return
 
         # Stop recording timer
@@ -138,10 +149,13 @@ class RecordingMixin:
 
         # Stop recording in thread
         def stop_and_process():
+            logger.info("stop_and_process thread started")
             try:
                 # Stop recording - this will flush accumulated audio via callback
+                logger.info("Calling stop_recording_func to flush audio")
                 self.stop_recording_func()
                 self.stop_recording_func = None
+                logger.info("stop_recording_func completed")
 
                 # NOW set is_recording to False after flush completes
                 self.is_recording = False
@@ -151,9 +165,12 @@ class RecordingMixin:
                     self.parent.play_recording_sound(start=False)
 
                 # Process accumulated audio segments
+                logger.info(f"Processing audio_segments, count={len(self.audio_segments)}")
                 if self.audio_segments:
                     # Combine all segments
+                    logger.info(f"Combining {len(self.audio_segments)} audio segments")
                     combined = self.audio_handler.combine_audio_segments(self.audio_segments)
+                    logger.info(f"Combined audio: {combined is not None}, length={len(combined) if combined else 0}ms")
 
                     if combined:
                         # Update status
@@ -164,6 +181,7 @@ class RecordingMixin:
                         # Use selected STT provider for transcription
                         selected_stt_display = self.selected_stt_provider.get()
                         selected_provider = self._stt_provider_map.get(selected_stt_display, "")
+                        logger.info(f"Selected STT provider: display={selected_stt_display}, provider={selected_provider}")
 
                         # Save current provider and switch if needed
                         original_provider = settings_manager.get("stt_provider", "groq")
@@ -183,7 +201,9 @@ class RecordingMixin:
 
                         try:
                             # Transcribe without prefix
+                            logger.info("Calling transcribe_audio_without_prefix")
                             transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                            logger.info(f"Transcription result: '{transcript[:100] if transcript else '(empty)'}...'")
                         finally:
                             # Restore original provider
                             if selected_provider:
@@ -196,8 +216,10 @@ class RecordingMixin:
 
                         if transcript:
                             # Process the complete transcript
+                            logger.info(f"Transcript received, calling _process_patient_speech")
                             self._safe_after(0, lambda t=transcript: self._process_patient_speech(t))
                         else:
+                            logger.info("No transcript received")
                             self._safe_after(0, lambda: self._safe_ui_update(
                                 lambda: self.recording_status.config(text="No speech detected", foreground="orange")
                             ))
@@ -229,15 +251,20 @@ class RecordingMixin:
         Args:
             audio_data: Complete audio segment (AudioData object)
         """
+        logger.info(f"_on_audio_data called, is_recording={self.is_recording}")
         if not self.is_recording:
+            logger.info("Not recording, ignoring audio data")
             return
 
         try:
             # Process the audio data into a segment
+            logger.info(f"Processing audio data: {type(audio_data)}")
             segment, _ = self.audio_handler.process_audio_data(audio_data)
+            logger.info(f"process_audio_data returned segment={segment is not None}")
             if segment:
                 # Add to segments list
                 self.audio_segments.append(segment)
+                logger.info(f"Added segment to audio_segments, total count={len(self.audio_segments)}")
 
                 # Update audio level indicator
                 try:
