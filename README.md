@@ -735,9 +735,11 @@ pytest
 
 ## Documentation
 
-- [User Guide](docs/user_guide.md)
 - [Keyboard Shortcuts](SHORTCUTS.md)
+- [Desktop Shortcuts](DESKTOP_SHORTCUTS.md) - Creating application shortcuts
 - [Security Features](docs/security_features.md)
+- [Agent System](docs/agent_system.md)
+- [Medication Agent](docs/medication_agent.md)
 - [Testing Guide](docs/testing_guide.md)
 - [CLAUDE.md](CLAUDE.md) - Development guide for AI assistants
 

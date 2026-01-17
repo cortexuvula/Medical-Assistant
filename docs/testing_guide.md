@@ -260,7 +260,7 @@ Tests run automatically on:
 
 The CI pipeline:
 1. Runs on multiple OS (Ubuntu, Windows, macOS)
-2. Tests against Python 3.8-3.11
+2. Tests against Python 3.10, 3.11, 3.12
 3. Runs linting checks
 4. Generates coverage reports
 5. Performs security scans

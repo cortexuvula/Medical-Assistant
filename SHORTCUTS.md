@@ -1,53 +1,66 @@
-# Creating Desktop Shortcuts for Medical Assistant
+# Keyboard Shortcuts
 
-## Windows
+Medical Assistant supports the following keyboard shortcuts for efficient workflow.
 
-### Option 1: Automatic Shortcut Creation
-1. Double-click `create_desktop_shortcut.bat`
-2. A desktop shortcut will be created with the custom icon
+## Global Shortcuts
 
-### Option 2: Manual Creation
-1. Right-click on your desktop
-2. Select "New" > "Shortcut"
-3. Browse to `MedicalAssistant.exe` (in dist folder) or `MedicalAssistant.vbs`
-4. Name it "Medical Assistant"
-5. Right-click the shortcut > Properties
-6. Click "Change Icon" and browse to `icon.ico`
+| Shortcut | Action | Notes |
+|----------|--------|-------|
+| `Ctrl+,` / `Cmd+,` | Open Preferences dialog | Access all settings in one place |
+| `Ctrl+/` / `Cmd+/` | Focus chat input | Quick access to AI chat |
+| `Ctrl+N` / `Cmd+N` | New session | Clear current session |
+| `Ctrl+S` / `Cmd+S` | Save | Save current document |
+| `Ctrl+Z` / `Cmd+Z` | Undo | Undo last action |
+| `Ctrl+Y` / `Cmd+Shift+Z` | Redo | Redo last undone action |
+| `Ctrl+E` / `Cmd+E` | Export as PDF | Export current document |
+| `Ctrl+D` / `Cmd+D` | Run Diagnostic Analysis | Analyze current transcript |
+| `Alt+T` | Toggle theme | Switch between dark/light mode |
 
-## Linux
+## Recording Shortcuts
 
-### Automatic Installation
-```bash
-./install_desktop_entry.sh
-```
+| Shortcut | Action | Notes |
+|----------|--------|-------|
+| `Space` | Start/Pause recording | When focus is on Record tab |
 
-This will:
-- Create a desktop entry in your applications menu
-- Use the custom icon
-- Make Medical Assistant searchable in your app launcher
+## Text Editor Shortcuts
 
-### Manual Installation
-1. Copy `medical-assistant.desktop` to `~/.local/share/applications/`
-2. Edit the file to update the paths to match your installation
-3. Run `update-desktop-database ~/.local/share/applications/`
+| Shortcut | Action | Notes |
+|----------|--------|-------|
+| `Ctrl+A` / `Cmd+A` | Select all | Select all text |
+| `Ctrl+C` / `Cmd+C` | Copy | Copy selected text |
+| `Ctrl+V` / `Cmd+V` | Paste | Paste from clipboard |
+| `Ctrl+X` / `Cmd+X` | Cut | Cut selected text |
 
-## macOS
+## RSVP Reader Shortcuts
 
-### From Finder
-1. Navigate to the Medical Assistant app
-2. Right-click and select "Make Alias"
-3. Drag the alias to your desktop or dock
+The RSVP Reader dialog has its own shortcuts when active:
 
-### From Terminal
-```bash
-ln -s /path/to/MedicalAssistant.app ~/Desktop/Medical\ Assistant
-```
+| Shortcut | Action |
+|----------|--------|
+| `Space` | Play/Pause |
+| `Up` | Increase speed |
+| `Down` | Decrease speed |
+| `Left` | Previous word |
+| `Right` | Next word |
+| `Home` | Jump to start |
+| `End` | Jump to end |
+| `F11` | Toggle fullscreen |
+| `Escape` | Exit fullscreen / Close |
+| `T` | Toggle theme |
+| `1` / `2` / `3` | Set chunk size |
 
-## Start Menu / Applications Menu
+## Navigation Tips
 
-The application will automatically appear in:
-- Windows: Start Menu (after running the installer)
-- Linux: Applications menu (after running install_desktop_entry.sh)
-- macOS: Applications folder (if copied there)
+- **Tab** - Navigate between UI elements
+- **Enter** - Activate focused button
+- **Escape** - Close dialogs
 
-All shortcuts will display the custom Medical Assistant icon.
+## Platform Notes
+
+- On **macOS**, replace `Ctrl` with `Cmd` (Command key)
+- On **Windows/Linux**, `Ctrl` is used
+- Some shortcuts may vary based on system keyboard settings
+
+---
+
+For instructions on creating desktop shortcuts, see [DESKTOP_SHORTCUTS.md](DESKTOP_SHORTCUTS.md).

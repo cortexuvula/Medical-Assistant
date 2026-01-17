@@ -25,11 +25,60 @@ The Medical Assistant now includes a modular AI agent system that allows for spe
   - Recommended investigations
   - Clinical pearls
 
-### 3. Future Agents (Planned)
-- **Medication Agent**: Medication recommendations and interaction checking
-- **Referral Agent**: Professional referral letter generation
-- **Data Extraction Agent**: Extract structured data from clinical text
-- **Workflow Agent**: Multi-step medical process coordination
+### 3. Medication Agent (Implemented)
+- **Purpose**: Comprehensive medication analysis and interaction checking
+- **Default Model**: GPT-4
+- **Temperature**: 0.2 (high accuracy for safety)
+- **Features**:
+  - Extract medications from clinical text
+  - Check drug-drug interactions with severity levels
+  - Validate dosing appropriateness
+  - Suggest medication alternatives
+  - Generate prescriptions
+  - Comprehensive safety analysis
+
+See [medication_agent.md](medication_agent.md) for detailed documentation.
+
+### 4. Referral Agent (Implemented)
+- **Purpose**: Generate professional referral letters
+- **Default Model**: GPT-4
+- **Temperature**: 0.3
+- **Features**:
+  - Address book integration
+  - Automatic specialty inference
+  - Professional formatting
+  - Clinical summary inclusion
+
+### 5. Data Extraction Agent (Implemented)
+- **Purpose**: Extract structured data from clinical text
+- **Default Model**: GPT-4
+- **Temperature**: 0.1 (highly consistent)
+- **Output**: Structured extraction of:
+  - Vital signs
+  - Lab values
+  - Medications
+  - Diagnoses
+  - Allergies
+
+### 6. Workflow Agent (Implemented)
+- **Purpose**: Multi-step clinical process coordination
+- **Default Model**: GPT-4
+- **Temperature**: 0.3
+- **Features**:
+  - Patient intake workflows
+  - Diagnostic workup planning
+  - Treatment protocol guidance
+  - Follow-up care coordination
+  - Interactive checklist tracking
+
+### 7. Chat Agent (Implemented)
+- **Purpose**: Interactive clinical Q&A and assistance
+- **Default Model**: GPT-4
+- **Temperature**: 0.7 (balanced)
+- **Features**:
+  - Context-aware responses
+  - Medical knowledge queries
+  - Documentation assistance
 
 ## Configuration
 
