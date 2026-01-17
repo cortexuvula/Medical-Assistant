@@ -182,7 +182,16 @@ class DefaultAICaller(BaseAICaller):
         if provider:
             return self.call_with_provider(provider, model, system_message, prompt, temperature)
 
-        return self._call_ai(model, system_message, prompt, temperature)
+        result = self._call_ai(model, system_message, prompt, temperature)
+
+        # Handle AIResult objects - extract text or raise on error
+        if hasattr(result, 'is_success'):
+            if result.is_success:
+                return result.text
+            else:
+                raise Exception(result.error or "AI call failed")
+        # Return string results directly
+        return result
 
     def call_with_provider(
         self,
@@ -209,17 +218,26 @@ class DefaultAICaller(BaseAICaller):
         provider_lower = provider.lower()
 
         if provider_lower == PROVIDER_OPENAI:
-            return self._call_openai(model, system_message, prompt, temperature)
+            result = self._call_openai(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_ANTHROPIC:
-            return self._call_anthropic(model, system_message, prompt, temperature)
+            result = self._call_anthropic(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_OLLAMA:
-            return self._call_ollama(system_message, prompt, temperature)
+            result = self._call_ollama(system_message, prompt, temperature)
         elif provider_lower == PROVIDER_GEMINI:
-            return self._call_gemini(model, system_message, prompt, temperature)
+            result = self._call_gemini(model, system_message, prompt, temperature)
         else:
             # Fallback to generic call_ai
             logger.warning(f"Unknown provider '{provider}', falling back to default routing")
-            return self._call_ai(model, system_message, prompt, temperature)
+            result = self._call_ai(model, system_message, prompt, temperature)
+
+        # Handle AIResult objects - extract text or raise on error
+        if hasattr(result, 'is_success'):
+            if result.is_success:
+                return result.text
+            else:
+                raise Exception(result.error or "AI call failed")
+        # Return string results directly
+        return result
 
 
 class MockAICaller(BaseAICaller):
