@@ -465,3 +465,7 @@ def configure_logging(
         # For JSON format, use a minimal formatter since JSON handles structure
         for handler in logging.root.handlers:
             handler.setFormatter(logging.Formatter("%(message)s"))
+
+
+# Backward compatibility alias
+setup_logging = configure_logging
