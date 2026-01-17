@@ -7,7 +7,7 @@ between doctor and patient with STT/TTS support.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, HORIZONTAL
+from ttkbootstrap.constants import BOTH, X, HORIZONTAL, NORMAL, DISABLED
 from datetime import datetime
 from typing import Optional, Callable, List, Dict, TYPE_CHECKING
 
