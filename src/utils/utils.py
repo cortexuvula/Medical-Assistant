@@ -65,7 +65,7 @@ def get_valid_microphones() -> list[str]:
                             sd_names.append(name)
                             break
             except Exception as e:
-                logging.error(f"Error getting default device: {e}")
+                logger.error(f"Error getting default device: {e}")
                 # As a last resort, add a generic default
                 sd_names.append("Default Input (Device 0)")
         
@@ -81,14 +81,14 @@ def get_valid_microphones() -> list[str]:
             mic_names = sc_names
             
         # Log the found microphones
-        logging.info(f"Found {len(mic_names)} microphones")
+        logger.info(f"Found {len(mic_names)} microphones")
         for i, name in enumerate(mic_names):
-            logging.info(f"  Mic {i}: {name}")
+            logger.info(f"  Mic {i}: {name}")
             
         return mic_names
     except Exception as e:
         # Log the error and return empty list
-        logging.error(f"Error getting microphones: {str(e)}", exc_info=True)
+        logger.error(f"Error getting microphones: {str(e)}", exc_info=True)
         return []
 
 
@@ -128,12 +128,12 @@ def get_valid_output_devices() -> list[str]:
                 if default_device:
                     output_names.append(default_device['name'])
             except Exception as e:
-                logging.error(f"Error getting default output device: {e}")
+                logger.error(f"Error getting default output device: {e}")
                 # As a last resort, add a generic default
                 output_names.append("Default Output")
     
     except Exception as e:
-        logging.error(f"Error enumerating output devices: {e}")
+        logger.error(f"Error enumerating output devices: {e}")
         output_names = ["Default Output"]
     
     # Remove duplicates while preserving order
@@ -154,14 +154,14 @@ def get_device_index_from_name(device_name: str) -> int:
         Device index or 0 if not found
     """
     try:
-        logging.info(f"Finding device index for: {device_name}")
+        logger.info(f"Finding device index for: {device_name}")
         
         # First try getting all available devices to log them
         devices = sd.query_devices()
-        logging.info(f"Available devices when searching for '{device_name}':")
+        logger.info(f"Available devices when searching for '{device_name}':")
         for i, device in enumerate(devices):
             is_input = device['max_input_channels'] > 0
-            logging.info(f"  [{i}] {device['name']} - Input: {is_input}")
+            logger.info(f"  [{i}] {device['name']} - Input: {is_input}")
         
         # Check if the name contains a device ID
         import re
@@ -174,7 +174,7 @@ def get_device_index_from_name(device_name: str) -> int:
             
             # Verify the device ID exists and is an input device
             if device_id < len(devices) and devices[device_id]['max_input_channels'] > 0:
-                logging.info(f"Found device by ID: {device_id} ({devices[device_id]['name']})")
+                logger.info(f"Found device by ID: {device_id} ({devices[device_id]['name']})")
                 return device_id
             else:
                 logger.warning(f"Device ID {device_id} is invalid or not an input device")
@@ -182,7 +182,7 @@ def get_device_index_from_name(device_name: str) -> int:
         # If no valid device ID found, try exact name match first
         for i, device in enumerate(devices):
             if device['name'] == device_name.split(" (Device ")[0] and device['max_input_channels'] > 0:
-                logging.info(f"Found device by exact name: {i} ({device['name']})")
+                logger.info(f"Found device by exact name: {i} ({device['name']})")
                 return i
         
         # Try partial match with special handling for Voicemeeter devices
@@ -205,14 +205,14 @@ def get_device_index_from_name(device_name: str) -> int:
                 
                 if ("voicemeeter" in device['name'].lower() and matching_designations and 
                     device['max_input_channels'] > 0):
-                    logging.info(f"Found Voicemeeter device with matching designation: {i} ({device['name']})")
+                    logger.info(f"Found Voicemeeter device with matching designation: {i} ({device['name']})")
                     return i
             else:
                 # For regular devices, a more relaxed matching is fine
                 name_to_compare = device_name.split(" (Device ")[0] if " (Device " in device_name else device_name
                 
                 if name_to_compare in device['name'] and device['max_input_channels'] > 0:
-                    logging.info(f"Found device by partial name: {i} ({device['name']})")
+                    logger.info(f"Found device by partial name: {i} ({device['name']})")
                     return i
         
         # If we get here, we couldn't find a matching device
@@ -223,5 +223,5 @@ def get_device_index_from_name(device_name: str) -> int:
         return default_index
         
     except Exception as e:
-        logging.error(f"Error getting device index: {str(e)}", exc_info=True)
+        logger.error(f"Error getting device index: {str(e)}", exc_info=True)
         return 0
