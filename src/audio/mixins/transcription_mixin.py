@@ -49,7 +49,7 @@ class TranscriptionMixin:
         """
         self._prefix_audio_cache = None
         self._prefix_audio_checked = False
-        logging.debug("Prefix audio cache reset")
+        logger.debug("Prefix audio cache reset")
 
     def transcribe_audio_without_prefix(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider without adding prefix audio.
@@ -98,7 +98,7 @@ class TranscriptionMixin:
             self._prefix_audio_checked = True
             from managers.data_folder_manager import data_folder_manager
             prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
-            logging.debug(f"Checking for prefix audio at: {prefix_audio_path}")
+            logger.debug(f"Checking for prefix audio at: {prefix_audio_path}")
             if os.path.exists(prefix_audio_path):
                 try:
                     logger.info(f"Loading prefix audio from {prefix_audio_path}")
@@ -108,14 +108,14 @@ class TranscriptionMixin:
                     logger.error(f"Error loading prefix audio: {e}", exc_info=True)
                     self._prefix_audio_cache = None
             else:
-                logging.debug(f"No prefix audio file found at: {prefix_audio_path}")
+                logger.debug(f"No prefix audio file found at: {prefix_audio_path}")
 
         # If we have cached prefix audio, prepend it
         if self._prefix_audio_cache:
             try:
                 combined_segment = self._prefix_audio_cache + segment
                 segment = combined_segment
-                logging.debug("Successfully prepended cached prefix audio to recording")
+                logger.debug("Successfully prepended cached prefix audio to recording")
             except Exception as e:
                 logger.error(f"Error prepending prefix audio: {e}", exc_info=True)
 
