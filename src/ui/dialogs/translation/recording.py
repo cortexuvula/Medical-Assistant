@@ -43,7 +43,7 @@ class RecordingMixin:
 
     # Doctor dictation
     is_doctor_recording: bool
-    doctor_dictation_button: ttk.Button
+    dictate_button: ttk.Button
     doctor_audio_segments: List
     stop_doctor_recording_func: Optional[Callable]
 
@@ -311,7 +311,7 @@ class RecordingMixin:
 
         try:
             self.is_doctor_recording = True
-            self.doctor_dictation_button.config(text="⏹ Stop", bootstyle="secondary")
+            self.dictate_button.config(text="⏹ Stop", bootstyle="secondary")
             self.recording_status.config(text="Dictating...", foreground="blue")
 
             # Get selected microphone
@@ -339,7 +339,7 @@ class RecordingMixin:
             self.logger.error(ctx.to_log_string())
             self.is_doctor_recording = False
             self.recording_status.config(text=f"Error: {ctx.user_message}", foreground="red")
-            self.doctor_dictation_button.config(text="🎤 Dictate", bootstyle="outline-info")
+            self.dictate_button.config(text="🎤 Dictate", bootstyle="outline-info")
 
     def _stop_doctor_dictation(self):
         """Stop doctor dictation and transcribe."""
@@ -347,7 +347,7 @@ class RecordingMixin:
             return
 
         # Update UI
-        self.doctor_dictation_button.config(text="🎤 Dictate", bootstyle="outline-info")
+        self.dictate_button.config(text="🎤 Dictate", bootstyle="outline-info")
         self.recording_status.config(text="Processing...", foreground="blue")
 
         def stop_and_transcribe():

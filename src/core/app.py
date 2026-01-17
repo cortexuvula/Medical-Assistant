@@ -869,7 +869,7 @@ class MedicalDictationApp(
             )
             dialog.show()
         except Exception as e:
-            self.logger.error(f"Failed to open diagnostic history: {e}")
+            logger.error(f"Failed to open diagnostic history: {e}")
             self.status_manager.error(f"Failed to open diagnostic history: {str(e)}")
 
     def show_diagnostic_comparison(self) -> None:
@@ -880,7 +880,7 @@ class MedicalDictationApp(
             dialog = DiagnosticComparisonDialog(self)
             dialog.show()
         except Exception as e:
-            self.logger.error(f"Failed to open diagnostic comparison: {e}")
+            logger.error(f"Failed to open diagnostic comparison: {e}")
             self.status_manager.error(f"Failed to open diagnostic comparison: {str(e)}")
 
     def _view_diagnostic_analysis(self, analysis: dict) -> None:
@@ -915,7 +915,7 @@ class MedicalDictationApp(
                 source_text=analysis.get('source_text', '')
             )
         except Exception as e:
-            self.logger.error(f"Failed to view diagnostic analysis: {e}")
+            logger.error(f"Failed to view diagnostic analysis: {e}")
             self.status_manager.error(f"Failed to view analysis: {str(e)}")
 
     def analyze_medications(self) -> None:
@@ -938,7 +938,7 @@ class MedicalDictationApp(
             dialog = TranslationDialog(self, self.audio_handler)
             dialog.show()
         except Exception as e:
-            self.logger.error(f"Failed to open translation dialog: {e}")
+            logger.error(f"Failed to open translation dialog: {e}")
             self.status_manager.error(f"Failed to open translation dialog: {str(e)}")
 
     def show_translation_assistant(self) -> None:

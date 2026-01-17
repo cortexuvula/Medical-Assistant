@@ -6,7 +6,7 @@ Provides conversation history panel, session management, and export functionalit
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NW, W, HORIZONTAL
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NW, W, HORIZONTAL, NORMAL, DISABLED
 import threading
 import json
 from typing import TYPE_CHECKING, Optional, Callable, List, Dict
