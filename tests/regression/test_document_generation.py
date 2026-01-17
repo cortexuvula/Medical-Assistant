@@ -2,6 +2,9 @@
 
 These tests verify that SOAP notes, referrals, and letters
 are generated correctly.
+
+Note: AI providers now return AIResult objects instead of strings.
+These tests mock call_ai to return AIResult.success() for proper behavior.
 """
 import pytest
 import sys
@@ -10,6 +13,8 @@ from unittest.mock import patch, MagicMock, Mock
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from utils.exceptions import AIResult
 
 
 class TestSOAPNoteGeneration:
@@ -120,14 +125,14 @@ class TestReferralGeneration:
         from src.ai.ai import create_referral_with_openai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = """
+            mock_call.return_value = AIResult.success("""
             Dear Dr. Specialist,
 
             I am referring this patient for evaluation of chronic headaches.
 
             Sincerely,
             Dr. Referring Physician
-            """
+            """)
 
             result = create_referral_with_openai(sample_soap_note)
 
@@ -139,7 +144,7 @@ class TestReferralGeneration:
         from src.ai.ai import create_referral_with_openai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Referral letter content"
+            mock_call.return_value = AIResult.success("Referral letter content")
 
             result = create_referral_with_openai(
                 sample_soap_note,
@@ -154,7 +159,7 @@ class TestReferralGeneration:
         from src.ai.ai import create_referral_with_openai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = ""
+            mock_call.return_value = AIResult.success("")
 
             result = create_referral_with_openai("")
 
@@ -179,14 +184,14 @@ class TestLetterGeneration:
         from src.ai.ai import create_letter_with_ai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = """
+            mock_call.return_value = AIResult.success("""
             Dear Patient,
 
             Thank you for visiting our office today.
 
             Sincerely,
             Your Doctor
-            """
+            """)
 
             result = create_letter_with_ai(sample_soap_note)
 
@@ -198,7 +203,7 @@ class TestLetterGeneration:
         from src.ai.ai import create_letter_with_ai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Dear Patient, your visit summary..."
+            mock_call.return_value = AIResult.success("Dear Patient, your visit summary...")
 
             result = create_letter_with_ai(
                 sample_soap_note,
@@ -212,7 +217,7 @@ class TestLetterGeneration:
         from src.ai.ai import create_letter_with_ai
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "To Whom It May Concern, this letter confirms..."
+            mock_call.return_value = AIResult.success("To Whom It May Concern, this letter confirms...")
 
             result = create_letter_with_ai(
                 sample_soap_note,
@@ -228,7 +233,7 @@ class TestLetterGeneration:
         specs = "Include work restrictions and duration of leave"
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Letter with specifications"
+            mock_call.return_value = AIResult.success("Letter with specifications")
 
             result = create_letter_with_ai(
                 sample_soap_note,
@@ -358,7 +363,7 @@ class TestDocumentGenerationRegressionSuite:
         conditions = "diabetes, hypertension, chronic kidney disease"
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Referral for multiple conditions"
+            mock_call.return_value = AIResult.success("Referral for multiple conditions")
 
             result = create_referral_with_openai(soap_note, conditions)
 
@@ -371,7 +376,7 @@ class TestDocumentGenerationRegressionSuite:
         soap_note = "Patient José García, température 38°C"
 
         with patch('ai.letter_generation.call_ai') as mock_call:
-            mock_call.return_value = "Letter for José García"
+            mock_call.return_value = AIResult.success("Letter for José García")
 
             result = create_letter_with_ai(soap_note)
 
@@ -387,9 +392,10 @@ class TestDocumentGenerationRegressionSuite:
             improve_text_with_openai
         )
 
+        mock_result = AIResult.success("Generated content")
         with patch('ai.soap_generation.call_ai', return_value="Generated content"), \
              patch('managers.agent_manager.agent_manager') as mock_agent, \
-             patch('ai.letter_generation.call_ai', return_value="Generated content"), \
+             patch('ai.letter_generation.call_ai', return_value=mock_result), \
              patch('ai.text_processing.call_ai', return_value="Generated content"):
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
