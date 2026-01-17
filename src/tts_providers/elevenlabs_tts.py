@@ -118,7 +118,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         self.logger.debug(f"ElevenLabs TTS API call to {url}")
         self.logger.debug(f"Model: {model_id}, Voice: {voice_id}")
         
-        response = requests.post(url, json=data, headers=headers, timeout=30)
+        response = requests.post(url, json=data, headers=headers, timeout=30, verify=True)
         
         if response.status_code == 200:
             return response.content
@@ -248,7 +248,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
                 "xi-api-key": self.api_key
             }
             
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=10, verify=True)
             
             if response.status_code != 200:
                 self.logger.error(f"Failed to fetch voices: {response.status_code}")

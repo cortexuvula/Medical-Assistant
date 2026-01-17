@@ -32,11 +32,11 @@ class SecureKeyStorage:
     # Salt length in bytes (256 bits)
     SALT_LENGTH = 32
 
-    # Legacy static salt for backward compatibility during migration
-    LEGACY_SALT = b'medical_assistant_salt_v1'
-
     # Current salt version for tracking migrations
     SALT_VERSION = 2
+
+    # Legacy salt removal tracking
+    _LEGACY_MIGRATION_LOGGED = False
 
     def __init__(self, key_file: Optional[Path] = None):
         """Initialize secure key storage.
@@ -121,6 +121,28 @@ class SecureKeyStorage:
             logger.error(f"Failed to save salt file: {e}")
             raise ConfigurationError(f"Failed to save encryption salt: {e}")
 
+    @classmethod
+    def _get_legacy_salt(cls) -> bytes:
+        """Get the legacy salt for migration purposes.
+
+        DEPRECATED: This method exists only to support migration from the
+        old static salt to per-install unique salts. It will be removed
+        in a future version once all users have migrated.
+
+        Returns:
+            Legacy salt bytes
+        """
+        if not cls._LEGACY_MIGRATION_LOGGED:
+            logger.warning(
+                "Legacy salt migration in progress. This is a one-time operation. "
+                "The legacy salt support will be removed in a future version."
+            )
+            cls._LEGACY_MIGRATION_LOGGED = True
+
+        # Legacy salt - kept for backward compatibility during migration only
+        # DO NOT use for new encryptions - use per-install unique salt instead
+        return b'medical_assistant_salt_v1'
+
     def _migrate_legacy_keys_if_needed(self, master_key: str):
         """Migrate keys from legacy static salt to unique salt.
 
@@ -146,7 +168,8 @@ class SecureKeyStorage:
 
         try:
             # Create cipher with legacy salt for decryption
-            legacy_cipher = self._create_cipher(master_key, self.LEGACY_SALT)
+            legacy_salt = self._get_legacy_salt()
+            legacy_cipher = self._create_cipher(master_key, legacy_salt)
 
             # Migrate each key
             migrated_keys = {"_metadata": {"salt_version": self.SALT_VERSION}}

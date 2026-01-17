@@ -120,6 +120,7 @@ class HTTPClientManager:
                         pool=5.0,
                     ),
                     http2=HTTP2_AVAILABLE,  # Enable HTTP/2 if h2 package is installed
+                    verify=True,  # Explicitly enable TLS certificate verification
                 )
 
             return self._httpx_clients[provider]
@@ -147,6 +148,9 @@ class HTTPClientManager:
                 config = self.POOL_CONFIG.get(provider, {"max_connections": 5})
 
                 session = requests.Session()
+
+                # Explicitly enable TLS certificate verification
+                session.verify = True
 
                 # Configure retry strategy for transient errors
                 retry_strategy = Retry(

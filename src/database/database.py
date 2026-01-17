@@ -13,6 +13,9 @@ Error Handling:
 import sqlite3
 import threading
 import re
+import os
+import stat
+import platform
 from typing import Dict, List, FrozenSet
 
 from managers.data_folder_manager import data_folder_manager
@@ -160,6 +163,46 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
 
         # Ensure critical columns exist (fixes cases where migration recorded but column missing)
         self._ensure_critical_columns()
+
+        # Set secure file permissions on database (contains PHI)
+        self._secure_database_file()
+
+    def _secure_database_file(self):
+        """Set secure file permissions on the database file.
+
+        On POSIX systems (Linux, macOS), sets permissions to 0o600 (owner read/write only).
+        This protects PHI data from access by other users on the system.
+
+        On Windows, file permissions are handled differently through ACLs,
+        but the user's profile directory typically provides adequate protection.
+        """
+        if platform.system() == 'Windows':
+            # Windows handles permissions through ACLs
+            # The database is stored in the user's AppData folder which has appropriate permissions
+            logger.debug("Database file permissions: Windows ACLs apply")
+            return
+
+        try:
+            if os.path.exists(self.db_path):
+                current_mode = os.stat(self.db_path).st_mode
+                # Check if permissions are too open (readable/writable by group or others)
+                if current_mode & (stat.S_IRWXG | stat.S_IRWXO):
+                    os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+                    logger.info(f"Secured database file permissions to 0600: {self.db_path}")
+                else:
+                    logger.debug("Database file permissions already secure")
+
+                # Also secure the WAL and SHM files if they exist
+                for suffix in ['-wal', '-shm']:
+                    wal_path = self.db_path + suffix
+                    if os.path.exists(wal_path):
+                        wal_mode = os.stat(wal_path).st_mode
+                        if wal_mode & (stat.S_IRWXG | stat.S_IRWXO):
+                            os.chmod(wal_path, stat.S_IRUSR | stat.S_IWUSR)
+                            logger.debug(f"Secured {suffix} file permissions")
+        except OSError as e:
+            # Log but don't fail - the application should still work
+            logger.warning(f"Could not set database file permissions: {e}")
 
     def _ensure_critical_columns(self):
         """Ensure critical columns exist in the recordings table."""
