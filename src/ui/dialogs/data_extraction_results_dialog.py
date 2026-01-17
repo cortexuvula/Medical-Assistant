@@ -8,13 +8,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from ui.scaling_utils import ui_scaler
 import json
-import logging
 from typing import Dict, Any
 import os
 from utils.pdf_exporter import PDFExporter
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DataExtractionResultsDialog:
@@ -264,7 +265,11 @@ class DataExtractionResultsDialog:
                     self.text_widget.tag_add(tag, start_idx, end_idx)
                     
         except Exception as e:
-            logger.error(f"Error highlighting JSON: {e}")
+            ctx = ErrorContext.capture(
+                operation="Highlighting JSON syntax",
+                exception=e
+            )
+            logger.error(ctx.to_log_string())
     
     def copy_to_clipboard(self):
         """Copy extracted data to clipboard."""
@@ -311,10 +316,15 @@ class DataExtractionResultsDialog:
                     parent=self.dialog
                 )
             except Exception as e:
-                logger.error(f"Error exporting data: {e}")
+                ctx = ErrorContext.capture(
+                    operation="Exporting data to file",
+                    exception=e,
+                    input_summary=f"filename={filename}"
+                )
+                logger.error(ctx.to_log_string())
                 messagebox.showerror(
                     "Export Error",
-                    f"Failed to export data:\n{str(e)}",
+                    ctx.user_message,
                     parent=self.dialog
                 )
     
@@ -386,10 +396,15 @@ class DataExtractionResultsDialog:
                 )
                 
         except Exception as e:
-            logger.error(f"Error exporting to PDF: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Exporting to PDF",
+                exception=e,
+                input_summary=f"file_path={file_path if 'file_path' in dir() else 'unknown'}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                f"Failed to export PDF: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
     
@@ -449,7 +464,12 @@ class DataExtractionResultsDialog:
                 data.update(self.metadata)
                 
         except Exception as e:
-            logger.error(f"Error parsing extraction data: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Parsing extraction data",
+                exception=e,
+                input_summary=f"format={self.output_format}"
+            )
+            logger.error(ctx.to_log_string())
             # Fallback to raw content
             data["raw_content"] = self.extracted_data
             

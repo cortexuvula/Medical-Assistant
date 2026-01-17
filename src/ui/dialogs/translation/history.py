@@ -8,12 +8,13 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, NW, W, HORIZONTAL
 import threading
-import logging
 import json
 from typing import TYPE_CHECKING, Optional, Callable, List, Dict
 
 from ui.tooltip import ToolTip
 from models.translation_session import TranslationEntry, Speaker
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 if TYPE_CHECKING:
     from managers.translation_session_manager import TranslationSessionManager
@@ -28,7 +29,7 @@ class HistoryMixin:
     tts_manager: "TTSManager"
     patient_language: str
     doctor_language: str
-    logger: logging.Logger
+    logger: "get_logger"  # Uses structured logger
     _undo_stack: List[Dict]
 
     # UI components
@@ -286,7 +287,11 @@ class HistoryMixin:
             self.dialog.clipboard_append(text)
             self.recording_status.config(text="Copied to clipboard", foreground="green")
         except Exception as e:
-            self.logger.error(f"Copy failed: {e}")
+            ctx = ErrorContext.capture(
+                operation="Copying history entry to clipboard",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
     def _replay_doctor_entry(self, entry: TranslationEntry):
         """Replay a doctor entry via TTS.
@@ -315,9 +320,14 @@ class HistoryMixin:
                     lambda: self._on_playback_complete()
                 ))
             except Exception as e:
-                self.logger.error(f"Replay failed: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
-                    lambda: self._on_playback_error(err)
+                ctx = ErrorContext.capture(
+                    operation="Replaying doctor entry via TTS",
+                    exception=e,
+                    input_summary=f"language={entry.target_language}"
+                )
+                self.logger.error(ctx.to_log_string(), exc_info=True)
+                self._safe_after(0, lambda msg=ctx.user_message: self._safe_ui_update(
+                    lambda: self._on_playback_error(msg)
                 ))
 
         threading.Thread(target=play_audio, daemon=True).start()
@@ -378,8 +388,12 @@ class HistoryMixin:
             self.history_canvas.update_idletasks()
 
         except Exception as e:
-            self.logger.error(f"Undo failed: {e}", exc_info=True)
-            self.recording_status.config(text=f"Undo error: {str(e)[:40]}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Undoing last history entry",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string(), exc_info=True)
+            self.recording_status.config(text=f"Undo error: {ctx.user_message[:40]}", foreground="red")
 
     def _update_session_stats(self):
         """Update the session statistics display."""
@@ -504,8 +518,13 @@ class HistoryMixin:
             self.recording_status.config(text=f"Exported to {filename}", foreground="green")
 
         except Exception as e:
-            self.logger.error(f"Export failed: {e}")
-            self.recording_status.config(text=f"Export error: {str(e)}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Exporting session",
+                exception=e,
+                input_summary=f"filename={filename if 'filename' in dir() else 'unknown'}"
+            )
+            self.logger.error(ctx.to_log_string())
+            self.recording_status.config(text=f"Export error: {ctx.user_message}", foreground="red")
 
 
 __all__ = ["HistoryMixin"]

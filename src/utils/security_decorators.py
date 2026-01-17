@@ -4,11 +4,13 @@ Security decorators and utilities for Medical Assistant.
 
 import functools
 import time
-import logging
 from typing import Callable, Any, Optional
 
 from utils.security import get_security_manager
 from utils.exceptions import APIError, RateLimitError
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def rate_limited(provider: str, identifier_arg: Optional[str] = None):
@@ -87,7 +89,7 @@ def sanitize_inputs(*input_args: str, input_type: str = "prompt"):
                         bound_args.arguments[arg_name] = sanitized_value
                         
                         if original_value != sanitized_value:
-                            logging.warning(
+                            logger.warning(
                                 f"Sanitized {arg_name} in {func.__name__}"
                             )
             
@@ -151,41 +153,41 @@ def log_api_call(provider: str, log_response: bool = False):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> Any:
-            logger = logging.getLogger(f"api_audit.{provider}")
+            audit_logger = get_logger(f"api_audit.{provider}")
             security_manager = get_security_manager()
             
             # Log the call
             call_id = security_manager.generate_secure_token(16)
             start_time = time.time()
             
-            logger.info(
+            audit_logger.info(
                 f"API call started - ID: {call_id}, "
                 f"Function: {func.__name__}, "
                 f"Provider: {provider}"
             )
-            
+
             try:
                 # Call the function
                 result = func(*args, **kwargs)
-                
+
                 # Log success
                 elapsed = time.time() - start_time
-                logger.info(
+                audit_logger.info(
                     f"API call succeeded - ID: {call_id}, "
                     f"Duration: {elapsed:.3f}s"
                 )
-                
+
                 if log_response and result:
                     # Be careful not to log sensitive data
                     result_preview = str(result)[:100] + "..." if len(str(result)) > 100 else str(result)
-                    logger.debug(f"Response preview - ID: {call_id}: {result_preview}")
-                
+                    audit_logger.debug(f"Response preview - ID: {call_id}: {result_preview}")
+
                 return result
-                
+
             except Exception as e:
                 # Log failure
                 elapsed = time.time() - start_time
-                logger.error(
+                audit_logger.error(
                     f"API call failed - ID: {call_id}, "
                     f"Duration: {elapsed:.3f}s, "
                     f"Error: {str(e)}"

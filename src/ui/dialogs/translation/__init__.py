@@ -8,7 +8,6 @@ between doctor and patient with STT/TTS support.
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, HORIZONTAL
-import logging
 from datetime import datetime
 from typing import Optional, Callable, List, Dict, TYPE_CHECKING
 
@@ -16,7 +15,9 @@ from managers.translation_manager import get_translation_manager
 from managers.tts_manager import get_tts_manager
 from managers.translation_session_manager import get_translation_session_manager
 from audio.audio import AudioHandler
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 from .languages import LanguagesMixin
 from .recording import RecordingMixin
@@ -83,7 +84,7 @@ class TranslationDialog(
         self.stop_doctor_recording_func = None
 
         # Get language and device settings
-        translation_settings = SETTINGS.get("translation", {})
+        translation_settings = settings_manager.get("translation", {})
         self.patient_language = translation_settings.get("patient_language", "es")
         self.doctor_language = translation_settings.get("doctor_language", "en")
         self.input_device = translation_settings.get("input_device", "")
@@ -97,7 +98,7 @@ class TranslationDialog(
         self.recent_languages = translation_settings.get("recent_languages", [])
         self.favorite_responses = translation_settings.get("favorite_responses", [])
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
         # Theme-aware colors
         self._init_theme_colors()
@@ -344,8 +345,12 @@ class TranslationDialog(
 
             self.recording_status.config(text="Response sent", foreground="green")
         except Exception as e:
-            self.logger.error(f"Failed to add doctor entry to history: {e}")
-            self.recording_status.config(text=f"Error: {str(e)}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Adding doctor entry to history",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
+            self.recording_status.config(text=f"Error: {ctx.user_message}", foreground="red")
 
     def _clear_all(self):
         """Clear all text fields."""
@@ -370,8 +375,12 @@ class TranslationDialog(
             else:
                 self.recording_status.config(text="Nothing to copy", foreground="orange")
         except Exception as e:
-            self.logger.error(f"Copy failed: {e}")
-            self.recording_status.config(text=f"Copy failed: {str(e)[:30]}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Copying text to clipboard",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
+            self.recording_status.config(text=f"Copy failed: {ctx.user_message[:30]}", foreground="red")
 
     def _export_conversation(self):
         """Export the conversation to a file."""
@@ -419,26 +428,31 @@ class TranslationDialog(
             self.recording_status.config(text="Conversation exported", foreground="green")
 
         except Exception as e:
-            self.logger.error(f"Export failed: {e}")
-            self.recording_status.config(text=f"Export error: {str(e)}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Exporting conversation",
+                exception=e,
+                input_summary=f"filename={filename if 'filename' in dir() else 'unknown'}"
+            )
+            self.logger.error(ctx.to_log_string())
+            self.recording_status.config(text=f"Export error: {ctx.user_message}", foreground="red")
 
     def _on_auto_clear_toggle(self):
         """Handle auto-clear checkbox toggle."""
         self.auto_clear_after_send = self.auto_clear_var.get()
-        SETTINGS.setdefault("translation", {})["auto_clear_after_send"] = self.auto_clear_after_send
+        settings_manager.set_nested("translation.auto_clear_after_send", self.auto_clear_after_send)
 
     def _on_speed_change(self, value):
         """Handle TTS speed change."""
         speed = float(value)
         self.tts_speed = speed
         self.speed_label.config(text=f"{speed:.1f}x")
-        SETTINGS.setdefault("translation", {})["tts_speed"] = speed
+        settings_manager.set_nested("translation.tts_speed", speed)
 
     def _on_font_size_change(self):
         """Handle font size change."""
         size = self.font_size_var.get()
         self.font_size = size
-        SETTINGS.setdefault("translation", {})["font_size"] = size
+        settings_manager.set_nested("translation.font_size", size)
 
         font = ("Consolas", size)
         for widget in [self.patient_original_text, self.patient_translated_text,
@@ -473,7 +487,11 @@ class TranslationDialog(
             self.dialog.clipboard_append(combined)
             self.recording_status.config(text="Both languages copied!", foreground="green")
         except Exception as e:
-            self.logger.error(f"Copy both failed: {e}")
+            ctx = ErrorContext.capture(
+                operation="Copying both languages to clipboard",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
     def _add_to_context(self):
         """Add conversation to Context Information on main screen."""
@@ -534,8 +552,12 @@ class TranslationDialog(
             self.logger.info("Translation conversation added to context")
 
         except Exception as e:
-            self.logger.error(f"Add to context failed: {e}")
-            self.recording_status.config(text=f"Error: {str(e)[:30]}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Adding translation to context",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
+            self.recording_status.config(text=f"Error: {ctx.user_message[:30]}", foreground="red")
 
     def _update_service_status(self, translation_ok: bool = None, tts_ok: bool = None):
         """Update service status indicators."""
@@ -573,26 +595,33 @@ class TranslationDialog(
         try:
             self.session_manager.end_session()
         except Exception as e:
-            self.logger.error(f"Error ending translation session: {e}")
+            ctx = ErrorContext.capture(
+                operation="Ending translation session",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
         try:
             self.audio_handler.cleanup()
         except Exception as e:
-            self.logger.error(f"Error cleaning up audio handler: {e}")
+            ctx = ErrorContext.capture(
+                operation="Cleaning up audio handler",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
         # Save settings
-        SETTINGS["translation"]["patient_language"] = self.patient_language
-        SETTINGS["translation"]["doctor_language"] = self.doctor_language
-        SETTINGS["translation"]["input_device"] = self.selected_microphone.get()
-        SETTINGS["translation"]["output_device"] = self.selected_output.get()
         selected_stt_display = self.selected_stt_provider.get()
-        SETTINGS["translation"]["stt_provider"] = self._stt_provider_map.get(selected_stt_display, "")
-
-        try:
-            save_settings()
-            self.logger.info("Translation settings saved")
-        except Exception as e:
-            self.logger.error(f"Error saving translation settings: {e}")
+        translation_config = settings_manager.get("translation", {})
+        translation_config.update({
+            "patient_language": self.patient_language,
+            "doctor_language": self.doctor_language,
+            "input_device": self.selected_microphone.get(),
+            "output_device": self.selected_output.get(),
+            "stt_provider": self._stt_provider_map.get(selected_stt_display, ""),
+        })
+        settings_manager.set("translation", translation_config)
+        self.logger.info("Translation settings saved")
 
         self.dialog.destroy()
 

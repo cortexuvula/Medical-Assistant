@@ -8,10 +8,10 @@ import tkinter as tk
 from tkinter.constants import WORD
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, W
-import logging
 from typing import TYPE_CHECKING, Optional, Dict
 
 from ui.tooltip import ToolTip
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     pass

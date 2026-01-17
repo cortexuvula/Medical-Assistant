@@ -28,12 +28,12 @@ Lazy Initialization Pattern:
         return _my_manager
 """
 
-import logging
 import threading
+from utils.structured_logging import get_logger
 from abc import ABC
 from typing import TypeVar, Type, Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar('T', bound='SingletonManager')
 

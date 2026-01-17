@@ -1,7 +1,10 @@
 import soundcard
 import sounddevice as sd
-import logging
 import platform
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 def get_valid_microphones() -> list[str]:
     """Get list of valid microphone names using both soundcard and sounddevice."""
@@ -14,7 +17,7 @@ def get_valid_microphones() -> list[str]:
             sc_names = [mic.name for mic in soundcard_mics]
         except Exception as e:
             # Soundcard may fail on some platforms
-            logging.warning(f"Soundcard enumeration failed: {e}")
+            logger.warning(f"Soundcard enumeration failed: {e}")
             sc_names = []
         
         # Then get sounddevice microphones
@@ -174,7 +177,7 @@ def get_device_index_from_name(device_name: str) -> int:
                 logging.info(f"Found device by ID: {device_id} ({devices[device_id]['name']})")
                 return device_id
             else:
-                logging.warning(f"Device ID {device_id} is invalid or not an input device")
+                logger.warning(f"Device ID {device_id} is invalid or not an input device")
         
         # If no valid device ID found, try exact name match first
         for i, device in enumerate(devices):
@@ -216,7 +219,7 @@ def get_device_index_from_name(device_name: str) -> int:
         # As a last resort, get the default input device
         default_device = sd.query_devices(kind='input')
         default_index = default_device['index'] if 'index' in default_device else 0
-        logging.warning(f"Could not find device '{device_name}', using default device {default_index} ({default_device['name']})")
+        logger.warning(f"Could not find device '{device_name}', using default device {default_index} ({default_device['name']})")
         return default_index
         
     except Exception as e:

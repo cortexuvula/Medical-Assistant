@@ -7,9 +7,10 @@ and medical specialty context filtering.
 """
 
 import re
-import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+
+from utils.structured_logging import get_logger
 
 
 @dataclass
@@ -34,7 +35,7 @@ class VocabularyCorrector:
 
     def __init__(self):
         """Initialize the corrector."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self._compiled_patterns: Dict[tuple, re.Pattern] = {}
 
     def apply_corrections(

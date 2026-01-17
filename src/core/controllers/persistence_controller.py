@@ -10,7 +10,6 @@ This controller merges:
 Extracted from the main App class to improve maintainability and separation of concerns.
 """
 
-import logging
 from datetime import datetime
 from tkinter import messagebox, LEFT
 from typing import TYPE_CHECKING, Dict, Any
@@ -18,11 +17,12 @@ from typing import TYPE_CHECKING, Dict, Any
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
 from settings import settings_manager
 from ui.tooltip import ToolTip
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PersistenceController:
@@ -132,7 +132,7 @@ class PersistenceController:
                 self.app.has_available_autosave = False
                 return
         except (ValueError, TypeError, KeyError) as e:
-            logging.debug(f"Error checking autosave age: {e}")
+            logger.debug(f"Error checking autosave age: {e}")
             self.app.has_available_autosave = False
             return
 
@@ -171,14 +171,14 @@ class PersistenceController:
             if hasattr(self.app, 'status_manager') and self.app.status_manager:
                 self.app.status_manager.success("Auto-save restored successfully")
             else:
-                logging.info("Auto-save restored successfully")
+                logger.info("Auto-save restored successfully")
 
         except Exception as e:
-            logging.error(f"Failed to restore from auto-save: {e}")
+            logger.error(f"Failed to restore from auto-save: {e}")
             if hasattr(self.app, 'status_manager') and self.app.status_manager:
                 self.app.status_manager.error("Failed to restore auto-save")
             else:
-                logging.error("Failed to restore auto-save")
+                logger.error("Failed to restore auto-save")
 
     def update_restore_button_visibility(self) -> None:
         """Update the visibility of the restore button based on auto-save availability."""

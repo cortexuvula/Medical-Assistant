@@ -5,12 +5,14 @@ Provides transcription functionality for the AudioHandler class.
 """
 
 import os
-import logging
 from typing import Optional
 from pydub import AudioSegment
 
 from settings.settings import SETTINGS
 from managers.vocabulary_manager import vocabulary_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class TranscriptionMixin:
@@ -36,9 +38,9 @@ class TranscriptionMixin:
             from settings.settings import save_settings
             SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
-            logging.info(f"STT provider set to {provider}")
+            logger.info(f"STT provider set to {provider}")
         else:
-            logging.warning(f"Unknown STT provider: {provider}")
+            logger.warning(f"Unknown STT provider: {provider}")
 
     def reset_prefix_audio_cache(self) -> None:
         """Reset the prefix audio cache.
@@ -69,7 +71,7 @@ class TranscriptionMixin:
 
         # Only use fallback if there's an actual error (empty string)
         if transcript == "" and self.fallback_callback and not fallback_attempted:
-            logging.info("Primary STT provider failed, attempting fallback")
+            logger.info("Primary STT provider failed, attempting fallback")
             fallback_attempted = True
 
             # Try fallback providers
@@ -77,7 +79,7 @@ class TranscriptionMixin:
             for provider in fallback_providers:
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript:
-                    logging.info(f"Fallback to {provider} successful")
+                    logger.info(f"Fallback to {provider} successful")
                     break
 
         return transcript
@@ -99,11 +101,11 @@ class TranscriptionMixin:
             logging.debug(f"Checking for prefix audio at: {prefix_audio_path}")
             if os.path.exists(prefix_audio_path):
                 try:
-                    logging.info(f"Loading prefix audio from {prefix_audio_path}")
+                    logger.info(f"Loading prefix audio from {prefix_audio_path}")
                     self._prefix_audio_cache = AudioSegment.from_file(prefix_audio_path)
-                    logging.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
+                    logger.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
                 except Exception as e:
-                    logging.error(f"Error loading prefix audio: {e}", exc_info=True)
+                    logger.error(f"Error loading prefix audio: {e}", exc_info=True)
                     self._prefix_audio_cache = None
             else:
                 logging.debug(f"No prefix audio file found at: {prefix_audio_path}")
@@ -115,7 +117,7 @@ class TranscriptionMixin:
                 segment = combined_segment
                 logging.debug("Successfully prepended cached prefix audio to recording")
             except Exception as e:
-                logging.error(f"Error prepending prefix audio: {e}", exc_info=True)
+                logger.error(f"Error prepending prefix audio: {e}", exc_info=True)
 
         # Get the selected STT provider from settings
         primary_provider = SETTINGS.get("stt_provider", "deepgram")
@@ -131,14 +133,14 @@ class TranscriptionMixin:
                 fallback_providers.remove(primary_provider)
 
             for provider in fallback_providers:
-                logging.info(f"Trying fallback provider: {provider}")
+                logger.info(f"Trying fallback provider: {provider}")
 
                 if self.fallback_callback:
                     self.fallback_callback(primary_provider, provider)
 
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript != "":
-                    logging.info(f"Transcription successful with fallback provider: {provider}")
+                    logger.info(f"Transcription successful with fallback provider: {provider}")
                     break
 
         # Apply vocabulary corrections
@@ -167,10 +169,10 @@ class TranscriptionMixin:
             elif provider == "whisper":
                 return self.whisper_provider.transcribe(segment)
             else:
-                logging.warning(f"Unknown provider: {provider}")
+                logger.warning(f"Unknown provider: {provider}")
                 return ""
         except Exception as e:
-            logging.error(f"Error with {provider} transcription: {str(e)}", exc_info=True)
+            logger.error(f"Error with {provider} transcription: {str(e)}", exc_info=True)
             return ""
 
 

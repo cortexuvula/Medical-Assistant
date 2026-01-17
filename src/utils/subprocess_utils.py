@@ -18,7 +18,6 @@ Usage:
     open_file_with_default_app('/path/to/file.pdf')
 """
 
-import logging
 import subprocess
 import platform
 import sys
@@ -26,7 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

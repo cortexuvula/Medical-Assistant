@@ -12,13 +12,13 @@ Usage:
 """
 
 import re
-import logging
 from typing import Optional, List, Dict, NamedTuple
 from dataclasses import dataclass
 from enum import Enum
 
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ICDCodeSystem(Enum):

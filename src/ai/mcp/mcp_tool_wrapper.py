@@ -2,7 +2,6 @@
 MCP Tool Wrapper - Bridges MCP tools with the existing tool system
 """
 
-import logging
 import time
 import threading
 import hashlib
@@ -10,8 +9,9 @@ import json
 from typing import Dict, Any, Optional, Tuple
 from ai.tools.base_tool import BaseTool, ToolResult
 from ai.agents.models import Tool, ToolParameter
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Rate limiting for specific MCP servers
 RATE_LIMITS = {

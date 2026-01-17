@@ -2,7 +2,6 @@
 Tool executor for safely executing tools with proper isolation and controls.
 """
 
-import logging
 import time
 import threading
 from typing import Dict, Any, Optional, Callable
@@ -12,9 +11,9 @@ import traceback
 from .base_tool import ToolResult
 from .tool_registry import tool_registry
 from settings.settings import SETTINGS
+from utils.structured_logging import get_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolExecutor:

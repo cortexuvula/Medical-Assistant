@@ -7,13 +7,16 @@ Provides translation API calls and text processing functionality.
 import tkinter as tk
 import ttkbootstrap as ttk
 import threading
-import logging
 import time
 from typing import TYPE_CHECKING, Optional, Callable
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from managers.translation_manager import TranslationManager
     from managers.translation_session_manager import TranslationSessionManager
+
+
+logger = get_logger(__name__)
 
 
 class TranslationMixin:
@@ -24,7 +27,6 @@ class TranslationMixin:
     session_manager: "TranslationSessionManager"
     patient_language: str
     doctor_language: str
-    logger: logging.Logger
 
     # Rate limiting
     _last_translation_time: float
@@ -77,7 +79,7 @@ class TranslationMixin:
 
         def translate():
             try:
-                self.logger.debug(f"Translating from {self.patient_language} to {self.doctor_language}")
+                logger.debug(f"Translating from {self.patient_language} to {self.doctor_language}")
                 # Use LLM refinement if enabled
                 refine_medical = self.llm_refinement_var.get() if hasattr(self, 'llm_refinement_var') else None
                 translated = self.translation_manager.translate(
@@ -104,13 +106,13 @@ class TranslationMixin:
                         )
                         self._add_history_entry(entry)
                     except Exception as he:
-                        self.logger.error(f"Failed to add history entry: {he}")
+                        logger.error(f"Failed to add history entry: {he}")
 
                 # Update UI on main thread
                 self._safe_after(0, update_ui)
 
             except Exception as e:
-                self.logger.error(f"Translation failed: {e}", exc_info=True)
+                logger.error(f"Translation failed: {e}", exc_info=True)
                 self._safe_after(0, lambda err=str(e): self._safe_ui_update(lambda: [
                     self.patient_translation_indicator.pack_forget(),
                     self.recording_status.config(text=f"Translation error: {err[:40]}", foreground="red")
@@ -183,7 +185,7 @@ class TranslationMixin:
                 self._safe_after(0, update_ui)
 
             except Exception as e:
-                self.logger.error(f"Doctor translation failed: {e}", exc_info=True)
+                logger.error(f"Doctor translation failed: {e}", exc_info=True)
                 self._safe_after(0, lambda: self._safe_ui_update(lambda: [
                     self.doctor_translation_indicator.pack_forget(),
                     self.recording_status.config(text=f"Translation error: {str(e)[:30]}", foreground="red")

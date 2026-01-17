@@ -4,7 +4,6 @@ Deepgram STT provider implementation.
 
 import json
 import time
-import logging
 from io import BytesIO
 import traceback
 from typing import List, Optional

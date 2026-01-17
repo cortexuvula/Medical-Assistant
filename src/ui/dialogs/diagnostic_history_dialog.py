@@ -9,12 +9,15 @@ from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, CENTER, W
 from tkinter import messagebox
-import logging
 import re
 from typing import Dict, List, Optional, Any
 import json
 from datetime import datetime
 from database.database import Database
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
+
+logger = get_logger(__name__)
 
 
 class DiagnosticHistoryDialog:
@@ -349,13 +352,18 @@ class DiagnosticHistoryDialog:
                 ), tags=(str(analysis.get('id', '')),))
 
             # Update count in header
-            logging.info(f"Loaded {len(self.analyses)} diagnostic analyses")
+            logger.info("Loaded diagnostic analyses", count=len(self.analyses))
 
         except Exception as e:
-            logging.error(f"Error loading analyses: {e}")
+            ctx = ErrorContext.capture(
+                operation="Loading diagnostic analyses",
+                exception=e,
+                input_summary=f"filter={filter_val}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Error",
-                f"Failed to load analyses: {e}",
+                ctx.user_message,
                 parent=self.dialog
             )
 
@@ -503,13 +511,32 @@ class DiagnosticHistoryDialog:
                     "Analysis copied to clipboard.",
                     parent=self.dialog
                 )
+            except ImportError:
+                # pyperclip not available, try tkinter clipboard
+                try:
+                    self.dialog.clipboard_clear()
+                    self.dialog.clipboard_append(analysis.get('result_text', ''))
+                    messagebox.showinfo(
+                        "Copied",
+                        "Analysis copied to clipboard.",
+                        parent=self.dialog
+                    )
+                except tk.TclError as e:
+                    ctx = ErrorContext.capture(
+                        operation="Copying to clipboard",
+                        exception=e,
+                        input_summary=f"analysis_id={analysis.get('id')}"
+                    )
+                    logger.error(ctx.to_log_string())
+                    messagebox.showerror("Error", ctx.user_message, parent=self.dialog)
             except Exception as e:
-                logging.error(f"Error copying to clipboard: {e}")
-                messagebox.showerror(
-                    "Error",
-                    f"Failed to copy: {e}",
-                    parent=self.dialog
+                ctx = ErrorContext.capture(
+                    operation="Copying to clipboard",
+                    exception=e,
+                    input_summary=f"analysis_id={analysis.get('id')}"
                 )
+                logger.error(ctx.to_log_string())
+                messagebox.showerror("Error", ctx.user_message, parent=self.dialog)
 
     def _delete_selected(self):
         """Delete selected analysis."""
@@ -534,9 +561,10 @@ class DiagnosticHistoryDialog:
 
         if 0 <= idx < len(self.analyses):
             analysis = self.analyses[idx]
+            analysis_id = analysis.get('id')
             try:
                 db = self._get_database()
-                db.delete_analysis_result(analysis['id'])
+                db.delete_analysis_result(analysis_id)
                 self._load_analyses()
                 messagebox.showinfo(
                     "Deleted",
@@ -544,10 +572,15 @@ class DiagnosticHistoryDialog:
                     parent=self.dialog
                 )
             except Exception as e:
-                logging.error(f"Error deleting analysis: {e}")
+                ctx = ErrorContext.capture(
+                    operation="Deleting analysis",
+                    exception=e,
+                    input_summary=f"analysis_id={analysis_id}"
+                )
+                logger.error(ctx.to_log_string())
                 messagebox.showerror(
                     "Error",
-                    f"Failed to delete: {e}",
+                    ctx.user_message,
                     parent=self.dialog
                 )
 
@@ -589,13 +622,18 @@ class DiagnosticHistoryDialog:
                 self._add_analysis_to_tree(analysis)
 
             # Update status
-            logging.info(f"Search found {len(results)} results for '{query}'")
+            logger.info("Search completed", query=query, result_count=len(results))
 
         except Exception as e:
-            logging.error(f"Error searching analyses: {e}")
+            ctx = ErrorContext.capture(
+                operation="Searching analyses",
+                exception=e,
+                input_summary=f"query='{query}', type={search_type}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Search Error",
-                f"Failed to search: {e}",
+                ctx.user_message,
                 parent=self.dialog
             )
 
@@ -632,7 +670,7 @@ class DiagnosticHistoryDialog:
                 return results
             except Exception as e:
                 # Fallback to LIKE search if FTS not available
-                logging.debug(f"FTS search failed, falling back to LIKE search: {e}")
+                logger.debug("FTS search failed, falling back to LIKE search", error=str(e))
 
             # Fallback: LIKE search
             cursor = conn.execute(
@@ -651,7 +689,12 @@ class DiagnosticHistoryDialog:
             return results
 
         except Exception as e:
-            logging.error(f"Full-text search error: {e}")
+            ctx = ErrorContext.capture(
+                operation="Full-text search",
+                exception=e,
+                input_summary=f"query='{query}'"
+            )
+            logger.error(ctx.to_log_string())
             return []
 
     def _search_diagnoses(self, db, query: str) -> List[Dict]:
@@ -686,7 +729,7 @@ class DiagnosticHistoryDialog:
                     results.append(db._parse_analysis_row(row))
                 return results
             except Exception as e:
-                logging.debug(f"Diagnosis FTS search failed, falling back to LIKE: {e}")
+                logger.debug("Diagnosis FTS search failed, falling back to LIKE", error=str(e))
 
             # Fallback: LIKE search on differential_diagnoses
             cursor = conn.execute(
@@ -706,7 +749,12 @@ class DiagnosticHistoryDialog:
             return results
 
         except Exception as e:
-            logging.error(f"Diagnosis search error: {e}")
+            ctx = ErrorContext.capture(
+                operation="Diagnosis search",
+                exception=e,
+                input_summary=f"query='{query}'"
+            )
+            logger.error(ctx.to_log_string())
             # Fallback: search in result_text
             return self._search_full_text(db, query)
 
@@ -746,7 +794,12 @@ class DiagnosticHistoryDialog:
             return self._search_full_text(db, query)
 
         except Exception as e:
-            logging.error(f"ICD search error: {e}")
+            ctx = ErrorContext.capture(
+                operation="ICD code search",
+                exception=e,
+                input_summary=f"query='{query}'"
+            )
+            logger.error(ctx.to_log_string())
             return self._search_full_text(db, query)
 
     def _clear_search(self):

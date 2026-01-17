@@ -13,11 +13,11 @@ import ttkbootstrap as ttk
 import tkinter.font as tkfont
 from typing import Callable, Optional, List
 import time
-import logging
 
 from .core import RSVPEngine, RSVPSettings, RSVPTheme
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ReadingModePanel:

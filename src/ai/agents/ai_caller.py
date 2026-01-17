@@ -18,15 +18,15 @@ Usage:
     response = self.ai_caller.call(model, system_message, prompt, temperature)
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Dict, Any, Protocol, runtime_checkable
 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @runtime_checkable

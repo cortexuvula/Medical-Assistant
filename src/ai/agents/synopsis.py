@@ -2,17 +2,17 @@
 Synopsis agent for generating concise summaries of SOAP notes.
 """
 
-import logging
 from typing import Optional, TYPE_CHECKING
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from .ai_caller import AICallerProtocol
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SynopsisAgent(BaseAgent):

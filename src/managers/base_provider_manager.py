@@ -21,13 +21,15 @@ Usage:
             return "my_provider"
 """
 
-import logging
 import threading
+from utils.structured_logging import get_logger
 from abc import ABC, abstractmethod
 from typing import Dict, Type, Optional, TypeVar, Generic, Any
 
 from utils.error_handling import OperationResult
 from utils.security import get_security_manager
+
+logger = get_logger(__name__)
 
 # Generic type for the provider
 T = TypeVar('T')
@@ -49,14 +51,13 @@ class ProviderManager(ABC, Generic[T]):
     - _get_settings_key(): Return the settings key for this manager
 
     Attributes:
-        logger: Logger instance for this manager
         providers: Mapping of provider names to provider classes
         security_manager: Security manager for API key retrieval
     """
 
     def __init__(self):
         """Initialize the provider manager."""
-        self.logger = logging.getLogger(self.__class__.__module__)
+        # Using module-level logger
         self._current_provider: Optional[str] = None
         self._provider_instance: Optional[T] = None
         self.security_manager = get_security_manager()
@@ -149,7 +150,7 @@ class ProviderManager(ABC, Generic[T]):
             key = self.security_manager.get_api_key(provider_name)
             return key or ""
         except Exception as e:
-            self.logger.warning(f"Failed to get API key for {provider_name}: {e}")
+            logger.warning(f"Failed to get API key for {provider_name}: {e}")
             return ""
 
     def _get_cache_key(self) -> str:
@@ -217,7 +218,7 @@ class ProviderManager(ABC, Generic[T]):
 
         provider_class = self.providers[provider_name]
         self._provider_instance = self._create_provider_instance(provider_class, provider_name)
-        self.logger.info(f"Created {provider_name} provider")
+        logger.info(f"Created {provider_name} provider")
 
     def clear_provider_cache(self) -> None:
         """Clear the cached provider instance.
@@ -227,7 +228,7 @@ class ProviderManager(ABC, Generic[T]):
         """
         self._current_provider = None
         self._provider_instance = None
-        self.logger.debug("Provider cache cleared")
+        logger.debug("Provider cache cleared")
 
     def get_available_providers(self) -> list:
         """Get list of available provider names.
@@ -262,7 +263,7 @@ class ProviderManager(ABC, Generic[T]):
                 return provider.test_connection()
             return True
         except Exception as e:
-            self.logger.error(f"Connection test failed: {e}")
+            logger.error(f"Connection test failed: {e}")
             return False
 
     def test_connection_safe(self) -> OperationResult[bool]:

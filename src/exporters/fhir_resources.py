@@ -5,12 +5,12 @@ Creates FHIR R4 resources for clinical documents including
 Composition, DocumentReference, Bundle, Patient, Practitioner, and Organization.
 """
 
-import logging
 import uuid
 import re
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from html import escape as html_escape
+from utils.structured_logging import get_logger
 
 from fhir.resources.composition import Composition, CompositionSection
 from fhir.resources.documentreference import DocumentReference, DocumentReferenceContent
@@ -36,7 +36,7 @@ from exporters.fhir_config import (
     SECTION_TITLE_PATTERNS,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FHIRResourceBuilder:

@@ -8,10 +8,12 @@ screen reader hints, and high contrast support.
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Optional, Callable, Dict, List, Tuple
-import logging
 import platform
+from utils.structured_logging import get_logger
 
 from ui.ui_constants import Colors
+
+logger = get_logger(__name__)
 
 
 class KeyboardShortcut:

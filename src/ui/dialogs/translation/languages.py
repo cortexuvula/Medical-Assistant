@@ -7,14 +7,17 @@ Provides language selection, presets, and swapping functionality.
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, LEFT
-import logging
 from typing import TYPE_CHECKING, Dict, List, Tuple, Optional
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 if TYPE_CHECKING:
     from managers.translation_manager import TranslationManager
+
+
+logger = get_logger(__name__)
 
 
 class LanguagesMixin:
@@ -28,7 +31,6 @@ class LanguagesMixin:
     patient_combo: ttk.Combobox
     doctor_combo: ttk.Combobox
     llm_refinement_var: tk.BooleanVar
-    logger: logging.Logger
     _preset_buttons: Dict[Tuple[str, str], ttk.Button]
     _language_presets: List[Tuple[str, str, str, str]]
 
@@ -111,7 +113,7 @@ class LanguagesMixin:
         ).pack(side=LEFT, padx=(30, 0))
 
         # LLM refinement toggle
-        translation_settings = SETTINGS.get("translation", {})
+        translation_settings = settings_manager.get("translation", {})
         self.llm_refinement_var = tk.BooleanVar(
             value=translation_settings.get("llm_refinement_enabled", False)
         )
@@ -184,7 +186,7 @@ class LanguagesMixin:
         # Update preset button highlighting
         self._update_preset_highlighting()
 
-        self.logger.info(f"Applied language preset: patient={patient_code}, doctor={doctor_code}")
+        logger.info(f"Applied language preset: patient={patient_code}, doctor={doctor_code}")
 
     def _update_preset_highlighting(self):
         """Update the visual highlighting of preset buttons based on current language selection."""
@@ -217,7 +219,7 @@ class LanguagesMixin:
         else:
             self.patient_language = selected
 
-        self.logger.debug(f"Patient language changed to: {self.patient_language} (from: {selected})")
+        logger.debug(f"Patient language changed to: {self.patient_language} (from: {selected})")
         self._update_preset_highlighting()
 
     def _on_doctor_language_change(self, event=None):
@@ -235,7 +237,7 @@ class LanguagesMixin:
         else:
             self.doctor_language = selected
 
-        self.logger.debug(f"Doctor language changed to: {self.doctor_language} (from: {selected})")
+        logger.debug(f"Doctor language changed to: {self.doctor_language} (from: {selected})")
         self._update_preset_highlighting()
 
     def _swap_languages(self):
@@ -257,12 +259,12 @@ class LanguagesMixin:
         # Update preset highlighting
         self._update_preset_highlighting()
 
-        self.logger.debug(f"Languages swapped: patient={self.patient_language}, doctor={self.doctor_language}")
+        logger.debug(f"Languages swapped: patient={self.patient_language}, doctor={self.doctor_language}")
 
     def _on_llm_refinement_toggle(self):
         """Handle LLM refinement checkbox toggle."""
         enabled = self.llm_refinement_var.get()
-        SETTINGS.setdefault("translation", {})["llm_refinement_enabled"] = enabled
+        settings_manager.set_nested("translation.llm_refinement_enabled", enabled)
 
 
 __all__ = ["LanguagesMixin"]

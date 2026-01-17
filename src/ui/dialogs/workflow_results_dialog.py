@@ -8,14 +8,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from ui.scaling_utils import ui_scaler
 import json
-import logging
 from typing import Dict, Any, List
 from datetime import datetime
 import os
 from utils.pdf_exporter import PDFExporter
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WorkflowResultsDialog:
@@ -496,10 +496,15 @@ class WorkflowResultsDialog:
                     parent=self.dialog
                 )
             except Exception as e:
-                logger.error(f"Error exporting workflow: {e}")
+                ctx = ErrorContext.capture(
+                    operation="Exporting workflow",
+                    exception=e,
+                    input_summary=f"workflow_type={self.workflow_type}, filename={filename}"
+                )
+                logger.error(ctx.to_log_string())
                 messagebox.showerror(
                     "Export Error",
-                    f"Failed to export workflow:\n{str(e)}",
+                    ctx.user_message,
                     parent=self.dialog
                 )
     
@@ -557,10 +562,15 @@ class WorkflowResultsDialog:
                 )
                 
         except Exception as e:
-            logging.error(f"Error printing workflow: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Printing workflow",
+                exception=e,
+                input_summary=f"workflow_type={self.workflow_type}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Print Error",
-                f"Failed to print workflow: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
     
@@ -612,12 +622,17 @@ class WorkflowResultsDialog:
                     "Failed to export PDF. Check logs for details.",
                     parent=self.dialog
                 )
-                
+
         except Exception as e:
-            logging.error(f"Error exporting to PDF: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Exporting workflow to PDF",
+                exception=e,
+                input_summary=f"workflow_type={self.workflow_type}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                f"Failed to export PDF: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
     
@@ -670,9 +685,14 @@ class WorkflowResultsDialog:
             )
             
             return success
-            
+
         except Exception as e:
-            logging.error(f"Error generating workflow PDF: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Generating workflow PDF",
+                exception=e,
+                input_summary=f"file_path={file_path}"
+            )
+            logger.error(ctx.to_log_string())
             return False
     
     def close(self):

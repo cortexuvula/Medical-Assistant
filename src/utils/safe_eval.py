@@ -8,7 +8,6 @@ Uses the simpleeval library which restricts available operations and
 prevents access to dangerous Python features.
 """
 
-import logging
 from typing import Any, Dict, Optional
 
 try:
@@ -17,7 +16,9 @@ except ImportError:
     SimpleEval = None
     EvalWithCompoundTypes = None
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:

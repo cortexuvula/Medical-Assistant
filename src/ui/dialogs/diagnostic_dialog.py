@@ -14,8 +14,10 @@ from tkinter import messagebox, filedialog
 from typing import Optional, Dict, List
 import json
 import os
-import logging
 from datetime import datetime
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Specialty options for focused analysis
@@ -757,7 +759,7 @@ class DiagnosticAnalysisDialog:
                 parent=self.dialog
             )
         except Exception as e:
-            logging.error(f"Error saving template: {e}")
+            logger.error(f"Error saving template: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to save template: {e}",
@@ -797,7 +799,7 @@ class DiagnosticAnalysisDialog:
                 parent=self.dialog
             )
         except Exception as e:
-            logging.error(f"Error loading template: {e}")
+            logger.error(f"Error loading template: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to load template: {e}",
@@ -834,7 +836,7 @@ class DiagnosticAnalysisDialog:
                 parent=self.dialog
             )
         except Exception as e:
-            logging.error(f"Error deleting template: {e}")
+            logger.error(f"Error deleting template: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to delete template: {e}",

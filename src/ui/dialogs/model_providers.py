@@ -5,8 +5,10 @@ Functions for fetching available AI models from various providers.
 """
 
 import os
-import logging
 import time
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 import requests
 from typing import List, Dict, Tuple, Optional
 from functools import lru_cache
@@ -32,10 +34,10 @@ def clear_model_cache(provider: str = None) -> None:
         cache_key = f"{provider}_models"
         if cache_key in _model_cache:
             del _model_cache[cache_key]
-            logging.info(f"Cleared model cache for {provider}")
+            logger.info(f"Cleared model cache for {provider}")
     else:
         _model_cache.clear()
-        logging.info("Cleared all model caches")
+        logger.info("Cleared all model caches")
 
 
 def get_openai_models() -> List[str]:
@@ -77,13 +79,13 @@ def get_openai_models() -> List[str]:
         # Return sorted list
         return sorted(models)
     except Exception as e:
-        logging.error(f"Error fetching OpenAI models: {str(e)}")
+        logger.error(f"Error fetching OpenAI models: {str(e)}")
         return get_fallback_openai_models()
 
 
 def get_fallback_openai_models() -> List[str]:
     """Return a list of common OpenAI models as fallback."""
-    logging.info("Using fallback set of common OpenAI models")
+    logger.info("Using fallback set of common OpenAI models")
     return ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
 
 
@@ -105,10 +107,10 @@ def get_ollama_models() -> List[str]:
 
             return models
         else:
-            logging.error(f"Error fetching Ollama models: {response.status_code}")
+            logger.error(f"Error fetching Ollama models: {response.status_code}")
             return []
     except Exception as e:
-        logging.error(f"Error fetching Ollama models: {str(e)}")
+        logger.error(f"Error fetching Ollama models: {str(e)}")
         return []
 
 
@@ -119,7 +121,7 @@ def get_anthropic_models() -> List[str]:
     if cache_key in _model_cache:
         cached_time, cached_models = _model_cache[cache_key]
         if time.time() - cached_time < _cache_ttl:
-            logging.info("Using cached Anthropic models")
+            logger.info("Using cached Anthropic models")
             return cached_models
 
     try:
@@ -131,7 +133,7 @@ def get_anthropic_models() -> List[str]:
         api_key = security_manager.get_api_key("anthropic")
 
         if api_key:
-            logging.info("Attempting to fetch Anthropic models from API")
+            logger.info("Attempting to fetch Anthropic models from API")
             client = Anthropic(api_key=api_key)
 
             # Fetch models list from API
@@ -147,7 +149,7 @@ def get_anthropic_models() -> List[str]:
                 model_ids = [model.id if hasattr(model, 'id') else str(model) for model in models_response]
 
             if model_ids:
-                logging.info(f"Successfully fetched {len(model_ids)} Anthropic models from API")
+                logger.info(f"Successfully fetched {len(model_ids)} Anthropic models from API")
                 # Sort models with Claude 3 models first, then by version
                 model_ids.sort(key=lambda x: (
                     0 if 'claude-3-opus' in x else
@@ -162,23 +164,23 @@ def get_anthropic_models() -> List[str]:
                 _model_cache[cache_key] = (time.time(), model_ids)
                 return model_ids
             else:
-                logging.warning("No models found in API response, using fallback list")
+                logger.warning("No models found in API response, using fallback list")
                 return get_fallback_anthropic_models()
         else:
-            logging.info("No Anthropic API key available, using fallback list")
+            logger.info("No Anthropic API key available, using fallback list")
             return get_fallback_anthropic_models()
 
     except ImportError:
-        logging.warning("Anthropic library not installed, using fallback list")
+        logger.warning("Anthropic library not installed, using fallback list")
         return get_fallback_anthropic_models()
     except Exception as e:
-        logging.error(f"Error fetching Anthropic models from API: {e}")
+        logger.error(f"Error fetching Anthropic models from API: {e}")
         return get_fallback_anthropic_models()
 
 
 def get_fallback_anthropic_models() -> List[str]:
     """Return a fallback list of Anthropic models."""
-    logging.info("Using fallback list of Anthropic models")
+    logger.info("Using fallback list of Anthropic models")
     return [
         "claude-opus-4-20250514",      # Most capable model
         "claude-sonnet-4-20250514",    # Balanced performance
@@ -196,7 +198,7 @@ def get_gemini_models() -> List[str]:
     if cache_key in _model_cache:
         cached_time, cached_models = _model_cache[cache_key]
         if time.time() - cached_time < _cache_ttl:
-            logging.info("Using cached Gemini models")
+            logger.info("Using cached Gemini models")
             return cached_models
 
     try:
@@ -210,7 +212,7 @@ def get_gemini_models() -> List[str]:
             api_key = os.getenv("GEMINI_API_KEY")
 
         if api_key:
-            logging.info("Attempting to fetch Gemini models from API")
+            logger.info("Attempting to fetch Gemini models from API")
             genai.configure(api_key=api_key)
 
             # Fetch models list from API
@@ -223,7 +225,7 @@ def get_gemini_models() -> List[str]:
                     models.append(model_name)
 
             if models:
-                logging.info(f"Successfully fetched {len(models)} Gemini models from API")
+                logger.info(f"Successfully fetched {len(models)} Gemini models from API")
                 # Sort models (gemini-2.0 first, then 1.5, then others)
                 models.sort(key=lambda x: (
                     0 if "2.0" in x else
@@ -236,23 +238,23 @@ def get_gemini_models() -> List[str]:
                 _model_cache[cache_key] = (time.time(), models)
                 return models
             else:
-                logging.warning("No models found in API response, using fallback list")
+                logger.warning("No models found in API response, using fallback list")
                 return get_fallback_gemini_models()
         else:
-            logging.info("No Gemini API key available, using fallback list")
+            logger.info("No Gemini API key available, using fallback list")
             return get_fallback_gemini_models()
 
     except ImportError:
-        logging.warning("google-generativeai library not installed, using fallback list")
+        logger.warning("google-generativeai library not installed, using fallback list")
         return get_fallback_gemini_models()
     except Exception as e:
-        logging.error(f"Error fetching Gemini models from API: {e}")
+        logger.error(f"Error fetching Gemini models from API: {e}")
         return get_fallback_gemini_models()
 
 
 def get_fallback_gemini_models() -> List[str]:
     """Return a fallback list of Google Gemini models."""
-    logging.info("Using fallback list of Gemini models")
+    logger.info("Using fallback list of Gemini models")
     return [
         "gemini-2.0-flash-exp",        # Latest experimental flash model
         "gemini-1.5-pro",              # Most capable Gemini 1.5 model

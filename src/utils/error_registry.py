@@ -9,8 +9,11 @@ Merged from:
 - error_messages.py (user-friendly message mapping)
 """
 
-import logging
 from typing import Dict, Optional, Tuple
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # ERROR CODE DEFINITIONS
@@ -245,7 +248,7 @@ class ErrorMessageMapper:
         error_type = type(error).__name__
 
         # Log the technical error
-        logging.error(f"Error occurred: {error_type}: {error}", exc_info=True)
+        logger.error(f"Error occurred: {error_type}: {error}", exc_info=True)
 
         # Check each error category
         for category_errors in [cls.API_ERRORS, cls.AUDIO_ERRORS, cls.DATABASE_ERRORS,

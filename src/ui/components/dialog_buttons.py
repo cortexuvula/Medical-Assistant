@@ -9,12 +9,11 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, LEFT, RIGHT
 from typing import Callable, Optional, List, Tuple
-import logging
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DialogButtonRow(ttk.Frame):

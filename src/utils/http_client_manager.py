@@ -10,12 +10,13 @@ import requests
 import threading
 import time
 import atexit
-import logging
 from typing import Dict, Optional
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Check if HTTP/2 support is available
 try:

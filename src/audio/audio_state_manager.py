@@ -7,7 +7,6 @@ storage and manipulation into a single source of truth.
 """
 
 import threading
-import logging
 from typing import List, Optional, Tuple
 from enum import Enum
 from datetime import datetime
@@ -19,6 +18,9 @@ from audio.constants import (
     MAX_RECORDING_DURATION_MINUTES,
     SEGMENT_COMBINE_THRESHOLD,
 )
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RecordingState(Enum):
@@ -66,7 +68,7 @@ class AudioStateManager:
         self._max_memory_bytes: int = MAX_AUDIO_MEMORY_MB * 1024 * 1024
         self._max_duration_seconds: float = MAX_RECORDING_DURATION_MINUTES * 60
 
-        logging.info(f"AudioStateManager initialized with combine_threshold={combine_threshold}, "
+        logger.info(f"AudioStateManager initialized with combine_threshold={combine_threshold}, "
                     f"max_memory={MAX_AUDIO_MEMORY_MB}MB, max_duration={MAX_RECORDING_DURATION_MINUTES}min")
     
     def start_recording(self) -> None:
@@ -83,7 +85,7 @@ class AudioStateManager:
             self._start_time = datetime.now()
             self._total_pause_duration = 0.0
             
-            logging.info("Recording started")
+            logger.info("Recording started")
     
     def pause_recording(self) -> None:
         """Pause the current recording."""
@@ -94,7 +96,7 @@ class AudioStateManager:
             self._recording_state = RecordingState.PAUSED
             self._pause_start_time = datetime.now()
             
-            logging.info("Recording paused")
+            logger.info("Recording paused")
     
     def resume_recording(self) -> None:
         """Resume a paused recording."""
@@ -109,7 +111,7 @@ class AudioStateManager:
             self._recording_state = RecordingState.RECORDING
             self._pause_start_time = None
             
-            logging.info("Recording resumed")
+            logger.info("Recording resumed")
     
     def stop_recording(self) -> None:
         """Stop the current recording."""
@@ -124,7 +126,7 @@ class AudioStateManager:
             
             self._recording_state = RecordingState.PROCESSING
             
-            logging.info("Recording stopped")
+            logger.info("Recording stopped")
     
     def add_segment(self, audio_data: np.ndarray, sample_rate: int = 16000,
                    sample_width: int = 2, channels: int = 1) -> bool:
@@ -143,7 +145,7 @@ class AudioStateManager:
         with self._lock:
             if self._recording_state != RecordingState.RECORDING:
                 # Log at INFO level to diagnose audio loss issues
-                logging.info(f"AUDIO IGNORED: state={self._recording_state}, "
+                logger.info(f"AUDIO IGNORED: state={self._recording_state}, "
                            f"pending_segments={len(self._segments)}, chunks={len(self._combined_chunks)}")
                 return False
 
@@ -160,7 +162,7 @@ class AudioStateManager:
             # Check memory limits and warn if approaching
             if not self._memory_warning_issued and self._estimated_memory_bytes > self._max_memory_bytes * 0.8:
                 memory_mb = self._estimated_memory_bytes / (1024 * 1024)
-                logging.warning(f"Recording memory usage high: {memory_mb:.1f}MB "
+                logger.warning(f"Recording memory usage high: {memory_mb:.1f}MB "
                               f"(80% of {MAX_AUDIO_MEMORY_MB}MB limit)")
                 self._memory_warning_issued = True
 
@@ -168,11 +170,11 @@ class AudioStateManager:
             if self._start_time:
                 elapsed = (datetime.now() - self._start_time).total_seconds() - self._total_pause_duration
                 if elapsed > self._max_duration_seconds:
-                    logging.error(f"Recording exceeded max duration of {MAX_RECORDING_DURATION_MINUTES} minutes")
+                    logger.error(f"Recording exceeded max duration of {MAX_RECORDING_DURATION_MINUTES} minutes")
                     return False
 
             # Log incoming segment info
-            logging.debug(f"Incoming audio segment: shape={audio_data.shape}, "
+            logger.debug(f"Incoming audio segment: shape={audio_data.shape}, "
                         f"dtype={audio_data.dtype}, ndim={audio_data.ndim}")
 
             # Add segment to list
@@ -187,11 +189,11 @@ class AudioStateManager:
 
             # Log at INFO level every 10 segments to track audio accumulation
             if len(self._segments) == 1 or len(self._segments) % 10 == 0:
-                logging.info(f"Audio segment added: pending={len(self._segments)}, "
+                logger.info(f"Audio segment added: pending={len(self._segments)}, "
                            f"chunks={len(self._combined_chunks)}, "
                            f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
             else:
-                logging.debug(f"Added audio segment: total_segments={len(self._segments)}, "
+                logger.debug(f"Added audio segment: total_segments={len(self._segments)}, "
                             f"combined_chunks={len(self._combined_chunks)}, "
                             f"memory={self._estimated_memory_bytes / (1024*1024):.1f}MB")
             return True
@@ -225,7 +227,7 @@ class AudioStateManager:
                 segment = segment.flatten()
                 normalized_segments.append(segment)
                 
-                logging.debug(f"Normalized segment {i}: shape={segment.shape}, dtype={segment.dtype}")
+                logger.debug(f"Normalized segment {i}: shape={segment.shape}, dtype={segment.dtype}")
             
             # Concatenate all normalized arrays
             combined_array = np.concatenate(normalized_segments)
@@ -251,11 +253,11 @@ class AudioStateManager:
             num_segments = len(self._segments)
             self._segments.clear()
             
-            logging.debug(f"Combined {num_segments} segments into chunk "
+            logger.debug(f"Combined {num_segments} segments into chunk "
                         f"(duration: {len(combined_segment)}ms)")
             
         except Exception as e:
-            logging.error(f"Error combining segments: {e}", exc_info=True)
+            logger.error(f"Error combining segments: {e}", exc_info=True)
     
     def get_combined_audio(self) -> Optional[AudioSegment]:
         """
@@ -266,7 +268,7 @@ class AudioStateManager:
         """
         with self._lock:
             # Log current state before combining
-            logging.info(f"get_combined_audio called: pending_segments={len(self._segments)}, "
+            logger.info(f"get_combined_audio called: pending_segments={len(self._segments)}, "
                        f"chunks={len(self._combined_chunks)}, state={self._recording_state}")
 
             # First combine any remaining segments
@@ -274,7 +276,7 @@ class AudioStateManager:
                 self._combine_segments()
 
             if not self._combined_chunks:
-                logging.warning("get_combined_audio: No audio data available (no chunks)")
+                logger.warning("get_combined_audio: No audio data available (no chunks)")
                 return None
             
             # Combine all chunks
@@ -284,13 +286,13 @@ class AudioStateManager:
                     combined += chunk
 
                 # Log comprehensive audio details for debugging truncation issues
-                logging.info(f"Combined audio: duration={len(combined)}ms, "
+                logger.info(f"Combined audio: duration={len(combined)}ms, "
                            f"frame_rate={combined.frame_rate}, channels={combined.channels}, "
                            f"sample_width={combined.sample_width}, frame_count={combined.frame_count()}")
                 return combined
                 
             except Exception as e:
-                logging.error(f"Error combining audio chunks: {e}", exc_info=True)
+                logger.error(f"Error combining audio chunks: {e}", exc_info=True)
                 return None
     
     def get_recording_metadata(self) -> dict:
@@ -345,7 +347,7 @@ class AudioStateManager:
         with self._lock:
             self._clear_internal()
             self._recording_state = RecordingState.IDLE
-            logging.info("All audio data cleared")
+            logger.info("All audio data cleared")
     
     def _clear_internal(self) -> None:
         """Internal method to clear data. Must be called within lock."""

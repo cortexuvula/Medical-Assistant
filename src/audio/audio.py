@@ -1,6 +1,5 @@
 import os
 import time
-import logging
 import threading
 import numpy as np
 import platform
@@ -12,6 +11,7 @@ from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, Wh
 from managers.vocabulary_manager import vocabulary_manager
 from core.config import get_config
 from utils.error_handling import ErrorContext
+from utils.structured_logging import get_logger
 from audio.constants import (
     DEFAULT_SAMPLE_RATE,
     DEFAULT_SAMPLE_WIDTH,
@@ -47,6 +47,9 @@ class AudioData:
         
     def get_raw_data(self) -> bytes:
         return self.frame_data
+
+logger = get_logger(__name__)
+
 
 class AudioHandler:
     """Class to handle all audio-related functionality including recording, transcription, and file operations.
@@ -133,9 +136,9 @@ class AudioHandler:
             from settings.settings import SETTINGS, save_settings
             SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
-            logging.info(f"STT provider set to {provider}")
+            logger.info(f"STT provider set to {provider}")
         else:
-            logging.warning(f"Unknown STT provider: {provider}")
+            logger.warning(f"Unknown STT provider: {provider}")
         
     def combine_audio_segments(self, segments: List[AudioSegment]) -> Optional[AudioSegment]:
         """Combine multiple audio segments into a single segment efficiently.
@@ -147,7 +150,7 @@ class AudioHandler:
             Combined AudioSegment or None if list is empty
         """
         if not segments:
-            logging.warning("combine_audio_segments called with empty list")
+            logger.warning("combine_audio_segments called with empty list")
             return None
             
         # Using sum() is significantly faster for combining many segments
@@ -162,9 +165,9 @@ class AudioHandler:
                  combined = sum(segments[1:], start=combined) # More explicit and safer than sum(segments)
             return combined
         except Exception as e:
-            logging.error(f"Error combining audio segments: {e}", exc_info=True)
+            logger.error(f"Error combining audio segments: {e}", exc_info=True)
             # Fallback to original method in case of unexpected issues with sum()
-            logging.info("Falling back to iterative concatenation due to error.")
+            logger.info("Falling back to iterative concatenation due to error.")
             combined_fallback = segments[0]
             for segment in segments[1:]:
                 combined_fallback += segment
@@ -186,7 +189,7 @@ class AudioHandler:
 
         Thread-safe: Uses class-level lock to prevent race conditions.
         """
-        logging.debug("AudioHandler: Cleaning up audio resources...")
+        logger.debug("AudioHandler: Cleaning up audio resources...")
 
         streams_closed = 0
 
@@ -202,9 +205,9 @@ class AudioHandler:
                             stream.close()
                             streams_closed += 1
                         except Exception as e:
-                            logging.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}")
+                            logger.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}")
                 except Exception as e:
-                    logging.error(f"AudioHandler: Error cleaning up stream {purpose}: {str(e)}", exc_info=True)
+                    logger.error(f"AudioHandler: Error cleaning up stream {purpose}: {str(e)}", exc_info=True)
 
             # Clear instance stream tracking
             self._instance_streams.clear()
@@ -214,7 +217,7 @@ class AudioHandler:
             if SOUNDDEVICE_AVAILABLE:
                 sd.stop()
         except Exception as e:
-            logging.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
+            logger.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
 
         # Reset any internal state variables that might persist
         self.soap_mode = False
@@ -223,7 +226,7 @@ class AudioHandler:
 
         # Single summary log
         if streams_closed > 0:
-            logging.info(f"AudioHandler: Cleanup complete, {streams_closed} stream(s) closed")
+            logger.info(f"AudioHandler: Cleanup complete, {streams_closed} stream(s) closed")
 
     def __del__(self):
         """Ensure cleanup on garbage collection.
@@ -244,7 +247,7 @@ class AudioHandler:
         """
         self._prefix_audio_cache = None
         self._prefix_audio_checked = False
-        logging.info("Prefix audio cache reset - will reload on next use")
+        logger.info("Prefix audio cache reset - will reload on next use")
 
     def transcribe_audio_without_prefix(self, segment: AudioSegment) -> str:
         """Transcribe audio using selected provider without adding prefix audio.
@@ -271,7 +274,7 @@ class AudioHandler:
         # For successful API calls that return a result (even placeholders like "[Silence...]"), 
         # we don't want to retry with different providers
         if transcript == "" and self.fallback_callback and not fallback_attempted:
-            logging.info("Primary STT provider failed, attempting fallback")
+            logger.info("Primary STT provider failed, attempting fallback")
             fallback_attempted = True
             
             # Try fallback providers
@@ -279,7 +282,7 @@ class AudioHandler:
             for provider in fallback_providers:
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript:
-                    logging.info(f"Fallback to {provider} successful")
+                    logger.info(f"Fallback to {provider} successful")
                     break
         
         return transcript
@@ -298,18 +301,18 @@ class AudioHandler:
             self._prefix_audio_checked = True
             from managers.data_folder_manager import data_folder_manager
             prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
-            logging.debug(f"Checking for prefix audio at: {prefix_audio_path}")
+            logger.debug(f"Checking for prefix audio at: {prefix_audio_path}")
             if os.path.exists(prefix_audio_path):
                 try:
                     # Load the prefix audio once and cache it
-                    logging.info(f"Loading prefix audio from {prefix_audio_path}")
+                    logger.info(f"Loading prefix audio from {prefix_audio_path}")
                     self._prefix_audio_cache = AudioSegment.from_file(prefix_audio_path)
-                    logging.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
+                    logger.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
                 except Exception as e:
-                    logging.error(f"Error loading prefix audio: {e}", exc_info=True)
+                    logger.error(f"Error loading prefix audio: {e}", exc_info=True)
                     self._prefix_audio_cache = None
             else:
-                logging.debug(f"No prefix audio file found at: {prefix_audio_path}")
+                logger.debug(f"No prefix audio file found at: {prefix_audio_path}")
         
         # If we have cached prefix audio, prepend it
         if self._prefix_audio_cache:
@@ -318,9 +321,9 @@ class AudioHandler:
                 combined_segment = self._prefix_audio_cache + segment
                 # Use the combined segment for transcription
                 segment = combined_segment
-                logging.debug("Successfully prepended cached prefix audio to recording")
+                logger.debug("Successfully prepended cached prefix audio to recording")
             except Exception as e:
-                logging.error(f"Error prepending prefix audio: {e}", exc_info=True)
+                logger.error(f"Error prepending prefix audio: {e}", exc_info=True)
                 # Continue with original segment if there's an error
         
         # Get the selected STT provider from settings
@@ -342,7 +345,7 @@ class AudioHandler:
                 fallback_providers.remove(primary_provider)
                 
             for provider in fallback_providers:
-                logging.info(f"Trying fallback provider: {provider}")
+                logger.info(f"Trying fallback provider: {provider}")
                 
                 # Notify UI about fallback through callback
                 if self.fallback_callback:
@@ -350,7 +353,7 @@ class AudioHandler:
                 
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript != "":
-                    logging.info(f"Transcription successful with fallback provider: {provider}")
+                    logger.info(f"Transcription successful with fallback provider: {provider}")
                     break
 
         # Apply vocabulary corrections to the transcript
@@ -383,7 +386,7 @@ class AudioHandler:
                 return self.whisper_provider.transcribe(segment)
                 
             else:
-                logging.warning(f"Unknown provider: {provider}")
+                logger.warning(f"Unknown provider: {provider}")
                 return ""
                 
         except Exception as e:
@@ -414,11 +417,11 @@ class AudioHandler:
                 sample_rate = getattr(audio_data, "sample_rate", None)
                 
                 # Log diagnostic info
-                logging.debug(f"Processing legacy AudioData: channels={channels}, width={sample_width}, rate={sample_rate}")
+                logger.debug(f"Processing legacy AudioData: channels={channels}, width={sample_width}, rate={sample_rate}")
                 
                 # Validate audio data
                 if not audio_data.get_raw_data():
-                    logging.warning("Empty audio data received")
+                    logger.warning("Empty audio data received")
                     return None, ""
                     
                 # Convert to AudioSegment
@@ -430,20 +433,20 @@ class AudioHandler:
                 )
             elif isinstance(audio_data, np.ndarray):
                 # Sounddevice numpy array handling
-                logging.debug(f"Processing sounddevice audio: shape={audio_data.shape}, dtype={audio_data.dtype}")
+                logger.debug(f"Processing sounddevice audio: shape={audio_data.shape}, dtype={audio_data.dtype}")
                 
                 # Validate audio data
                 if audio_data.size == 0:
-                    logging.warning("Empty audio data received")
+                    logger.warning("Empty audio data received")
                     return None, ""
                 
                 # Check amplitude and apply gain boost for Voicemeeter outputs
                 max_amp = np.abs(audio_data).max()
-                logging.debug(f"Audio max amplitude before processing: {max_amp:.6f}")
+                logger.debug(f"Audio max amplitude before processing: {max_amp:.6f}")
                 
                 # Check if audio is already clipping
                 if max_amp >= 0.99:
-                    logging.warning(f"Input audio is clipping! Max amplitude: {max_amp:.6f}")
+                    logger.warning(f"Input audio is clipping! Max amplitude: {max_amp:.6f}")
                     # Normalize the audio to prevent further clipping
                     audio_data = audio_data * 0.8  # Scale down to 80% to give headroom
                     max_amp = np.abs(audio_data).max()
@@ -455,25 +458,25 @@ class AudioHandler:
                         # In SOAP mode, apply much higher gain boost
                         if self.soap_mode:
                             boost_factor = min(10.0, 0.8 / max_amp)  # Limit boost to prevent clipping
-                            logging.debug(f"SOAP mode: Applying boost factor of {boost_factor:.2f}x")
+                            logger.debug(f"SOAP mode: Applying boost factor of {boost_factor:.2f}x")
                         else:
                             boost_factor = min(5.0, 0.8 / max_amp)  # Standard boost for Voicemeeter
-                            logging.debug(f"Applying boost factor of {boost_factor:.2f}x for Voicemeeter")
+                            logger.debug(f"Applying boost factor of {boost_factor:.2f}x for Voicemeeter")
                         
                         # Apply the boost
                         audio_data = audio_data * boost_factor
                         
                         # Log the new max amplitude
                         new_max_amp = np.abs(audio_data).max()
-                        logging.debug(f"After gain boost: max amplitude is now {new_max_amp:.6f}")
+                        logger.debug(f"After gain boost: max amplitude is now {new_max_amp:.6f}")
                     else:
-                        logging.debug(f"Audio level sufficient ({max_amp:.3f}), no boost needed")
+                        logger.debug(f"Audio level sufficient ({max_amp:.3f}), no boost needed")
                 
                 # Skip if amplitude is still too low after boosting
                 # Use a more permissive threshold for SOAP mode
                 effective_threshold = self.silence_threshold if self.soap_mode else 0.001
                 if np.abs(audio_data).max() < effective_threshold:
-                    logging.warning(f"Audio level still too low after boost: {np.abs(audio_data).max():.6f}")
+                    logger.warning(f"Audio level still too low after boost: {np.abs(audio_data).max():.6f}")
                     return None, ""
                 
                 # Convert float32 to int16 for compatibility
@@ -497,7 +500,7 @@ class AudioHandler:
                     channels=self.channels
                 )
             else:
-                logging.error(f"Unsupported audio data type: {type(audio_data)}")
+                logger.error(f"Unsupported audio data type: {type(audio_data)}")
                 return None, ""
             
             # Get transcript
@@ -558,7 +561,7 @@ class AudioHandler:
         """
         try:
             if not segments:
-                logging.warning("No audio segments to save")
+                logger.warning("No audio segments to save")
                 return False
                 
             combined = self.combine_audio_segments(segments)
@@ -567,18 +570,18 @@ class AudioHandler:
                     # Ensure directory exists
                     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
                 except Exception as dir_e:
-                    logging.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
+                    logger.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
                     return False
                     
-                logging.info(f"Exporting audio to {file_path} with format=mp3, bitrate=192k")
+                logger.info(f"Exporting audio to {file_path} with format=mp3, bitrate=192k")
                 combined.export(file_path, format="mp3", bitrate="192k")
                 
                 # Verify file was created
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
-                    logging.info(f"Audio successfully saved to {file_path} (size: {file_size} bytes)")
+                    logger.info(f"Audio successfully saved to {file_path} (size: {file_size} bytes)")
                 else:
-                    logging.error(f"Audio export completed but file not found at {file_path}")
+                    logger.error(f"Audio export completed but file not found at {file_path}")
                     return False
                     
                 return True
@@ -619,7 +622,7 @@ class AudioHandler:
                 
             return devices
         except Exception as e:
-            logging.error(f"Error getting input devices: {str(e)}", exc_info=True)
+            logger.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
             
     def listen_in_background(self, mic_name: str, callback: Callable, phrase_time_limit: Optional[int] = None, stream_purpose: str = "default") -> Callable:
@@ -639,12 +642,12 @@ class AudioHandler:
             phrase_time_limit = self.DEFAULT_PHRASE_TIME_LIMIT
             
         # Log the actual phrase time limit being used
-        logging.info(f"Starting background listening with phrase_time_limit: {phrase_time_limit} seconds")
+        logger.info(f"Starting background listening with phrase_time_limit: {phrase_time_limit} seconds")
         
         # Check if a stream with this purpose already exists (thread-safe)
         with AudioHandler._streams_lock:
             if stream_purpose in AudioHandler._active_streams:
-                logging.warning(f"Stream with purpose '{stream_purpose}' already exists. Stopping existing stream.")
+                logger.warning(f"Stream with purpose '{stream_purpose}' already exists. Stopping existing stream.")
                 # Get the existing stream info
                 existing_info = AudioHandler._active_streams.get(stream_purpose)
                 if existing_info and 'stream' in existing_info:
@@ -652,13 +655,13 @@ class AudioHandler:
                         existing_info['stream'].stop()
                         existing_info['stream'].close()
                     except Exception as e:
-                        logging.error(f"Error stopping existing stream: {e}")
+                        logger.error(f"Error stopping existing stream: {e}")
                 AudioHandler._active_streams.pop(stream_purpose, None)
                 # Also remove from instance tracking if present
                 self._instance_streams.discard(stream_purpose)
         
         try:
-            logging.info(f"Attempting to start background listening for device: {mic_name}")
+            logger.info(f"Attempting to start background listening for device: {mic_name}")
             self.listening_device = mic_name # Store the requested name
             self.callback_function = callback # Store callback
 
@@ -669,15 +672,15 @@ class AudioHandler:
 
 
             if use_sounddevice:
-                logging.info(f"Using sounddevice backend for: {mic_name}")
+                logger.info(f"Using sounddevice backend for: {mic_name}")
                 # Delegate to the sounddevice-specific method, passing the name
                 stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
                 return stop_function
             else:
                 # --- Soundcard Logic (currently disabled, potentially problematic) ---
-                logging.info(f"Attempting to use soundcard backend for: {mic_name}")
+                logger.info(f"Attempting to use soundcard backend for: {mic_name}")
                 if not SOUNDCARD_AVAILABLE:
-                    logging.error("Soundcard not available, cannot use soundcard backend")
+                    logger.error("Soundcard not available, cannot use soundcard backend")
                     return lambda: None
                 try:
                     mics = soundcard.all_microphones(include_loopback=True)
@@ -686,15 +689,15 @@ class AudioHandler:
                         # Need a robust way to match mic_name to soundcard mic object name
                         if mic_name in mic.name: # Simple substring match, might be fragile
                             selected_sc_device = mic
-                            logging.info(f"Found soundcard match: {mic.name}")
+                            logger.info(f"Found soundcard match: {mic.name}")
                             break
 
                     if not selected_sc_device:
-                        logging.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
+                        logger.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
                         # Fallback to sounddevice if soundcard match fails
                         return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
                 except Exception as e:
-                    logging.error(f"Soundcard backend failed: {e}. Falling back to sounddevice.")
+                    logger.error(f"Soundcard backend failed: {e}. Falling back to sounddevice.")
                     return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
 
                 # Start recording thread using soundcard
@@ -706,11 +709,11 @@ class AudioHandler:
                     daemon=True
                 )
                 self.recording_thread.start()
-                logging.info(f"Started soundcard background thread for {selected_sc_device.name}")
+                logger.info(f"Started soundcard background thread for {selected_sc_device.name}")
                 return lambda wait_for_stop=True: self._stop_listening(wait_for_stop)
 
         except Exception as e:
-            logging.error(f"Error in listen_in_background for '{mic_name}': {e}", exc_info=True)
+            logger.error(f"Error in listen_in_background for '{mic_name}': {e}", exc_info=True)
             # Return a no-op function on error
             return lambda _=True: None
 
@@ -726,7 +729,7 @@ class AudioHandler:
         # SECURITY: Sanitize device name to prevent log injection attacks
         from utils.validation import sanitize_device_name
         device_name = sanitize_device_name(device_name)
-        logging.debug(f"Resolving sounddevice index for: '{device_name}'")
+        logger.debug(f"Resolving sounddevice index for: '{device_name}'")
         devices = sd.query_devices()
         device_id = None
         current_platform = platform.system().lower()
@@ -742,7 +745,7 @@ class AudioHandler:
         for i in input_device_indices:
             if devices[i]['name'] == device_name:
                 device_id = i
-                logging.debug(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
+                logger.debug(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
                 break
 
         # 2. If no exact match, try case-insensitive match
@@ -750,7 +753,7 @@ class AudioHandler:
             for i in input_device_indices:
                 if devices[i]['name'].lower() == device_name.lower():
                     device_id = i
-                    logging.debug(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 3. Try partial match
@@ -758,7 +761,7 @@ class AudioHandler:
             for i in input_device_indices:
                 if device_name in devices[i]['name'] or devices[i]['name'] in device_name:
                     device_id = i
-                    logging.debug(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 3.5 Platform-specific matching
@@ -774,7 +777,7 @@ class AudioHandler:
                 
                 if device_name_clean.lower() in dev_name_clean.lower() or dev_name_clean.lower() in device_name_clean.lower():
                     device_id = i
-                    logging.debug(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
         
         # 4. Special handling for device names with "(Device X)" suffix
@@ -787,12 +790,12 @@ class AudioHandler:
                     potential_id = int(match.group(1))
                     if potential_id in input_device_indices:
                         device_id = potential_id
-                        logging.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
+                        logger.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
             except Exception as e:
-                logging.debug(f"Failed to extract device index from name: {e}")
+                logger.debug(f"Failed to extract device index from name: {e}")
 
         if device_id is None:
-            logging.error(f"Could not find device '{device_name}' in sounddevice list")
+            logger.error(f"Could not find device '{device_name}' in sounddevice list")
             
         return device_id
 
@@ -816,9 +819,9 @@ class AudioHandler:
             if max_channels >= 1:
                 channels = 1
             else:
-                logging.warning(f"Device {device_info['name']} reports {max_channels} input channels")
+                logger.warning(f"Device {device_info['name']} reports {max_channels} input channels")
         except Exception as e:
-            logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
+            logger.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
 
         self.channels = channels
         # Use 48000 Hz for better quality, falling back to device default if not supported
@@ -850,9 +853,9 @@ class AudioHandler:
 
                     stream.stop()
                     stream.close()
-                    logging.info("sounddevice InputStream stopped and closed")
+                    logger.info("sounddevice InputStream stopped and closed")
                 except Exception as e:
-                    logging.error(f"Error stopping sounddevice stream: {e}", exc_info=True)
+                    logger.error(f"Error stopping sounddevice stream: {e}", exc_info=True)
                 finally:
                     # Clear references
                     handler_instance.listening_device = None
@@ -887,7 +890,7 @@ class AudioHandler:
         # when multiple streams are started/stopped
         captured_callback = callback if callback is not None else self.callback_function
 
-        logging.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
+        logger.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
 
         def flush_accumulated_audio():
             """Flush any accumulated audio data."""
@@ -896,11 +899,11 @@ class AudioHandler:
                 try:
                     # Combine all accumulated chunks
                     combined_data = np.vstack(accumulated_data) if len(accumulated_data) > 1 else accumulated_data[0]
-                    logging.info(f"Flushing accumulated audio: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
+                    logger.info(f"Flushing accumulated audio: frames={accumulated_frames}, shape={combined_data.shape}, max_amplitude={np.abs(combined_data).max():.6f}")
                     # Call the callback with the combined data
                     captured_callback(combined_data)
                 except Exception as e:
-                    logging.error(f"Error flushing accumulated audio: {e}", exc_info=True)
+                    logger.error(f"Error flushing accumulated audio: {e}", exc_info=True)
                 finally:
                     # Reset for next accumulation
                     accumulated_data = []
@@ -910,7 +913,7 @@ class AudioHandler:
             nonlocal accumulated_data, accumulated_frames
 
             if status:
-                logging.warning(f"sounddevice status: {status}")
+                logger.warning(f"sounddevice status: {status}")
             try:
                 # Make a copy to avoid issues with buffer overwriting
                 audio_data_copy = indata.copy()
@@ -921,7 +924,7 @@ class AudioHandler:
                     # Audio is clipping, normalize it
                     audio_data_copy = audio_data_copy * 0.8
                     if len(accumulated_data) <= 3:
-                        logging.warning(f"Audio callback {len(accumulated_data) + 1}: CLIPPING DETECTED AND NORMALIZED! Original max={max_val:.6f}")
+                        logger.warning(f"Audio callback {len(accumulated_data) + 1}: CLIPPING DETECTED AND NORMALIZED! Original max={max_val:.6f}")
 
                 # Add to accumulated buffer
                 accumulated_data.append(audio_data_copy)
@@ -942,7 +945,7 @@ class AudioHandler:
                         accumulated_data = []
                         accumulated_frames = 0
             except Exception as e_cb:
-                logging.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
+                logger.error(f"Error in sounddevice audio_callback_sd: {e_cb}", exc_info=True)
                 # Reset accumulation on error
                 accumulated_data = []
                 accumulated_frames = 0
@@ -971,18 +974,18 @@ class AudioHandler:
 
             # Resolve device name to index
             device_id = self._resolve_device_index(device_name)
-            logging.info(f"Device resolution result: device_name='{device_name}' -> device_id={device_id}")
+            logger.info(f"Device resolution result: device_name='{device_name}' -> device_id={device_id}")
             if device_id is None:
                 # Try to use default input device as a fallback
                 try:
                     default_input = sd.query_devices(kind='input')
                     if default_input and isinstance(default_input, dict) and 'index' in default_input:
                         device_id = default_input['index']
-                        logging.warning(f"Falling back to default sounddevice input: Index={device_id}, Name='{default_input['name']}'")
+                        logger.warning(f"Falling back to default sounddevice input: Index={device_id}, Name='{default_input['name']}'")
                     else:
                         raise ValueError("Could not find specified or default sounddevice input device.")
                 except Exception as e_def:
-                    logging.error(f"Failed to get default sounddevice input: {e_def}")
+                    logger.error(f"Failed to get default sounddevice input: {e_def}")
                     raise ValueError(f"Device '{device_name}' not found and default could not be determined.")
             
             # Setup audio parameters
@@ -996,8 +999,8 @@ class AudioHandler:
             device_info = sd.query_devices(device_id)
             
             # Log detailed device information before starting stream
-            logging.info(f"Creating stream with parameters: samplerate={self.sample_rate}, device={device_id}, channels={self.channels}")
-            logging.info(f"Device info: name='{device_info['name']}', hostapi={device_info['hostapi']}, max_input_channels={device_info['max_input_channels']}")
+            logger.info(f"Creating stream with parameters: samplerate={self.sample_rate}, device={device_id}, channels={self.channels}")
+            logger.info(f"Device info: name='{device_info['name']}', hostapi={device_info['hostapi']}, max_input_channels={device_info['max_input_channels']}")
             
             stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -1008,7 +1011,7 @@ class AudioHandler:
                 dtype='float32'
             )
             stream.start()
-            logging.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
+            logger.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
 
             # Add to active streams with purpose (thread-safe)
             with AudioHandler._streams_lock:
@@ -1026,11 +1029,11 @@ class AudioHandler:
             return stop_function # Return the specific closer for this stream
 
         except sd.PortAudioError as pae:
-            logging.error(f"PortAudioError in _listen_with_sounddevice for '{device_name}': {pae}")
-            logging.error(f"PortAudio error details: Host Error={pae.hostApiErrorInfo}")
+            logger.error(f"PortAudioError in _listen_with_sounddevice for '{device_name}': {pae}")
+            logger.error(f"PortAudio error details: Host Error={pae.hostApiErrorInfo}")
             raise ValueError(f"Audio device error for '{device_name}': {pae}") from pae
         except Exception as e:
-            logging.error(f"Error in _listen_with_sounddevice for '{device_name}': {e}", exc_info=True)
+            logger.error(f"Error in _listen_with_sounddevice for '{device_name}': {e}", exc_info=True)
             # Clean up stream if it was partially created
             if stream:
                  try:
@@ -1042,26 +1045,26 @@ class AudioHandler:
                          stream.stop()
                      stream.close()
                  except Exception as e_clean:
-                     logging.error(f"Error during cleanup in _listen_with_sounddevice: {e_clean}")
+                     logger.error(f"Error during cleanup in _listen_with_sounddevice: {e_clean}")
             raise e # Re-raise the exception
 
     def _background_recording_thread(self, device_index: int, phrase_time_limit: float) -> None:
         """ Background thread that records audio using soundcard (potentially problematic). """
         # This method seems deprecated in favor of _listen_with_sounddevice and soundcard issues
         # Keeping it for reference but should likely be removed or refactored if soundcard is needed.
-        logging.warning("_background_recording_thread (soundcard) is likely deprecated.")
+        logger.warning("_background_recording_thread (soundcard) is likely deprecated.")
         if not SOUNDCARD_AVAILABLE:
-            logging.error("Soundcard not available, cannot use soundcard backend")
+            logger.error("Soundcard not available, cannot use soundcard backend")
             return
         try:
             # Simplified - assumes device_index corresponds to soundcard's list which might not be true
             mic = soundcard.get_microphone(device_index, include_loopback=True)
             if not mic:
-                logging.error(f"Soundcard could not get microphone for index {device_index}")
+                logger.error(f"Soundcard could not get microphone for index {device_index}")
                 self.recording = False
                 return
 
-            logging.info(f"Starting soundcard recording thread for {mic.name}")
+            logger.info(f"Starting soundcard recording thread for {mic.name}")
             with mic.recorder(samplerate=self.sample_rate, channels=self.channels) as recorder:
                 while self.recording:
                     # Record data for the phrase time limit
@@ -1073,24 +1076,24 @@ class AudioHandler:
                          # Convert soundcard data (usually float64) to float32 if needed
                         if data.dtype != np.float32:
                             data = data.astype(np.float32)
-                        logging.debug(f"Soundcard recorded chunk: Shape={data.shape}, Dtype={data.dtype}")
+                        logger.debug(f"Soundcard recorded chunk: Shape={data.shape}, Dtype={data.dtype}")
                         if self.callback_function:
                             self.callback_function(data)
                     else:
-                        logging.debug("Soundcard recorder yielded empty data chunk.")
+                        logger.debug("Soundcard recorder yielded empty data chunk.")
                         time.sleep(0.01) # Small sleep if no data
 
         except Exception as e:
-            logging.error(f"Error in soundcard recording thread: {e}", exc_info=True)
+            logger.error(f"Error in soundcard recording thread: {e}", exc_info=True)
         finally:
             self.recording = False
-            logging.info(f"Soundcard recording thread finished.")
+            logger.info(f"Soundcard recording thread finished.")
 
     # --- Add a separate method for soundcard if needed ---
     def _background_recording_thread_sc(self, selected_device: Any, phrase_time_limit: float) -> None:
         """Background thread specifically for soundcard recording."""
         try:
-            logging.info(f"Starting soundcard recording thread for {selected_device.name}")
+            logger.info(f"Starting soundcard recording thread for {selected_device.name}")
             num_frames_to_record = int(self.sample_rate * phrase_time_limit)
             
             with selected_device.recorder(samplerate=self.sample_rate, channels=self.channels, blocksize=num_frames_to_record) as recorder:
@@ -1110,13 +1113,13 @@ class AudioHandler:
                             try:
                                 self.callback_function(processed_data)
                             except Exception as cb_err:
-                                logging.error(f"Error in soundcard callback execution: {cb_err}", exc_info=True)
+                                logger.error(f"Error in soundcard callback execution: {cb_err}", exc_info=True)
 
         except Exception as e:
-            logging.error(f"Error in soundcard recording thread (_sc): {e}", exc_info=True)
+            logger.error(f"Error in soundcard recording thread (_sc): {e}", exc_info=True)
         finally:
             self.recording = False
-            logging.info(f"Soundcard recording thread (_sc) finished for {selected_device.name}.")
+            logger.info(f"Soundcard recording thread (_sc) finished for {selected_device.name}.")
 
     def add_segment(self, audio_data: np.ndarray) -> None:
         """
@@ -1127,12 +1130,12 @@ class AudioHandler:
         """
         try:
             if audio_data is None:
-                logging.warning("SOAP recording: Received None audio data")
+                logger.warning("SOAP recording: Received None audio data")
                 return
                 
             # Check if the audio data has a valid shape and type
             if not hasattr(audio_data, 'shape'):
-                logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
+                logger.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
                 return
                 
             # Get the maximum amplitude
@@ -1140,15 +1143,15 @@ class AudioHandler:
             
             # Always log the max amplitude for debugging
             if max_amp > 0.0:
-                logging.info(f"SOAP recording: Audio segment with max amplitude {max_amp:.6f}")
+                logger.info(f"SOAP recording: Audio segment with max amplitude {max_amp:.6f}")
             else:
-                logging.warning(f"SOAP recording: Max amplitude was {max_amp}")
+                logger.warning(f"SOAP recording: Max amplitude was {max_amp}")
             
             # Apply an aggressive boost to ensure we capture even quiet audio
             if max_amp > 0.0001 and max_amp < 0.1:  # There's some audio but it's quiet
                 boost_factor = min(20.0, 0.5 / max_amp)  # Very high boost for quiet audio
                 audio_data = audio_data * boost_factor
-                logging.info(f"SOAP recording: Boosted audio by factor {boost_factor:.2f}")
+                logger.info(f"SOAP recording: Boosted audio by factor {boost_factor:.2f}")
                 
             # For SOAP mode, always create a segment regardless of amplitude
             # This is crucial for ensuring the recording works even with very quiet audio
@@ -1176,18 +1179,18 @@ class AudioHandler:
                 
                 # Add the segment to the list
                 self.recorded_frames.append(segment)
-                logging.info(f"SOAP recording: Created segment, total segments: {len(self.recorded_frames)}")
+                logger.info(f"SOAP recording: Created segment, total segments: {len(self.recorded_frames)}")
                 
                 if self.callback_function:
                     try:
                         self.callback_function(segment)
                     except Exception as e:
-                        logging.error(f"Error in new segment callback: {e}")
+                        logger.error(f"Error in new segment callback: {e}")
             else:
-                logging.warning(f"SOAP recording: Amplitude {max_amp:.8f} too low to create segment")
+                logger.warning(f"SOAP recording: Amplitude {max_amp:.8f} too low to create segment")
                 
         except Exception as e:
-            logging.error(f"Error adding segment: {e}", exc_info=True)
+            logger.error(f"Error adding segment: {e}", exc_info=True)
 
     def _stop_listening(self, wait_for_stop=True):
         """Stop the background listening thread.
@@ -1201,6 +1204,6 @@ class AudioHandler:
             if wait_for_stop and self.recording_thread and self.recording_thread.is_alive():
                 self.recording_thread.join(timeout=2.0)
                 
-            logging.info("Background listening stopped")
+            logger.info("Background listening stopped")
             return True
         return False

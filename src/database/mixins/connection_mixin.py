@@ -6,13 +6,13 @@ Provides thread-safe connection management for the Database class.
 
 import sqlite3
 import threading
-import logging
 from contextlib import contextmanager
 from typing import Dict
 
 from utils.retry_decorator import db_retry
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConnectionMixin:

@@ -8,15 +8,16 @@ This controller extracts UI state management logic from the main App class
 to improve maintainability and separation of concerns.
 """
 
-import logging
 import tkinter as tk
 from tkinter import NORMAL, DISABLED
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
+from utils.structured_logging import get_logger
+
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UIStateManager:

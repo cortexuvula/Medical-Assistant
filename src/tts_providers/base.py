@@ -1,12 +1,32 @@
 """
 Base class for TTS (Text-to-Speech) providers.
+
+This module defines the interface that all TTS providers must implement,
+ensuring consistent behavior across different speech synthesis services.
+
+Error Handling:
+    - synthesize() raises Exception on failure (callers should catch)
+    - test_connection() returns bool, never raises exceptions
+    - get_available_voices() returns empty list on failure
+    - APIError raised for provider-specific API failures
+
+Logging:
+    - Each provider uses get_logger(self.__class__.__name__)
+    - Logs include text length, language, voice, and timing
+    - API keys are not logged
+
+Usage:
+    provider = ElevenLabsTTSProvider(api_key="...")
+    audio = provider.synthesize("Hello world", language="en")
+    # audio is a pydub AudioSegment ready for playback
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union
 from pydub import AudioSegment
 import io
+
+from utils.structured_logging import get_logger
 
 
 class BaseTTSProvider(ABC):
@@ -19,7 +39,7 @@ class BaseTTSProvider(ABC):
             api_key: API key for the TTS service (if required)
         """
         self.api_key = api_key
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger(self.__class__.__name__)
     
     @abstractmethod
     def synthesize(self, text: str, language: str = "en", voice: Optional[str] = None, **kwargs) -> AudioSegment:

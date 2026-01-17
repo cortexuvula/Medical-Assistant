@@ -21,12 +21,11 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from tkinter import messagebox
 from typing import Optional
-import logging
-
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
 from .rsvp import RSVPEngine, RSVPSettings, RSVPTheme, InputModePanel, ReadingModePanel
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StandaloneRSVPDialog:
@@ -60,8 +59,8 @@ class StandaloneRSVPDialog:
 
     def _load_settings(self) -> None:
         """Load settings from storage."""
-        rsvp_settings = SETTINGS.get("rsvp", {})
-        rsvp_reader_settings = SETTINGS.get("rsvp_reader", {})
+        rsvp_settings = settings_manager.get("rsvp", {})
+        rsvp_reader_settings = settings_manager.get("rsvp_reader", {})
 
         self.settings = RSVPSettings(
             wpm=rsvp_settings.get("wpm", 300),
@@ -235,26 +234,19 @@ class StandaloneRSVPDialog:
 
     def _save_rsvp_settings(self) -> None:
         """Save RSVP display settings."""
-        if "rsvp" not in SETTINGS:
-            SETTINGS["rsvp"] = {}
-
-        SETTINGS["rsvp"]["wpm"] = self.settings.wpm
-        SETTINGS["rsvp"]["font_size"] = self.settings.font_size
-        SETTINGS["rsvp"]["chunk_size"] = self.settings.chunk_size
-        SETTINGS["rsvp"]["dark_theme"] = self.settings.dark_theme
-        SETTINGS["rsvp"]["audio_cue"] = self.settings.audio_cue
-        SETTINGS["rsvp"]["show_context"] = self.settings.show_context
-
-        save_settings(SETTINGS)
+        rsvp_config = {
+            "wpm": self.settings.wpm,
+            "font_size": self.settings.font_size,
+            "chunk_size": self.settings.chunk_size,
+            "dark_theme": self.settings.dark_theme,
+            "audio_cue": self.settings.audio_cue,
+            "show_context": self.settings.show_context,
+        }
+        settings_manager.set("rsvp", rsvp_config)
 
     def _save_reader_settings(self) -> None:
         """Save reader-specific settings."""
-        if "rsvp_reader" not in SETTINGS:
-            SETTINGS["rsvp_reader"] = {}
-
-        SETTINGS["rsvp_reader"]["last_directory"] = self.last_directory
-
-        save_settings(SETTINGS)
+        settings_manager.set_nested("rsvp_reader.last_directory", self.last_directory)
 
     # =========================================================================
     # EVENT HANDLERS

@@ -5,12 +5,11 @@ Base tool class for all agent tools.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
-import logging
 
 from ..agents.models import Tool, ToolParameter
+from utils.structured_logging import get_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolResult(BaseModel):
@@ -28,7 +27,7 @@ class BaseTool(ABC):
     
     def __init__(self):
         """Initialize the tool."""
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = get_logger(f"{__name__}.{self.__class__.__name__}")
         
     @abstractmethod
     def get_definition(self) -> Tool:

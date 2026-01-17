@@ -10,12 +10,15 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT
 from tkinter import messagebox, filedialog
 import pyperclip
-import logging
 from typing import Dict, Any, Optional
 import json
 import os
 from utils.pdf_exporter import PDFExporter
 from database.database import Database
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
+
+logger = get_logger(__name__)
 
 
 class MedicationResultsDialog:
@@ -444,10 +447,15 @@ class MedicationResultsDialog:
                 parent=self.parent
             )
         except Exception as e:
-            logging.error(f"Error copying to clipboard: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Copying medication analysis to clipboard",
+                exception=e,
+                input_summary=f"text_length={len(self.analysis_text)}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Error",
-                f"Failed to copy to clipboard: {str(e)}",
+                ctx.user_message,
                 parent=self.parent
             )
     
@@ -489,12 +497,17 @@ class MedicationResultsDialog:
                 f"Analysis added to {doc_name}!",
                 parent=self.parent
             )
-            
+
         except Exception as e:
-            logging.error(f"Error adding to document: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation=f"Adding medication analysis to {doc_type}",
+                exception=e,
+                input_summary=f"doc_type={doc_type}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Error",
-                f"Failed to add to document: {str(e)}",
+                ctx.user_message,
                 parent=self.parent
             )
     
@@ -595,12 +608,17 @@ class MedicationResultsDialog:
                     "Failed to export PDF. Check logs for details.",
                     parent=self.parent
                 )
-                
+
         except Exception as e:
-            logging.error(f"Error exporting to PDF: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Exporting medication analysis to PDF",
+                exception=e,
+                input_summary=f"analysis_type={self.analysis_type}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                f"Failed to export PDF: {str(e)}",
+                ctx.user_message,
                 parent=self.parent
             )
 
@@ -660,9 +678,14 @@ class MedicationResultsDialog:
                 )
 
         except Exception as e:
-            logging.error(f"Error saving to database: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Saving medication analysis to database",
+                exception=e,
+                input_summary=f"analysis_type={self.analysis_type}, recording_id={self.recording_id}"
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Save Error",
-                f"Failed to save to database: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog if self.dialog else self.parent
             )

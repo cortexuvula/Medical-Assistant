@@ -6,7 +6,6 @@ generated documents, and application state.
 """
 
 import json
-import logging
 import os
 import threading
 import time
@@ -17,6 +16,10 @@ import hashlib
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 import io
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AutoSaveManager:
@@ -72,7 +75,7 @@ class AutoSaveManager:
         self.on_save_complete: Optional[Callable] = None
         self.on_save_error: Optional[Callable[[Exception], None]] = None
 
-        logging.info(f"AutoSaveManager initialized with {interval_seconds}s interval")
+        logger.info(f"AutoSaveManager initialized with {interval_seconds}s interval")
 
     @property
     def is_running(self) -> bool:
@@ -104,7 +107,7 @@ class AutoSaveManager:
         """
         with self._providers_lock:
             self._data_providers[name] = provider
-        logging.debug(f"Registered data provider: {name}")
+        logger.debug(f"Registered data provider: {name}")
 
     def unregister_data_provider(self, name: str) -> bool:
         """
@@ -121,7 +124,7 @@ class AutoSaveManager:
         with self._providers_lock:
             if name in self._data_providers:
                 del self._data_providers[name]
-                logging.debug(f"Unregistered data provider: {name}")
+                logger.debug(f"Unregistered data provider: {name}")
                 return True
             return False
 
@@ -129,14 +132,14 @@ class AutoSaveManager:
         """Start the auto-save timer."""
         with self._state_lock:
             if self._is_running:
-                logging.warning("AutoSave is already running")
+                logger.warning("AutoSave is already running")
                 return
 
             self._is_running = True
             self._stop_event.clear()
             self.save_thread = threading.Thread(target=self._save_loop, daemon=True, name="AutoSaveThread")
             self.save_thread.start()
-        logging.info("AutoSave started")
+        logger.info("AutoSave started")
 
     def stop(self):
         """Stop the auto-save timer gracefully."""
@@ -150,9 +153,9 @@ class AutoSaveManager:
         if self.save_thread and self.save_thread.is_alive():
             self.save_thread.join(timeout=5)
             if self.save_thread.is_alive():
-                logging.warning("AutoSave thread did not terminate cleanly")
+                logger.warning("AutoSave thread did not terminate cleanly")
 
-        logging.info("AutoSave stopped")
+        logger.info("AutoSave stopped")
 
     def _save_loop(self):
         """Main auto-save loop running in background thread."""
@@ -168,12 +171,12 @@ class AutoSaveManager:
                     self.perform_save()
 
             except Exception as e:
-                logging.error(f"Error in auto-save loop: {e}", exc_info=True)
+                logger.error(f"Error in auto-save loop: {e}", exc_info=True)
                 if self.on_save_error:
                     try:
                         self.on_save_error(e)
                     except Exception as callback_error:
-                        logging.error(f"Error in save error callback: {callback_error}")
+                        logger.error(f"Error in save error callback: {callback_error}")
     
     def perform_save(self, force: bool = False) -> bool:
         """
@@ -204,7 +207,7 @@ class AutoSaveManager:
                 try:
                     save_data["data"][name] = provider()
                 except Exception as e:
-                    logging.error(f"Error getting data from provider {name}: {e}")
+                    logger.error(f"Error getting data from provider {name}: {e}")
                     save_data["data"][name] = None
 
             # Calculate hash to detect changes
@@ -214,7 +217,7 @@ class AutoSaveManager:
             # Check last hash (thread-safe)
             with self._state_lock:
                 if not force and current_hash == self.last_data_hash:
-                    logging.debug("No changes detected, skipping auto-save")
+                    logger.debug("No changes detected, skipping auto-save")
                     return False
 
             # Notify save start (outside lock)
@@ -222,7 +225,7 @@ class AutoSaveManager:
                 try:
                     self.on_save_start()
                 except Exception as e:
-                    logging.error(f"Error in save start callback: {e}")
+                    logger.error(f"Error in save start callback: {e}")
 
             # Rotate existing backups
             self._rotate_backups()
@@ -254,18 +257,18 @@ class AutoSaveManager:
                 try:
                     self.on_save_complete()
                 except Exception as e:
-                    logging.error(f"Error in save complete callback: {e}")
+                    logger.error(f"Error in save complete callback: {e}")
 
-            logging.info("Auto-save completed successfully")
+            logger.info("Auto-save completed successfully")
             return True
 
         except Exception as e:
-            logging.error(f"Failed to perform auto-save: {e}", exc_info=True)
+            logger.error(f"Failed to perform auto-save: {e}", exc_info=True)
             if self.on_save_error:
                 try:
                     self.on_save_error(e)
                 except Exception as callback_error:
-                    logging.error(f"Error in save error callback: {callback_error}")
+                    logger.error(f"Error in save error callback: {callback_error}")
             return False
     
     def _rotate_backups(self):
@@ -316,10 +319,10 @@ class AutoSaveManager:
                 try:
                     with open(save_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                    logging.info(f"Loaded auto-save from {filename}")
+                    logger.info(f"Loaded auto-save from {filename}")
                     return data
                 except Exception as e:
-                    logging.error(f"Failed to load {filename}: {e}")
+                    logger.error(f"Failed to load {filename}: {e}")
                     continue
         
         return None
@@ -335,10 +338,10 @@ class AutoSaveManager:
             try:
                 file.unlink()
             except Exception as e:
-                logging.error(f"Failed to delete {file}: {e}")
+                logger.error(f"Failed to delete {file}: {e}")
         
         self.last_data_hash = None
-        logging.info("Cleared all auto-save files")
+        logger.info("Cleared all auto-save files")
     
     def get_save_info(self) -> Dict[str, Any]:
         """Get information about current auto-saves."""
@@ -362,7 +365,7 @@ class AutoSaveManager:
                     "timestamp": data.get("timestamp")
                 })
             except Exception as e:
-                logging.error(f"Error reading save info for {file}: {e}")
+                logger.error(f"Error reading save info for {file}: {e}")
         
         return info
 

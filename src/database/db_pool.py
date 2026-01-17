@@ -5,7 +5,6 @@ Database connection pool implementation for Medical Assistant.
 import sqlite3
 import queue
 import threading
-import logging
 import time
 from typing import Optional, ContextManager, Any
 from contextlib import contextmanager
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from core.config import get_config
 from utils.exceptions import DatabaseError
+from utils.structured_logging import get_logger
 
 
 class ConnectionPool:
@@ -52,7 +52,7 @@ class ConnectionPool:
         self._closed = False
         self._replacing_connection = threading.local()  # Track replacement per-thread
         self._last_health_check: dict = {}  # Track last health check time per connection id
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
         # Initialize the pool
         self._init_pool()
@@ -314,7 +314,7 @@ class DatabaseConnectionManager:
 
             DatabaseConnectionManager._initialized = True
             self.config = get_config()
-            self.logger = logging.getLogger(__name__)
+            self.logger = get_logger(__name__)
             self._pool = None
             self._init_pool()
     

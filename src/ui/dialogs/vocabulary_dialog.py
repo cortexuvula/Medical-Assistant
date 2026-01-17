@@ -10,11 +10,12 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W
-import logging
 from typing import Optional
 
 from managers.vocabulary_manager import vocabulary_manager
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 
 class VocabularyDialog:
@@ -38,7 +39,7 @@ class VocabularyDialog:
         """
         self.parent = parent
         self.dialog = None
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
         # Load current corrections from manager
         self._load_from_manager()
@@ -542,9 +543,15 @@ class VocabularyDialog:
                 )
 
         except Exception as e:
+            ctx = ErrorContext.capture(
+                operation="Importing CSV vocabulary file",
+                exception=e,
+                input_summary=f"file={file_path if 'file_path' in dir() else 'unknown'}"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Import Error",
-                f"Failed to import CSV file:\n\n{str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 
@@ -598,9 +605,15 @@ class VocabularyDialog:
             )
 
         except Exception as e:
+            ctx = ErrorContext.capture(
+                operation="Exporting CSV vocabulary file",
+                exception=e,
+                input_summary=f"file={file_path}"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                f"Failed to export CSV file:\n\n{str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 

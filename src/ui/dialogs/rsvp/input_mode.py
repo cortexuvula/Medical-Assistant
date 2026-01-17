@@ -13,12 +13,13 @@ import ttkbootstrap as ttk
 from tkinter import filedialog, messagebox
 from typing import Callable, Optional
 import threading
-import logging
 import os
+
+from utils.structured_logging import get_logger
 
 from .core import RSVPTheme
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class InputModePanel:

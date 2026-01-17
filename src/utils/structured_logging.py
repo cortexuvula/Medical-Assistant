@@ -188,6 +188,16 @@ class StructuredLogger:
         """Log a critical message with context."""
         self._log(logging.CRITICAL, message, **kwargs)
 
+    def log(self, level: int, message: str, **kwargs) -> None:
+        """Log a message at the specified level with context.
+
+        Args:
+            level: Logging level (e.g., logging.ERROR, logging.INFO)
+            message: Log message
+            **kwargs: Context key-value pairs
+        """
+        self._log(level, message, **kwargs)
+
     def set_context(self, **kwargs) -> None:
         """Set persistent context that will be included in all log messages.
 

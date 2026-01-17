@@ -5,10 +5,11 @@ Provides analysis results operations for the Database class.
 """
 
 import json
-import logging
 from typing import Optional, Dict, List, Any
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AnalysisMixin:

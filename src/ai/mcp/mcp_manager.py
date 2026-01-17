@@ -3,7 +3,6 @@ MCP Manager - Handles MCP server lifecycle and tool discovery
 """
 
 import asyncio
-import logging
 import json
 import subprocess
 import os
@@ -14,7 +13,9 @@ import threading
 import queue
 import time
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

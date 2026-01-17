@@ -5,7 +5,6 @@ Debug files are only created when explicitly enabled via CHAT_DEBUG_ENABLED sett
 Files are stored in the proper AppData/debug directory and cleaned up periodically.
 """
 
-import logging
 import json
 import time
 from datetime import datetime
@@ -14,9 +13,10 @@ from pathlib import Path
 import traceback
 import os
 
+from utils.structured_logging import get_logger
+
 # Create a dedicated debug logger
-debug_logger = logging.getLogger("chat_debug")
-debug_logger.setLevel(logging.DEBUG)
+debug_logger = get_logger("chat_debug")
 
 # Configuration
 MAX_DEBUG_FILES = 20  # Keep only this many debug files to prevent disk bloat

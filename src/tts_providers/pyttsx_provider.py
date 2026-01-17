@@ -2,7 +2,6 @@
 Pyttsx3 TTS provider for offline text-to-speech synthesis.
 """
 
-import logging
 import pyttsx3
 import tempfile
 import os

@@ -5,12 +5,14 @@ Implements an observer pattern for theme changes, allowing UI components
 to automatically update when the theme changes.
 """
 
-import logging
 import weakref
 from typing import Optional, Callable, Set, Protocol, runtime_checkable
 from abc import abstractmethod
+from utils.structured_logging import get_logger
 
 from ui.ui_constants import Colors
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable

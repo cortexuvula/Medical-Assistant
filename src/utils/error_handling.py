@@ -47,7 +47,9 @@ from functools import wraps
 from contextlib import contextmanager
 from weakref import ref as weakref
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 T = TypeVar('T')
 

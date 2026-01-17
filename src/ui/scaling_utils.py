@@ -5,10 +5,10 @@ Handles different screen resolutions and DPI settings.
 
 import tkinter as tk
 import platform
-import logging
 from typing import Tuple, Optional
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UIScaler:

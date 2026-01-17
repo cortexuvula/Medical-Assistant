@@ -4,12 +4,14 @@ SOAP Note Generator Module
 Handles SOAP note generation from transcripts.
 """
 
-import logging
 from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
 
 from ai.ai import create_soap_note_streaming
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -86,22 +88,22 @@ class SOAPGeneratorMixin:
 
                     # Save to database - only create new entry if no current recording exists
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
-                        logging.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
+                        logger.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
                         success = self.app.db.update_recording(
                             self.app.current_recording_id,
                             soap_note=soap_note
                         )
                         if success:
-                            logging.info(f"Updated existing recording {self.app.current_recording_id} with SOAP note")
+                            logger.info(f"Updated existing recording {self.app.current_recording_id} with SOAP note")
                         else:
-                            logging.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
+                            logger.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
                     else:
-                        logging.debug("No current_recording_id set, creating new database entry")
+                        logger.debug("No current_recording_id set, creating new database entry")
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
-                        logging.info(f"Created new recording with ID: {self.app.current_recording_id}")
+                        logger.info(f"Created new recording with ID: {self.app.current_recording_id}")
 
                     # Auto-run analyses to the side panels
-                    logging.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
+                    logger.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
 
                     # Run medication analysis to panel
                     self.app.after(100, lambda sn=soap_note: self._run_medication_to_panel(sn))
@@ -112,7 +114,7 @@ class SOAPGeneratorMixin:
                 self.app.after(0, finalize)
 
             except Exception as e:
-                logging.error(f"SOAP note creation failed: {e}")
+                logger.error(f"SOAP note creation failed: {e}")
                 def handle_error():
                     self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()

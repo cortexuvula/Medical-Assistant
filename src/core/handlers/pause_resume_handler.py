@@ -5,14 +5,15 @@ Provides pause and resume state machine for recording sessions.
 Extracted from RecordingController for better separation of concerns.
 """
 
-import logging
 import threading
 from typing import TYPE_CHECKING, Optional, Callable
+
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PauseResumeHandler:
@@ -179,12 +180,12 @@ class PauseResumeHandler:
             if hasattr(self.app.ui, 'shared_panel_manager') and self.app.ui.shared_panel_manager:
                 from ui.components.shared_panel_manager import SharedPanelManager
                 self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
-            logging.info("Started periodic analysis mid-recording")
+            logger.info("Started periodic analysis mid-recording")
         else:
             # Stop periodic analysis mid-recording
             if hasattr(self.app, 'recording_controller'):
                 self.app.recording_controller.stop_periodic_analysis()
-            logging.info("Stopped periodic analysis mid-recording")
+            logger.info("Stopped periodic analysis mid-recording")
 
 
 __all__ = ["PauseResumeHandler"]

@@ -4,7 +4,6 @@ Security setup for Medical Assistant.
 Handles initialization of API keys and security managers.
 """
 
-import logging
 from typing import TYPE_CHECKING
 
 from .base import BaseSetup

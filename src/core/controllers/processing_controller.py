@@ -16,7 +16,6 @@ Document export operations are delegated to specialized handlers in:
 - core/controllers/export/fhir_exporter_handler.py
 """
 
-import logging
 import tkinter as tk
 from tkinter import messagebox, DISABLED, NORMAL, RIGHT
 from datetime import datetime
@@ -25,12 +24,13 @@ import concurrent.futures
 
 from settings import settings_manager
 from ui.undo_history_manager import get_undo_history_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
     import ttkbootstrap as ttk
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProcessingController:
@@ -148,10 +148,10 @@ class ProcessingController:
             # Update status
             self.app.status_manager.info(f"Recording for {patient_name} added to queue")
 
-            logging.info(f"Queued recording {recording_id} as task {task_id}")
+            logger.info(f"Queued recording {recording_id} as task {task_id}")
 
         except Exception as e:
-            logging.error(f"Failed to queue recording: {str(e)}", exc_info=True)
+            logger.error(f"Failed to queue recording: {str(e)}", exc_info=True)
             self.app.status_manager.error("Failed to queue recording for processing")
             # Fall back to immediate processing
             self.app.process_soap_recording()
@@ -202,7 +202,7 @@ class ProcessingController:
         else:
             self.app.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
 
-        logging.info(f"Quick Continue Mode set to: {new_value}")
+        logger.info(f"Quick Continue Mode set to: {new_value}")
 
     def reprocess_failed_recordings(self, recording_ids: List[int]) -> None:
         """Reprocess failed recordings by re-adding them to the queue.
@@ -223,10 +223,10 @@ class ProcessingController:
                 task_id = self.app.processing_queue.reprocess_failed_recording(rec_id)
                 if task_id:
                     success_count += 1
-                    logging.info(f"Recording {rec_id} queued for reprocessing as task {task_id}")
+                    logger.info(f"Recording {rec_id} queued for reprocessing as task {task_id}")
                 else:
                     failed_count += 1
-                    logging.error(f"Failed to reprocess recording {rec_id}")
+                    logger.error(f"Failed to reprocess recording {rec_id}")
 
             # Show status
             if success_count > 0:
@@ -240,7 +240,7 @@ class ProcessingController:
                 )
 
         except Exception as e:
-            logging.error(f"Error reprocessing recordings: {str(e)}", exc_info=True)
+            logger.error(f"Error reprocessing recordings: {str(e)}", exc_info=True)
             self.app.status_manager.error(f"Failed to reprocess recordings: {str(e)}")
 
     # =========================================================================
@@ -413,7 +413,7 @@ class ProcessingController:
                     self.app.progress_bar.pack_forget()
                 self.app.after(0, handle_timeout)
             except Exception as e:
-                logging.error(f"Error processing text: {str(e)}", exc_info=True)
+                logger.error(f"Error processing text: {str(e)}", exc_info=True)
                 def handle_error():
                     self.app.status_manager.error(f"Error processing {processor_type}: {str(e)}")
                     if button:
@@ -455,12 +455,12 @@ class ProcessingController:
                 if field_name:
                     update_kwargs = {field_name: new_text}
                     if self.app.db.update_recording(self.app.current_recording_id, **update_kwargs):
-                        logging.info(f"Updated recording ID {self.app.current_recording_id} with new {field_name}")
+                        logger.info(f"Updated recording ID {self.app.current_recording_id} with new {field_name}")
                         success_message = f"{success_message} and saved to database"
                     else:
-                        logging.warning(f"Failed to update recording ID {self.app.current_recording_id} with {field_name}")
+                        logger.warning(f"Failed to update recording ID {self.app.current_recording_id} with {field_name}")
             except Exception as e:
-                logging.error(f"Error updating database: {str(e)}", exc_info=True)
+                logger.error(f"Error updating database: {str(e)}", exc_info=True)
 
         self.app.status_manager.success(success_message)
         if button:

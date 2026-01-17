@@ -13,15 +13,15 @@ Organization:
 
 import os
 import json
-import logging
 import time
 import threading
 from typing import Dict, Any, Optional
+from utils.structured_logging import get_logger
 from core.config import get_config
 from settings.settings_migration import get_migrator
 from managers.data_folder_manager import data_folder_manager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 SETTINGS_FILE = str(data_folder_manager.settings_file_path)
 
@@ -594,12 +594,12 @@ def load_settings(force_refresh: bool = False) -> dict:
                     loaded_settings = json.load(f)
                     # Debug: Log what we're loading
                     synopsis_provider = loaded_settings.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
-                    logging.debug(f"Loading settings from file, synopsis provider: {synopsis_provider}")
+                    logger.debug(f"Loading settings from file, synopsis provider: {synopsis_provider}")
                     # Merge with defaults to ensure all keys exist
                     merged = merge_settings_with_defaults(loaded_settings, _DEFAULT_SETTINGS)
                     # Debug: Log after merge
                     merged_provider = merged.get("agent_config", {}).get("synopsis", {}).get("provider", "NOT SET")
-                    logging.debug(f"After merge, synopsis provider: {merged_provider}")
+                    logger.debug(f"After merge, synopsis provider: {merged_provider}")
 
                     # Migrate custom_chat_suggestions to new object format (with favorite flag)
                     if "custom_chat_suggestions" in merged:
@@ -612,7 +612,7 @@ def load_settings(force_refresh: bool = False) -> dict:
                     _settings_cache_time = current_time
                     return merged
             except Exception as e:
-                logging.error("Error loading settings", exc_info=True)
+                logger.error("Error loading settings", exc_info=True)
 
         result = _DEFAULT_SETTINGS.copy()
         _settings_cache = result
@@ -635,7 +635,7 @@ def save_settings(settings: dict) -> None:
         # Invalidate cache so next load gets fresh data
         invalidate_settings_cache()
     except Exception as e:
-        logging.error("Error saving settings", exc_info=True)
+        logger.error("Error saving settings", exc_info=True)
 
 # Load settings on module import
 SETTINGS = load_settings()
@@ -669,7 +669,7 @@ if "agent_config" not in SETTINGS:
             try:
                 from ai.agents.synopsis import SynopsisAgent
                 synopsis_config["system_prompt"] = SynopsisAgent.DEFAULT_CONFIG.system_prompt
-                logging.info("Updated empty synopsis system prompt with default")
+                logger.info("Updated empty synopsis system prompt with default")
             except ImportError:
                 synopsis_config["system_prompt"] = _DEFAULT_SETTINGS["agent_config"]["synopsis"]["system_prompt"]
     
@@ -687,7 +687,7 @@ else:
                 from ai.agents.synopsis import SynopsisAgent
                 synopsis_config["system_prompt"] = SynopsisAgent.DEFAULT_CONFIG.system_prompt
                 made_changes = True
-                logging.info("Updated empty synopsis system prompt with default")
+                logger.info("Updated empty synopsis system prompt with default")
             except ImportError:
                 synopsis_config["system_prompt"] = _DEFAULT_SETTINGS["agent_config"]["synopsis"]["system_prompt"]
                 made_changes = True

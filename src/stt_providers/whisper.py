@@ -3,7 +3,6 @@ Whisper STT provider implementation.
 """
 
 import os
-import logging
 import tempfile
 from typing import Optional
 from pydub import AudioSegment

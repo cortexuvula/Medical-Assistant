@@ -5,7 +5,6 @@ Dynamically fetches available models from AI providers and manages model lists
 with caching and fallback support.
 """
 
-import logging
 import json
 import time
 import threading
@@ -23,7 +22,9 @@ from utils.constants import (
 )
 import google.generativeai as genai
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LRUCache:

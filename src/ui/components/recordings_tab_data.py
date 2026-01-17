@@ -7,11 +7,13 @@ Extracted from RecordingsTab for better separation of concerns.
 
 import tkinter as tk
 import tkinter.messagebox
-import logging
 import threading
 import os
 import time
 from typing import Optional, List, Dict, Any
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RecordingsTabDataMixin:
@@ -41,7 +43,7 @@ class RecordingsTabDataMixin:
             force_refresh: Force reload from database ignoring cache
         """
         if self._refresh_in_progress:
-            logging.debug("Refresh already in progress, skipping")
+            logger.debug("Refresh already in progress, skipping")
             return
 
         current_time = time.time()
@@ -72,7 +74,7 @@ class RecordingsTabDataMixin:
                     except RuntimeError:
                         pass
             except Exception as e:
-                logging.error(f"Error loading recordings: {e}")
+                logger.error(f"Error loading recordings: {e}")
                 if self.parent and hasattr(self.parent, 'after') and hasattr(self, 'recording_count_label'):
                     try:
                         error_msg = str(e)
@@ -105,7 +107,7 @@ class RecordingsTabDataMixin:
         """Start periodic auto-refresh of recordings list."""
         self.stop_auto_refresh()
         self._schedule_auto_refresh()
-        logging.debug("Recordings auto-refresh started (60s interval)")
+        logger.debug("Recordings auto-refresh started (60s interval)")
 
     def _schedule_auto_refresh(self) -> None:
         """Schedule the next auto-refresh."""
@@ -116,7 +118,7 @@ class RecordingsTabDataMixin:
                     self._perform_auto_refresh
                 )
         except Exception as e:
-            logging.debug(f"Could not schedule auto-refresh: {e}")
+            logger.debug(f"Could not schedule auto-refresh: {e}")
 
     def _perform_auto_refresh(self) -> None:
         """Perform auto-refresh and schedule next one."""
@@ -125,7 +127,7 @@ class RecordingsTabDataMixin:
                 self._refresh_recordings_list(force_refresh=True)
                 self._schedule_auto_refresh()
         except Exception as e:
-            logging.debug(f"Auto-refresh skipped: {e}")
+            logger.debug(f"Auto-refresh skipped: {e}")
 
     def stop_auto_refresh(self) -> None:
         """Stop periodic auto-refresh."""
@@ -136,7 +138,7 @@ class RecordingsTabDataMixin:
             except Exception:
                 pass
             self._auto_refresh_job = None
-            logging.debug("Recordings auto-refresh stopped")
+            logger.debug("Recordings auto-refresh stopped")
 
     # ========================================
     # Filtering
@@ -208,7 +210,7 @@ class RecordingsTabDataMixin:
             self.parent.current_recording_id = rec_id
 
         except Exception as e:
-            logging.error(f"Error loading recording: {e}")
+            logger.error(f"Error loading recording: {e}")
             tk.messagebox.showerror("Load Error", f"Failed to load recording: {str(e)}")
 
     # ========================================
@@ -272,7 +274,7 @@ class RecordingsTabDataMixin:
             self.parent.status_manager.success(f"Recording exported to {os.path.basename(file_path)}")
 
         except Exception as e:
-            logging.error(f"Error exporting recording: {e}")
+            logger.error(f"Error exporting recording: {e}")
             tk.messagebox.showerror("Export Error", f"Failed to export recording: {str(e)}")
 
 

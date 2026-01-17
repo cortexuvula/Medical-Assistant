@@ -6,15 +6,17 @@ Includes encryption, rate limiting, and enhanced validation.
 """
 
 import hashlib
-import logging
 import secrets
 from typing import Optional, Tuple
 from threading import Lock
+from utils.structured_logging import get_logger
 
 from core.config import get_config
 from utils.security.key_storage import SecureKeyStorage
 from utils.security.rate_limiter import RateLimiter
 from utils.security.validators import APIKeyValidator, InputSanitizer
+
+logger = get_logger(__name__)
 
 
 class SecurityManager:
@@ -37,7 +39,7 @@ class SecurityManager:
             return
 
         self._initialized = True
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
         self.key_storage = SecureKeyStorage()
         self.rate_limiter = RateLimiter()
         self.api_key_validator = APIKeyValidator()

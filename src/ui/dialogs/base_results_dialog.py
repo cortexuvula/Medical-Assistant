@@ -26,7 +26,6 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT
 from tkinter import messagebox, filedialog
 import pyperclip
-import logging
 import os
 import platform
 import subprocess
@@ -34,6 +33,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Tuple
 
 from ui.scaling_utils import ui_scaler
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 
 class BaseResultsDialog(ABC):
@@ -82,7 +83,7 @@ class BaseResultsDialog(ABC):
         self.result_type: str = ""
         self.source: str = ""
         self.metadata: Dict[str, Any] = {}
-        self.logger = logging.getLogger(self.__class__.__module__)
+        self.logger = get_logger(self.__class__.__module__)
         self._status_label: Optional[ttk.Label] = None
         self._status_after_id: Optional[str] = None
 
@@ -446,8 +447,13 @@ class BaseResultsDialog(ABC):
             pyperclip.copy(self.results_text)
             self._show_brief_feedback("Copied to clipboard!")
         except Exception as e:
-            self.logger.error(f"Error copying to clipboard: {e}")
-            self._show_brief_feedback(f"Copy failed: {str(e)}", error=True)
+            ctx = ErrorContext.capture(
+                operation="Copying to clipboard",
+                exception=e,
+                input_summary=f"text_length={len(self.results_text)}"
+            )
+            self.logger.error(ctx.to_log_string())
+            self._show_brief_feedback("Copy failed", error=True)
 
     def _add_to_document(self, doc_type: str) -> None:
         """Add the results to a document (SOAP note or letter).
@@ -491,18 +497,28 @@ class BaseResultsDialog(ABC):
                 parent=self.dialog
             )
 
-        except AttributeError:
-            self.logger.error("Parent does not have expected document widgets")
+        except AttributeError as e:
+            ctx = ErrorContext.capture(
+                operation=f"Adding to {doc_type}",
+                exception=e,
+                input_summary="Parent missing expected document widgets"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Error",
                 "Could not access document. Please try again.",
                 parent=self.dialog
             )
         except Exception as e:
-            self.logger.error(f"Error adding to document: {e}")
+            ctx = ErrorContext.capture(
+                operation=f"Adding to {doc_type}",
+                exception=e,
+                input_summary=f"doc_type={doc_type}"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Error",
-                f"Failed to add to document: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 
@@ -556,18 +572,28 @@ class BaseResultsDialog(ABC):
                     parent=self.dialog
                 )
 
-        except ImportError:
-            self.logger.error("PDF exporter not available")
+        except ImportError as e:
+            ctx = ErrorContext.capture(
+                operation="PDF export",
+                exception=e,
+                input_summary="PDF exporter module not available"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                "PDF export is not available.",
+                "PDF export is not available. Please install required dependencies.",
                 parent=self.dialog
             )
         except Exception as e:
-            self.logger.error(f"Error exporting to PDF: {e}")
+            ctx = ErrorContext.capture(
+                operation="PDF export",
+                exception=e,
+                input_summary=f"result_type={self.result_type}"
+            )
+            self.logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Export Error",
-                f"Failed to export PDF: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 
@@ -646,7 +672,12 @@ class BaseResultsDialog(ABC):
             c.save()
             return True
         except Exception as e:
-            self.logger.error(f"Failed to generate simple PDF: {e}")
+            ctx = ErrorContext.capture(
+                operation="Generating simple PDF",
+                exception=e,
+                input_summary=f"file_path={file_path}"
+            )
+            self.logger.error(ctx.to_log_string())
             return False
 
     def _open_file(self, file_path: str) -> None:
@@ -663,4 +694,9 @@ class BaseResultsDialog(ABC):
             else:
                 subprocess.call(('xdg-open', file_path))
         except Exception as e:
-            self.logger.error(f"Failed to open file: {e}")
+            ctx = ErrorContext.capture(
+                operation="Opening file",
+                exception=e,
+                input_summary=f"file_path={file_path}, platform={platform.system()}"
+            )
+            self.logger.error(ctx.to_log_string())

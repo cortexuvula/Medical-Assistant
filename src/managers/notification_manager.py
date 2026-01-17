@@ -5,7 +5,6 @@ Handles system notifications and status updates for background processing.
 Provides various notification styles based on user preferences.
 """
 
-import logging
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
@@ -16,6 +15,9 @@ from queue import Queue, Empty
 import time
 
 from settings.settings import SETTINGS
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class NotificationManager:
@@ -36,7 +38,7 @@ class NotificationManager:
         self.processor_thread = threading.Thread(target=self._process_notifications, daemon=True)
         self.processor_thread.start()
         
-        logging.info("NotificationManager initialized")
+        logger.info("NotificationManager initialized")
     
     def show_completion(self, patient_name: str, recording_id: int, 
                        task_id: str, processing_time: float):
@@ -60,7 +62,7 @@ class NotificationManager:
         self.notification_queue.put(notification)
         self.notification_history.append(notification)
         
-        logging.info(f"Queued completion notification for patient: {patient_name}")
+        logger.info(f"Queued completion notification for patient: {patient_name}")
     
     def show_error(self, patient_name: str, error_message: str, 
                   recording_id: int, task_id: str):
@@ -84,7 +86,7 @@ class NotificationManager:
         self.notification_queue.put(notification)
         self.notification_history.append(notification)
         
-        logging.error(f"Queued error notification for patient: {patient_name} - {error_message}")
+        logger.error(f"Queued error notification for patient: {patient_name} - {error_message}")
     
     def show_progress(self, patient_name: str, progress: int, task_id: str):
         """Show progress notification.
@@ -119,7 +121,7 @@ class NotificationManager:
             except Empty:
                 continue
             except Exception as e:
-                logging.error(f"Error processing notification: {str(e)}")
+                logger.error(f"Error processing notification: {str(e)}")
     
     def _display_notification(self, notification: Dict[str, Any]):
         """Display notification based on user preferences."""
@@ -279,7 +281,7 @@ class NotificationManager:
     def clear_notification_history(self):
         """Clear notification history."""
         self.notification_history.clear()
-        logging.info("Notification history cleared")
+        logger.info("Notification history cleared")
     
     def show_queue_status(self, active_count: int, completed_count: int, failed_count: int):
         """Show queue status summary notification."""
@@ -302,7 +304,7 @@ class NotificationManager:
             # Load the recording from database
             recording = self.app.db.get_recording(recording_id)
             if not recording:
-                logging.error(f"Recording {recording_id} not found")
+                logger.error(f"Recording {recording_id} not found")
                 return
             
             # Clear current UI content
@@ -334,7 +336,7 @@ class NotificationManager:
             self.app.status_manager.success(f"Loaded recording for {patient_name}")
             
         except Exception as e:
-            logging.error(f"Error viewing recording: {str(e)}", exc_info=True)
+            logger.error(f"Error viewing recording: {str(e)}", exc_info=True)
     
     def cleanup(self):
         """Clean up notification manager resources."""
@@ -344,4 +346,4 @@ class NotificationManager:
                 toast.destroy()
         self.active_toasts.clear()
         
-        logging.info("NotificationManager cleaned up")
+        logger.info("NotificationManager cleaned up")

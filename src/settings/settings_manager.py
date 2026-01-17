@@ -20,15 +20,15 @@ Usage:
     agent = settings_manager.get_agent_config("diagnostic")
 """
 
-import logging
 from typing import Any, Dict, Optional, TypeVar, cast
+from utils.structured_logging import get_logger
 from settings.settings_types import (
     ModelConfig, AgentConfig, SOAPNoteConfig, TranslationSettings,
     TTSSettings, ElevenLabsSettings, DeepgramSettings, GroqSettings,
     AdvancedAnalysisSettings, ChatInterfaceSettings
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar('T')
 
@@ -95,6 +95,30 @@ class SettingsManager:
             Setting value or default
         """
         return self._settings.get(key, default)
+
+    def get_default(self, key: str, default: Any = None) -> Any:
+        """Get the default value for a setting from _DEFAULT_SETTINGS.
+
+        Args:
+            key: Setting key (e.g., "translation_canned_responses")
+            default: Fallback value if key not found in defaults
+
+        Returns:
+            Default setting value or fallback
+        """
+        from settings.settings import _DEFAULT_SETTINGS
+        return _DEFAULT_SETTINGS.get(key, default)
+
+    def get_all(self) -> Dict[str, Any]:
+        """Get all settings as a dictionary.
+
+        Returns a reference to the underlying settings dict. Modifications
+        to the returned dict will affect the settings directly.
+
+        Returns:
+            Dict containing all settings
+        """
+        return self._settings
 
     def set(self, key: str, value: Any, auto_save: bool = True) -> None:
         """Set a top-level setting value.

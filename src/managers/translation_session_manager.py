@@ -5,13 +5,15 @@ Manages persistence and retrieval of translation sessions,
 providing a singleton interface for session tracking across the application.
 """
 
-import logging
 import threading
 from typing import List, Optional
 from datetime import datetime
+from utils.structured_logging import get_logger
 
 from database.db_pool import get_db_manager
 from models.translation_session import TranslationSession, TranslationEntry, Speaker
+
+logger = get_logger(__name__)
 
 
 class TranslationSessionManager:
@@ -37,7 +39,7 @@ class TranslationSessionManager:
         self._initialized = True
         self.db_manager = get_db_manager()
         self.current_session: Optional[TranslationSession] = None
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
 
     def start_session(
         self,
@@ -72,7 +74,7 @@ class TranslationSessionManager:
         # Persist to database
         self._save_session(self.current_session)
 
-        self.logger.info(f"Started translation session {self.current_session.session_id}")
+        logger.info(f"Started translation session {self.current_session.session_id}")
         return self.current_session
 
     def end_session(self) -> Optional[TranslationSession]:
@@ -90,7 +92,7 @@ class TranslationSessionManager:
         ended_session = self.current_session
         self.current_session = None
 
-        self.logger.info(f"Ended translation session {ended_session.session_id}")
+        logger.info(f"Ended translation session {ended_session.session_id}")
         return ended_session
 
     def add_entry(self, entry: TranslationEntry) -> None:
@@ -108,7 +110,7 @@ class TranslationSessionManager:
         self.current_session.add_entry(entry)
         self._save_entry(entry, self.current_session.session_id)
 
-        self.logger.debug(f"Added entry {entry.id} to session {self.current_session.session_id}")
+        logger.debug(f"Added entry {entry.id} to session {self.current_session.session_id}")
 
     def add_patient_entry(
         self,
@@ -238,7 +240,7 @@ class TranslationSessionManager:
                 return session
 
         except Exception as e:
-            self.logger.error(f"Error retrieving session {session_id}: {e}")
+            logger.error(f"Error retrieving session {session_id}: {e}")
             return None
 
     def get_sessions_for_recording(self, recording_id: int) -> List[TranslationSession]:
@@ -266,7 +268,7 @@ class TranslationSessionManager:
                         sessions.append(session)
 
         except Exception as e:
-            self.logger.error(f"Error retrieving sessions for recording {recording_id}: {e}")
+            logger.error(f"Error retrieving sessions for recording {recording_id}: {e}")
 
         return sessions
 
@@ -295,7 +297,7 @@ class TranslationSessionManager:
                         sessions.append(session)
 
         except Exception as e:
-            self.logger.error(f"Error retrieving recent sessions: {e}")
+            logger.error(f"Error retrieving recent sessions: {e}")
 
         return sessions
 
@@ -323,11 +325,11 @@ class TranslationSessionManager:
                 """, (session_id,))
 
                 conn.commit()
-                self.logger.info(f"Deleted translation session {session_id}")
+                logger.info(f"Deleted translation session {session_id}")
                 return True
 
         except Exception as e:
-            self.logger.error(f"Error deleting session {session_id}: {e}")
+            logger.error(f"Error deleting session {session_id}: {e}")
             return False
 
     def export_session(self, session_id: str, format: str = "txt") -> Optional[str]:
@@ -370,7 +372,7 @@ class TranslationSessionManager:
                 ))
                 conn.commit()
         except Exception as e:
-            self.logger.error(f"Error saving session: {e}")
+            logger.error(f"Error saving session: {e}")
 
     def _save_entry(self, entry: TranslationEntry, session_id: str) -> None:
         """Save an entry to the database."""
@@ -397,7 +399,7 @@ class TranslationSessionManager:
                 ))
                 conn.commit()
         except Exception as e:
-            self.logger.error(f"Error saving entry: {e}")
+            logger.error(f"Error saving entry: {e}")
 
     def _update_session_ended(self, session: TranslationSession) -> None:
         """Update session ended timestamp."""
@@ -414,7 +416,7 @@ class TranslationSessionManager:
                 ))
                 conn.commit()
         except Exception as e:
-            self.logger.error(f"Error updating session ended: {e}")
+            logger.error(f"Error updating session ended: {e}")
 
 
 # Singleton accessor

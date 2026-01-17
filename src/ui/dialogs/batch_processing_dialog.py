@@ -8,7 +8,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Dict, Optional
 from ui.scaling_utils import ui_scaler
-import logging
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ttkbootstrap.tooltip import ToolTip
 

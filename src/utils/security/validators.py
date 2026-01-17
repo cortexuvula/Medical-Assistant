@@ -5,13 +5,15 @@ Provides input sanitization and API key validation.
 """
 
 import re
-import logging
 from typing import Dict, Optional, Tuple, Callable
+from utils.structured_logging import get_logger
 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC,
     STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
 )
+
+logger = get_logger(__name__)
 
 
 class APIKeyValidator:
@@ -19,7 +21,7 @@ class APIKeyValidator:
 
     def __init__(self):
         """Initialize the API key validator."""
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
 
         # Configurable API key format rules
         # Format: (prefix, min_length, max_length, allowed_chars_pattern)
@@ -167,7 +169,7 @@ class APIKeyValidator:
         if chars is not None:
             rules["chars"] = chars
 
-        self.logger.info(f"Updated API key format rules for {provider}: {rules}")
+        logger.info(f"Updated API key format rules for {provider}: {rules}")
 
 
 class InputSanitizer:
@@ -175,7 +177,7 @@ class InputSanitizer:
 
     def __init__(self):
         """Initialize the input sanitizer."""
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
 
         # Prompt injection patterns - specific to avoid false positives with medical text
         # (e.g., "cardiovascular system:" is legitimate medical documentation)
@@ -225,7 +227,7 @@ class InputSanitizer:
         # Additional security checks - remove potential prompt injection attempts
         for pattern in self.injection_patterns:
             if pattern.lower() in sanitized.lower():
-                self.logger.warning(f"Potential prompt injection detected: {pattern}")
+                logger.warning(f"Potential prompt injection detected: {pattern}")
                 sanitized = sanitized.replace(pattern, "")
 
         return sanitized

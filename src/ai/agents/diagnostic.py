@@ -9,13 +9,13 @@ Enhanced with:
 - Structured differential output
 """
 
-import logging
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 import re
 import json
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse
+from utils.structured_logging import get_logger
 
 # Try to import medication agent for cross-reference
 try:
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from .ai_caller import AICallerProtocol
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DiagnosticAgent(BaseAgent):

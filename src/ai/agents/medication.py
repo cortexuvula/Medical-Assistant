@@ -2,18 +2,18 @@
 Medication agent for analyzing medications, checking interactions, and managing prescriptions.
 """
 
-import logging
 import re
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from .ai_caller import AICallerProtocol
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MedicationAgent(BaseAgent):

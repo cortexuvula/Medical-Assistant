@@ -8,11 +8,12 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import LEFT
 import threading
-import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Callable, List
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 if TYPE_CHECKING:
     from audio.audio import AudioHandler
@@ -46,7 +47,7 @@ class RecordingMixin:
     doctor_audio_segments: List
     stop_doctor_recording_func: Optional[Callable]
 
-    logger: logging.Logger
+    logger: "get_logger"  # Uses structured logger
 
     # Methods from other mixins (declared for type checking)
     def _dialog_exists(self) -> bool: ...
@@ -105,9 +106,14 @@ class RecordingMixin:
                 self.parent.play_recording_sound(start=True)
 
         except Exception as e:
-            self.logger.error(f"Failed to start recording: {e}")
+            ctx = ErrorContext.capture(
+                operation="Starting patient recording",
+                exception=e,
+                input_summary=f"mic={mic_name if 'mic_name' in dir() else 'unknown'}"
+            )
+            self.logger.error(ctx.to_log_string())
             self.is_recording = False
-            self.recording_status.config(text=f"Error: {str(e)}", foreground="red")
+            self.recording_status.config(text=f"Error: {ctx.user_message}", foreground="red")
             self.record_button.config(text="🎤 Record Patient", bootstyle="danger")
 
     def _stop_recording(self):
@@ -160,20 +166,20 @@ class RecordingMixin:
                         selected_provider = self._stt_provider_map.get(selected_stt_display, "")
 
                         # Save current provider and switch if needed
-                        original_provider = SETTINGS.get("stt_provider", "groq")
+                        original_provider = settings_manager.get("stt_provider", "groq")
                         if selected_provider:
-                            SETTINGS["stt_provider"] = selected_provider
+                            settings_manager.set("stt_provider", selected_provider, auto_save=False)
                             self.logger.info(f"Using STT provider: {selected_provider}")
 
                         # Disable diarization for Translation Assistant
-                        original_deepgram_diarize = SETTINGS.get("deepgram", {}).get("diarize", False)
-                        original_elevenlabs_diarize = SETTINGS.get("elevenlabs", {}).get("diarize", True)
-                        SETTINGS.setdefault("deepgram", {})["diarize"] = False
-                        SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
+                        original_deepgram_diarize = settings_manager.get_nested("deepgram.diarize", False)
+                        original_elevenlabs_diarize = settings_manager.get_nested("elevenlabs.diarize", True)
+                        settings_manager.set_nested("deepgram.diarize", False)
+                        settings_manager.set_nested("elevenlabs.diarize", False)
 
                         # Disable audio event tagging
-                        original_tag_audio_events = SETTINGS.get("elevenlabs", {}).get("tag_audio_events", True)
-                        SETTINGS.setdefault("elevenlabs", {})["tag_audio_events"] = False
+                        original_tag_audio_events = settings_manager.get_nested("elevenlabs.tag_audio_events", True)
+                        settings_manager.set_nested("elevenlabs.tag_audio_events", False)
 
                         try:
                             # Transcribe without prefix
@@ -181,12 +187,12 @@ class RecordingMixin:
                         finally:
                             # Restore original provider
                             if selected_provider:
-                                SETTINGS["stt_provider"] = original_provider
+                                settings_manager.set("stt_provider", original_provider, auto_save=False)
                             # Restore original diarization settings
-                            SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
-                            SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
+                            settings_manager.set_nested("deepgram.diarize", original_deepgram_diarize)
+                            settings_manager.set_nested("elevenlabs.diarize", original_elevenlabs_diarize)
                             # Restore audio event tagging setting
-                            SETTINGS["elevenlabs"]["tag_audio_events"] = original_tag_audio_events
+                            settings_manager.set_nested("elevenlabs.tag_audio_events", original_tag_audio_events)
 
                         if transcript:
                             # Process the complete transcript
@@ -205,9 +211,13 @@ class RecordingMixin:
                     ))
 
             except Exception as e:
-                self.logger.error(f"Error processing recording: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
-                    lambda: self.recording_status.config(text=f"Recording error: {err[:50]}", foreground="red")
+                ctx = ErrorContext.capture(
+                    operation="Processing recording",
+                    exception=e
+                )
+                self.logger.error(ctx.to_log_string(), exc_info=True)
+                self._safe_after(0, lambda msg=ctx.user_message: self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Recording error: {msg[:50]}", foreground="red")
                 ))
 
         # Start processing thread
@@ -245,7 +255,11 @@ class RecordingMixin:
                 ))
 
         except Exception as e:
-            self.logger.error(f"Error processing audio data: {e}")
+            ctx = ErrorContext.capture(
+                operation="Processing audio data",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
     def _update_audio_level(self, level: float):
         """Update the audio level indicator.
@@ -317,9 +331,14 @@ class RecordingMixin:
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to start doctor dictation: {e}")
+            ctx = ErrorContext.capture(
+                operation="Starting doctor dictation",
+                exception=e,
+                input_summary=f"mic={mic_name if 'mic_name' in dir() else 'unknown'}"
+            )
+            self.logger.error(ctx.to_log_string())
             self.is_doctor_recording = False
-            self.recording_status.config(text=f"Error: {str(e)}", foreground="red")
+            self.recording_status.config(text=f"Error: {ctx.user_message}", foreground="red")
             self.doctor_dictation_button.config(text="🎤 Dictate", bootstyle="outline-info")
 
     def _stop_doctor_dictation(self):
@@ -347,23 +366,23 @@ class RecordingMixin:
                         selected_stt_display = self.selected_stt_provider.get()
                         selected_provider = self._stt_provider_map.get(selected_stt_display, "")
 
-                        original_provider = SETTINGS.get("stt_provider", "groq")
+                        original_provider = settings_manager.get("stt_provider", "groq")
                         if selected_provider:
-                            SETTINGS["stt_provider"] = selected_provider
+                            settings_manager.set("stt_provider", selected_provider, auto_save=False)
 
                         # Disable diarization
-                        original_deepgram_diarize = SETTINGS.get("deepgram", {}).get("diarize", False)
-                        original_elevenlabs_diarize = SETTINGS.get("elevenlabs", {}).get("diarize", True)
-                        SETTINGS.setdefault("deepgram", {})["diarize"] = False
-                        SETTINGS.setdefault("elevenlabs", {})["diarize"] = False
+                        original_deepgram_diarize = settings_manager.get_nested("deepgram.diarize", False)
+                        original_elevenlabs_diarize = settings_manager.get_nested("elevenlabs.diarize", True)
+                        settings_manager.set_nested("deepgram.diarize", False)
+                        settings_manager.set_nested("elevenlabs.diarize", False)
 
                         try:
                             transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
                         finally:
                             if selected_provider:
-                                SETTINGS["stt_provider"] = original_provider
-                            SETTINGS["deepgram"]["diarize"] = original_deepgram_diarize
-                            SETTINGS["elevenlabs"]["diarize"] = original_elevenlabs_diarize
+                                settings_manager.set("stt_provider", original_provider, auto_save=False)
+                            settings_manager.set_nested("deepgram.diarize", original_deepgram_diarize)
+                            settings_manager.set_nested("elevenlabs.diarize", original_elevenlabs_diarize)
 
                         if transcript:
                             def update_ui():
@@ -394,9 +413,13 @@ class RecordingMixin:
                     ))
 
             except Exception as e:
-                self.logger.error(f"Doctor dictation error: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
-                    lambda: self.recording_status.config(text=f"Error: {err[:40]}", foreground="red")
+                ctx = ErrorContext.capture(
+                    operation="Doctor dictation transcription",
+                    exception=e
+                )
+                self.logger.error(ctx.to_log_string(), exc_info=True)
+                self._safe_after(0, lambda msg=ctx.user_message: self._safe_ui_update(
+                    lambda: self.recording_status.config(text=f"Error: {msg[:40]}", foreground="red")
                 ))
 
         threading.Thread(target=stop_and_transcribe, daemon=True).start()
@@ -415,7 +438,11 @@ class RecordingMixin:
             if segment:
                 self.doctor_audio_segments.append(segment)
         except Exception as e:
-            self.logger.error(f"Error processing doctor audio data: {e}")
+            ctx = ErrorContext.capture(
+                operation="Processing doctor audio data",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
 
 __all__ = ["RecordingMixin"]

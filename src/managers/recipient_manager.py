@@ -6,15 +6,15 @@ CSV import functionality, and quick access to frequently used recipients.
 """
 
 import csv
-import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
+from utils.structured_logging import get_logger
 
 from database.db_pool import get_db_manager
 from utils.error_handling import handle_errors, ErrorSeverity
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Column definitions for queries (extended with new fields from migration 10)

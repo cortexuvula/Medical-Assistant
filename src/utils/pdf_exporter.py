@@ -7,11 +7,14 @@ and other clinical documentation.
 """
 
 import os
-import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 import tempfile
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
@@ -313,11 +316,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated SOAP note PDF: {output_path}")
+            logger.info(f"Generated SOAP note PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating SOAP note PDF: {str(e)}")
+            logger.error(f"Error generating SOAP note PDF: {str(e)}")
             return False
     
     def generate_medication_report_pdf(self, medication_data: Dict[str, Any],
@@ -407,11 +410,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated medication report PDF: {output_path}")
+            logger.info(f"Generated medication report PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating medication report PDF: {str(e)}")
+            logger.error(f"Error generating medication report PDF: {str(e)}")
             return False
     
     def generate_diagnostic_report_pdf(self, diagnostic_data: Dict[str, Any],
@@ -484,11 +487,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated diagnostic report PDF: {output_path}")
+            logger.info(f"Generated diagnostic report PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating diagnostic report PDF: {str(e)}")
+            logger.error(f"Error generating diagnostic report PDF: {str(e)}")
             return False
     
     def generate_referral_letter_pdf(self, referral_data: Dict[str, Any],
@@ -580,11 +583,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated referral letter PDF: {output_path}")
+            logger.info(f"Generated referral letter PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating referral letter PDF: {str(e)}")
+            logger.error(f"Error generating referral letter PDF: {str(e)}")
             return False
     
     def generate_workflow_report_pdf(self, workflow_data: Dict[str, Any],
@@ -657,11 +660,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated workflow report PDF: {output_path}")
+            logger.info(f"Generated workflow report PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating workflow report PDF: {str(e)}")
+            logger.error(f"Error generating workflow report PDF: {str(e)}")
             return False
     
     def generate_data_extraction_report_pdf(self, extraction_data: Dict[str, Any],
@@ -778,11 +781,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated data extraction report PDF: {output_path}")
+            logger.info(f"Generated data extraction report PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating data extraction report PDF: {str(e)}")
+            logger.error(f"Error generating data extraction report PDF: {str(e)}")
             return False
     
     def generate_generic_document_pdf(self, title: str, content: str,
@@ -847,11 +850,11 @@ class PDFExporter:
             doc.build(story, onFirstPage=self._create_header_footer,
                      onLaterPages=self._create_header_footer)
             
-            logging.info(f"Generated generic document PDF: {output_path}")
+            logger.info(f"Generated generic document PDF: {output_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error generating generic document PDF: {str(e)}")
+            logger.error(f"Error generating generic document PDF: {str(e)}")
             return False
     
     def set_header_footer_info(self, header_text: Optional[str] = None,

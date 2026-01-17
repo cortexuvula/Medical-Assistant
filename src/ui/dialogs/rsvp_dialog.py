@@ -40,7 +40,7 @@ import tkinter.font as tkfont
 import time
 import platform
 
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 
 
 class RSVPDialog:
@@ -92,7 +92,7 @@ class RSVPDialog:
         self.timer_id: Optional[str] = None
 
         # Load settings with validation
-        rsvp_settings = SETTINGS.get("rsvp", {})
+        rsvp_settings = settings_manager.get("rsvp", {})
         self.wpm = self._validate_wpm(rsvp_settings.get("wpm", self.DEFAULT_WPM))
         self.font_size = self._validate_font_size(rsvp_settings.get("font_size", self.DEFAULT_FONT_SIZE))
         self.chunk_size = self._validate_chunk_size(rsvp_settings.get("chunk_size", 1))
@@ -1355,17 +1355,15 @@ SETTINGS BUTTONS
 
     def _save_settings(self) -> None:
         """Save current RSVP settings."""
-        if "rsvp" not in SETTINGS:
-            SETTINGS["rsvp"] = {}
-
-        SETTINGS["rsvp"]["wpm"] = self.wpm
-        SETTINGS["rsvp"]["font_size"] = self.font_size
-        SETTINGS["rsvp"]["chunk_size"] = self.chunk_size
-        SETTINGS["rsvp"]["dark_theme"] = self.is_dark_theme
-        SETTINGS["rsvp"]["audio_cue"] = self.audio_cue_enabled
-        SETTINGS["rsvp"]["show_context"] = self.show_context
-
-        save_settings(SETTINGS)
+        rsvp_config = {
+            "wpm": self.wpm,
+            "font_size": self.font_size,
+            "chunk_size": self.chunk_size,
+            "dark_theme": self.is_dark_theme,
+            "audio_cue": self.audio_cue_enabled,
+            "show_context": self.show_context,
+        }
+        settings_manager.set("rsvp", rsvp_config)
 
     def _handle_escape(self) -> None:
         """Handle Escape key - exit fullscreen first, then close."""

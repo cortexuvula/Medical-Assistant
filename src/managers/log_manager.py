@@ -9,6 +9,9 @@ import os
 import logging
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 from managers.data_folder_manager import data_folder_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LogManager:

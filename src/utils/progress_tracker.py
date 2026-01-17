@@ -6,10 +6,13 @@ to update UI elements during long operations.
 """
 
 import time
-import logging
 import tkinter as tk
 from typing import Callable, Optional, Dict, Any
 from dataclasses import dataclass
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -119,7 +122,7 @@ class ProgressTracker:
         try:
             self.callback(progress_info)
         except Exception as e:
-            logging.error(f"Error in progress callback: {e}")
+            logger.error(f"Error in progress callback: {e}")
 
 
 class DocumentGenerationProgress:
@@ -209,6 +212,6 @@ def create_progress_callback(status_manager, progress_bar=None) -> Callable[[Pro
                 pass
                 
         # Log progress
-        logging.debug(f"Progress: {progress.current}/{progress.total} - {progress.message}")
+        logger.debug(f"Progress: {progress.current}/{progress.total} - {progress.message}")
     
     return callback

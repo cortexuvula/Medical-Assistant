@@ -3,8 +3,10 @@
 Provides consolidated debug logging for API calls with sensitive data sanitization.
 """
 
-import logging
+from utils.structured_logging import get_logger
 from utils.validation import sanitize_for_logging
+
+logger = get_logger(__name__)
 
 
 def log_api_call_debug(provider: str, model: str, temperature: float, system_message: str, prompt: str) -> None:
@@ -22,13 +24,13 @@ def log_api_call_debug(provider: str, model: str, temperature: float, system_mes
         system_message: System message content
         prompt: User prompt content
     """
-    if logging.getLogger().isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(10):  # 10 = DEBUG level
         # Sanitize all content before logging
         safe_system = sanitize_for_logging(system_message, max_length=100)
         safe_prompt = sanitize_for_logging(prompt, max_length=100)
 
-        logging.debug(f"\n===== {provider.upper()} API CALL =====")
-        logging.debug(f"Model: {model}, Temperature: {temperature}")
-        logging.debug(f"System: {safe_system}")
-        logging.debug(f"Prompt: {safe_prompt}")
-        logging.debug("="*40)
+        logger.debug(f"\n===== {provider.upper()} API CALL =====")
+        logger.debug(f"Model: {model}, Temperature: {temperature}")
+        logger.debug(f"System: {safe_system}")
+        logger.debug(f"Prompt: {safe_prompt}")
+        logger.debug("="*40)

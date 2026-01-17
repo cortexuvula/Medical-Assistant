@@ -1,15 +1,34 @@
 """AI Provider Router Module.
 
 Routes API calls to the appropriate provider based on settings.
+Supports OpenAI, Anthropic, Ollama, and Gemini providers.
 
-Return Types:
-    - call_ai: Returns AIResult for type-safe error handling
-    - call_ai_streaming: Returns AIResult for type-safe error handling
+Error Handling:
+    - Returns AIResult for all operations (never raises exceptions to callers)
+    - AIResult.is_success: True if API call succeeded, False otherwise
+    - AIResult.text: The response text on success
+    - AIResult.error: Error message on failure
     - str(result) provides backward compatibility with code expecting strings
+    - Provider-specific errors (rate limits, auth failures) captured in AIResult
+
+Logging:
+    - Uses structured logging via get_logger(__name__)
+    - Logs provider selection, model, and response timing
+    - API errors logged with full context before wrapping in AIResult
+
+Usage:
+    result = call_ai(model, system_msg, prompt, temperature)
+    if result.is_success:
+        response_text = result.text
+    else:
+        handle_error(result.error)
 """
 
-import logging
 from typing import Callable
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ai.providers.base import get_model_key_for_task
 from ai.providers.openai_provider import call_openai, call_openai_streaming
@@ -62,7 +81,7 @@ def call_ai_streaming(
         return call_openai_streaming(actual_model, system_message, prompt, temperature, on_chunk)
     else:
         # Fall back to non-streaming for unsupported providers
-        logging.info(f"Streaming not supported for {provider}, using non-streaming")
+        logger.info(f"Streaming not supported for {provider}, using non-streaming")
         result = call_ai(model, system_message, prompt, temperature)
         on_chunk(str(result))  # Use str() for backward compatibility with on_chunk
         return result
@@ -106,9 +125,9 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
                 f.write(f"\n\n--- USER PROMPT (sanitized) ---\n")
                 f.write(sanitize_for_logging(prompt, max_length=2000))
                 f.write(f"\n\n=== END OF PROMPT ===\n")
-            logging.debug(f"Saved sanitized LLM prompt to: {debug_file_path}")
+            logger.debug(f"Saved sanitized LLM prompt to: {debug_file_path}")
         except Exception as e:
-            logging.debug(f"Failed to save prompt to debug file: {e}")
+            logger.debug(f"Failed to save prompt to debug file: {e}")
 
     # Reload settings from file to ensure we have the latest provider selection
     current_settings = load_settings()
@@ -124,7 +143,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         provider = current_settings.get("ai_provider", "openai")
 
     if provider not in VALID_PROVIDERS:
-        logging.warning(f"Invalid AI provider '{provider}', falling back to OpenAI")
+        logger.warning(f"Invalid AI provider '{provider}', falling back to OpenAI")
         provider = PROVIDER_OPENAI
 
     model_key = get_model_key_for_task(system_message, prompt)
@@ -145,7 +164,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
     # Handle different providers and get appropriate model
     # When provider is explicitly set, use the passed-in model; otherwise look it up from settings
     if provider == PROVIDER_OLLAMA:
-        logging.info(f"Using provider: Ollama for task: {model_key}")
+        logger.info(f"Using provider: Ollama for task: {model_key}")
         # Debug logging will happen in the actual API call
         return call_ollama(system_message, prompt, temperature)
     elif provider == PROVIDER_ANTHROPIC:
@@ -153,7 +172,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             actual_model = model
         else:
             actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
-        logging.info(f"Using provider: Anthropic with model: {actual_model}")
+        logger.info(f"Using provider: Anthropic with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_anthropic(actual_model, system_message, prompt, temperature)
     elif provider == PROVIDER_GEMINI:
@@ -161,7 +180,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             actual_model = model
         else:
             actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
-        logging.info(f"Using provider: Gemini with model: {actual_model}")
+        logger.info(f"Using provider: Gemini with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_gemini(actual_model, system_message, prompt, temperature)
     else:  # OpenAI is the default
@@ -169,6 +188,6 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             actual_model = model
         else:
             actual_model = current_settings.get(model_key, {}).get("model", model)
-        logging.info(f"Using provider: OpenAI with model: {actual_model}")
+        logger.info(f"Using provider: OpenAI with model: {actual_model}")
         # Debug logging will happen in the actual API call
         return call_openai(actual_model, system_message, prompt, temperature)

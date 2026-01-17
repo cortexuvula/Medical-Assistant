@@ -5,9 +5,11 @@ Handles the main text editor notebook with tabs
 
 import tkinter as tk
 import ttkbootstrap as ttk
-import logging
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
+
+logger = get_logger(__name__)
 from ui.ui_constants import Icons
 from settings.settings import SETTINGS, save_settings
 

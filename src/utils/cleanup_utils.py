@@ -6,8 +6,11 @@ including text widgets, audio segments, and other application data.
 """
 
 import tkinter as tk
-import logging
 from typing import Any, TYPE_CHECKING
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -23,7 +26,7 @@ def clear_all_content(app_instance: "MedicalDictationApp") -> None:
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """
-    logging.info("Clearing all application content")
+    logger.info("Clearing all application content")
 
     # Clear all text widgets
     widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
@@ -56,13 +59,13 @@ def clear_all_content(app_instance: "MedicalDictationApp") -> None:
     # Clear audio state via AudioStateManager
     if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
         app_instance.audio_state_manager.clear_all()
-        logging.info("Cleared all audio via AudioStateManager")
+        logger.info("Cleared all audio via AudioStateManager")
     
     
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
-        logging.info("Reset current recording ID")
+        logger.info("Reset current recording ID")
     
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
@@ -76,7 +79,7 @@ def clear_text_only(app_instance: "MedicalDictationApp") -> None:
     Args:
         app_instance: The main application instance with references to text widgets
     """
-    logging.info("Clearing all text content")
+    logger.info("Clearing all text content")
     
     # Clear all text widgets
     widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
@@ -102,12 +105,12 @@ def clear_audio_only(app_instance: "MedicalDictationApp") -> None:
     Args:
         app_instance: The main application instance with references to audio segments
     """
-    logging.info("Clearing all audio content")
+    logger.info("Clearing all audio content")
     
     # Clear audio state via AudioStateManager
     if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
         app_instance.audio_state_manager.clear_all()
-        logging.info("Cleared all audio via AudioStateManager")
+        logger.info("Cleared all audio via AudioStateManager")
     
     # Clear legacy audio segments (for backward compatibility)
     # Clear file-loaded audio segments
@@ -133,7 +136,7 @@ def clear_content_except_context(app_instance: "MedicalDictationApp") -> None:
     Args:
         app_instance: The main application instance with references to text widgets and audio segments
     """
-    logging.info("Clearing all application content except context")
+    logger.info("Clearing all application content except context")
     
     # Clear all text widgets EXCEPT context
     widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text]
@@ -150,13 +153,13 @@ def clear_content_except_context(app_instance: "MedicalDictationApp") -> None:
     # Clear audio state via AudioStateManager
     if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
         app_instance.audio_state_manager.clear_all()
-        logging.info("Cleared all audio via AudioStateManager")
+        logger.info("Cleared all audio via AudioStateManager")
     
     
     # Reset the current recording ID - this ensures we don't update the wrong database record
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
-        logging.info("Reset current recording ID")
+        logger.info("Reset current recording ID")
     
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):

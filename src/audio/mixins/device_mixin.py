@@ -4,7 +4,6 @@ Audio Device Management Mixin
 Provides device enumeration and management for the AudioHandler class.
 """
 
-import logging
 import platform
 import re
 from typing import List, Dict, Any, Optional, Tuple
@@ -25,6 +24,9 @@ except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
 
 from audio.constants import SAMPLE_RATE_48K
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DeviceMixin:
@@ -44,7 +46,7 @@ class DeviceMixin:
         try:
             devices = []
             if not SOUNDCARD_AVAILABLE:
-                logging.warning("Soundcard not available, returning empty device list")
+                logger.warning("Soundcard not available, returning empty device list")
                 return []
 
             mics = soundcard.all_microphones(include_loopback=False)
@@ -60,7 +62,7 @@ class DeviceMixin:
 
             return devices
         except Exception as e:
-            logging.error(f"Error getting input devices: {str(e)}", exc_info=True)
+            logger.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
 
     def _resolve_device_index(self, device_name: str) -> Optional[int]:
@@ -73,7 +75,7 @@ class DeviceMixin:
             Device index or None if not found.
         """
         if not SOUNDDEVICE_AVAILABLE:
-            logging.error("Sounddevice not available, cannot resolve device index")
+            logger.error("Sounddevice not available, cannot resolve device index")
             return None
 
         # Sanitize device name to prevent log injection attacks
@@ -138,12 +140,12 @@ class DeviceMixin:
                     potential_id = int(match.group(1))
                     if potential_id in input_device_indices:
                         device_id = potential_id
-                        logging.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
+                        logger.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
             except Exception as e:
                 logging.debug(f"Failed to extract device index from name: {e}")
 
         if device_id is None:
-            logging.error(f"Could not find device '{device_name}' in sounddevice list")
+            logger.error(f"Could not find device '{device_name}' in sounddevice list")
 
         return device_id
 
@@ -157,7 +159,7 @@ class DeviceMixin:
             Tuple of (channels, sample_rate).
         """
         if not SOUNDDEVICE_AVAILABLE:
-            logging.error("Sounddevice not available")
+            logger.error("Sounddevice not available")
             return 1, SAMPLE_RATE_48K
 
         device_info = sd.query_devices(device_id)
@@ -170,9 +172,9 @@ class DeviceMixin:
             if max_channels >= 1:
                 channels = 1
             else:
-                logging.warning(f"Device {device_info['name']} reports {max_channels} input channels")
+                logger.warning(f"Device {device_info['name']} reports {max_channels} input channels")
         except Exception as e:
-            logging.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
+            logger.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
 
         self.channels = channels
         # Use 48000 Hz for better quality, falling back to device default if not supported

@@ -10,14 +10,13 @@ from tkinter import messagebox, scrolledtext, filedialog, ttk as tk_ttk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from typing import Dict, Any, Optional, List
-import logging
 import json
 from datetime import datetime
 import os
 
-from settings.settings import load_settings, save_settings
+from settings.settings_manager import settings_manager
 from ai.agents.models import (
-    AgentType, ResponseFormat, RetryStrategy, RetryConfig, 
+    AgentType, ResponseFormat, RetryStrategy, RetryConfig,
     AdvancedConfig, SubAgentConfig, AgentConfig, AgentTemplate
 )
 from ai.agents.synopsis import SynopsisAgent
@@ -26,8 +25,10 @@ from ui.dialogs.sub_agent_dialog import SubAgentDialog
 from ui.dialogs.template_selection_dialog import TemplateSelectionDialog
 from ui.dialogs.save_template_dialog import SaveTemplateDialog
 from ai.model_provider import model_provider
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AdvancedAgentSettingsDialog(AgentSettingsDialog):
@@ -639,10 +640,15 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
             self.test_results[agent_key] = True
             
         except Exception as e:
+            ctx = ErrorContext.capture(
+                operation="Testing agent configuration",
+                exception=e,
+                input_summary=f"agent={agent_key}"
+            )
             if test_label:
-                test_label.config(text=f"✗ Error: {str(e)}", foreground="red")
+                test_label.config(text=f"✗ Error: {ctx.user_message}", foreground="red")
             self.test_results[agent_key] = False
-            logger.error(f"Error testing agent {agent_key}: {e}")
+            logger.warning(ctx.to_log_string())
         
     def _get_default_config(self, agent_type: AgentType) -> dict:
         """Get default configuration for an agent type."""
@@ -708,12 +714,18 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
                     )
                     
             except Exception as e:
+                ctx = ErrorContext.capture(
+                    operation="Importing agent configuration",
+                    exception=e,
+                    input_summary=f"file={filename}"
+                )
+                logger.error(ctx.to_log_string())
                 messagebox.showerror(
                     "Import Error",
-                    f"Failed to import configuration: {str(e)}",
+                    ctx.user_message,
                     parent=self.dialog
                 )
-                
+
     def _export_configuration(self):
         """Export current agent configuration to file."""
         filename = filedialog.asksaveasfilename(
@@ -743,12 +755,18 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
                 )
                 
             except Exception as e:
+                ctx = ErrorContext.capture(
+                    operation="Exporting agent configuration",
+                    exception=e,
+                    input_summary=f"file={filename}"
+                )
+                logger.error(ctx.to_log_string())
                 messagebox.showerror(
                     "Export Error",
-                    f"Failed to export configuration: {str(e)}",
+                    ctx.user_message,
                     parent=self.dialog
                 )
-                
+
     def load_templates(self):
         """Load available agent templates."""
         # This would load from a templates directory or database
@@ -824,8 +842,8 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
                 if agent_key in self.widgets:
                     self.settings["agent_config"][agent_key] = self._get_agent_config(agent_key)
 
-            # Save to file
-            save_settings(self.settings)
+            # Save to file using settings_manager
+            settings_manager.set("agent_config", self.settings["agent_config"])
 
             # Reload agents to apply new settings
             from managers.agent_manager import agent_manager
@@ -840,10 +858,14 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
             self.dialog.destroy()
 
         except Exception as e:
-            logger.error(f"Error saving agent settings: {e}")
+            ctx = ErrorContext.capture(
+                operation="Saving agent settings",
+                exception=e
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Save Error",
-                f"Failed to save settings: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 

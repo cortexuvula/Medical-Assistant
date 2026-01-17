@@ -8,11 +8,14 @@ Return Types:
     - str(result) provides backward compatibility with code expecting strings
 """
 
-import logging
 import httpx
 from typing import List, Dict, Callable
 
 from anthropic import Anthropic
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Mapping of deprecated Anthropic models to their current replacements
@@ -44,7 +47,7 @@ def _normalize_model_name(model: str) -> str:
     """
     if model in DEPRECATED_MODEL_MAPPING:
         new_model = DEPRECATED_MODEL_MAPPING[model]
-        logging.warning(
+        logger.warning(
             f"Model '{model}' is deprecated, using '{new_model}' instead. "
             f"Please update your settings to use the new model name."
         )
@@ -162,14 +165,14 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     # Get API key from secure storage or environment
     api_key = security_manager.get_api_key("anthropic")
     if not api_key:
-        logging.error("Anthropic API key not provided")
+        logger.error("Anthropic API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
         return AIResult.failure(message, error_code=title)
 
     # Validate API key format
     is_valid, error = validate_api_key("anthropic", api_key)
     if not is_valid:
-        logging.error(f"Invalid Anthropic API key: {error}")
+        logger.error(f"Invalid Anthropic API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
         return AIResult.failure(message, error_code=title)
 
@@ -184,7 +187,7 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     system_message = security_manager.sanitize_input(system_message, "prompt")
 
     try:
-        logging.info(f"Making Anthropic API call with model: {model}")
+        logger.info(f"Making Anthropic API call with model: {model}")
 
         # Use consolidated debug logging
         log_api_call_debug("Anthropic", model, temperature, system_message, prompt)
@@ -206,16 +209,16 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         text = response.content[0].text.strip()
         return AIResult.success(text, model=model, provider="anthropic")
     except APITimeoutError as e:
-        logging.error(f"Anthropic API timeout with model {model}: {str(e)}")
+        logger.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
-        logging.error(f"Anthropic API error with model {model}: {str(e)}")
+        logger.error(f"Anthropic API error with model {model}: {str(e)}")
         error_code, details = format_api_error("anthropic", e)
         title, message = get_error_message(error_code, details, model)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
-        logging.error(f"Unexpected error calling Anthropic: {str(e)}")
+        logger.error(f"Unexpected error calling Anthropic: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
         return AIResult.failure(message, error_code=title, exception=e)
 
@@ -274,7 +277,7 @@ def call_anthropic_streaming(
     system_message = security_manager.sanitize_input(system_message, "prompt")
 
     try:
-        logging.info(f"Making streaming Anthropic API call with model: {model}")
+        logger.info(f"Making streaming Anthropic API call with model: {model}")
         log_api_call_debug("Anthropic (streaming)", model, temperature, system_message, prompt)
 
         timeout_seconds = get_timeout("anthropic")
@@ -296,7 +299,7 @@ def call_anthropic_streaming(
         return AIResult.success(full_response.strip(), model=model, provider="anthropic")
 
     except Exception as e:
-        logging.error(f"Streaming Anthropic error with model {model}: {str(e)}")
+        logger.error(f"Streaming Anthropic error with model {model}: {str(e)}")
         result = AIResult.failure(str(e), error_code="STREAMING_ERROR", exception=e)
         on_chunk(str(result))
         return result

@@ -6,12 +6,13 @@ detecting new, unchanged, moved, and removed diagnoses.
 """
 
 import re
-import logging
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DifferentialStatus(Enum):

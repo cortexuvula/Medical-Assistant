@@ -8,8 +8,10 @@ import tkinter as tk
 import ttkbootstrap as ttk
 
 import threading
-import logging
 from typing import TYPE_CHECKING, Optional, Callable
+
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
 if TYPE_CHECKING:
     from managers.tts_manager import TTSManager
@@ -21,7 +23,7 @@ class TTSMixin:
     dialog: Optional[tk.Toplevel]
     tts_manager: "TTSManager"
     patient_language: str
-    logger: logging.Logger
+    logger: "get_logger"  # Uses structured logger
 
     # UI components
     doctor_translated_text: tk.Text
@@ -59,9 +61,14 @@ class TTSMixin:
                     lambda: self._on_playback_complete()
                 ))
             except Exception as e:
-                self.logger.error(f"TTS playback failed: {e}", exc_info=True)
-                self._safe_after(0, lambda err=str(e): self._safe_ui_update(
-                    lambda: self._on_playback_error(err)
+                ctx = ErrorContext.capture(
+                    operation="TTS playback",
+                    exception=e,
+                    input_summary=f"language={self.patient_language}"
+                )
+                self.logger.error(ctx.to_log_string(), exc_info=True)
+                self._safe_after(0, lambda msg=ctx.user_message: self._safe_ui_update(
+                    lambda: self._on_playback_error(msg)
                 ))
 
         threading.Thread(target=synthesize_and_play, daemon=True).start()
@@ -90,7 +97,11 @@ class TTSMixin:
             self.stop_button.config(state=tk.DISABLED)
             self.recording_status.config(text="Playback stopped", foreground="orange")
         except Exception as e:
-            self.logger.error(f"Failed to stop playback: {e}")
+            ctx = ErrorContext.capture(
+                operation="Stopping TTS playback",
+                exception=e
+            )
+            self.logger.error(ctx.to_log_string())
 
     def _preview_translation(self):
         """Preview the translation audio for the doctor (at lower volume)."""
@@ -114,9 +125,14 @@ class TTSMixin:
                     lambda: self._on_preview_complete()
                 ))
             except Exception as e:
-                self.logger.error(f"Preview failed: {e}", exc_info=True)
-                self._safe_after(0, lambda: self._safe_ui_update(
-                    lambda: self._on_preview_error(str(e))
+                ctx = ErrorContext.capture(
+                    operation="TTS preview",
+                    exception=e,
+                    input_summary=f"language={self.patient_language}"
+                )
+                self.logger.error(ctx.to_log_string(), exc_info=True)
+                self._safe_after(0, lambda msg=ctx.user_message: self._safe_ui_update(
+                    lambda: self._on_preview_error(msg)
                 ))
 
         threading.Thread(target=preview_audio, daemon=True).start()

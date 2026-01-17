@@ -6,15 +6,15 @@ Supports SOAP notes, referrals, and other clinical documents.
 """
 
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
+from utils.structured_logging import get_logger
 
 from exporters.base_exporter import BaseExporter
 from exporters.fhir_config import FHIRExportConfig
 from exporters.fhir_resources import FHIRResourceBuilder
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FHIRExporter(BaseExporter):

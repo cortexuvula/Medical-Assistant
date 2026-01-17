@@ -4,16 +4,19 @@ FFmpeg utilities for bundled FFmpeg support
 import os
 import sys
 import platform
-import logging
 import subprocess
 from pathlib import Path
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 def get_ffmpeg_path():
     """Get the path to FFmpeg executable, preferring bundled version if available."""
     
     # For Linux, always use system ffmpeg to avoid library dependency issues
     if platform.system() == 'Linux':
-        logging.info("Using system FFmpeg on Linux")
+        logger.info("Using system FFmpeg on Linux")
         return 'ffmpeg'
     
     # Check if we're running as a PyInstaller bundle
@@ -30,10 +33,10 @@ def get_ffmpeg_path():
         bundled_ffmpeg = os.path.join(bundle_dir, 'ffmpeg', ffmpeg_exe)
         
         if os.path.exists(bundled_ffmpeg):
-            logging.info(f"Using bundled FFmpeg: {bundled_ffmpeg}")
+            logger.info(f"Using bundled FFmpeg: {bundled_ffmpeg}")
             return bundled_ffmpeg
         else:
-            logging.warning(f"Bundled FFmpeg not found at: {bundled_ffmpeg}")
+            logger.warning(f"Bundled FFmpeg not found at: {bundled_ffmpeg}")
     
     # Fallback to system FFmpeg
     return 'ffmpeg'
@@ -43,7 +46,7 @@ def get_ffprobe_path():
     
     # For Linux, always use system ffprobe to avoid library dependency issues
     if platform.system() == 'Linux':
-        logging.info("Using system FFprobe on Linux")
+        logger.info("Using system FFprobe on Linux")
         return 'ffprobe'
     
     # Check if we're running as a PyInstaller bundle
@@ -60,10 +63,10 @@ def get_ffprobe_path():
         bundled_ffprobe = os.path.join(bundle_dir, 'ffmpeg', ffprobe_exe)
         
         if os.path.exists(bundled_ffprobe):
-            logging.info(f"Using bundled FFprobe: {bundled_ffprobe}")
+            logger.info(f"Using bundled FFprobe: {bundled_ffprobe}")
             return bundled_ffprobe
         else:
-            logging.warning(f"Bundled FFprobe not found at: {bundled_ffprobe}")
+            logger.warning(f"Bundled FFprobe not found at: {bundled_ffprobe}")
     
     # Fallback to system FFprobe
     return 'ffprobe'
@@ -109,7 +112,7 @@ def configure_pydub():
         subprocess.Popen = no_window_popen
         logging.debug("Configured pydub and subprocess to suppress console windows on Windows")
     
-    logging.info(f"Configured pydub with FFmpeg: {ffmpeg_path}")
+    logger.info(f"Configured pydub with FFmpeg: {ffmpeg_path}")
     
     # Pre-initialize pydub by creating a tiny silent segment
     # This forces pydub to check FFmpeg availability at startup
@@ -119,4 +122,4 @@ def configure_pydub():
         silent = AudioSegment.silent(duration=1)
         logging.debug("Pre-initialized pydub with silent segment")
     except Exception as e:
-        logging.warning(f"Could not pre-initialize pydub: {e}")
+        logger.warning(f"Could not pre-initialize pydub: {e}")

@@ -7,9 +7,11 @@ Provides panel creation for red flags and investigations tracking.
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, BOTH, Y, VERTICAL, LEFT, RIGHT, W
-import logging
 from tkinter import messagebox
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from database.database import Database
@@ -255,7 +257,7 @@ class PanelsMixin:
                 parent=self.dialog if self.dialog else self.parent
             )
         except Exception as e:
-            logging.error(f"Error saving investigation status: {e}")
+            logger.error(f"Error saving investigation status: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to save status: {e}",

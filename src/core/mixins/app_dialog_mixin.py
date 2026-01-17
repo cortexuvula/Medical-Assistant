@@ -6,7 +6,6 @@ Extracted from app.py for better separation of concerns.
 """
 
 import os
-import logging
 from typing import TYPE_CHECKING, Optional, Tuple
 from tkinter import NORMAL, DISABLED
 
@@ -18,11 +17,12 @@ from ui.dialogs.dialogs import (
     show_deepgram_settings_dialog,
     show_groq_settings_dialog
 )
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from audio.audio import AudioHandler
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AppDialogMixin:

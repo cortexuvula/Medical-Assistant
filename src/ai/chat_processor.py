@@ -1,15 +1,39 @@
 """
 Chat Processor for Medical Assistant
-Handles LLM interactions for conversational AI features
+
+Handles LLM interactions for conversational AI features including
+multi-turn conversations, tool execution, and streaming responses.
+
+Error Handling:
+    - Raises ServiceUnavailableError: When AI provider circuit breaker is open
+    - Uses CircuitBreaker pattern for provider resilience (5 failures = open)
+    - Graceful degradation when MCP servers are unavailable
+    - Tool execution errors captured and reported to user
+    - Streaming callbacks receive error events on failure
+
+Logging:
+    - Uses structured logging via get_logger(__name__)
+    - Logs include provider, model, message counts, and timing
+    - Tool calls and results logged for debugging
+    - MCP server health status logged
+
+Thread Safety:
+    - Conversation history protected by threading.Lock
+    - MCP tool registration is thread-safe via mcp_manager
+    - Streaming responses run on separate threads
+    - Circuit breaker state is thread-safe
 """
 
-import logging
 import threading
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 import time
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from ai.agents.chat import ChatAgent
 from ai.agents.models import AgentTask
 from ai.tools.tool_executor import ToolExecutor
@@ -59,7 +83,7 @@ class ChatProcessor:
         )
 
         # Configuration from settings
-        chat_config = SETTINGS.get("chat_interface", {})
+        chat_config = settings_manager.get_chat_settings()
         self.max_context_length = chat_config.get("max_context_length", 8000)
         self.max_history_items = chat_config.get("max_history_items", 10)
         self.temperature = chat_config.get("temperature", 0.3)
@@ -89,7 +113,7 @@ class ChatProcessor:
             callback: Optional callback to call when processing is complete
         """
         if self.is_processing:
-            logging.warning("Chat processor is already processing a message")
+            logger.warning("Chat processor is already processing a message")
             return
             
         # Run processing in a separate thread to avoid blocking UI
@@ -138,7 +162,7 @@ class ChatProcessor:
                 self.app.status_manager.error("Failed to get AI response")
 
         except Exception as e:
-            logging.error(f"Error processing chat message: {e}", exc_info=True)
+            logger.error(f"Error processing chat message: {e}", exc_info=True)
             self.app.status_manager.error(f"Chat processing error: {str(e)}")
             # Hide typing indicator on error
             self._hide_typing_indicator()
@@ -181,7 +205,7 @@ class ChatProcessor:
                         context["content"] = content[:self.max_context_length] + "...[truncated]"
                         
         except Exception as e:
-            logging.error(f"Error extracting context: {e}")
+            logger.error(f"Error extracting context: {e}")
             
         return context
         
@@ -324,7 +348,7 @@ class ChatProcessor:
         """
         # Check circuit breaker state first
         if self._ai_circuit_breaker.state == CircuitState.OPEN:
-            logging.warning("AI circuit breaker is OPEN - service unavailable")
+            logger.warning("AI circuit breaker is OPEN - service unavailable")
             self.app.status_manager.warning(
                 "AI service temporarily unavailable. Please try again in a minute."
             )
@@ -341,7 +365,7 @@ class ChatProcessor:
 
         # Check if we should use the chat agent with tools
         if user_message and self._should_use_tools(user_message):
-            logging.info("Using chat agent with tools for this request")
+            logger.info("Using chat agent with tools for this request")
 
             # Create an agent task with just the user message
             task = AgentTask(
@@ -358,13 +382,13 @@ class ChatProcessor:
 
                 # Log tool usage
                 if response.tool_calls:
-                    logging.info(f"Used {len(response.tool_calls)} tools")
+                    logger.info(f"Used {len(response.tool_calls)} tools")
                     for tool_call in response.tool_calls:
-                        logging.info(f"Tool: {tool_call.tool_name}")
+                        logger.info(f"Tool: {tool_call.tool_name}")
 
                 # Debug log the response
-                logging.debug(f"Chat agent response length: {len(response.result) if response.result else 0}")
-                logging.debug(f"Response preview: {response.result[:200] if response.result else 'None'}...")
+                logger.debug(f"Chat agent response length: {len(response.result) if response.result else 0}")
+                logger.debug(f"Response preview: {response.result[:200] if response.result else 'None'}...")
 
                 tool_info = {
                     "tool_calls": response.tool_calls,
@@ -372,14 +396,14 @@ class ChatProcessor:
                 }
                 return response.result, tool_info
             else:
-                logging.error(f"Chat agent failed: {response.error}")
+                logger.error(f"Chat agent failed: {response.error}")
                 # Fall back to regular AI (will be handled by the retry loop below)
 
         # Import AI functions
         from ai.ai import call_openai, call_ai
 
         # Get current AI provider setting
-        provider = SETTINGS.get("ai_provider", "openai").lower()
+        provider = settings_manager.get_ai_provider().lower()
         system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
 
         # Retry loop with exponential backoff
@@ -387,7 +411,7 @@ class ChatProcessor:
         for attempt in range(max_retries):
             try:
                 if provider == PROVIDER_OPENAI:
-                    model = SETTINGS.get("openai", {}).get("model", "gpt-4")
+                    model = settings_manager.get_nested("openai.model", "gpt-4")
                     response = call_openai(
                         model=model,
                         system_message=system_message,
@@ -396,7 +420,7 @@ class ChatProcessor:
                     )
                 else:
                     # Fallback to generic call_ai function
-                    logging.warning(f"Unknown provider '{provider}', using fallback")
+                    logger.warning(f"Unknown provider '{provider}', using fallback")
                     response = call_ai(
                         model="gpt-4",
                         system_message=system_message,
@@ -426,7 +450,7 @@ class ChatProcessor:
                 if is_retryable and attempt < max_retries - 1:
                     # Exponential backoff: 1s, 2s, 4s
                     wait_time = 2 ** attempt
-                    logging.warning(
+                    logger.warning(
                         f"AI request failed (attempt {attempt + 1}/{max_retries}), "
                         f"retrying in {wait_time}s: {e}"
                     )
@@ -434,14 +458,14 @@ class ChatProcessor:
                 elif attempt < max_retries - 1:
                     # Non-retryable error but still have attempts left
                     # Try once more with minimal delay
-                    logging.warning(
+                    logger.warning(
                         f"AI request failed (attempt {attempt + 1}/{max_retries}): {e}"
                     )
                     time.sleep(0.5)
                 else:
                     # Final attempt failed - record failure in circuit breaker
                     self._ai_circuit_breaker._on_failure()
-                    logging.error(
+                    logger.error(
                         f"AI request failed after {max_retries} attempts: {e}",
                         exc_info=True
                     )
@@ -461,7 +485,7 @@ class ChatProcessor:
             # Check if user wants to apply changes to the document
             if self._should_apply_to_document(user_message, ai_response):
                 # Check if auto-apply is enabled (default: True)
-                chat_config = SETTINGS.get("chat_interface", {})
+                chat_config = settings_manager.get_chat_settings()
                 auto_apply = chat_config.get("auto_apply_changes", True)
                 
                 if auto_apply:
@@ -478,13 +502,13 @@ class ChatProcessor:
         def show_notification():
             try:
                 # Log the full response for debugging
-                logging.info(f"AI Response received: {response[:200]}{'...' if len(response) > 200 else ''}")
+                logger.info(f"AI Response received: {response[:200]}{'...' if len(response) > 200 else ''}")
                 
                 # Show brief notification in status bar
                 self.app.status_manager.info("AI response processed and applied")
                 
             except Exception as e:
-                logging.error(f"Error showing AI response notification: {e}")
+                logger.error(f"Error showing AI response notification: {e}")
                 
         # Show on main thread
         self.app.after(0, show_notification)
@@ -534,15 +558,15 @@ class ChatProcessor:
         def apply_changes():
             try:
                 # Log the AI response for debugging
-                logging.info(f"AI Response received: {ai_response[:200]}...")
+                logger.info(f"AI Response received: {ai_response[:200]}...")
                 
                 # Extract the actual content from the AI response
                 content_to_apply = self._extract_content_from_response(ai_response)
                 
                 # Log extracted content
-                logging.info(f"Extracted content length: {len(content_to_apply) if content_to_apply else 0}")
+                logger.info(f"Extracted content length: {len(content_to_apply) if content_to_apply else 0}")
                 if content_to_apply:
-                    logging.info(f"Extracted content preview: {content_to_apply[:100]}...")
+                    logger.info(f"Extracted content preview: {content_to_apply[:100]}...")
                 
                 if content_to_apply and hasattr(self.app, 'active_text_widget') and self.app.active_text_widget:
                     # Automatically replace content without asking
@@ -553,13 +577,13 @@ class ChatProcessor:
                     tab_name = context_data.get("tab_name", "document").title()
                     self.app.status_manager.success(f"{tab_name} updated with AI response")
                     
-                    logging.info(f"Auto-applied AI response to {tab_name} tab")
+                    logger.info(f"Auto-applied AI response to {tab_name} tab")
                 else:
-                    logging.warning(f"No content to apply or no active text widget. Content: {bool(content_to_apply)}, Widget: {hasattr(self.app, 'active_text_widget')}")
+                    logger.warning(f"No content to apply or no active text widget. Content: {bool(content_to_apply)}, Widget: {hasattr(self.app, 'active_text_widget')}")
                     self.app.status_manager.warning("No content to apply to document")
                         
             except Exception as e:
-                logging.error(f"Error applying AI response to document: {e}", exc_info=True)
+                logger.error(f"Error applying AI response to document: {e}", exc_info=True)
                 self.app.status_manager.error("Failed to apply changes")
                 
         # Apply on main thread
@@ -596,7 +620,7 @@ class ChatProcessor:
                     self.app.status_manager.warning("No content to apply to document")
                         
             except Exception as e:
-                logging.error(f"Error applying AI response to document: {e}")
+                logger.error(f"Error applying AI response to document: {e}")
                 self.app.status_manager.error("Failed to apply changes")
                 
         # Apply on main thread
@@ -707,7 +731,7 @@ class ChatProcessor:
     def clear_history(self):
         """Clear conversation history."""
         self.conversation_history = []
-        logging.info("Chat conversation history cleared")
+        logger.info("Chat conversation history cleared")
 
     def get_circuit_breaker_status(self) -> str:
         """Get the current circuit breaker status.
@@ -725,7 +749,7 @@ class ChatProcessor:
         issue has been resolved (e.g., API key fixed, service restored).
         """
         self._ai_circuit_breaker.reset()
-        logging.info("Chat AI circuit breaker manually reset")
+        logger.info("Chat AI circuit breaker manually reset")
         self.app.status_manager.success("AI service circuit breaker reset")
 
     def get_history(self) -> list:
@@ -772,13 +796,13 @@ class ChatProcessor:
             while len(result) == 1 and not result[0]:
                 time.sleep(0.1)
                 if time.time() - start_time > timeout:
-                    logging.warning("Tool confirmation timed out")
+                    logger.warning("Tool confirmation timed out")
                     return False
                     
             return result[0]
             
         except Exception as e:
-            logging.error(f"Error showing tool confirmation: {e}")
+            logger.error(f"Error showing tool confirmation: {e}")
             return False  # Deny on error
     
     def _append_to_chat_tab(self, user_message: str, ai_response: str, tool_info: Dict[str, Any] = None):
@@ -879,15 +903,15 @@ class ChatProcessor:
                         full_chat = chat_widget.get("1.0", "end-1c")
                         # Update database
                         if self.app.db.update_recording(self.app.current_recording_id, chat=full_chat):
-                            logging.info(f"Updated recording {self.app.current_recording_id} with chat content")
+                            logger.info(f"Updated recording {self.app.current_recording_id} with chat content")
                     except Exception as e:
-                        logging.error(f"Failed to save chat to database: {e}")
+                        logger.error(f"Failed to save chat to database: {e}")
                 
                 # Update status
                 self.app.status_manager.success("Chat response added")
                 
             except Exception as e:
-                logging.error(f"Error appending to chat tab: {e}")
+                logger.error(f"Error appending to chat tab: {e}")
                 self.app.status_manager.error("Failed to add chat response")
         
         # Execute on main thread
@@ -907,7 +931,7 @@ class ChatProcessor:
                     # Update status
                     self.app.status_manager.success("Chat history cleared")
                 except Exception as e:
-                    logging.error(f"Error clearing chat: {e}")
+                    logger.error(f"Error clearing chat: {e}")
                     self.app.status_manager.error("Failed to clear chat")
             
             self.app.after(0, clear_chat)
@@ -942,7 +966,7 @@ class ChatProcessor:
                 self._animate_typing_indicator()
 
             except Exception as e:
-                logging.debug(f"Error showing typing indicator: {e}")
+                logger.debug(f"Error showing typing indicator: {e}")
 
         # Execute on main thread
         self.app.after(0, show)
@@ -969,7 +993,7 @@ class ChatProcessor:
                 self._typing_animation_id = self.app.after(500, animate)
 
             except Exception as e:
-                logging.debug(f"Error animating typing indicator: {e}")
+                logger.debug(f"Error animating typing indicator: {e}")
 
         animate()
 
@@ -995,7 +1019,7 @@ class ChatProcessor:
                 self._typing_frame_index = 0
 
             except Exception as e:
-                logging.debug(f"Error hiding typing indicator: {e}")
+                logger.debug(f"Error hiding typing indicator: {e}")
 
         # Execute on main thread
         self.app.after(0, hide)
@@ -1010,9 +1034,9 @@ class ChatProcessor:
             
             # Show brief success message
             self.app.status_manager.success("Response copied to clipboard")
-            logging.info("Assistant response copied to clipboard")
+            logger.info("Assistant response copied to clipboard")
         except Exception as e:
-            logging.error(f"Failed to copy to clipboard: {e}")
+            logger.error(f"Failed to copy to clipboard: {e}")
             self.app.status_manager.error("Failed to copy response")
     
     def _show_copy_menu(self, event, response_text: str):
@@ -1039,7 +1063,7 @@ class ChatProcessor:
                 context_menu.grab_release()
                 
         except Exception as e:
-            logging.error(f"Error showing context menu: {e}")
+            logger.error(f"Error showing context menu: {e}")
     
     def _select_response(self, event, start_idx, end_idx):
         """Select an entire response when double-clicked."""
@@ -1056,12 +1080,12 @@ class ChatProcessor:
             event.widget.focus_set()
             
         except Exception as e:
-            logging.error(f"Error selecting response: {e}")
+            logger.error(f"Error selecting response: {e}")
     
     def _initialize_mcp(self):
         """Initialize MCP manager and register tools."""
         try:
-            mcp_config = SETTINGS.get("mcp_config", {})
+            mcp_config = settings_manager.get("mcp_config", {})
 
             # Load MCP servers
             mcp_manager.load_config(mcp_config)
@@ -1070,7 +1094,7 @@ class ChatProcessor:
             if mcp_config.get("enabled", False):
                 registered = register_mcp_tools(tool_registry, mcp_manager)
                 if registered > 0:
-                    logging.info(f"Registered {registered} MCP tools")
+                    logger.info(f"Registered {registered} MCP tools")
 
                 # Start health monitor for automatic server recovery
                 health_monitor.start()
@@ -1079,7 +1103,7 @@ class ChatProcessor:
                 health_monitor.stop()
 
         except Exception as e:
-            logging.error(f"Error initializing MCP: {e}")
+            logger.error(f"Error initializing MCP: {e}")
     
     def reload_mcp_tools(self):
         """Reload MCP tools after configuration change."""
@@ -1104,7 +1128,7 @@ class ChatProcessor:
                 self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
 
         except Exception as e:
-            logging.error(f"Error reloading MCP tools: {e}")
+            logger.error(f"Error reloading MCP tools: {e}")
     
     def set_tools_enabled(self, enabled: bool):
         """Enable or disable tool usage.
@@ -1123,9 +1147,4 @@ class ChatProcessor:
             self.chat_agent = None
             
         # Update settings
-        chat_config = SETTINGS.get("chat_interface", {})
-        chat_config["enable_tools"] = enabled
-        SETTINGS["chat_interface"] = chat_config
-        
-        from settings.settings import save_settings
-        save_settings(SETTINGS)
+        settings_manager.set_nested("chat_interface.enable_tools", enabled)

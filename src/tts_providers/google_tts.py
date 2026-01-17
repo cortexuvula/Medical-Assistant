@@ -2,7 +2,6 @@
 Google Text-to-Speech (gTTS) provider implementation.
 """
 
-import logging
 import io
 from typing import List, Dict, Optional
 from gtts import gTTS, lang

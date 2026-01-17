@@ -5,7 +5,6 @@ Provides functionality for building and executing chains of agents
 with conditional routing and data transformation.
 """
 
-import logging
 import uuid
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
@@ -18,8 +17,9 @@ from ai.agents.models import (
 )
 from managers.agent_manager import agent_manager
 from utils.safe_eval import safe_eval
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ExecutionContext:

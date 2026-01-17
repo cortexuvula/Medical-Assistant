@@ -7,13 +7,15 @@ Provides persistent rate limiting for API calls with sliding window algorithm.
 import os
 import json
 import time
-import logging
 import threading
 from pathlib import Path
 from typing import Dict, Optional, Any, Tuple, List
 from threading import Lock
+from utils.structured_logging import get_logger
 
 from core.config import get_config
+
+logger = get_logger(__name__)
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
     STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
@@ -53,7 +55,7 @@ class RateLimiter:
         Args:
             storage_path: Path to rate limit data file (default: config/.rate_limits.json)
         """
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
         self._global_lock = Lock()
         # Changed from defaultdict to regular dict with timestamps
         # Format: {key: (Lock, last_access_time)}
@@ -137,7 +139,7 @@ class RateLimiter:
             del self._key_locks[key]
 
         if expired_keys:
-            self.logger.debug(f"Cleaned up {len(expired_keys)} expired locks")
+            logger.debug(f"Cleaned up {len(expired_keys)} expired locks")
 
         # Safety limit: if still over MAX_LOCKS, remove oldest
         if len(self._key_locks) > self.MAX_LOCKS:
@@ -156,7 +158,7 @@ class RateLimiter:
                         lock.release()
                         del self._key_locks[key]
 
-            self.logger.debug(f"Removed {remove_count} locks to stay under MAX_LOCKS")
+            logger.debug(f"Removed {remove_count} locks to stay under MAX_LOCKS")
 
     def _load_from_disk(self) -> None:
         """Load rate limit data from disk."""
@@ -184,13 +186,13 @@ class RateLimiter:
                                 "window_seconds": window
                             }
 
-                self.logger.debug(f"Loaded rate limit data for {len(self._limits)} keys")
+                logger.debug(f"Loaded rate limit data for {len(self._limits)} keys")
 
         except json.JSONDecodeError as e:
-            self.logger.warning(f"Invalid rate limit data file, starting fresh: {e}")
+            logger.warning(f"Invalid rate limit data file, starting fresh: {e}")
             self._limits = {}
         except Exception as e:
-            self.logger.warning(f"Could not load rate limit data: {e}")
+            logger.warning(f"Could not load rate limit data: {e}")
             self._limits = {}
 
     def _save_to_disk(self, force: bool = False) -> None:
@@ -241,10 +243,10 @@ class RateLimiter:
                 if os.name == 'posix':
                     os.chmod(self.storage_path, 0o600)
 
-                self.logger.debug(f"Saved rate limit data for {len(cleaned_data)} keys")
+                logger.debug(f"Saved rate limit data for {len(cleaned_data)} keys")
 
             except Exception as e:
-                self.logger.warning(f"Could not save rate limit data: {e}")
+                logger.warning(f"Could not save rate limit data: {e}")
 
         # Run save in background thread to avoid blocking
         save_thread = threading.Thread(target=_do_save, daemon=True)
@@ -373,7 +375,7 @@ class RateLimiter:
             window_seconds: Time window in seconds (default: 60)
         """
         self.default_limits[provider] = (calls_per_window, window_seconds)
-        self.logger.info(f"Set rate limit for {provider}: {calls_per_window} calls/{window_seconds}s")
+        logger.info(f"Set rate limit for {provider}: {calls_per_window} calls/{window_seconds}s")
 
     def get_usage_stats(self, provider: str, identifier: Optional[str] = None) -> Dict[str, Any]:
         """Get usage statistics for a provider.
@@ -447,14 +449,14 @@ class RateLimiter:
             if key in self._limits:
                 del self._limits[key]
                 self._save_to_disk(force=True)
-                self.logger.info(f"Reset rate limit data for {key}")
+                logger.info(f"Reset rate limit data for {key}")
 
     def reset_all(self) -> None:
         """Reset all rate limit data."""
         with self._global_lock:
             self._limits = {}
             self._save_to_disk(force=True)
-            self.logger.info("Reset all rate limit data")
+            logger.info("Reset all rate limit data")
 
     def flush(self) -> None:
         """Force save current state to disk."""

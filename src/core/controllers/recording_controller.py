@@ -19,7 +19,6 @@ Migration Guide:
     from core.controllers.recording_controller import RecordingController
 """
 
-import logging
 import threading
 import tkinter as tk
 from tkinter import messagebox
@@ -29,11 +28,12 @@ from core.handlers.recovery_handler import RecoveryHandler
 from core.handlers.pause_resume_handler import PauseResumeHandler
 from core.handlers.periodic_analysis_handler import PeriodicAnalysisHandler
 from core.handlers.finalization_handler import FinalizationHandler
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RecordingController:

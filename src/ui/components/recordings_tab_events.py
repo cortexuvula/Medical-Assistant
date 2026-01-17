@@ -7,11 +7,13 @@ Extracted from RecordingsTab for better separation of concerns.
 
 import tkinter as tk
 import tkinter.messagebox
-import logging
 import threading
 from typing import Optional
+from utils.structured_logging import get_logger
 
 from ui.ui_constants import Colors
+
+logger = get_logger(__name__)
 
 
 class RecordingsTabEventsMixin:

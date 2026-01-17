@@ -2,22 +2,24 @@
 Base class for translation providers.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseTranslationProvider(ABC):
     """Base class that all translation providers must implement."""
-    
+
     def __init__(self, api_key: str = ""):
         """Initialize the provider with API key.
-        
+
         Args:
             api_key: API key for the translation service
         """
         self.api_key = api_key
-        self.logger = logging.getLogger(self.__class__.__name__)
+        # Using module-level logger
     
     @abstractmethod
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
@@ -61,7 +63,7 @@ class BaseTranslationProvider(ABC):
             True if API key is available, False otherwise
         """
         if not self.api_key:
-            self.logger.warning(f"{self.__class__.__name__} API key not found")
+            logger.warning(f"{self.__class__.__name__} API key not found")
             return False
         return True
     
@@ -76,5 +78,5 @@ class BaseTranslationProvider(ABC):
             result = self.translate("Hello", "en", "es")
             return bool(result)
         except Exception as e:
-            self.logger.error(f"Connection test failed: {e}")
+            logger.error(f"Connection test failed: {e}")
             return False

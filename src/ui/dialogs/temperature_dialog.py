@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from settings.settings import load_settings, save_settings, _DEFAULT_SETTINGS
+from settings.settings_manager import settings_manager
 
 def show_temperature_settings_dialog(parent):
     """
@@ -11,8 +11,8 @@ def show_temperature_settings_dialog(parent):
     Args:
         parent: Parent window
     """
-    # Load fresh settings directly from file
-    current_settings = load_settings()
+    # Load fresh settings directly from settings_manager
+    current_settings = settings_manager.get_all()
     
     dialog = tk.Toplevel(parent)
     dialog.title("Temperature Settings")
@@ -69,10 +69,11 @@ def show_temperature_settings_dialog(parent):
             temp_key = f"{provider}_temperature"
             
             # Get temperature value from settings with proper fallback chain
+            default_settings = settings_manager.get_default(task, {})
             if task in current_settings and temp_key in current_settings[task]:
                 temp_value = current_settings[task][temp_key]
-            elif task in _DEFAULT_SETTINGS and temp_key in _DEFAULT_SETTINGS[task]:
-                temp_value = _DEFAULT_SETTINGS[task][temp_key]
+            elif temp_key in default_settings:
+                temp_value = default_settings[temp_key]
             else:
                 temp_value = 0.7  # Ultimate fallback
                 
@@ -128,8 +129,11 @@ def show_temperature_settings_dialog(parent):
             # Update temperature value
             current_settings[task][temp_key] = round(temp_var.get(), 2)
         
-        # Save settings to file
-        save_settings(current_settings)
+        # Save settings to file using settings_manager
+        for task, values in current_settings.items():
+            if isinstance(values, dict) and task in ["refine_text", "improve_text", "soap_note", "referral"]:
+                settings_manager.set(task, values, auto_save=False)
+        settings_manager.save()
         messagebox.showinfo("Settings Saved", "Temperature settings have been saved.")
         dialog.destroy()
     
@@ -140,13 +144,14 @@ def show_temperature_settings_dialog(parent):
             provider_name = slider_data["provider"]
             temp_var = slider_data["temp_var"]
             temp_key = f"{provider_name}_temperature"
-            
-            # Get default value
-            if task in _DEFAULT_SETTINGS and temp_key in _DEFAULT_SETTINGS[task]:
-                default_temp = _DEFAULT_SETTINGS[task][temp_key]
+
+            # Get default value from settings_manager
+            default_task_settings = settings_manager.get_default(task, {})
+            if temp_key in default_task_settings:
+                default_temp = default_task_settings[temp_key]
             else:
                 default_temp = 0.7
-                
+
             # Set slider to default
             temp_var.set(default_temp)
             slider_data["label"].config(text=f"{default_temp:.2f}")

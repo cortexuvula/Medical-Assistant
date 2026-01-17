@@ -4,7 +4,6 @@ Referral Generator Module
 Handles referral generation using the referral agent.
 """
 
-import logging
 from tkinter import messagebox
 from tkinter.constants import RIGHT
 from typing import TYPE_CHECKING, Dict, Any
@@ -15,6 +14,9 @@ from managers.recipient_manager import get_recipient_manager
 from ai.agents import AgentTask, AgentType
 from ui.dialogs.referral_options_dialog import ReferralOptionsDialog
 from utils.error_handling import AsyncUIErrorHandler
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -75,7 +77,7 @@ class ReferralGeneratorMixin:
                 future = self.app.io_executor.submit(get_possible_conditions, source_text)
                 return future.result(timeout=60) or ""
             except Exception as e:
-                logging.error(f"Error analyzing conditions: {str(e)}")
+                logger.error(f"Error analyzing conditions: {str(e)}")
                 return ""
 
         future = self.app.io_executor.submit(get_conditions_task)
@@ -91,7 +93,7 @@ class ReferralGeneratorMixin:
                 ))
             except Exception as e:
                 error_msg = f"Failed to analyze conditions: {str(e)}"
-                logging.error(error_msg)
+                logger.error(error_msg)
                 self.app.after(0, lambda: [
                     self.app.status_manager.error(error_msg),
                     self.app.progress_bar.stop(),
@@ -170,7 +172,7 @@ class ReferralGeneratorMixin:
                 "facility": recipient_details.get("facility", ""),
                 "fax": recipient_details.get("fax", "")
             })
-            logging.info(f"Saved new recipient: {recipient_details.get('name')}")
+            logger.info(f"Saved new recipient: {recipient_details.get('name')}")
 
         # Create error handler for this operation
         error_handler = AsyncUIErrorHandler(
@@ -197,8 +199,8 @@ class ReferralGeneratorMixin:
                 else:
                     input_data["transcript"] = source_text
 
-                logging.debug(f"Referral input_data keys: {list(input_data.keys())}")
-                logging.debug(f"source_text length: {len(source_text)}, is_soap: {is_soap}")
+                logger.debug(f"Referral input_data keys: {list(input_data.keys())}")
+                logger.debug(f"source_text length: {len(source_text)}, is_soap: {is_soap}")
 
                 # Determine task description based on recipient type
                 recipient_type_labels = {

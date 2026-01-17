@@ -6,8 +6,10 @@ Provides a prominent recording control area with waveform visualization
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Callable, Optional, List
-import logging
 import math
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
@@ -316,7 +318,7 @@ class RecordingHeader:
             from settings.settings import save_settings
             save_settings(SETTINGS)
         except Exception as e:
-            logging.error(f"Error saving microphone setting: {e}")
+            logger.error(f"Error saving microphone setting: {e}")
 
         # Notify parent if it has a handler
         if hasattr(self.parent, '_on_microphone_change'):
@@ -342,7 +344,7 @@ class RecordingHeader:
             if bg_color:
                 self._waveform_canvas.config(bg=bg_color)
         except Exception as e:
-            logging.debug(f"Could not update canvas theme: {e}")
+            logger.debug(f"Could not update canvas theme: {e}")
 
     def set_recording_state(self, is_recording: bool, is_paused: bool = False):
         """Update the header state for recording.

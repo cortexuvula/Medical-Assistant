@@ -7,8 +7,10 @@ native file dialogs to prevent UI freezing issues.
 
 import os
 from ui.scaling_utils import ui_scaler
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox
 import ttkbootstrap as ttk
 
@@ -29,7 +31,7 @@ class FolderDialogManager:
         Show a custom folder selection dialog for setting the storage folder.
         Avoids native file dialogs entirely to prevent UI freezing.
         """
-        logging.info("STORAGE: Opening custom folder selection dialog")
+        logger.info("STORAGE: Opening custom folder selection dialog")
         
         # Create a custom folder selection dialog
         dialog = tk.Toplevel(self.app)
@@ -55,8 +57,8 @@ class FolderDialogManager:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Get current storage folder from settings
-        from settings.settings import SETTINGS
-        current_storage = SETTINGS.get("storage_folder", "") or SETTINGS.get("default_storage_folder", "")
+        from settings.settings_manager import settings_manager
+        current_storage = settings_manager.get("storage_folder", "") or settings_manager.get("default_storage_folder", "")
         
         # Add current folder display
         if current_storage and os.path.exists(current_storage):
@@ -105,10 +107,10 @@ class FolderDialogManager:
                 os.makedirs(default_storage, exist_ok=True)
                 path_var.set(default_storage)
                 refresh_file_list()
-                logging.info(f"STORAGE: Using default location: {default_storage}")
+                logger.info(f"STORAGE: Using default location: {default_storage}")
             except Exception as e:
                 messagebox.showerror("Error", f"Could not create default storage folder: {e}")
-                logging.error(f"STORAGE: Error creating default folder: {str(e)}", exc_info=True)
+                logger.error(f"STORAGE: Error creating default folder: {str(e)}", exc_info=True)
         
         # Button for default location
         default_btn = ttk.Button(path_frame, text="Use Default", command=use_default_location)
@@ -157,7 +159,7 @@ class FolderDialogManager:
                 status_var.set(f"Found {len(dirs)} directories")
             except Exception as e:
                 status_var.set(f"Error: {str(e)}")
-                logging.error(f"STORAGE: Error listing directories: {str(e)}", exc_info=True)
+                logger.error(f"STORAGE: Error listing directories: {str(e)}", exc_info=True)
         
         # Handle double-click on directory
         def on_dir_double_click(_):
@@ -194,19 +196,19 @@ class FolderDialogManager:
             selected_path = path_var.get()
             if os.path.exists(selected_path) and os.path.isdir(selected_path):
                 try:
-                    from settings.settings import SETTINGS, save_settings
-                    
+                    from settings.settings_manager import settings_manager
+
                     # Set both keys for backwards compatibility
-                    SETTINGS["storage_folder"] = selected_path
-                    SETTINGS["default_storage_folder"] = selected_path
-                    save_settings(SETTINGS)
+                    settings_manager.set("storage_folder", selected_path, auto_save=False)
+                    settings_manager.set("default_storage_folder", selected_path, auto_save=False)
+                    settings_manager.save()
                     
                     self.app.status_manager.success(f"Storage folder set to: {selected_path}")
-                    logging.info(f"STORAGE: Folder set to {selected_path}")
+                    logger.info(f"STORAGE: Folder set to {selected_path}")
                     dialog.destroy()
                 except Exception as e:
                     messagebox.showerror("Error", f"Failed to set folder: {e}")
-                    logging.error(f"STORAGE: Error setting folder: {str(e)}", exc_info=True)
+                    logger.error(f"STORAGE: Error setting folder: {str(e)}", exc_info=True)
             else:
                 messagebox.showerror("Invalid Directory", "The selected path is not a valid directory.")
         

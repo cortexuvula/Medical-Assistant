@@ -7,8 +7,11 @@ manager initialization.
 """
 
 import os
-import logging
 import multiprocessing
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import tkinter as tk
 from tkinter import messagebox
@@ -210,7 +213,7 @@ class AppInitializer:
         try:
             self.app.audio_handler.set_fallback_callback(self.app.on_transcription_fallback)
         except AttributeError:
-            logging.warning("Audio handler doesn't support fallback callback - update your audio.py file")
+            logger.warning("Audio handler doesn't support fallback callback - update your audio.py file")
             
         # Initialize text processor
         self.app.text_processor = TextProcessor()
@@ -396,7 +399,7 @@ class AppInitializer:
         Note: This callback is called from background threads, so all UI updates
         must be scheduled on the main thread using app.after().
         """
-        logging.debug(f"Queue status update: task={task_id}, status={status}, size={queue_size}")
+        logger.debug(f"Queue status update: task={task_id}, status={status}, size={queue_size}")
 
         # Get stats synchronously (thread-safe operation)
         stats = self.app.processing_queue.get_status()
@@ -410,7 +413,7 @@ class AppInitializer:
     
     def _on_queue_completion(self, task_id: str, recording_data: dict, result: dict):
         """Handle queue processing completion."""
-        logging.info(f"Processing completed for task {task_id}")
+        logger.info(f"Processing completed for task {task_id}")
         
         # Update database with results
         if result.get('success'):
@@ -448,7 +451,7 @@ class AppInitializer:
 
     def _on_queue_error(self, task_id: str, recording_data: dict, error_msg: str):
         """Handle queue processing errors."""
-        logging.error(f"Processing failed for task {task_id}: {error_msg}")
+        logger.error(f"Processing failed for task {task_id}: {error_msg}")
 
         # Update database
         self.app.db.update_recording(
@@ -481,7 +484,7 @@ class AppInitializer:
 
             # Only update if the UI is not currently busy with another recording
             if hasattr(self.app, 'soap_recording') and self.app.soap_recording:
-                logging.info("Skipping UI update - currently recording")
+                logger.info("Skipping UI update - currently recording")
                 return
 
             # Use the app's protection mechanism to check if updates are safe
@@ -498,10 +501,10 @@ class AppInitializer:
                     self.app.transcript_text.insert("1.0", transcript)
                     self.app.transcript_text.edit_separator()  # Add to undo history
                     self.app.reset_content_modified('transcript')  # Reset modified flag
-                    logging.info(f"Updated transcript tab with results from recording {recording_id}")
+                    logger.info(f"Updated transcript tab with results from recording {recording_id}")
                 else:
                     skipped_updates.append('transcript')
-                    logging.info(f"Skipped transcript update - user has modified content")
+                    logger.info(f"Skipped transcript update - user has modified content")
 
             # Update SOAP tab if safe
             if soap_note:
@@ -510,20 +513,20 @@ class AppInitializer:
                     self.app.soap_text.insert("1.0", soap_note)
                     self.app.soap_text.edit_separator()  # Add to undo history
                     self.app.reset_content_modified('soap')  # Reset modified flag
-                    logging.info(f"Updated SOAP tab with results from recording {recording_id}")
+                    logger.info(f"Updated SOAP tab with results from recording {recording_id}")
 
                     # Switch to SOAP tab to show the results and give focus
                     self.app.notebook.select(1)
                     self.app.soap_text.focus_set()
 
                     # Auto-run analyses to the side panels
-                    logging.info(f"Scheduling auto-analysis for queued SOAP note ({len(soap_note)} chars)")
+                    logger.info(f"Scheduling auto-analysis for queued SOAP note ({len(soap_note)} chars)")
                     if hasattr(self.app, 'document_generators'):
                         self.app.after(100, lambda sn=soap_note: self.app.document_generators._run_medication_to_panel(sn))
                         self.app.after(200, lambda sn=soap_note: self.app.document_generators._run_diagnostic_to_panel(sn))
                 else:
                     skipped_updates.append('soap')
-                    logging.info(f"Skipped SOAP update - user has modified content")
+                    logger.info(f"Skipped SOAP update - user has modified content")
 
             # Update current recording ID
             self.app._current_recording_id = recording_id
@@ -538,4 +541,4 @@ class AppInitializer:
                 self.app.status_manager.info(f"Loaded results for {patient_name}")
 
         except Exception as e:
-            logging.error(f"Error updating UI with results: {str(e)}", exc_info=True)
+            logger.error(f"Error updating UI with results: {str(e)}", exc_info=True)

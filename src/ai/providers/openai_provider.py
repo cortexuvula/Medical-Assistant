@@ -8,11 +8,14 @@ Return Types:
     - str(result) provides backward compatibility with code expecting strings
 """
 
-import logging
 import httpx
 from typing import List, Dict, Callable, Union
 
 from openai import OpenAI
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from openai.types.chat import ChatCompletion
 
 from ai.logging_utils import log_api_call_debug
@@ -115,7 +118,7 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     system_message = security_manager.sanitize_input(system_message, "prompt")
 
     try:
-        logging.info(f"Making OpenAI API call with model: {model}")
+        logger.info(f"Making OpenAI API call with model: {model}")
 
         # Use consolidated debug logging
         log_api_call_debug("OpenAI", model, temperature, system_message, prompt)
@@ -129,16 +132,16 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         text = response.choices[0].message.content.strip()
         return AIResult.success(text, model=model, provider="openai")
     except APITimeoutError as e:
-        logging.error(f"OpenAI API timeout with model {model}: {str(e)}")
+        logger.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
-        logging.error(f"OpenAI API error with model {model}: {str(e)}")
+        logger.error(f"OpenAI API error with model {model}: {str(e)}")
         error_code, details = format_api_error("openai", e)
         title, message = get_error_message(error_code, details, model)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
-        logging.error(f"Unexpected error calling OpenAI: {str(e)}")
+        logger.error(f"Unexpected error calling OpenAI: {str(e)}")
         title, message = get_error_message("API_UNEXPECTED_ERROR", str(e))
         return AIResult.failure(message, error_code=title, exception=e)
 
@@ -182,7 +185,7 @@ def call_openai_streaming(
     system_message = security_manager.sanitize_input(system_message, "prompt")
 
     try:
-        logging.info(f"Making streaming OpenAI API call with model: {model}")
+        logger.info(f"Making streaming OpenAI API call with model: {model}")
         log_api_call_debug("OpenAI (streaming)", model, temperature, system_message, prompt)
 
         timeout_seconds = get_timeout("openai")
@@ -210,7 +213,7 @@ def call_openai_streaming(
         return AIResult.success(full_response.strip(), model=model, provider="openai")
 
     except Exception as e:
-        logging.error(f"Streaming OpenAI error with model {model}: {str(e)}")
+        logger.error(f"Streaming OpenAI error with model {model}: {str(e)}")
         result = AIResult.failure(str(e), error_code="STREAMING_ERROR", exception=e)
         on_chunk(str(result))
         return result

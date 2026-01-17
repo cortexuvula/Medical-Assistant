@@ -4,8 +4,10 @@ Document Dialogs Module
 Dialogs for letter generation options and letterhead configuration.
 """
 
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox, scrolledtext
 import ttkbootstrap as ttk
 
@@ -180,12 +182,11 @@ def show_letterhead_dialog(parent: tk.Tk, clinic_name: str = "", doctor_name: st
         # Save to settings if requested
         if save_var.get():
             try:
-                from settings.settings_manager import SETTINGS, save_settings
-                SETTINGS["clinic_name"] = clinic
-                SETTINGS["doctor_name"] = doctor
-                save_settings()
+                from settings.settings_manager import settings_manager
+                settings_manager.set("clinic_name", clinic, auto_save=False)
+                settings_manager.set("doctor_name", doctor)
             except Exception as e:
-                logging.warning(f"Could not save letterhead settings: {e}")
+                logger.warning(f"Could not save letterhead settings: {e}")
 
         result[0] = (clinic, doctor)
         dialog.destroy()

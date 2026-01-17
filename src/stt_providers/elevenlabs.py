@@ -4,14 +4,13 @@ ElevenLabs STT provider implementation.
 
 import os
 import time
-import logging
 import traceback
 from io import BytesIO
 from typing import Optional, Dict, List, Any
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
@@ -170,7 +169,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             self.logger.info(f"Setting ElevenLabs timeout to {timeout_seconds} seconds for {file_size_kb:.2f} KB file")
             
             # Get settings
-            elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+            elevenlabs_settings = settings_manager.get("elevenlabs", {})
 
             # Prepare data for request - model_id from settings (scribe_v2 is new default)
             data = {
@@ -386,7 +385,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                     f"channels={audio_details.get('channels')}, sample_width={audio_details.get('sample_width')}"
                 )
                 # Try file-based fallback if enabled
-                elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+                elevenlabs_settings = settings_manager.get("elevenlabs", {})
                 if elevenlabs_settings.get("retry_with_file", False):
                     self.logger.info("Attempting file-based transcription fallback...")
                     fallback_transcript = self._transcribe_via_temp_file(segment)
@@ -425,7 +424,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             url = ELEVENLABS_STT_URL
             headers = {'xi-api-key': self.api_key}
 
-            elevenlabs_settings = SETTINGS.get("elevenlabs", {})
+            elevenlabs_settings = settings_manager.get("elevenlabs", {})
             data = {
                 'model_id': elevenlabs_settings.get("model_id", "scribe_v2"),
                 'diarize': elevenlabs_settings.get("diarize", True),

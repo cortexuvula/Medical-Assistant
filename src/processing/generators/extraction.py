@@ -4,7 +4,6 @@ Data Extraction Generator Module
 Handles clinical data extraction using the data extraction agent.
 """
 
-import logging
 from tkinter import messagebox
 from typing import TYPE_CHECKING
 

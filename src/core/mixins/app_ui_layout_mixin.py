@@ -6,16 +6,16 @@ Handles collapsible sections, sash positioning, and layout adjustments.
 Extracted from app.py for better separation of concerns.
 """
 
-import logging
 import tkinter as tk
 from typing import TYPE_CHECKING
 
 from settings.settings import SETTINGS, save_settings
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from ui.workflow_ui import WorkflowUI
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AppUiLayoutMixin:
@@ -93,10 +93,10 @@ class AppUiLayoutMixin:
 
             content_paned.sashpos(0, new_sash_pos)
             self._last_height = total_height
-            logging.debug(f"Set sash position: {new_sash_pos} of {total_height} (collapsed={self._bottom_collapsed})")
+            logger.debug(f"Set sash position: {new_sash_pos} of {total_height} (collapsed={self._bottom_collapsed})")
 
         except Exception as e:
-            logging.debug(f"Could not adjust bottom sash: {e}")
+            logger.debug(f"Could not adjust bottom sash: {e}")
 
     def _adjust_horizontal_sash(self) -> None:
         """Adjust the horizontal sash for Chat (25%) vs Analysis (75%) split."""
@@ -116,10 +116,10 @@ class AppUiLayoutMixin:
             # Chat gets 25%, Analysis gets 75%
             sash_pos = int(total_width * 0.25)
             bottom_paned.sashpos(0, sash_pos)
-            logging.debug(f"Set horizontal sash: {sash_pos} of {total_width}")
+            logger.debug(f"Set horizontal sash: {sash_pos} of {total_width}")
 
         except Exception as e:
-            logging.debug(f"Could not adjust horizontal sash: {e}")
+            logger.debug(f"Could not adjust horizontal sash: {e}")
 
     def on_workflow_changed(self, workflow: str) -> None:
         """Handle workflow tab changes.
@@ -127,7 +127,7 @@ class AppUiLayoutMixin:
         Args:
             workflow: The current workflow tab ("record", "process", "generate", or "recordings")
         """
-        logging.info(f"Workflow changed to: {workflow}")
+        logger.info(f"Workflow changed to: {workflow}")
 
         # Update UI based on workflow
         if workflow == "record":

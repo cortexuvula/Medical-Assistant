@@ -5,9 +5,11 @@ Provides database save/load functionality for diagnostic results.
 """
 
 import json
-import logging
 from tkinter import messagebox
 from typing import Dict, List, Optional, TYPE_CHECKING
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -116,7 +118,7 @@ class DatabaseMixin:
                 )
 
         except Exception as e:
-            logging.error(f"Error saving to database: {str(e)}")
+            logger.error(f"Error saving to database: {str(e)}")
             messagebox.showerror(
                 "Save Error",
                 f"Failed to save to database: {str(e)}",
@@ -165,7 +167,7 @@ class DatabaseMixin:
                 saved_count += 1
             conn.commit()
         except Exception as e:
-            logging.warning(f"Error saving structured differentials: {e}")
+            logger.warning(f"Error saving structured differentials: {e}")
         return saved_count
 
     def _save_structured_investigations(
@@ -204,7 +206,7 @@ class DatabaseMixin:
                 saved_count += 1
             conn.commit()
         except Exception as e:
-            logging.warning(f"Error saving investigations: {e}")
+            logger.warning(f"Error saving investigations: {e}")
         return saved_count
 
     def _save_clinical_pearls(
@@ -239,7 +241,7 @@ class DatabaseMixin:
                 saved_count += 1
             conn.commit()
         except Exception as e:
-            logging.warning(f"Error saving clinical pearls: {e}")
+            logger.warning(f"Error saving clinical pearls: {e}")
         return saved_count
 
     def _save_extracted_clinical_data(
@@ -266,7 +268,7 @@ class DatabaseMixin:
                     )
             conn.commit()
         except Exception as e:
-            logging.warning(f"Error saving extracted clinical data: {e}")
+            logger.warning(f"Error saving extracted clinical data: {e}")
 
 
 __all__ = ["DatabaseMixin"]

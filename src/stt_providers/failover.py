@@ -5,14 +5,14 @@ Provides automatic failover between multiple STT providers when the primary
 provider fails. This increases reliability for transcription operations.
 """
 
-import logging
 from typing import List, Optional, Dict, Any
 from pydub import AudioSegment
 
 from stt_providers.base import BaseSTTProvider, TranscriptionResult
+from utils.structured_logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class STTFailoverManager:

@@ -4,9 +4,29 @@ Background Processing Queue Module
 Manages asynchronous processing of recordings to allow immediate
 continuation with next patient consultation.
 
+Error Handling:
+    - Raises ProcessingError: For task execution failures
+    - Raises TranscriptionError: For STT provider failures
+    - Raises DocumentGenerationError: For SOAP/referral/letter generation failures
+    - Uses ErrorContext for capturing detailed error context
+    - Failed tasks are tracked in failed_tasks dict with full error details
+    - Retry logic with exponential backoff for transient failures
+    - Batch processing supports continue_on_error for resilience
+
 Logging:
-    Uses structured logging with context for better debugging.
-    Key context fields: task_id, recording_id, batch_id, duration_ms
+    - Uses structured logging with context for better debugging
+    - Key context fields: task_id, recording_id, batch_id, duration_ms
+    - Thread exceptions captured via global exception hook
+
+Thread Safety:
+    - Uses ThreadPoolExecutor for concurrent task processing
+    - RLock for thread-safe access to shared state
+    - Queue-based task distribution for reliable ordering
+    - Daemon threads prevent blocking on shutdown
+
+Deduplication:
+    - Tracks recording_id -> task_id mapping to prevent duplicate processing
+    - Active recordings cannot be re-queued until completion or failure
 """
 
 import uuid
@@ -20,7 +40,7 @@ from datetime import datetime
 import traceback
 
 from database.database import Database
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.error_handling import ErrorContext, OperationResult
 from utils.exceptions import (
     MedicalAssistantError,
@@ -59,8 +79,18 @@ if hasattr(threading, 'excepthook'):
     threading.excepthook = _thread_exception_hook
 
 
-class ProcessingQueue:
+from processing.batch_processing_mixin import BatchProcessingMixin
+from processing.document_generation_mixin import DocumentGenerationMixin
+from processing.reprocessing_mixin import ReprocessingMixin
+
+
+class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, ReprocessingMixin):
     """Manages background processing of medical recordings.
+
+    This class uses mixins to organize functionality:
+    - BatchProcessingMixin: Batch operations (add_batch_recordings, cancel_batch, etc.)
+    - DocumentGenerationMixin: Document generation (_generate_soap_note, etc.)
+    - ReprocessingMixin: Retry and reprocess operations
 
     Deduplication:
         The queue tracks active recordings by their recording_id to prevent
@@ -82,7 +112,7 @@ class ProcessingQueue:
         # Dynamic default: use CPU count - 1 (capped at 6) for better throughput
         # This increases concurrent processing from 2 to 4-6 workers typically
         default_workers = min(os.cpu_count() - 1, 6) if os.cpu_count() else 4
-        self.max_workers = max_workers or SETTINGS.get("max_background_workers", default_workers)
+        self.max_workers = max_workers or settings_manager.get("max_background_workers", default_workers)
 
         # Core components
         self.queue = Queue()
@@ -365,16 +395,15 @@ class ProcessingQueue:
                     
                     # Save audio file before transcription
                     try:
-                        from settings.settings import SETTINGS
                         from datetime import datetime as dt
                         import os
                         
                         # Get storage folder
-                        storage_folder = SETTINGS.get("storage_folder")
+                        storage_folder = settings_manager.get("storage_folder")
                         logger.debug("Storage folder from settings", storage_folder=storage_folder)
 
                         if not storage_folder:
-                            storage_folder = SETTINGS.get("default_storage_folder")
+                            storage_folder = settings_manager.get("default_storage_folder")
                             logger.debug("Using default_storage_folder", storage_folder=storage_folder)
 
                         if not storage_folder or not os.path.exists(storage_folder):
@@ -782,10 +811,10 @@ class ProcessingQueue:
 
     def _should_retry(self, recording_data: Dict) -> bool:
         """Check if a task should be retried."""
-        if not SETTINGS.get("auto_retry_failed", True):
+        if not settings_manager.get("auto_retry_failed", True):
             return False
-        
-        max_retries = SETTINGS.get("max_retry_attempts", 3)
+
+        max_retries = settings_manager.get("max_retry_attempts", 3)
         return recording_data.get("retry_count", 0) < max_retries
     
     def _retry_task(self, task_id: str, recording_data: Dict, error_msg: str):
@@ -1121,10 +1150,9 @@ class ProcessingQueue:
         """
         try:
             from ai.ai import create_soap_note_with_openai
-            from settings.settings import SETTINGS
 
-            provider = SETTINGS.get("ai_provider", "openai")
-            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            provider = settings_manager.get_ai_provider()
+            model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
 
             # Generate SOAP note with context if provided
             soap_note = create_soap_note_with_openai(transcript, context)
@@ -1173,10 +1201,9 @@ class ProcessingQueue:
         """
         try:
             from ai.ai import create_referral_with_openai
-            from settings.settings import SETTINGS
 
-            provider = SETTINGS.get("ai_provider", "openai")
-            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            provider = settings_manager.get_ai_provider()
+            model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
 
             # For batch processing, use a default condition
             conditions = "Based on the clinical findings in the SOAP note"
@@ -1229,10 +1256,9 @@ class ProcessingQueue:
         """
         try:
             from ai.ai import create_letter_with_ai
-            from settings.settings import SETTINGS
 
-            provider = SETTINGS.get("ai_provider", "openai")
-            model = SETTINGS.get(f"{provider}_model", "gpt-4")
+            provider = settings_manager.get_ai_provider()
+            model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
 
             # Generate letter with recipient type and specs
             letter = create_letter_with_ai(content, recipient_type, specs)

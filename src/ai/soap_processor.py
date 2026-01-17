@@ -6,8 +6,11 @@ transcription, and SOAP note generation.
 """
 
 import os
-import logging
 import concurrent.futures
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 import tkinter as tk
 from tkinter import NORMAL, DISABLED
 from ttkbootstrap.constants import LEFT
@@ -15,7 +18,7 @@ from datetime import datetime as dt
 from typing import List, Any, Dict, Optional
 
 from ai.ai import create_soap_note_with_openai
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class SOAPProcessor:
@@ -47,7 +50,7 @@ class SOAPProcessor:
                 
                 # Check if we have any audio to process
                 if not audio_segment:
-                    logging.warning("No SOAP audio was recorded.")
+                    logger.warning("No SOAP audio was recorded.")
                     # Update UI to indicate no audio
                     self.app.after(0, lambda: [
                         self.status_manager.warning("No audio recorded for SOAP note."),
@@ -60,7 +63,7 @@ class SOAPProcessor:
 
                 # Log info about the audio
                 duration_ms = len(audio_segment)
-                logging.info(f"Processing SOAP audio, duration: {duration_ms}ms")
+                logger.info(f"Processing SOAP audio, duration: {duration_ms}ms")
                 
                 # Update status on UI thread
                 self.app.after(0, lambda: [
@@ -72,26 +75,25 @@ class SOAPProcessor:
                      # This case should be rare if checks above are done, but handle defensively
                     raise ValueError("Failed to create final audio segment from combined chunks")
 
-                # --- Rest of the processing (saving, transcription) remains largely the same ---                   
+                # --- Rest of the processing (saving, transcription) remains largely the same ---
                 # Save the SOAP audio to the user's default storage folder
-                from settings.settings import SETTINGS
-                
+
                 # Try to get storage folder from both possible keys for backward compatibility
-                storage_folder = SETTINGS.get("storage_folder")
-                logging.info(f"Storage folder from settings: {storage_folder}")
-                
+                storage_folder = settings_manager.get("storage_folder")
+                logger.info(f"Storage folder from settings: {storage_folder}")
+
                 if not storage_folder:
-                    storage_folder = SETTINGS.get("default_storage_folder")
-                    logging.info(f"Using default_storage_folder instead: {storage_folder}")
+                    storage_folder = settings_manager.get("default_storage_folder")
+                    logger.info(f"Using default_storage_folder instead: {storage_folder}")
                 
                 # If no storage folder is set, create default one
                 if not storage_folder or not os.path.exists(storage_folder):
-                    logging.warning(f"Storage folder '{storage_folder}' not found or not set, using default")
+                    logger.warning(f"Storage folder '{storage_folder}' not found or not set, using default")
                     storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                     os.makedirs(storage_folder, exist_ok=True)
-                    logging.info(f"Created/using default storage folder: {storage_folder}")
+                    logger.info(f"Created/using default storage folder: {storage_folder}")
                 else:
-                    logging.info(f"Using configured storage folder: {storage_folder}")
+                    logger.info(f"Using configured storage folder: {storage_folder}")
                     
                 # Create a user-friendly timestamp format: DD-MM-YY_HH-MM as requested
                 date_formatted = dt.now().strftime("%d-%m-%y")
@@ -109,29 +111,29 @@ class SOAPProcessor:
                     segment_sample_width = audio_segment.sample_width
                     segment_max_volume = float(getattr(audio_segment, "max", -1))
                     
-                    logging.info(f"SOAP audio segment stats: length={segment_length_ms}ms, "
+                    logger.info(f"SOAP audio segment stats: length={segment_length_ms}ms, "
                                 f"rate={segment_frame_rate}Hz, channels={segment_channels}, "
                                 f"width={segment_sample_width}bytes, max_volume={segment_max_volume}")
                     
                     # Check if the audio segment has meaningful content
                     if segment_length_ms < 100:  # Less than 100ms is probably empty
-                        logging.warning(f"SOAP audio segment is too short ({segment_length_ms}ms), might be empty")
+                        logger.warning(f"SOAP audio segment is too short ({segment_length_ms}ms), might be empty")
                     
-                logging.info(f"Attempting to save SOAP audio to: {audio_path}")
+                logger.info(f"Attempting to save SOAP audio to: {audio_path}")
                 save_result = self.audio_handler.save_audio([audio_segment], audio_path)
-                logging.info(f"Audio save result: {save_result}")
+                logger.info(f"Audio save result: {save_result}")
                 
                 if save_result:
                     # Verify file was actually created
                     if os.path.exists(audio_path):
                         file_size = os.path.getsize(audio_path)
-                        logging.info(f"SOAP audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+                        logger.info(f"SOAP audio saved successfully to: {audio_path} (size: {file_size} bytes)")
                         self.app.after(0, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
                     else:
-                        logging.error(f"Audio save reported success but file not found: {audio_path}")
+                        logger.error(f"Audio save reported success but file not found: {audio_path}")
                         self.app.after(0, lambda: self.status_manager.progress("Warning: Audio file may not have been saved"))
                 else:
-                    logging.error(f"Failed to save SOAP audio to: {audio_path}")
+                    logger.error(f"Failed to save SOAP audio to: {audio_path}")
                     self.app.after(0, lambda: self.status_manager.progress("Failed to save audio file"))
                 
                 # Update status on UI thread
@@ -148,15 +150,15 @@ class SOAPProcessor:
                 
                 # Log the result
                 if transcript:
-                    logging.info("Successfully transcribed SOAP audio with prefix")
+                    logger.info("Successfully transcribed SOAP audio with prefix")
                 else:
-                    logging.warning("Failed to transcribe SOAP audio with any provider")
+                    logger.warning("Failed to transcribe SOAP audio with any provider")
                 # If all transcription methods failed
                 if not transcript:
                     raise ValueError("All transcription methods failed - no text recognized")
                 
                 # Log success and progress
-                logging.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
+                logger.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
                 
                 # Update transcript tab with the raw transcript
                 self.app.after(0, lambda: [
@@ -189,18 +191,18 @@ class SOAPProcessor:
                     self.app.soap_text.focus_set()  # Give focus to SOAP text widget
                     # Save to database - update if recording exists, else create new
                     if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
-                        logging.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
+                        logger.debug(f"Updating existing recording {self.app.current_recording_id} with SOAP note")
                         success = self.app.db.update_recording(
                             self.app.current_recording_id,
                             transcript=transcript,
                             soap_note=soap_note
                         )
                         if success:
-                            logging.info(f"Updated existing recording {self.app.current_recording_id}")
+                            logger.info(f"Updated existing recording {self.app.current_recording_id}")
                         else:
-                            logging.error(f"Failed to update recording {self.app.current_recording_id}")
+                            logger.error(f"Failed to update recording {self.app.current_recording_id}")
                     else:
-                        logging.debug("No current_recording_id, creating new database entry")
+                        logger.debug("No current_recording_id, creating new database entry")
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
 
                 self.app.after(0, finalize_soap)
@@ -213,7 +215,7 @@ class SOAPProcessor:
                 ])
             except Exception as e:
                 error_msg = f"Error processing SOAP note: {str(e)}"
-                logging.error(error_msg, exc_info=True)
+                logger.error(error_msg, exc_info=True)
                 self.app.after(0, lambda: [
                     self.status_manager.error(error_msg),
                     self.app.soap_button.config(state=NORMAL),
@@ -246,7 +248,7 @@ class SOAPProcessor:
                 - error: Error message if failed
         """
         try:
-            logging.info(f"Starting async processing for recording {recording_data.get('recording_id')}")
+            logger.info(f"Starting async processing for recording {recording_data.get('recording_id')}")
             
             # Process audio data
             audio_segments = recording_data.get('audio_data', [])
@@ -263,20 +265,20 @@ class SOAPProcessor:
                 raise ValueError("Failed to create audio segment")
             
             # Generate filename and save audio
-            storage_folder = SETTINGS.get("storage_folder")
-            logging.info(f"[Async] Storage folder from settings: {storage_folder}")
-            
+            storage_folder = settings_manager.get("storage_folder")
+            logger.info(f"[Async] Storage folder from settings: {storage_folder}")
+
             if not storage_folder:
-                storage_folder = SETTINGS.get("default_storage_folder")
-                logging.info(f"[Async] Using default_storage_folder instead: {storage_folder}")
+                storage_folder = settings_manager.get("default_storage_folder")
+                logger.info(f"[Async] Using default_storage_folder instead: {storage_folder}")
             
             if not storage_folder or not os.path.exists(storage_folder):
-                logging.warning(f"[Async] Storage folder '{storage_folder}' not found or not set, using default")
+                logger.warning(f"[Async] Storage folder '{storage_folder}' not found or not set, using default")
                 storage_folder = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
                 os.makedirs(storage_folder, exist_ok=True)
-                logging.info(f"[Async] Created/using default storage folder: {storage_folder}")
+                logger.info(f"[Async] Created/using default storage folder: {storage_folder}")
             else:
-                logging.info(f"[Async] Using configured storage folder: {storage_folder}")
+                logger.info(f"[Async] Using configured storage folder: {storage_folder}")
             
             # Create filename with patient name if available
             patient_name = recording_data.get('patient_name', 'Unknown')
@@ -287,9 +289,9 @@ class SOAPProcessor:
             audio_path = os.path.join(storage_folder, f"recording_{safe_patient_name}_{date_formatted}_{time_formatted}.mp3")
             
             # Save audio
-            logging.info(f"[Async] Attempting to save audio to: {audio_path}")
+            logger.info(f"[Async] Attempting to save audio to: {audio_path}")
             save_result = self.audio_handler.save_audio([audio_segment], audio_path)
-            logging.info(f"[Async] Audio save result: {save_result}")
+            logger.info(f"[Async] Audio save result: {save_result}")
             
             if not save_result:
                 raise ValueError("Failed to save audio file")
@@ -297,9 +299,9 @@ class SOAPProcessor:
             # Verify file was actually created
             if os.path.exists(audio_path):
                 file_size = os.path.getsize(audio_path)
-                logging.info(f"[Async] Audio saved successfully to: {audio_path} (size: {file_size} bytes)")
+                logger.info(f"[Async] Audio saved successfully to: {audio_path} (size: {file_size} bytes)")
             else:
-                logging.error(f"[Async] Audio save reported success but file not found: {audio_path}")
+                logger.error(f"[Async] Audio save reported success but file not found: {audio_path}")
                 raise ValueError("Audio file not found after save")
             
             # Transcribe audio
@@ -307,7 +309,7 @@ class SOAPProcessor:
             if not transcript:
                 raise ValueError("Transcription failed - no text recognized")
             
-            logging.info(f"Transcription complete: {len(transcript)} characters")
+            logger.info(f"Transcription complete: {len(transcript)} characters")
             
             # Generate SOAP note
             context_text = recording_data.get('context', '')
@@ -316,7 +318,7 @@ class SOAPProcessor:
             if not soap_note:
                 raise ValueError("Failed to generate SOAP note")
             
-            logging.info(f"SOAP note generated successfully for recording {recording_data.get('recording_id')}")
+            logger.info(f"SOAP note generated successfully for recording {recording_data.get('recording_id')}")
             
             # Return results
             return {
@@ -329,7 +331,7 @@ class SOAPProcessor:
             }
             
         except Exception as e:
-            logging.error(f"Error in async processing: {str(e)}", exc_info=True)
+            logger.error(f"Error in async processing: {str(e)}", exc_info=True)
             return {
                 'success': False,
                 'error': str(e),

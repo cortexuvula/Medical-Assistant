@@ -3,8 +3,11 @@
 Provides functions for generating medical letters, referrals, and extracting conditions.
 """
 
-import logging
 from typing import Callable
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ai.providers.router import call_ai, call_ai_streaming
 from ai.text_processing import clean_text
@@ -28,10 +31,10 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
     # Add conditions to the prompt if provided
     if conditions:
         new_prompt = f"Write a referral paragraph using the following SOAP Note, focusing specifically on these conditions: {conditions}\n\nSOAP Note:\n{text}"
-        logging.info(f"Creating referral with focus on conditions: {conditions}")
+        logger.info(f"Creating referral with focus on conditions: {conditions}")
     else:
         new_prompt = "Write a referral paragraph using the SOAP Note given to you\n\n" + text
-        logging.info("Creating referral with no specific focus conditions")
+        logger.info("Creating referral with no specific focus conditions")
 
     # Add a shorter timeout and increase max tokens slightly
     try:
@@ -44,7 +47,7 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
         # AIResult.text gives the text content; str(result) also works for backward compatibility
         return clean_text(result.text, remove_citations=False)
     except Exception as e:
-        logging.error(f"Error creating referral: {str(e)}")
+        logger.error(f"Error creating referral: {str(e)}")
         title, message = get_error_message("UNKNOWN_ERROR", f"Failed to create referral: {str(e)}")
         return f"[Error: {title}] {message}"
 

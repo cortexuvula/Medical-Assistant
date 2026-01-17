@@ -8,10 +8,12 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, BOTH, Y, VERTICAL, LEFT, RIGHT, W
 import json
-import logging
 from tkinter import messagebox
 import pyperclip
 from typing import Dict, Optional, TYPE_CHECKING
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from database.database import Database
@@ -87,7 +89,7 @@ class PeriodicMixin:
                     if a.get('id') == session_id
                 ]
         except Exception as e:
-            logging.error(f"Error loading periodic analyses: {e}")
+            logger.error(f"Error loading periodic analyses: {e}")
 
         if not periodic_analyses:
             ttk.Label(
@@ -278,7 +280,7 @@ class PeriodicMixin:
                 parent=self.dialog if self.dialog else self.parent
             )
         except Exception as e:
-            logging.error(f"Error copying evolution text: {e}")
+            logger.error(f"Error copying evolution text: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to copy: {e}",

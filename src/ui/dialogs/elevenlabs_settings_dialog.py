@@ -14,11 +14,9 @@ from ui.dialogs.dialog_utils import create_toplevel_dialog
 
 def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure ElevenLabs speech-to-text settings."""
-    from settings.settings import _DEFAULT_SETTINGS
-
     # Get current ElevenLabs settings with fallback to defaults
     elevenlabs_settings = settings_manager.get_elevenlabs_settings()
-    default_settings = _DEFAULT_SETTINGS.get("elevenlabs", {})
+    default_settings = settings_manager.get_default("elevenlabs", {})
 
     dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x700")
 

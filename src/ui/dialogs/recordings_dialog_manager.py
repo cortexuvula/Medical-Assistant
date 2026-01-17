@@ -6,7 +6,6 @@ loading, deleting, and exporting recordings.
 """
 
 import os
-import logging
 import threading
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
@@ -16,8 +15,12 @@ import ttkbootstrap as ttk
 
 from database.database import Database
 from ui.dialogs.dialogs import create_toplevel_dialog
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from ui.status_manager import StatusManager
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
+
+logger = get_logger(__name__)
 
 
 class RecordingsDialogManager:
@@ -215,9 +218,13 @@ class RecordingsDialogManager:
                 self.app.after(0, lambda: self._update_tree_view(recordings))
 
             except Exception as e:
-                error_msg = f"Error loading recordings: {str(e)}"
-                logging.error(error_msg)
-                self.app.after(0, lambda: messagebox.showerror("Database Error", error_msg))
+                ctx = ErrorContext.capture(
+                    operation="Loading recordings from database",
+                    exception=e,
+                    input_summary="recordings list query"
+                )
+                logger.error(ctx.to_log_string())
+                self.app.after(0, lambda: messagebox.showerror("Database Error", ctx.user_message))
 
         # Run in background
         threading.Thread(target=task, daemon=True).start()
@@ -276,7 +283,12 @@ class RecordingsDialogManager:
                 )
                 
             except Exception as e:
-                logging.error(f"Error adding recording to tree: {e}")
+                ctx = ErrorContext.capture(
+                    operation="Adding recording to tree view",
+                    exception=e,
+                    input_summary=f"recording_id={recording.get('id', 'unknown')}"
+                )
+                logger.error(ctx.to_log_string())
         
         # Update status
         count = len(self.tree.get_children())
@@ -341,9 +353,13 @@ class RecordingsDialogManager:
             self.dialog.destroy()
             
         except Exception as e:
-            error_msg = f"Error loading recording: {str(e)}"
-            logging.error(error_msg)
-            messagebox.showerror("Load Error", error_msg)
+            ctx = ErrorContext.capture(
+                operation="Loading selected recording",
+                exception=e,
+                input_summary=f"recording_id={recording_id}"
+            )
+            logger.error(ctx.to_log_string())
+            messagebox.showerror("Load Error", ctx.user_message)
     
     def _load_recording_data(self, recording: Dict[str, Any]):
         """Load recording data into the application."""
@@ -400,7 +416,12 @@ class RecordingsDialogManager:
                 tree.delete(item)
                 deleted += 1
             except Exception as e:
-                logging.error(f"Error deleting recording {recording_id}: {e}")
+                ctx = ErrorContext.capture(
+                    operation="Deleting recording",
+                    exception=e,
+                    input_summary=f"recording_id={recording_id}"
+                )
+                logger.error(ctx.to_log_string())
         
         # Update status
         if deleted > 0:
@@ -421,7 +442,7 @@ class RecordingsDialogManager:
         # Ask for export directory
         export_dir = filedialog.askdirectory(
             title="Select Export Directory",
-            initialdir=SETTINGS.get("default_folder", "")
+            initialdir=settings_manager.get("default_folder", "")
         )
         
         if not export_dir:
@@ -444,7 +465,12 @@ class RecordingsDialogManager:
                         self._export_recording_to_file(recording, export_dir)
                         exported += 1
                 except Exception as e:
-                    logging.error(f"Error exporting recording {recording_id}: {e}")
+                    ctx = ErrorContext.capture(
+                        operation="Exporting recording",
+                        exception=e,
+                        input_summary=f"recording_id={recording_id}"
+                    )
+                    logger.error(ctx.to_log_string())
                     errors += 1
             
             # Update status on main thread

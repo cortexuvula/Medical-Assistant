@@ -5,11 +5,11 @@ Extracts text from PDF files with OCR fallback for scanned documents.
 Uses pdfplumber for text-based PDFs and pytesseract for OCR.
 """
 
-import logging
 import shutil
 from typing import Callable, Optional, Tuple
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PDFProcessor:

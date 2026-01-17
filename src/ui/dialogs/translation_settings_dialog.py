@@ -13,11 +13,9 @@ from ui.dialogs.dialog_utils import create_toplevel_dialog
 
 def show_translation_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure translation settings."""
-    from settings.settings import _DEFAULT_SETTINGS
-
     # Get current translation settings with fallback to defaults
     translation_settings = settings_manager.get_translation_settings()
-    default_settings = _DEFAULT_SETTINGS.get("translation", {})
+    default_settings = settings_manager.get_default("translation", {})
 
     dialog = create_toplevel_dialog(parent, "Translation Settings", "600x500")
 

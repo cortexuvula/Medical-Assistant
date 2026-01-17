@@ -9,8 +9,10 @@ from tkinter.constants import END, WORD
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
-import logging
 from typing import Dict, List, Optional
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from .formatter import FormatterMixin
 from .parser import ParserMixin

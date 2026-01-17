@@ -7,8 +7,10 @@ import tkinter as tk
 import tkinter.messagebox
 import ttkbootstrap as ttk
 from typing import Dict, Callable, List
-import logging
+from utils.structured_logging import get_logger
 from ui.tooltip import ToolTip
+
+logger = get_logger(__name__)
 from ui.scaling_utils import ui_scaler
 from settings.settings import SETTINGS
 from settings.settings_manager import settings_manager

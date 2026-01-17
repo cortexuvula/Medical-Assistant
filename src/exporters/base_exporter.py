@@ -8,9 +8,9 @@ for all export formats (FHIR, Word, PDF, etc.).
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
-import logging
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseExporter(ABC):

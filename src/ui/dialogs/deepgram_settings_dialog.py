@@ -14,11 +14,9 @@ from ui.dialogs.dialog_utils import create_toplevel_dialog
 
 def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure Deepgram speech-to-text settings."""
-    from settings.settings import _DEFAULT_SETTINGS
-
     # Get current Deepgram settings with fallback to defaults
     deepgram_settings = settings_manager.get_deepgram_settings()
-    default_settings = _DEFAULT_SETTINGS.get("deepgram", {})
+    default_settings = settings_manager.get_default("deepgram", {})
 
     dialog = create_toplevel_dialog(parent, "Deepgram Settings", "700x900")
 

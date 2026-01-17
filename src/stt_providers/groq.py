@@ -4,7 +4,6 @@ GROQ STT provider implementation.
 
 import os
 import time
-import logging
 import traceback
 from io import BytesIO
 from typing import Optional

@@ -4,13 +4,15 @@ Medication Generator Module
 Handles medication analysis using the medication agent.
 """
 
-import logging
 from tkinter import messagebox
 from typing import TYPE_CHECKING
 
 from managers.agent_manager import agent_manager
 from ai.agents import AgentTask, AgentType
 from utils.error_handling import AsyncUIErrorHandler, ErrorContext
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -235,12 +237,12 @@ class MedicationGeneratorMixin:
         Args:
             soap_note: The SOAP note text to analyze for medications
         """
-        logging.info("_run_medication_to_panel called")
+        logger.info("_run_medication_to_panel called")
         self.app.status_manager.info("Starting medication analysis...")
 
         # Check if the analysis panel exists
         if not hasattr(self.app, 'medication_analysis_text') or self.app.medication_analysis_text is None:
-            logging.warning("Medication analysis panel not available")
+            logger.warning("Medication analysis panel not available")
             self.app.status_manager.warning("Medication panel not available")
             return
 
@@ -280,8 +282,8 @@ class MedicationGeneratorMixin:
                         'analysis_type': 'comprehensive',
                         'metadata': response.metadata or {}
                     }
-                    logging.info(f"Stored medication analysis on app id={id(self.app)} (result length: {len(response.result)})")
-                    logging.info(f"self.app type: {type(self.app)}")
+                    logger.info(f"Stored medication analysis on app id={id(self.app)} (result length: {len(response.result)})")
+                    logger.info(f"self.app type: {type(self.app)}")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_medication_panel_formatted(
@@ -297,7 +299,7 @@ class MedicationGeneratorMixin:
                     ))
 
             except Exception as e:
-                logging.error(f"Medication panel analysis failed: {e}")
+                logger.error(f"Medication panel analysis failed: {e}")
                 self.app.after(0, lambda: self._update_analysis_panel(
                     self.app.medication_analysis_text,
                     f"Error: {str(e)}\n\n"
@@ -323,21 +325,21 @@ class MedicationGeneratorMixin:
 
             # Enable View Details button
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
-                logging.info(f"Looking for medication_view_details_btn in app.ui.components")
-                logging.info(f"Available component keys: {list(self.app.ui.components.keys())}")
+                logger.info(f"Looking for medication_view_details_btn in app.ui.components")
+                logger.info(f"Available component keys: {list(self.app.ui.components.keys())}")
                 view_btn = self.app.ui.components.get('medication_view_details_btn')
                 if view_btn:
                     view_btn.config(state='normal')
-                    logging.info("Medication View Details button enabled (state='normal')")
+                    logger.info("Medication View Details button enabled (state='normal')")
                 else:
-                    logging.warning("medication_view_details_btn not found in components")
+                    logger.warning("medication_view_details_btn not found in components")
             else:
-                logging.warning(f"Cannot access app.ui.components: has ui={hasattr(self.app, 'ui')}, has components={hasattr(self.app.ui, 'components') if hasattr(self.app, 'ui') else 'N/A'}")
+                logger.warning(f"Cannot access app.ui.components: has ui={hasattr(self.app, 'ui')}, has components={hasattr(self.app.ui, 'components') if hasattr(self.app, 'ui') else 'N/A'}")
 
             self.app.status_manager.success("Medication analysis complete")
 
         except Exception as e:
-            logging.error(f"Failed to format medication panel: {e}")
+            logger.error(f"Failed to format medication panel: {e}")
             # Fall back to plain text update
             self._update_analysis_panel(self.app.medication_analysis_text, str(result))
 

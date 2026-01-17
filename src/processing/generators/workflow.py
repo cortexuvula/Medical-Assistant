@@ -4,7 +4,6 @@ Workflow Generator Module
 Handles clinical workflow management using the workflow agent.
 """
 
-import logging
 from tkinter import messagebox
 from typing import TYPE_CHECKING, Dict, Any
 

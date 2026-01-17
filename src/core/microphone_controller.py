@@ -10,9 +10,10 @@ This file is maintained for backward compatibility only.
 """
 
 import warnings
-import logging
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Re-export ConfigController as MicrophoneController for backward compatibility
 from core.controllers.config_controller import ConfigController as MicrophoneController

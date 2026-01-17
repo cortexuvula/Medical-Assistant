@@ -8,7 +8,9 @@ Record, Process, and Generate.
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Callable
-import logging
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Import UI components
 from ui.components.record_tab import RecordTab

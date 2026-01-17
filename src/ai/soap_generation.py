@@ -4,8 +4,11 @@ Provides functions for generating and formatting SOAP notes.
 """
 
 import re
-import logging
 from typing import Callable
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ai.providers.router import call_ai, call_ai_streaming
 from ai.text_processing import clean_text
@@ -97,7 +100,7 @@ def format_soap_paragraphs(text: str) -> str:
 
         result_lines.append(line)
 
-    logging.info(f"format_soap_paragraphs: {len(lines)} lines -> {len(result_lines)} lines, detected headers: {detected_headers}")
+    logger.info(f"format_soap_paragraphs: {len(lines)} lines -> {len(result_lines)} lines, detected headers: {detected_headers}")
     return '\n'.join(result_lines)
 
 
@@ -164,19 +167,19 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
         Cleaned and formatted SOAP note
     """
     # Trace logging for SOAP formatting
-    logging.info(f"SOAP raw AI response: {len(result)} chars, {result.count(chr(10))} newlines")
-    logging.info(f"SOAP raw preview: {repr(result[:200])}")
+    logger.info(f"SOAP raw AI response: {len(result)} chars, {result.count(chr(10))} newlines")
+    logger.info(f"SOAP raw preview: {repr(result[:200])}")
 
     # Clean both markdown and citations, then format paragraphs
     cleaned_soap = clean_text(result)
-    logging.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
+    logger.info(f"SOAP after clean_text: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines")
 
     cleaned_soap = format_soap_paragraphs(cleaned_soap)
 
     # Count blank lines to verify formatting
     blank_line_count = cleaned_soap.count('\n\n')
-    logging.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
-    logging.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
+    logger.info(f"SOAP after format_soap_paragraphs: {len(cleaned_soap)} chars, {cleaned_soap.count(chr(10))} newlines, {blank_line_count} blank lines")
+    logger.info(f"SOAP final preview: {repr(cleaned_soap[:200])}")
 
     # Check if the AI already generated a Clinical Synopsis section
     has_synopsis = "clinical synopsis" in cleaned_soap.lower()
@@ -193,17 +196,17 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
                 cleaned_soap += synopsis_section
                 if on_chunk:
                     on_chunk(synopsis_section)
-                logging.info("Added synopsis to SOAP note")
+                logger.info("Added synopsis to SOAP note")
             else:
                 from ai.agents.models import AgentType
                 if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
-                    logging.info("Synopsis generation is disabled")
+                    logger.info("Synopsis generation is disabled")
                 else:
-                    logging.warning("Synopsis generation failed")
+                    logger.warning("Synopsis generation failed")
         except Exception as e:
-            logging.error(f"Error with synopsis generation: {e}")
+            logger.error(f"Error with synopsis generation: {e}")
     else:
-        logging.info("AI already generated Clinical Synopsis, skipping agent synopsis")
+        logger.info("AI already generated Clinical Synopsis, skipping agent synopsis")
 
     return cleaned_soap
 

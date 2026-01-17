@@ -7,9 +7,9 @@ Manages switching between Analysis and Recordings panels in a single shared area
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Optional
-import logging
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SharedPanelManager:

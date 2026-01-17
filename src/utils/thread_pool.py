@@ -26,14 +26,15 @@ Usage:
     ThreadPoolManager.shutdown()
 """
 
-import logging
 import threading
 import atexit
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Optional, Callable, Any, TypeVar
 from functools import wraps
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 T = TypeVar('T')
 

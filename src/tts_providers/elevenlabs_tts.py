@@ -2,7 +2,6 @@
 ElevenLabs TTS provider implementation.
 """
 
-import logging
 import requests
 import io
 from typing import List, Dict, Optional

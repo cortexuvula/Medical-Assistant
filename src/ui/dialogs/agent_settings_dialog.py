@@ -10,14 +10,15 @@ from tkinter import messagebox, scrolledtext
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from typing import Dict, Any, Optional
-import logging
 
-from settings.settings import load_settings, save_settings, _DEFAULT_SETTINGS
+from settings.settings_manager import settings_manager
 from ai.agents.models import AgentType
 from ai.agents.synopsis import SynopsisAgent
 from ai.model_provider import model_provider
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentSettingsDialog:
@@ -106,7 +107,7 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         """
         self.parent = parent
         self.dialog = None
-        self.settings = load_settings()
+        self.settings = settings_manager.get_all()
         self.widgets = {}
         self.test_results = {}
         
@@ -409,14 +410,20 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
                 self.widgets[agent_key]["model"].set(models[0])
                 
         except Exception as e:
-            logger.error(f"Error refreshing models: {e}")
+            ctx = ErrorContext.capture(
+                operation="Refreshing models list",
+                exception=e,
+                input_summary=f"provider={provider}"
+            )
+            logger.error(ctx.to_log_string())
             # Restore previous values on error
             model_combo["values"] = current_values
             if current_values:
                 model_combo.set(current_values[0])
             messagebox.showerror(
                 "Error",
-                f"Failed to refresh models for {provider}.\nUsing cached values."
+                f"Failed to refresh models for {provider}.\nUsing cached values.",
+                parent=self.dialog
             )
             
     def _test_agent(self, agent_key: str):
@@ -450,7 +457,13 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
             self.test_results[agent_key] = True
             
         except Exception as e:
-            test_label.config(text=f"✗ Error: {str(e)}", foreground="red")
+            ctx = ErrorContext.capture(
+                operation="Testing agent configuration",
+                exception=e,
+                input_summary=f"agent={agent_key}"
+            )
+            logger.warning(ctx.to_log_string())
+            test_label.config(text=f"✗ Error: {ctx.user_message}", foreground="red")
             self.test_results[agent_key] = False
             
     def _get_agent_config(self, agent_key: str) -> Dict[str, Any]:
@@ -555,8 +568,8 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
                 agent_key = agent_type.value
                 self.settings["agent_config"][agent_key] = self._get_agent_config(agent_key)
                 
-            # Save to file
-            save_settings(self.settings)
+            # Save to file using settings_manager
+            settings_manager.set("agent_config", self.settings["agent_config"])
             
             # Reload agents to apply new settings
             from managers.agent_manager import agent_manager
@@ -571,10 +584,14 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
             self.dialog.destroy()
             
         except Exception as e:
-            logger.error(f"Error saving agent settings: {e}")
+            ctx = ErrorContext.capture(
+                operation="Saving agent settings",
+                exception=e
+            )
+            logger.error(ctx.to_log_string())
             messagebox.showerror(
                 "Save Error",
-                f"Failed to save settings: {str(e)}",
+                ctx.user_message,
                 parent=self.dialog
             )
 

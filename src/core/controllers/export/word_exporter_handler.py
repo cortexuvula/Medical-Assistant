@@ -5,7 +5,6 @@ Handles Word document (.docx) export operations.
 Extracted from ProcessingController for better separation of concerns.
 """
 
-import logging
 from tkinter import messagebox
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,11 +16,12 @@ from core.controllers.export.export_helpers import (
     validate_export_content
 )
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WordExporterHandler:

@@ -5,8 +5,10 @@ Dialog for configuring Text-to-Speech settings.
 """
 
 import os
-import logging
 import threading
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
@@ -48,16 +50,14 @@ def _fetch_tts_voices(provider: str) -> List[Dict[str, str]]:
         return voices
 
     except Exception as e:
-        logging.error(f"Error fetching TTS voices for {provider}: {e}")
+        logger.error(f"Error fetching TTS voices for {provider}: {e}")
         return []
 
 
 def show_tts_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure TTS (Text-to-Speech) settings."""
-    from settings.settings import _DEFAULT_SETTINGS
-
     tts_settings = settings_manager.get_tts_settings()
-    default_settings = _DEFAULT_SETTINGS.get("tts", {})
+    default_settings = settings_manager.get_default("tts", {})
 
     dialog = create_toplevel_dialog(parent, "TTS Settings", "600x550")
 

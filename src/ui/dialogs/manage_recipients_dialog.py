@@ -8,11 +8,13 @@ for use in referral generation.
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W
-import logging
 from typing import Dict, List, Optional, Any
 from tkinter import messagebox
 
 from managers.recipient_manager import get_recipient_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Constants
@@ -46,7 +48,6 @@ class ManageRecipientsDialog:
         """
         self.parent = parent
         self.dialog = None
-        self.logger = logging.getLogger(__name__)
         self.recipient_manager = get_recipient_manager()
         self.all_recipients = []
 

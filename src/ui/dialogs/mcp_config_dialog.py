@@ -7,12 +7,14 @@ from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from tkinter import messagebox, scrolledtext
 import json
-import logging
 import shutil
 import threading
 from typing import Dict, Any, Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
+
+logger = get_logger(__name__)
 
 # Popular MCP server presets
 MCP_SERVER_PRESETS = {
@@ -671,8 +673,14 @@ class MCPConfigDialog:
                     # Schedule result display on main thread
                     self.dialog.after(0, lambda: show_result(success, message))
             except Exception as e:
+                ctx = ErrorContext.capture(
+                    operation="Testing MCP server",
+                    exception=e,
+                    input_summary=f"server={item_data['name']}"
+                )
+                logger.error(ctx.to_log_string())
                 if not cancelled[0]:
-                    self.dialog.after(0, lambda: show_result(False, str(e)))
+                    self.dialog.after(0, lambda: show_result(False, ctx.user_message))
 
         # Start test in background thread
         test_thread = threading.Thread(target=run_test, daemon=True)
@@ -721,9 +729,21 @@ class MCPConfigDialog:
                 self.json_text.delete("1.0", tk.END)
             
         except json.JSONDecodeError as e:
-            messagebox.showerror("Invalid JSON", f"Failed to parse JSON: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Parsing MCP JSON",
+                exception=e,
+                input_summary=f"json_length={len(json_str)}"
+            )
+            logger.error(ctx.to_log_string())
+            messagebox.showerror("Invalid JSON", f"Failed to parse JSON: {e.msg} at line {e.lineno}")
         except Exception as e:
-            messagebox.showerror("Import Error", f"Failed to import: {str(e)}")
+            ctx = ErrorContext.capture(
+                operation="Importing MCP configuration",
+                exception=e,
+                input_summary=f"json_length={len(json_str)}"
+            )
+            logger.error(ctx.to_log_string())
+            messagebox.showerror("Import Error", ctx.user_message)
     
     def _validate_config(self) -> Tuple[bool, str]:
         """Validate all server configurations before saving.
@@ -801,9 +821,9 @@ class MCPConfigDialog:
         # Update settings
         self.settings["mcp_config"] = mcp_config
         
-        # Save settings
-        from settings.settings import save_settings
-        save_settings(self.settings)
+        # Save settings using settings_manager
+        from settings.settings_manager import settings_manager
+        settings_manager.set("mcp_config", mcp_config)
         
         # Reload MCP manager
         self.mcp_manager.stop_all()

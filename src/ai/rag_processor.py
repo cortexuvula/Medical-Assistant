@@ -3,14 +3,13 @@ RAG Processor for Medical Assistant
 Handles RAG queries via N8N webhook with security validation
 """
 
-import logging
 import threading
 import requests
 import json
 import os
 import uuid
 import re
-from typing import Optional, Callable, Tuple
+from typing import Optional, Callable, Tuple, Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -18,6 +17,11 @@ from dotenv import load_dotenv
 from managers.data_folder_manager import data_folder_manager
 from utils.timeout_config import get_timeout, get_timeout_tuple
 from utils.http_client_manager import get_http_client_manager
+from utils.structured_logging import get_logger
+from utils.resilience import smart_retry
+from utils.exceptions import APIError
+
+logger = get_logger(__name__)
 
 # Load environment variables
 # Try loading from root .env first, then fall back to AppData .env
@@ -92,12 +96,53 @@ class RagProcessor:
             if is_valid:
                 self.n8n_webhook_url = validated_url
             else:
-                logging.error(f"Invalid N8N_URL: {error}")
+                logger.error(f"Invalid N8N_URL: {error}")
         else:
-            logging.warning("N8N_URL not found in environment variables")
+            logger.warning("N8N_URL not found in environment variables")
 
         if not self.n8n_auth_header:
-            logging.warning("N8N_AUTHORIZATION_SECRET not found in environment variables")
+            logger.warning("N8N_AUTHORIZATION_SECRET not found in environment variables")
+
+    @smart_retry(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
+    def _make_webhook_request(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any]
+    ) -> requests.Response:
+        """Make retryable HTTP POST request to webhook.
+
+        Uses @smart_retry decorator to handle transient network errors
+        with exponential backoff.
+
+        Args:
+            url: Webhook URL to call
+            headers: HTTP headers
+            payload: JSON payload to send
+
+        Returns:
+            Response object from the request
+
+        Raises:
+            APIError: On non-retryable errors
+            requests.exceptions.RequestException: On network errors (may be retried)
+        """
+        session = get_http_client_manager().get_requests_session("rag")
+        timeout = get_timeout_tuple("rag")
+
+        response = session.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        )
+
+        # Raise for server errors (5xx) to trigger retry
+        # Client errors (4xx) should not be retried
+        if response.status_code >= 500:
+            response.raise_for_status()
+
+        return response
 
     def _validate_webhook_url(self, url: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """Validate webhook URL for security.
@@ -145,7 +190,7 @@ class RagProcessor:
             if parsed.query:
                 sanitized += f"?{parsed.query}"
 
-            logging.debug(f"Validated webhook URL: {sanitized}")
+            logger.debug(f"Validated webhook URL: {sanitized}")
             return True, sanitized, None
 
         except Exception as e:
@@ -160,7 +205,7 @@ class RagProcessor:
             callback: Optional callback to call when processing is complete
         """
         if self.is_processing:
-            logging.warning("RAG processor is already processing a message")
+            logger.warning("RAG processor is already processing a message")
             return
             
         if not self.n8n_webhook_url:
@@ -209,30 +254,28 @@ class RagProcessor:
                     "sessionId": session_id
                 }
                 
-                logging.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
-                logging.info(f"Payload: {payload}")
+                logger.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
+                logger.debug(f"Payload: {payload}")
 
-                # Use pooled HTTP session for connection reuse (saves 50-200ms per call)
-                session = get_http_client_manager().get_requests_session("rag")
-                timeout = get_timeout_tuple("rag")
-                response = session.post(
+                # Use retryable HTTP method with automatic retry on transient errors
+                response = self._make_webhook_request(
                     self.n8n_webhook_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=timeout
+                    headers,
+                    payload
                 )
-                
+
+                # Check for client errors (4xx) - these weren't raised in _make_webhook_request
                 response.raise_for_status()
                 
                 # Log raw response for debugging
-                logging.info(f"Response status code: {response.status_code}")
-                logging.info(f"Response headers: {response.headers}")
+                logger.info(f"Response status code: {response.status_code}")
+                logger.info(f"Response headers: {response.headers}")
                 response_text = response.text
-                logging.info(f"Raw response: {response_text[:500]}...")  # Log first 500 chars
+                logger.info(f"Raw response: {response_text[:500]}...")  # Log first 500 chars
                 
                 # Parse response
                 if not response_text or response_text.strip() == "":
-                    logging.warning("Empty response from N8N webhook - the webhook may need to be configured to return data")
+                    logger.warning("Empty response from N8N webhook - the webhook may need to be configured to return data")
                     output = "The RAG system processed your request but didn't return any data. Please check the N8N workflow configuration to ensure it returns a response."
                 else:
                     try:
@@ -255,22 +298,22 @@ class RagProcessor:
                 
             except requests.exceptions.Timeout:
                 error_msg = "Request timed out. The RAG system took too long to respond."
-                logging.error(error_msg)
+                logger.error(error_msg)
                 self._display_error(error_msg)
                 
             except requests.exceptions.RequestException as e:
                 error_msg = f"Error connecting to RAG system: {str(e)}"
-                logging.error(error_msg)
+                logger.error(error_msg)
                 self._display_error(error_msg)
                 
             except json.JSONDecodeError as e:
                 error_msg = f"Error parsing RAG response: {str(e)}"
-                logging.error(error_msg)
+                logger.error(error_msg)
                 self._display_error(error_msg)
                 
         except Exception as e:
             error_msg = f"Unexpected error in RAG processor: {str(e)}"
-            logging.error(error_msg)
+            logger.error(error_msg)
             self._display_error(error_msg)
             
         finally:
@@ -334,7 +377,7 @@ class RagProcessor:
         # Truncate excessively long responses
         if len(text) > self.MAX_RESPONSE_LENGTH:
             text = text[:self.MAX_RESPONSE_LENGTH] + "\n\n[Response truncated due to length]"
-            logging.warning(f"Response truncated from {len(text)} to {self.MAX_RESPONSE_LENGTH} chars")
+            logger.warning(f"Response truncated from {len(text)} to {self.MAX_RESPONSE_LENGTH} chars")
 
         # Apply dangerous pattern removal
         for pattern, replacement in self.DANGEROUS_PATTERNS:
@@ -480,9 +523,9 @@ class RagProcessor:
             # Show brief success message
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.success("Response copied to clipboard")
-            logging.info("RAG response copied to clipboard")
+            logger.info("RAG response copied to clipboard")
         except Exception as e:
-            logging.error(f"Failed to copy to clipboard: {e}")
+            logger.error(f"Failed to copy to clipboard: {e}")
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.error("Failed to copy response")
         

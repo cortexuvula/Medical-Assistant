@@ -5,10 +5,12 @@ Provides a state machine implementation for managing UI state transitions,
 particularly for complex workflows like recording.
 """
 
-import logging
 from enum import Enum, auto
 from typing import Optional, Callable, Dict, List, Set, Any
 from dataclasses import dataclass, field
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class StateTransitionError(Exception):

@@ -4,15 +4,33 @@ AI Processor Module
 Handles all AI-related text processing including refinement, improvement,
 SOAP note generation, referral letters, and general letters.
 
-All methods return OperationResult for consistent error handling.
-Use result.to_dict() for backward compatibility with code expecting
-{"success": bool, "text": str} or {"success": bool, "error": str}.
+Error Handling:
+    - All public methods return OperationResult[T] for structured error handling
+    - Use result.success to check if operation succeeded
+    - Use result.value for the returned data on success
+    - Use result.error for error message on failure
+    - Use result.to_dict() for backward compatibility with legacy code
+    - Methods use @handle_errors decorator for consistent error capture
+    - APIError, TranscriptionError raised for unrecoverable provider failures
+
+Logging:
+    - Uses structured logging via get_logger(__name__)
+    - Logs include operation context (provider, model, text_length)
+    - API keys and sensitive data are redacted from logs
+
+Usage:
+    processor = AIProcessor()
+    result = processor.refine_text("Raw transcript text")
+    if result.success:
+        refined = result.value["text"]
+    else:
+        handle_error(result.error)
 """
 
 from typing import Dict, Any, Optional, Tuple, Union
 from utils.structured_logging import get_logger
 from utils.security import get_security_manager
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from ai.ai import (
     adjust_text_with_openai,
     improve_text_with_openai,
@@ -123,8 +141,8 @@ class AIProcessor:
         sanitized_context = sanitize_prompt(context) if context else ""
 
         # Get SOAP prompt from settings or use default
-        soap_settings = SETTINGS.get("soap_note", {})
-        soap_prompt = soap_settings.get("prompt", SOAP_PROMPT_TEMPLATE)
+        soap_config = settings_manager.get_soap_config()
+        soap_prompt = soap_config.get("prompt", SOAP_PROMPT_TEMPLATE)
 
         # Include context if provided
         if sanitized_context:
@@ -133,7 +151,7 @@ class AIProcessor:
             full_transcript = sanitized_transcript
 
         # Get temperature setting
-        temperature = SETTINGS.get("soap_temperature", 0.2)
+        temperature = settings_manager.get_nested("soap_note.temperature", 0.2)
 
         # Generate SOAP note
         soap_note = create_soap_note_with_openai(
@@ -144,7 +162,7 @@ class AIProcessor:
 
         # Get possible conditions if enabled (non-critical, use inner try/except)
         possible_conditions = ""
-        if SETTINGS.get("include_possible_conditions", True):
+        if settings_manager.get("include_possible_conditions", True):
             try:
                 conditions = get_possible_conditions(soap_note)
                 if conditions:
@@ -180,8 +198,8 @@ class AIProcessor:
         sanitized_text = sanitize_prompt(text)
 
         # Get referral prompt from settings or use default
-        referral_settings = SETTINGS.get("referral", {})
-        referral_prompt = referral_settings.get(
+        referral_config = settings_manager.get_model_config("referral")
+        referral_prompt = referral_config.get(
             "prompt",
             "Create a professional referral letter based on the following information:"
         )
@@ -201,7 +219,7 @@ class AIProcessor:
         full_context = "\n".join(context_parts)
 
         # Get temperature setting
-        temperature = SETTINGS.get("referral_temperature", 0.3)
+        temperature = settings_manager.get_nested("referral.temperature", 0.3)
 
         # Generate referral letter
         referral_letter = adjust_text_with_openai(
@@ -233,7 +251,7 @@ class AIProcessor:
         sanitized_text = sanitize_prompt(text)
 
         # Get letter prompt based on type
-        letter_prompt = SETTINGS.get(
+        letter_prompt = settings_manager.get(
             f"{letter_type}_letter_prompt",
             f"Create a professional {letter_type} letter based on the following information:"
         )
@@ -251,7 +269,7 @@ class AIProcessor:
         full_context = "\n".join(context_parts)
 
         # Get temperature setting
-        temperature = SETTINGS.get("letter_temperature", 0.3)
+        temperature = settings_manager.get("letter_temperature", 0.3)
 
         # Generate letter
         letter = adjust_text_with_openai(

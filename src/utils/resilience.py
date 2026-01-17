@@ -1,11 +1,45 @@
 """
 Resilience patterns for Medical Assistant application.
 Includes retry decorators and circuit breaker implementation.
+
+Components:
+    - retry: Basic retry decorator with exponential backoff
+    - smart_retry: Intelligent retry based on error classification
+    - CircuitBreaker: Circuit breaker pattern for failing fast
+    - circuit_breaker: Decorator wrapper for CircuitBreaker
+    - resilient_api_call: Composite of retry + circuit breaker (recommended)
+
+Error Handling:
+    - Retries on: RateLimitError, ServiceUnavailableError, timeouts, connection errors
+    - Does not retry: AuthenticationError, InvalidRequestError, validation errors
+    - Raises ServiceUnavailableError: When circuit breaker is OPEN
+
+Usage:
+    # For AI provider calls (recommended):
+    @resilient_api_call(max_retries=3, failure_threshold=5)
+    def call_openai_api():
+        ...
+
+    # For simpler retry needs:
+    @smart_retry(max_retries=3)
+    def fetch_data():
+        ...
+
+    # Access circuit breaker state:
+    if call_openai_api.circuit_breaker.state == CircuitState.OPEN:
+        print("Service is unavailable")
+
+Logging:
+    Uses structured logging with operation context.
+    Logs include: function name, retry attempts, delay times, circuit state changes.
+
+Note:
+    This module provides API-level resilience patterns including circuit breaker.
+    For database-specific retry logic, see utils.retry_decorator.
 """
 
 import time
 import functools
-import logging
 from typing import Callable, Any, Optional, Union, Tuple, Type
 from datetime import datetime, timedelta
 from enum import Enum
@@ -15,8 +49,9 @@ from utils.exceptions import (
     APIError, RateLimitError, ServiceUnavailableError,
     AuthenticationError, MedicalAssistantError
 )
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # HTTP status codes that are safe to retry (transient errors)

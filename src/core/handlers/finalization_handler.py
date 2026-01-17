@@ -5,15 +5,15 @@ Provides post-recording cleanup and processing coordination.
 Extracted from RecordingController for better separation of concerns.
 """
 
-import logging
 from typing import TYPE_CHECKING, Dict, Any
 
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FinalizationHandler:

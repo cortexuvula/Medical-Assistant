@@ -4,9 +4,12 @@ Base Generators Module
 Provides streaming helpers and shared utilities for document generation.
 """
 
-import logging
 from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -41,7 +44,7 @@ class StreamingMixin:
                 # Force update to show changes immediately
                 widget.update_idletasks()
             except Exception as e:
-                logging.debug(f"Error appending streaming chunk: {e}")
+                logger.debug(f"Error appending streaming chunk: {e}")
 
         # Schedule UI update on main thread
         self.app.after(0, update)
@@ -60,7 +63,7 @@ class StreamingMixin:
                 widget.delete('1.0', 'end')
                 widget.update_idletasks()
             except Exception as e:
-                logging.debug(f"Error preparing streaming display: {e}")
+                logger.debug(f"Error preparing streaming display: {e}")
 
         self.app.after(0, setup)
         self.app.status_manager.progress(status_msg)
@@ -86,7 +89,7 @@ class StreamingMixin:
                 # Update status
                 self.app.status_manager.success(success_msg)
             except Exception as e:
-                logging.debug(f"Error finishing streaming display: {e}")
+                logger.debug(f"Error finishing streaming display: {e}")
 
         self.app.after(0, finish)
 
@@ -106,9 +109,9 @@ class StreamingMixin:
             widget.see('1.0')  # Scroll to top
             widget.edit_separator()  # Add undo separator
             widget.update_idletasks()  # Force widget refresh
-            logging.debug("Updated text widget with formatted content")
+            logger.debug("Updated text widget with formatted content")
         except Exception as e:
-            logging.error(f"Error updating text widget: {e}")
+            logger.error(f"Error updating text widget: {e}")
 
     def _update_analysis_panel(self, widget, content: str) -> None:
         """Update an analysis panel with new content.
@@ -126,7 +129,7 @@ class StreamingMixin:
             widget.insert('1.0', content)
             widget.config(state='disabled')
         except Exception as e:
-            logging.error(f"Failed to update analysis panel: {e}")
+            logger.error(f"Failed to update analysis panel: {e}")
 
 
 __all__ = ["StreamingMixin"]

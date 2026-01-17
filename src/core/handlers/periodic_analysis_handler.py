@@ -5,7 +5,6 @@ Provides real-time differential diagnosis analysis during recording sessions.
 Extracted from RecordingController for better separation of concerns.
 """
 
-import logging
 import threading
 import tkinter as tk
 from typing import TYPE_CHECKING, Optional, Dict, Any, List
@@ -14,11 +13,12 @@ from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
 from utils.differential_tracker import DifferentialTracker
 from utils.constants import TimingConstants
 from database.database import Database
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PeriodicAnalysisHandler:
@@ -106,13 +106,13 @@ class PeriodicAnalysisHandler:
 
             # Start the periodic analysis
             self.app.periodic_analyzer.start(self.perform_periodic_analysis)
-            logging.info(f"Started periodic analysis with {interval_seconds}s interval")
+            logger.info(f"Started periodic analysis with {interval_seconds}s interval")
 
             # Run immediate analysis with accumulated audio if recording is in progress
             self._run_immediate_analysis_if_needed()
 
         except Exception as e:
-            logging.error(f"Failed to start periodic analysis: {e}")
+            logger.error(f"Failed to start periodic analysis: {e}")
             self.app.status_manager.error("Failed to start advanced analysis")
 
     def stop_periodic_analysis(self, save_to_database: bool = True) -> Optional[int]:
@@ -133,12 +133,12 @@ class PeriodicAnalysisHandler:
 
                 self.app.periodic_analyzer.stop()
                 self.app.periodic_analyzer = None  # Clear reference to prevent reuse
-                logging.info("Stopped periodic analysis")
+                logger.info("Stopped periodic analysis")
 
                 # Store for later retrieval
                 self._last_session_id = session_id
         except Exception as e:
-            logging.error(f"Error stopping periodic analysis: {e}")
+            logger.error(f"Error stopping periodic analysis: {e}")
 
         return session_id
 
@@ -155,9 +155,9 @@ class PeriodicAnalysisHandler:
                 if context_widget:
                     self.patient_context = context_widget.get("1.0", "end-1c").strip()
                     if self.patient_context:
-                        logging.info(f"Captured {len(self.patient_context)} chars of patient context")
+                        logger.info(f"Captured {len(self.patient_context)} chars of patient context")
         except Exception as e:
-            logging.error(f"Error capturing patient context: {e}")
+            logger.error(f"Error capturing patient context: {e}")
 
     def _run_immediate_analysis_if_needed(self) -> None:
         """Run immediate analysis with accumulated audio if recording has been going on.
@@ -176,13 +176,13 @@ class PeriodicAnalysisHandler:
 
             # Log segment stats for debugging
             pending, chunks, total = self.app.audio_state_manager.get_segment_stats()
-            logging.info(f"Immediate analysis check: elapsed={elapsed_time:.1f}s, "
+            logger.info(f"Immediate analysis check: elapsed={elapsed_time:.1f}s, "
                         f"pending_segments={pending}, chunks={chunks}, total={total}")
 
             # Only run immediate analysis if recording has been going for minimum time
             # This avoids running analysis for minimal audio at recording start
             if elapsed_time < TimingConstants.PERIODIC_ANALYSIS_MIN_ELAPSED:
-                logging.info("Skipping immediate analysis - recording just started")
+                logger.info("Skipping immediate analysis - recording just started")
                 return
 
             # Check if there's actual audio data
@@ -191,10 +191,10 @@ class PeriodicAnalysisHandler:
                 self.app.audio_state_manager
             )
             if combined_audio is None or len(combined_audio) == 0:
-                logging.info("Skipping immediate analysis - no audio accumulated yet")
+                logger.info("Skipping immediate analysis - no audio accumulated yet")
                 return
 
-            logging.info(f"Running immediate analysis with {elapsed_time:.1f}s of accumulated audio "
+            logger.info(f"Running immediate analysis with {elapsed_time:.1f}s of accumulated audio "
                         f"(actual audio duration: {len(combined_audio)}ms)")
 
             # Run the analysis in a separate thread to avoid blocking audio capture
@@ -202,14 +202,14 @@ class PeriodicAnalysisHandler:
                 try:
                     self.perform_periodic_analysis(0, elapsed_time)
                 except Exception as e:
-                    logging.error(f"Error in immediate analysis thread: {e}")
+                    logger.error(f"Error in immediate analysis thread: {e}")
 
             analysis_thread = threading.Thread(target=run_analysis, daemon=True)
             analysis_thread.start()
-            logging.info("Immediate analysis started in background thread")
+            logger.info("Immediate analysis started in background thread")
 
         except Exception as e:
-            logging.error(f"Error running immediate analysis: {e}")
+            logger.error(f"Error running immediate analysis: {e}")
             # Don't fail the whole start - periodic analysis will still run normally
 
     # ========================================
@@ -235,7 +235,7 @@ class PeriodicAnalysisHandler:
 
             self.app.after(0, update_ui)
         except Exception as e:
-            logging.error(f"Error updating countdown: {e}")
+            logger.error(f"Error updating countdown: {e}")
 
     # ========================================
     # Save History to Database
@@ -293,7 +293,7 @@ class PeriodicAnalysisHandler:
             )
 
             if session_id:
-                logging.info(
+                logger.info(
                     f"Saved periodic analysis session {session_id} "
                     f"with {len(history)} analyses to database"
                 )
@@ -322,12 +322,12 @@ class PeriodicAnalysisHandler:
                         source_text=None
                     )
                 except Exception as e:
-                    logging.warning(f"Error saving individual periodic analysis: {e}")
+                    logger.warning(f"Error saving individual periodic analysis: {e}")
 
             return session_id
 
         except Exception as e:
-            logging.error(f"Error saving periodic history to database: {e}")
+            logger.error(f"Error saving periodic history to database: {e}")
             return None
 
     # ========================================
@@ -357,7 +357,7 @@ class PeriodicAnalysisHandler:
 
             return None
         except Exception as e:
-            logging.error(f"Error retrieving periodic session: {e}")
+            logger.error(f"Error retrieving periodic session: {e}")
             return None
 
     def get_linked_periodic_analyses(self, recording_id: int) -> List[Dict[str, Any]]:
@@ -381,7 +381,7 @@ class PeriodicAnalysisHandler:
                 if a.get('recording_id') == recording_id
             ]
         except Exception as e:
-            logging.error(f"Error getting linked periodic analyses: {e}")
+            logger.error(f"Error getting linked periodic analyses: {e}")
             return []
 
     # ========================================
@@ -403,7 +403,7 @@ class PeriodicAnalysisHandler:
             )
 
             if not audio_segment:
-                logging.warning("No audio available for periodic analysis")
+                logger.warning("No audio available for periodic analysis")
                 return
 
             # Transcribe the audio segment
@@ -411,7 +411,7 @@ class PeriodicAnalysisHandler:
             transcript = self.app.audio_handler.transcribe_audio(audio_segment)
 
             if not transcript:
-                logging.warning("No transcript generated for periodic analysis")
+                logger.warning("No transcript generated for periodic analysis")
                 return
 
             # Build enhanced transcript with context if available
@@ -421,7 +421,7 @@ class PeriodicAnalysisHandler:
                     f"Patient Context:\n{self.patient_context}\n\n"
                     f"Current Transcript:\n{transcript}"
                 )
-                logging.info("Including patient context in differential diagnosis")
+                logger.info("Including patient context in differential diagnosis")
 
             # Generate differential diagnosis
             self.app.status_manager.info("Generating differential diagnosis...")
@@ -482,11 +482,11 @@ class PeriodicAnalysisHandler:
                 self.app.status_manager.success(f"Analysis #{analysis_count} completed")
             else:
                 error_msg = result.error or 'Unknown error'
-                logging.error(f"Failed to generate analysis: {error_msg}")
+                logger.error(f"Failed to generate analysis: {error_msg}")
                 self.app.status_manager.error("Failed to generate analysis")
 
         except Exception as e:
-            logging.error(f"Error in periodic analysis: {e}")
+            logger.error(f"Error in periodic analysis: {e}")
             self.app.status_manager.error("Error during advanced analysis")
 
     # ========================================
@@ -519,7 +519,7 @@ class PeriodicAnalysisHandler:
                 text_widget.insert(tk.END, analysis_text)
                 text_widget.see(tk.END)
         except Exception as e:
-            logging.error(f"Error updating analysis display: {e}")
+            logger.error(f"Error updating analysis display: {e}")
 
     def clear_advanced_analysis_text(self) -> None:
         """Clear the Advanced Analysis Results text area and show empty state."""
@@ -536,15 +536,15 @@ class PeriodicAnalysisHandler:
                 record_tab = self.app.ui.record_tab
                 if hasattr(record_tab, '_clear_analysis'):
                     record_tab._clear_analysis()
-                    logging.info("Cleared advanced analysis text, differential tracker, and history")
+                    logger.info("Cleared advanced analysis text, differential tracker, and history")
                     return
 
             # Fallback to direct clear
             if 'record_notes_text' in self.app.ui.components:
                 self.app.ui.components['record_notes_text'].delete('1.0', tk.END)
-                logging.info("Cleared advanced analysis text, differential tracker, and history")
+                logger.info("Cleared advanced analysis text, differential tracker, and history")
         except Exception as e:
-            logging.error(f"Error clearing advanced analysis text: {e}")
+            logger.error(f"Error clearing advanced analysis text: {e}")
 
     def get_analysis_history(self) -> dict:
         """Get the analysis history summary.

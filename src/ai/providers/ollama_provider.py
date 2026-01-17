@@ -11,7 +11,10 @@ Return Types:
 import os
 import json
 import time
-import logging
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 from ai.logging_utils import log_api_call_debug
 from ai.providers.base import get_model_key_for_task
@@ -50,7 +53,7 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
     model_key = get_model_key_for_task(system_message, prompt)
     model = SETTINGS.get(model_key, {}).get("ollama_model", "llama3")
 
-    logging.info(f"Making Ollama API call with model: {model}")
+    logger.info(f"Making Ollama API call with model: {model}")
 
     # Use consolidated debug logging
     log_api_call_debug("Ollama", model, temperature, system_message, prompt)
@@ -71,20 +74,20 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
 
     for attempt in range(max_retries):
         try:
-            logging.info(f"Ollama API attempt {attempt+1}/{max_retries} with timeout {timeout_values[attempt]}s")
+            logger.info(f"Ollama API attempt {attempt+1}/{max_retries} with timeout {timeout_values[attempt]}s")
 
             # Check if Ollama service is running before making the request
             try:
                 health_check = session.get(f"{base_url}/api/version", timeout=5)
                 if health_check.status_code != 200:
-                    logging.error(f"Ollama service health check failed: {health_check.status_code}")
+                    logger.error(f"Ollama service health check failed: {health_check.status_code}")
                     if attempt == max_retries - 1:  # Last attempt
                         title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", f"Service at {ollama_url} returned status {health_check.status_code}")
                         return AIResult.failure(message, error_code=title)
                     time.sleep(2)  # Wait before next retry
                     continue
             except Exception as e:
-                logging.error(f"Ollama service health check error: {str(e)}")
+                logger.error(f"Ollama service health check error: {str(e)}")
                 if attempt == max_retries - 1:  # Last attempt
                     title, message = get_error_message("CONN_OLLAMA_NOT_RUNNING", str(e))
                     return AIResult.failure(message, error_code=title, exception=e)
@@ -124,13 +127,13 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
                 if "response" in result:
                     return AIResult.success(result["response"].strip(), model=model, provider="ollama")
                 else:
-                    logging.warning(f"Unexpected Ollama API response format: {result}")
+                    logger.warning(f"Unexpected Ollama API response format: {result}")
                     # Fallback to chat API if generate fails
                     return fallback_ollama_chat(model, system_message, prompt, temperature, timeout_values[attempt])
 
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse Ollama API response: {e}")
-                logging.error(f"Raw response: {response.text[:500]}...")  # Log first 500 chars
+                logger.error(f"Failed to parse Ollama API response: {e}")
+                logger.error(f"Raw response: {response.text[:500]}...")  # Log first 500 chars
                 if attempt == max_retries - 1:  # Last attempt
                     # Try the fallback method
                     return fallback_ollama_chat(model, system_message, prompt, temperature, timeout_values[attempt])
@@ -139,14 +142,14 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
 
         except Exception as e:
             if "Timeout" in type(e).__name__:
-                logging.error(f"Ollama API timeout with model {model} (attempt {attempt+1}/{max_retries})")
+                logger.error(f"Ollama API timeout with model {model} (attempt {attempt+1}/{max_retries})")
                 if attempt == max_retries - 1:  # Last attempt
                     title, message = get_error_message("CONN_TIMEOUT", f"Model '{model}' took longer than {timeout_values[attempt]} seconds to respond")
                     return AIResult.failure(message, error_code=title, exception=e)
                 time.sleep(2)  # Wait before next retry
                 continue
 
-            logging.error(f"Ollama API error with model {model}: {str(e)}")
+            logger.error(f"Ollama API error with model {model}: {str(e)}")
             if attempt == max_retries - 1:  # Last attempt
                 # Check if it's a model not found error
                 if "model" in str(e).lower() and "not found" in str(e).lower():
@@ -183,7 +186,7 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
     # Get pooled session for connection reuse
     session = get_http_client_manager().get_requests_session("ollama")
 
-    logging.info(f"Trying fallback chat API for Ollama model: {model}")
+    logger.info(f"Trying fallback chat API for Ollama model: {model}")
 
     chat_payload = {
         "model": model,
@@ -222,7 +225,7 @@ def fallback_ollama_chat(model: str, system_message: str, prompt: str, temperatu
             )
 
     except Exception as e:
-        logging.error(f"Fallback Ollama chat API error: {str(e)}")
+        logger.error(f"Fallback Ollama chat API error: {str(e)}")
         return AIResult.failure(
             f"Error with Ollama API: {str(e)}. Please check if model '{model}' is properly installed.",
             error_code="OLLAMA_API_ERROR",

@@ -6,12 +6,12 @@ Currently serves as a placeholder for future extensibility.
 """
 
 from typing import Dict, Optional
-import logging
 
 from .models import Tool, ToolParameter
+from utils.structured_logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolRegistry:

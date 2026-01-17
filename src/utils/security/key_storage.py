@@ -7,7 +7,6 @@ Provides encrypted storage for API keys using Fernet encryption.
 import os
 import json
 import hashlib
-import logging
 import secrets
 import subprocess
 import base64
@@ -19,9 +18,12 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 from threading import Lock
+from utils.structured_logging import get_logger
 
 from core.config import get_config
 from utils.exceptions import ConfigurationError
+
+logger = get_logger(__name__)
 
 
 class SecureKeyStorage:
@@ -42,7 +44,7 @@ class SecureKeyStorage:
         Args:
             key_file: Path to encrypted key file (default: config/keys.enc)
         """
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
         self.config = get_config()
 
         if key_file is None:
@@ -91,9 +93,9 @@ class SecureKeyStorage:
                     if len(salt_data) >= self.SALT_LENGTH:
                         return salt_data[:self.SALT_LENGTH]
                     else:
-                        self.logger.warning("Invalid salt file, generating new salt")
+                        logger.warning("Invalid salt file, generating new salt")
             except Exception as e:
-                self.logger.warning(f"Failed to read salt file: {e}")
+                logger.warning(f"Failed to read salt file: {e}")
 
         # Generate new cryptographically secure salt
         new_salt = secrets.token_bytes(self.SALT_LENGTH)
@@ -114,9 +116,9 @@ class SecureKeyStorage:
             if os.name == 'posix':
                 os.chmod(self.salt_file, 0o600)
 
-            self.logger.debug("Salt file saved successfully")
+            logger.debug("Salt file saved successfully")
         except Exception as e:
-            self.logger.error(f"Failed to save salt file: {e}")
+            logger.error(f"Failed to save salt file: {e}")
             raise ConfigurationError(f"Failed to save encryption salt: {e}")
 
     def _migrate_legacy_keys_if_needed(self, master_key: str):
@@ -139,7 +141,7 @@ class SecureKeyStorage:
             self._update_metadata_version(keys)
             return
 
-        self.logger.info("Migrating API keys to new salt format...")
+        logger.info("Migrating API keys to new salt format...")
         failed_providers = []  # Track providers that fail migration
 
         try:
@@ -167,10 +169,10 @@ class SecureKeyStorage:
                         "key_hash": data.get("key_hash", hashlib.sha256(decrypted_key.encode()).hexdigest()[:8])
                     }
 
-                    self.logger.info(f"Migrated key for {provider}")
+                    logger.info(f"Migrated key for {provider}")
 
                 except (ValueError, TypeError, KeyError) as e:
-                    self.logger.warning(f"Failed to migrate key for {provider}: {e}")
+                    logger.warning(f"Failed to migrate key for {provider}: {e}")
                     # Track failed migrations for user notification
                     failed_providers.append(provider)
                     # Keep the old format - will fail on decrypt but preserves data
@@ -178,18 +180,18 @@ class SecureKeyStorage:
 
             # Save migrated keys
             self._save_keys(migrated_keys)
-            self.logger.info("Key migration completed successfully")
+            logger.info("Key migration completed successfully")
 
             # Notify user about failed migrations
             if failed_providers:
                 self._migration_failures = failed_providers
-                self.logger.warning(
+                logger.warning(
                     f"Key migration incomplete. The following providers need re-configuration: "
                     f"{', '.join(failed_providers)}. Please re-enter API keys in Settings."
                 )
 
         except (IOError, OSError, json.JSONDecodeError) as e:
-            self.logger.error(f"Key migration failed due to file error: {e}")
+            logger.error(f"Key migration failed due to file error: {e}")
             self._migration_failures = ["all"]
             # Don't raise - allow app to continue, but track failure for UI notification
 
@@ -305,11 +307,11 @@ class SecureKeyStorage:
                     pass
 
         except Exception as e:
-            self.logger.warning(f"Error getting platform-specific machine ID: {e}")
+            logger.warning(f"Error getting platform-specific machine ID: {e}")
 
         # Fallback identifiers (less stable but always available)
         if not sources:
-            self.logger.warning("Using fallback machine identification - encryption keys may not survive reinstall")
+            logger.warning("Using fallback machine identification - encryption keys may not survive reinstall")
 
             # Username (less stable)
             username = os.getenv("USER") or os.getenv("USERNAME") or "default"
@@ -371,7 +373,7 @@ class SecureKeyStorage:
 
             # Save keys
             self._save_keys(keys)
-            self.logger.info(f"Securely stored API key for {provider}")
+            logger.info(f"Securely stored API key for {provider}")
 
     def get_key(self, provider: str) -> Optional[str]:
         """Retrieve and decrypt an API key.
@@ -393,7 +395,7 @@ class SecureKeyStorage:
                 decrypted_key = self._cipher_suite.decrypt(encrypted_key).decode()
                 return decrypted_key
             except Exception as e:
-                self.logger.error(f"Failed to decrypt key for {provider}: {e}")
+                logger.error(f"Failed to decrypt key for {provider}: {e}")
                 return None
 
     def remove_key(self, provider: str) -> bool:
@@ -411,7 +413,7 @@ class SecureKeyStorage:
             if provider in keys:
                 del keys[provider]
                 self._save_keys(keys)
-                self.logger.info(f"Removed API key for {provider}")
+                logger.info(f"Removed API key for {provider}")
                 return True
 
             return False
@@ -445,7 +447,7 @@ class SecureKeyStorage:
             with open(self.key_file, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            self.logger.error(f"Failed to load keys: {e}")
+            logger.error(f"Failed to load keys: {e}")
             return {}
 
     def _save_keys(self, keys: Dict[str, Any]) -> None:
@@ -460,7 +462,7 @@ class SecureKeyStorage:
                 os.chmod(self.key_file, 0o600)
 
         except Exception as e:
-            self.logger.error(f"Failed to save keys: {e}")
+            logger.error(f"Failed to save keys: {e}")
             raise ConfigurationError(f"Failed to save encrypted keys: {e}")
 
 

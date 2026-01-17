@@ -2,7 +2,6 @@
 Workflow agent for managing multi-step clinical processes and protocols.
 """
 
-import logging
 import json
 import re
 from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
@@ -10,12 +9,13 @@ from datetime import datetime
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from .ai_caller import AICallerProtocol
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WorkflowAgent(BaseAgent):

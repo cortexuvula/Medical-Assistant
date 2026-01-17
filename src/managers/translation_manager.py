@@ -7,13 +7,13 @@ both exception-based (original) and OperationResult-based (safe) variants
 for flexibility in error handling.
 """
 
-import logging
 import threading
 from typing import Optional, Dict, Any, List, Tuple
 
 from translation.base import BaseTranslationProvider
+from utils.structured_logging import get_logger
 from translation.deep_translator_provider import DeepTranslatorProvider
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.security import get_security_manager
 from utils.exceptions import TranslationError
 from utils.error_handling import OperationResult
@@ -21,10 +21,10 @@ from utils.error_handling import OperationResult
 
 class TranslationManager:
     """Manages translation providers and handles translation operations."""
-    
+
     def __init__(self):
         """Initialize the TranslationManager."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.providers = {
             "deep_translator": DeepTranslatorProvider,
         }
@@ -43,7 +43,7 @@ class TranslationManager:
         """
         try:
             # Get provider settings
-            translation_settings = SETTINGS.get("translation", {})
+            translation_settings = settings_manager.get("translation", {})
             provider_name = translation_settings.get("provider", "deep_translator")
             sub_provider = translation_settings.get("sub_provider", "google")
             
@@ -122,7 +122,7 @@ class TranslationManager:
             provider = self.get_provider()
 
             # Get language settings if not provided
-            translation_settings = SETTINGS.get("translation", {})
+            translation_settings = settings_manager.get("translation", {})
             if source_lang is None:
                 # Try to detect language
                 detected_lang = provider.detect_language(text)
@@ -332,17 +332,17 @@ class TranslationManager:
     
     def update_settings(self, settings: Dict[str, Any]):
         """Update translation settings.
-        
+
         Args:
             settings: New translation settings
         """
         # Update settings
-        SETTINGS["translation"] = settings
-        
+        settings_manager.set("translation", settings)
+
         # Clear current provider to force recreation
         self._current_provider = None
         self._provider_instance = None
-        
+
         self.logger.info("Translation settings updated")
 
 

@@ -5,9 +5,12 @@ Handles audio processing for SOAP note recording including numpy array handling,
 audio segment creation, silence detection, and incremental combination logic.
 """
 
-import logging
 import numpy as np
 from pydub import AudioSegment
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class SOAPAudioProcessor:
@@ -32,7 +35,7 @@ class SOAPAudioProcessor:
             self.app.recording_manager.add_audio_segment(audio_data)
             # Log every 10 callbacks at INFO level to track audio flow
             if SOAPAudioProcessor._callback_count == 1 or SOAPAudioProcessor._callback_count % 10 == 0:
-                logging.info(f"SOAP callback #{SOAPAudioProcessor._callback_count}: "
+                logger.info(f"SOAP callback #{SOAPAudioProcessor._callback_count}: "
                            f"shape={audio_data.shape}, dtype={audio_data.dtype}, "
                            f"max_amp={np.abs(audio_data).max():.4f}")
             else:
@@ -60,12 +63,12 @@ class SOAPAudioProcessor:
                         # Visual feedback
                         self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))
                     else:
-                        logging.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
+                        logger.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
                 except Exception as e:
-                    logging.error(f"Error processing non-numpy audio data: {str(e)}", exc_info=True)
+                    logger.error(f"Error processing non-numpy audio data: {str(e)}", exc_info=True)
         
         except Exception as e:
-            logging.error(f"Error in SOAP audio callback: {str(e)}", exc_info=True)
+            logger.error(f"Error in SOAP audio callback: {str(e)}", exc_info=True)
             self.app.after(0, lambda: self.app.update_status("Error processing audio", "error"))
     
     

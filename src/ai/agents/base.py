@@ -8,19 +8,19 @@ standard implementation that lazily loads AI functions.
 
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
-import logging
 import json
 import hashlib
 import time
 
 from .models import AgentConfig, AgentTask, AgentResponse
 from .ai_caller import AICallerProtocol, get_default_ai_caller
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from .ai_caller import BaseAICaller
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum prompt length for agent AI calls (characters)
 # This is a safety limit to prevent excessive token usage and API errors

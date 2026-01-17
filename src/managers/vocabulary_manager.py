@@ -8,7 +8,6 @@ This manager handles:
 - Import/export functionality
 """
 
-import logging
 import json
 import csv
 import threading
@@ -17,6 +16,7 @@ from pathlib import Path
 
 from settings.settings import SETTINGS, save_settings
 from utils.vocabulary_corrector import VocabularyCorrector, CorrectionResult
+from utils.structured_logging import get_logger
 
 
 class VocabularyManager:
@@ -34,7 +34,7 @@ class VocabularyManager:
 
     def __init__(self):
         """Initialize the vocabulary manager."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.corrector = VocabularyCorrector()
         self._load_settings()
 

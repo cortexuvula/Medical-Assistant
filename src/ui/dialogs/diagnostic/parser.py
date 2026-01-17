@@ -5,8 +5,10 @@ Provides analysis text parsing functionality.
 """
 
 import re
-import logging
 from typing import Dict, List, Any
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ParserMixin:
@@ -155,7 +157,7 @@ class ParserMixin:
                     if cleaned and len(cleaned) > 3:
                         red_flags.append(cleaned)
         except Exception as e:
-            logging.warning(f"Error extracting red flags: {e}")
+            logger.warning(f"Error extracting red flags: {e}")
 
         return red_flags
 
@@ -213,7 +215,7 @@ class ParserMixin:
                     'rationale': ''
                 })
         except Exception as e:
-            logging.warning(f"Error extracting investigations: {e}")
+            logger.warning(f"Error extracting investigations: {e}")
 
         return investigations
 

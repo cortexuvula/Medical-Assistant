@@ -12,7 +12,6 @@ Extracted from the main App class to improve maintainability and separation of c
 """
 
 import os
-import logging
 import time
 import tkinter as tk
 from tkinter import messagebox
@@ -20,11 +19,12 @@ import ttkbootstrap as ttk
 from typing import TYPE_CHECKING, Optional, Callable, Dict, List
 
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WindowController:
@@ -68,7 +68,7 @@ class WindowController:
         self._view_history: List[str] = []
         self._callbacks: Dict[str, List[Callable]] = {}
 
-        logging.debug("WindowController initialized")
+        logger.debug("WindowController initialized")
 
     # =========================================================================
     # Navigation Methods (from NavigationController)
@@ -89,10 +89,10 @@ class WindowController:
             bool: True if navigation was successful
         """
         if view_id == self._current_view:
-            logging.debug(f"Already on view: {view_id}")
+            logger.debug(f"Already on view: {view_id}")
             return True
 
-        logging.debug(f"Navigating from {self._current_view} to {view_id}")
+        logger.debug(f"Navigating from {self._current_view} to {view_id}")
 
         # Store in history
         self._view_history.append(self._current_view)
@@ -121,7 +121,7 @@ class WindowController:
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'sidebar_navigation'):
                 self.app.ui.sidebar_navigation.set_active_item(view_id)
         except Exception as e:
-            logging.error(f"Error updating sidebar: {e}")
+            logger.error(f"Error updating sidebar: {e}")
 
     def _show_view(self, view_id: str) -> bool:
         """Show the content for a specific view.
@@ -142,20 +142,20 @@ class WindowController:
             elif view_id in self.TAB_MAPPING:
                 return self._show_document_view(view_id)
             else:
-                logging.warning(f"Unknown view ID: {view_id}")
+                logger.warning(f"Unknown view ID: {view_id}")
                 return False
         except Exception as e:
-            logging.error(f"Error showing view {view_id}: {e}")
+            logger.error(f"Error showing view {view_id}: {e}")
             return False
 
     def _show_record_view(self) -> bool:
         """Show the recording view with controls visible."""
-        logging.debug("Showing record view")
+        logger.debug("Showing record view")
 
         try:
             # Expand the bottom section if it's collapsed
             if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
-                logging.debug("Expanding bottom section for record view")
+                logger.debug("Expanding bottom section for record view")
                 if hasattr(self.app, '_toggle_bottom_section'):
                     self.app._toggle_bottom_section()
 
@@ -173,17 +173,17 @@ class WindowController:
 
             return True
         except Exception as e:
-            logging.error(f"Error showing record view: {e}")
+            logger.error(f"Error showing record view: {e}")
             return False
 
     def _show_recordings_view(self) -> bool:
         """Show the recordings history view."""
-        logging.debug("Showing recordings view")
+        logger.debug("Showing recordings view")
 
         try:
             # Expand the bottom section if it's collapsed
             if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
-                logging.debug("Expanding bottom section for recordings view")
+                logger.debug("Expanding bottom section for recordings view")
                 if hasattr(self.app, '_toggle_bottom_section'):
                     self.app._toggle_bottom_section()
 
@@ -197,7 +197,7 @@ class WindowController:
 
             return True
         except Exception as e:
-            logging.error(f"Error showing recordings view: {e}")
+            logger.error(f"Error showing recordings view: {e}")
             return False
 
     def _show_advanced_analysis_view(self) -> bool:
@@ -206,12 +206,12 @@ class WindowController:
         Unlike the record view, this only shows the analysis panel
         without changing the document notebook tab.
         """
-        logging.debug("Showing advanced analysis view")
+        logger.debug("Showing advanced analysis view")
 
         try:
             # Expand the bottom section if it's collapsed
             if hasattr(self.app, '_bottom_collapsed') and self.app._bottom_collapsed:
-                logging.debug("Expanding bottom section for advanced analysis view")
+                logger.debug("Expanding bottom section for advanced analysis view")
                 if hasattr(self.app, '_toggle_bottom_section'):
                     self.app._toggle_bottom_section()
 
@@ -225,7 +225,7 @@ class WindowController:
 
             return True
         except Exception as e:
-            logging.error(f"Error showing advanced analysis view: {e}")
+            logger.error(f"Error showing advanced analysis view: {e}")
             return False
 
     def _show_document_view(self, view_id: str) -> bool:
@@ -237,12 +237,12 @@ class WindowController:
         Returns:
             bool: True if successful
         """
-        logging.debug(f"Showing document view: {view_id}")
+        logger.debug(f"Showing document view: {view_id}")
 
         try:
             tab_index = self.TAB_MAPPING.get(view_id)
             if tab_index is None:
-                logging.warning(f"No tab mapping for view: {view_id}")
+                logger.warning(f"No tab mapping for view: {view_id}")
                 return False
 
             # Select the appropriate tab in the document notebook
@@ -258,7 +258,7 @@ class WindowController:
 
             return True
         except Exception as e:
-            logging.error(f"Error showing document view {view_id}: {e}")
+            logger.error(f"Error showing document view {view_id}: {e}")
             return False
 
     def go_back(self) -> bool:
@@ -268,11 +268,11 @@ class WindowController:
             bool: True if there was a previous view to go to
         """
         if not self._view_history:
-            logging.debug("No navigation history available")
+            logger.debug("No navigation history available")
             return False
 
         previous_view = self._view_history.pop()
-        logging.debug(f"Going back to: {previous_view}")
+        logger.debug(f"Going back to: {previous_view}")
 
         # Don't add to history when going back
         self._current_view = previous_view
@@ -295,7 +295,7 @@ class WindowController:
                 break
 
         if view_id and view_id != self._current_view:
-            logging.debug(f"Syncing sidebar with notebook tab: {view_id}")
+            logger.debug(f"Syncing sidebar with notebook tab: {view_id}")
             self._current_view = view_id
             self._update_sidebar(view_id)
 
@@ -332,7 +332,7 @@ class WindowController:
                 try:
                     callback(*args)
                 except Exception as e:
-                    logging.error(f"Error in navigation callback: {e}")
+                    logger.error(f"Error in navigation callback: {e}")
 
     def get_history(self) -> List[str]:
         """Get the navigation history.
@@ -411,75 +411,75 @@ class WindowController:
         try:
             # Explicitly stop the background listener if it's running (e.g., SOAP recording)
             if hasattr(self.app, 'soap_stop_listening_function') and self.app.soap_stop_listening_function:
-                logging.info("Stopping SOAP recording before exit...")
+                logger.info("Stopping SOAP recording before exit...")
                 try:
                     self.app.soap_stop_listening_function(True)
                     self.app.soap_stop_listening_function = None  # Prevent double calls
                     # Give the audio thread a moment to release resources
                     time.sleep(0.2)
                 except Exception as e:
-                    logging.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
+                    logger.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
 
             # Stop periodic analysis if running
             if hasattr(self.app, 'periodic_analyzer') and self.app.periodic_analyzer:
-                logging.info("Stopping periodic analyzer...")
+                logger.info("Stopping periodic analyzer...")
                 try:
                     self.app._stop_periodic_analysis()
                 except Exception as e:
-                    logging.error(f"Error stopping periodic analyzer: {str(e)}", exc_info=True)
+                    logger.error(f"Error stopping periodic analyzer: {str(e)}", exc_info=True)
 
             # Stop any active listening in the audio handler
             if hasattr(self.app, 'audio_handler'):
-                logging.info("Ensuring audio handler is properly closed...")
+                logger.info("Ensuring audio handler is properly closed...")
                 try:
                     self.app.audio_handler.cleanup_resources()
                 except Exception as e:
-                    logging.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
+                    logger.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
 
             # Shutdown processing queue if it exists
             if hasattr(self.app, 'processing_queue') and self.app.processing_queue:
-                logging.info("Shutting down processing queue...")
+                logger.info("Shutting down processing queue...")
                 try:
                     self.app.processing_queue.shutdown(wait=True)
                 except Exception as e:
-                    logging.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
+                    logger.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
 
             # Cleanup notification manager if it exists
             if hasattr(self.app, 'notification_manager') and self.app.notification_manager:
-                logging.info("Cleaning up notification manager...")
+                logger.info("Cleaning up notification manager...")
                 try:
                     self.app.notification_manager.cleanup()
                 except Exception as e:
-                    logging.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
+                    logger.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
 
             # Shutdown MCP servers
             from ai.mcp.mcp_manager import mcp_manager
-            logging.info("Shutting down MCP servers...")
+            logger.info("Shutting down MCP servers...")
             try:
                 mcp_manager.stop_all()
             except Exception as e:
-                logging.error(f"Error shutting down MCP servers: {str(e)}", exc_info=True)
+                logger.error(f"Error shutting down MCP servers: {str(e)}", exc_info=True)
 
             # Shutdown all executor pools properly - wait for tasks to complete
-            logging.info("Shutting down executor pools...")
+            logger.info("Shutting down executor pools...")
             for executor_name in ['io_executor', 'cpu_executor', 'executor']:
                 if hasattr(self.app, executor_name) and getattr(self.app, executor_name) is not None:
                     try:
                         executor = getattr(self.app, executor_name)
-                        logging.info(f"Shutting down {executor_name}")
+                        logger.info(f"Shutting down {executor_name}")
                         # Use wait=True to ensure all tasks complete before closing
                         executor.shutdown(wait=True, cancel_futures=True)
                     except TypeError:
                         # Handle older Python versions without cancel_futures parameter
                         executor.shutdown(wait=True)
                     except Exception as e:
-                        logging.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
+                        logger.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
 
             # Final logging message before closing
-            logging.info("Application shutdown complete")
+            logger.info("Application shutdown complete")
 
         except Exception as e:
-            logging.error(f"Error during application cleanup: {str(e)}", exc_info=True)
+            logger.error(f"Error during application cleanup: {str(e)}", exc_info=True)
 
         # Destroy the window
         self.app.destroy()
@@ -501,7 +501,7 @@ class WindowController:
             return
 
         # Log that logs are being viewed
-        logging.info("User accessed logs directory")
+        logger.info("User accessed logs directory")
 
         # Create a dropdown menu for log actions
         log_menu = tk.Menu(self.app, tearoff=0)
@@ -566,10 +566,10 @@ class WindowController:
             success, error = open_file_or_folder_safely(log_dir, operation="open")
             if not success:
                 messagebox.showerror("Error", f"Could not open logs directory: {error}")
-                logging.error(f"Error opening logs directory: {error}")
+                logger.error(f"Error opening logs directory: {error}")
         except Exception as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
-            logging.error(f"Error opening logs directory: {str(e)}")
+            logger.error(f"Error opening logs directory: {str(e)}")
 
     def open_logs_folder_menu(self) -> None:
         """Wrapper method for menu to open logs folder."""
@@ -581,7 +581,7 @@ class WindowController:
                 "The logs directory does not exist yet. It will be created when logs are generated."
             )
             return
-        logging.info("User accessed logs directory from menu")
+        logger.info("User accessed logs directory from menu")
         self.open_logs_folder(log_dir)
 
     def show_log_contents_menu(self) -> None:
@@ -595,5 +595,5 @@ class WindowController:
                 "The logs directory does not exist yet. It will be created when logs are generated."
             )
             return
-        logging.info("User viewed log contents from menu")
+        logger.info("User viewed log contents from menu")
         self.show_log_contents(log_file)

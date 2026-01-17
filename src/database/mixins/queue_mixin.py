@@ -6,7 +6,6 @@ Provides processing queue operations for the Database class.
 
 import sqlite3
 import json
-import logging
 import re
 from typing import Optional, Dict, List, Any
 
@@ -14,8 +13,9 @@ from database.schema import (
     RecordingSchema,
     QUEUE_UPDATE_FIELDS, BATCH_UPDATE_FIELDS
 )
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Valid SQL identifier pattern
 _VALID_IDENTIFIER_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')

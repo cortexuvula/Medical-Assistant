@@ -5,13 +5,16 @@ Handles periodic transcription and analysis of audio during recording
 for real-time differential diagnosis generation.
 """
 
-import logging
 import threading
 import time
 from datetime import datetime
 from typing import Optional, Callable, List, Dict, Any
 import numpy as np
 from pydub import AudioSegment
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class PeriodicAnalyzer:
@@ -165,7 +168,7 @@ class PeriodicAnalyzer:
         """Clear the analysis history."""
         with self._lock:
             self._analysis_history.clear()
-            logging.info("Cleared analysis history")
+            logger.info("Cleared analysis history")
 
     def set_interval(self, seconds: int) -> None:
         """Set the analysis interval.
@@ -175,7 +178,7 @@ class PeriodicAnalyzer:
         """
         with self._lock:
             self.interval_seconds = seconds
-            logging.info(f"Analysis interval set to {seconds}s")
+            logger.info(f"Analysis interval set to {seconds}s")
 
     def set_countdown_callback(self, callback: Optional[Callable[[int], None]]) -> None:
         """Set a callback to receive countdown updates.
@@ -194,7 +197,7 @@ class PeriodicAnalyzer:
         """
         with self._lock:
             if self._is_running:
-                logging.warning("Periodic analyzer is already running")
+                logger.warning("Periodic analyzer is already running")
                 return
 
             self._is_running = True
@@ -207,7 +210,7 @@ class PeriodicAnalyzer:
 
         # Schedule first analysis after interval
         self._schedule_next_analysis()
-        logging.info(f"Started periodic analysis with {self.interval_seconds}s interval")
+        logger.info(f"Started periodic analysis with {self.interval_seconds}s interval")
 
     def stop(self, wait_for_callback: bool = True, timeout: float = 5.0):
         """Stop periodic analysis gracefully.
@@ -249,7 +252,7 @@ class PeriodicAnalyzer:
         # Wait for callback to complete using Event (thread-safe, no busy-wait)
         if wait_for_callback:
             if not self._callback_complete.wait(timeout=timeout):
-                logging.warning("Callback did not complete within timeout")
+                logger.warning("Callback did not complete within timeout")
 
         # Clear countdown display
         with self._lock:
@@ -260,7 +263,7 @@ class PeriodicAnalyzer:
             except Exception:
                 pass
 
-        logging.info(f"Stopped periodic analysis after {analysis_count} analyses")
+        logger.info(f"Stopped periodic analysis after {analysis_count} analyses")
 
     def _schedule_next_analysis(self):
         """Schedule the next analysis with countdown updates."""
@@ -290,7 +293,7 @@ class PeriodicAnalyzer:
                     try:
                         callback(self._seconds_remaining)
                     except Exception as e:
-                        logging.error(f"Error in countdown callback: {e}")
+                        logger.error(f"Error in countdown callback: {e}")
 
                 time.sleep(1)
                 self._seconds_remaining -= 1
@@ -309,7 +312,7 @@ class PeriodicAnalyzer:
                 self._perform_analysis()
 
         except Exception as e:
-            logging.error(f"Error in countdown loop: {e}")
+            logger.error(f"Error in countdown loop: {e}")
 
     def _perform_analysis(self):
         """Perform the periodic analysis."""
@@ -335,14 +338,14 @@ class PeriodicAnalyzer:
             callback = self._callback
 
         try:
-            logging.info(f"Performing periodic analysis #{analysis_num} at {elapsed_time:.1f}s")
+            logger.info(f"Performing periodic analysis #{analysis_num} at {elapsed_time:.1f}s")
 
             # Call the callback function (outside lock to prevent blocking)
             if callback:
                 callback(analysis_num, elapsed_time)
 
         except Exception as e:
-            logging.error(f"Error in periodic analysis callback: {e}", exc_info=True)
+            logger.error(f"Error in periodic analysis callback: {e}", exc_info=True)
         finally:
             # Signal that callback is complete
             self._callback_complete.set()
@@ -371,7 +374,7 @@ class AudioSegmentExtractor:
             combined_audio = audio_state_manager.get_combined_audio()
             
             if combined_audio is None or len(combined_audio) == 0:
-                logging.warning("No audio data available for analysis")
+                logger.warning("No audio data available for analysis")
                 return None
                 
             # get_combined_audio() already returns an AudioSegment object
@@ -379,5 +382,5 @@ class AudioSegmentExtractor:
             return combined_audio
             
         except Exception as e:
-            logging.error(f"Error extracting audio segment: {e}")
+            logger.error(f"Error extracting audio segment: {e}")
             return None

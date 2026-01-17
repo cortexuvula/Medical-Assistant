@@ -6,13 +6,15 @@ Provides export functionality for PDF, FHIR, and clipboard operations.
 
 import os
 import json
-import logging
 import base64
 from datetime import datetime
 from tkinter import messagebox, filedialog
 from tkinter.constants import NORMAL
 import pyperclip
 from typing import Dict, Optional, TYPE_CHECKING
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -38,7 +40,7 @@ class ExportMixin:
                 parent=self.result_text.winfo_toplevel()
             )
         except Exception as e:
-            logging.error(f"Error copying to clipboard: {e}")
+            logger.error(f"Error copying to clipboard: {e}")
             messagebox.showerror(
                 "Error",
                 "Failed to copy to clipboard.",
@@ -157,7 +159,7 @@ class ExportMixin:
                 )
 
         except Exception as e:
-            logging.error(f"Error exporting to PDF: {str(e)}")
+            logger.error(f"Error exporting to PDF: {str(e)}")
             messagebox.showerror(
                 "Export Error",
                 f"Failed to export PDF: {str(e)}",
@@ -209,7 +211,7 @@ class ExportMixin:
             )
 
         except Exception as e:
-            logging.error(f"Error copying ICD codes: {str(e)}")
+            logger.error(f"Error copying ICD codes: {str(e)}")
             messagebox.showerror(
                 "Error",
                 f"Failed to copy ICD codes: {str(e)}",
@@ -269,7 +271,7 @@ class ExportMixin:
                     subprocess.call(('xdg-open', file_path))
 
         except Exception as e:
-            logging.error(f"Error exporting to FHIR: {str(e)}")
+            logger.error(f"Error exporting to FHIR: {str(e)}")
             messagebox.showerror(
                 "Export Error",
                 f"Failed to export FHIR resource: {str(e)}",

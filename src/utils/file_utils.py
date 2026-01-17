@@ -7,9 +7,12 @@ temporary file management with automatic cleanup.
 
 import os
 import tempfile
-import logging
 from contextlib import contextmanager
 from typing import Generator, Optional
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @contextmanager
@@ -54,7 +57,7 @@ def temp_audio_file(suffix: str = '.wav', prefix: str = 'medical_audio_') -> Gen
             try:
                 os.remove(path)
             except OSError as e:
-                logging.warning(f"Failed to delete temp file {path}: {e}")
+                logger.warning(f"Failed to delete temp file {path}: {e}")
 
 
 @contextmanager
@@ -87,7 +90,7 @@ def temp_file(suffix: str = '', prefix: str = 'medical_temp_') -> Generator[str,
             try:
                 os.remove(path)
             except OSError as e:
-                logging.warning(f"Failed to delete temp file {path}: {e}")
+                logger.warning(f"Failed to delete temp file {path}: {e}")
 
 
 @contextmanager
@@ -113,7 +116,7 @@ def temp_directory(prefix: str = 'medical_temp_') -> Generator[str, None, None]:
             try:
                 shutil.rmtree(path)
             except OSError as e:
-                logging.warning(f"Failed to delete temp directory {path}: {e}")
+                logger.warning(f"Failed to delete temp directory {path}: {e}")
 
 
 def safe_delete_file(file_path: str, log_errors: bool = True) -> bool:
@@ -135,7 +138,7 @@ def safe_delete_file(file_path: str, log_errors: bool = True) -> bool:
         return True
     except OSError as e:
         if log_errors:
-            logging.warning(f"Failed to delete file {file_path}: {e}")
+            logger.warning(f"Failed to delete file {file_path}: {e}")
         return False
 
 
@@ -152,7 +155,7 @@ def ensure_directory_exists(directory_path: str) -> bool:
         os.makedirs(directory_path, exist_ok=True)
         return True
     except OSError as e:
-        logging.error(f"Failed to create directory {directory_path}: {e}")
+        logger.error(f"Failed to create directory {directory_path}: {e}")
         return False
 
 

@@ -21,16 +21,13 @@ if sys.version_info < (3, 10):
 # Import configuration and validate before starting app
 from core.config import init_config, get_config
 from utils.exceptions import ConfigurationError, DatabaseError
-import logging
 import os
 from managers.data_folder_manager import data_folder_manager
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Set up structured logging
+from utils.structured_logging import setup_logging, get_logger
+setup_logging()
+logger = get_logger(__name__)
 
 # Initialize configuration
 try:

@@ -10,12 +10,14 @@ from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, BOTTOM, CENTER, N, S, W, EW
 from tkinter import messagebox
-import logging
 import re
 from typing import Dict, List, Optional, Any
 import json
 from datetime import datetime
 from database.database import Database
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DiagnosticComparisonDialog:
@@ -290,7 +292,7 @@ class DiagnosticComparisonDialog:
                 self._add_analysis_to_tree(analysis)
 
         except Exception as e:
-            logging.error(f"Error loading analyses: {e}")
+            logger.error(f"Error loading analyses: {e}")
 
     def _add_analysis_to_tree(self, analysis: Dict) -> None:
         """Add an analysis to the selection tree.
@@ -847,7 +849,7 @@ class DiagnosticComparisonDialog:
                         try:
                             metadata = json.loads(metadata_raw)
                         except (json.JSONDecodeError, ValueError, TypeError) as e:
-                            logging.debug(f"Failed to parse metadata JSON: {e}")
+                            logger.debug(f"Failed to parse metadata JSON: {e}")
 
                     export_data['analyses'].append({
                         'id': analysis.get('id'),
@@ -871,7 +873,7 @@ class DiagnosticComparisonDialog:
                         try:
                             metadata = json.loads(metadata_raw)
                         except (json.JSONDecodeError, ValueError, TypeError) as e:
-                            logging.debug(f"Failed to parse metadata JSON: {e}")
+                            logger.debug(f"Failed to parse metadata JSON: {e}")
 
                     lines.append(f"--- Analysis {i} ---")
                     lines.append(f"Date: {analysis.get('created_at', 'Unknown')}")
@@ -892,7 +894,7 @@ class DiagnosticComparisonDialog:
             )
 
         except Exception as e:
-            logging.error(f"Error exporting comparison: {e}")
+            logger.error(f"Error exporting comparison: {e}")
             messagebox.showerror(
                 "Error",
                 f"Failed to export: {e}",

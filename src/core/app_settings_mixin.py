@@ -146,8 +146,8 @@ class AppSettingsMixin:
 
     def show_agent_settings(self) -> None:
         """Show dialog to configure AI agent settings."""
-        import logging
-        logger = logging.getLogger(__name__)
+        from utils.structured_logging import get_logger
+        logger = get_logger(__name__)
 
         # Check if advanced settings should be shown based on a setting or default to basic
         use_advanced = settings_manager.get("use_advanced_agent_settings", True)
@@ -190,7 +190,8 @@ class AppSettingsMixin:
 
     def show_mcp_config(self) -> None:
         """Show MCP configuration dialog."""
-        import logging
+        from utils.structured_logging import get_logger
+        logger = get_logger(__name__)
         try:
             from ui.dialogs.mcp_config_dialog import show_mcp_config_dialog
             from ai.mcp.mcp_manager import mcp_manager
@@ -203,7 +204,7 @@ class AppSettingsMixin:
                     self.chat_processor.reload_mcp_tools()
                 self.status_manager.success("MCP configuration updated")
         except Exception as e:
-            logging.error(f"Error showing MCP config dialog: {e}")
+            logger.error(f"Error showing MCP config dialog: {e}")
             self.status_manager.error("Failed to open MCP configuration")
 
     def save_refine_settings(self, prompt: str, openai_model: str,

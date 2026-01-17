@@ -5,7 +5,6 @@ Provides crash recovery and auto-save functionality for recording sessions.
 Extracted from RecordingController for better separation of concerns.
 """
 
-import logging
 import os
 from datetime import datetime
 from tkinter import messagebox
@@ -15,11 +14,12 @@ from pydub import AudioSegment
 
 from audio.recording_autosave_manager import RecordingAutoSaveManager
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RecoveryHandler:

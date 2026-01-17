@@ -6,11 +6,13 @@ with proper concurrency handling for the Medical Dictation App.
 """
 
 import os
-import logging
 from tkinter import filedialog
 from tkinter.constants import RIGHT
+from utils.structured_logging import get_logger
 
 from utils.validation import validate_audio_file
+
+logger = get_logger(__name__)
 from utils.error_codes import show_error_dialog
 from utils.cleanup_utils import clear_all_content
 

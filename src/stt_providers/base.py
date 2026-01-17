@@ -3,13 +3,34 @@ Base class for STT (Speech-to-Text) providers.
 
 This module defines the interface that all STT providers must implement,
 ensuring consistent behavior across different transcription services.
+
+Error Handling:
+    - TranscriptionResult.success indicates operation success/failure
+    - TranscriptionResult.error contains error message on failure
+    - Providers should catch provider-specific exceptions and return error results
+    - test_connection() returns bool, never raises exceptions
+    - TranscriptionError raised only for unrecoverable failures
+
+Logging:
+    - Each provider uses get_logger(self.__class__.__name__)
+    - Logs include audio duration, model used, and timing metrics
+    - API keys and audio data are not logged
+
+Usage:
+    provider = DeepgramProvider(api_key="...")
+    result = provider.transcribe_with_result(audio_segment)
+    if result.success:
+        text = result.text
+    else:
+        handle_error(result.error)
 """
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 from pydub import AudioSegment
+
+from utils.structured_logging import get_logger
 
 
 @dataclass
@@ -88,7 +109,7 @@ class BaseSTTProvider(ABC):
         """
         self.api_key = api_key
         self.language = language
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger(self.__class__.__name__)
 
     @property
     @abstractmethod

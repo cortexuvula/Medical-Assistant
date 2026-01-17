@@ -10,9 +10,10 @@ This file is maintained for backward compatibility only.
 """
 
 import warnings
-import logging
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Re-export RecordingController as RecordingRecoveryController for backward compatibility
 from core.controllers.recording_controller import RecordingController as RecordingRecoveryController

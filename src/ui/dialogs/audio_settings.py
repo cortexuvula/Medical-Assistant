@@ -8,8 +8,10 @@ DEPRECATED: Import directly from individual dialog modules instead.
 """
 
 import os
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox
 
 from ui.dialogs.elevenlabs_settings_dialog import show_elevenlabs_settings_dialog
@@ -80,7 +82,7 @@ def test_ollama_connection(_: tk.Tk, ollama_url: str = None) -> bool:
             f"Error connecting to Ollama server at {ollama_url}:\n\n{str(e)}\n\n"
             "Please make sure Ollama is running and the URL is correct."
         )
-        logging.error(f"Ollama connection test error: {str(e)}")
+        logger.error(f"Ollama connection test error: {str(e)}")
         return False
 
 

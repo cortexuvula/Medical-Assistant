@@ -4,12 +4,14 @@ Letter Generator Module
 Handles letter generation from transcripts and SOAP notes.
 """
 
-import logging
 from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
 
 from ai.ai import create_letter_streaming
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -77,7 +79,7 @@ class LetterGeneratorMixin:
         def task() -> None:
             try:
                 # Log that we're starting letter generation
-                logging.info(f"Starting letter generation from {source_name} to {recipient_type} with specs: {specs}")
+                logger.info(f"Starting letter generation from {source_name} to {recipient_type} with specs: {specs}")
 
                 # Use streaming API call
                 result = create_letter_streaming(
@@ -88,7 +90,7 @@ class LetterGeneratorMixin:
                 )
 
                 # Log the successful completion
-                logging.info(f"Successfully generated letter to {recipient_type}")
+                logger.info(f"Successfully generated letter to {recipient_type}")
 
                 # Check if result contains error message
                 if result.startswith("[Error"):
@@ -116,7 +118,7 @@ class LetterGeneratorMixin:
                 self.app.after(0, finalize)
 
             except Exception as e:
-                logging.error(f"Letter creation failed: {e}")
+                logger.error(f"Letter creation failed: {e}")
                 def handle_error():
                     self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()

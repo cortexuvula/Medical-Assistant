@@ -10,7 +10,6 @@ Thread Safety:
 """
 
 import json
-import logging
 import os
 import shutil
 import threading
@@ -28,8 +27,9 @@ if TYPE_CHECKING:
 
 from managers.data_folder_manager import data_folder_manager
 from settings.settings import SETTINGS
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RecordingAutoSaveManager:

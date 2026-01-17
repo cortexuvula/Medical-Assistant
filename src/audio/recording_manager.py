@@ -3,6 +3,23 @@ Recording Manager Module
 
 Handles all SOAP recording functionality including start/stop/pause/resume,
 audio segment management, and recording processing.
+
+Error Handling:
+    - Raises DeviceDisconnectedError: When audio input device is disconnected
+    - Raises AudioError: For general audio capture/processing failures
+    - Device health checks run every 10 seconds during recording
+    - Graceful degradation on device errors (up to 5 retries before failing)
+    - State transitions managed via AudioStateManager for consistency
+
+Logging:
+    - Uses structured logging via get_logger(__name__)
+    - Logs include recording state, device info, and timing metrics
+    - Audio level and buffer status logged for debugging
+
+Thread Safety:
+    - Recording runs in a separate daemon thread
+    - State changes are atomic via AudioStateManager
+    - Device enumeration is cached to avoid blocking the main thread
 """
 
 import threading

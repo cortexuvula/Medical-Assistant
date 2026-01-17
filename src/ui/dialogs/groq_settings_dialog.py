@@ -14,11 +14,9 @@ from ui.dialogs.dialog_utils import create_toplevel_dialog
 
 def show_groq_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure Groq speech-to-text settings."""
-    from settings.settings import _DEFAULT_SETTINGS
-
     # Get current Groq settings with fallback to defaults
     groq_settings = settings_manager.get_groq_settings()
-    default_settings = _DEFAULT_SETTINGS.get("groq", {
+    default_settings = settings_manager.get_default("groq", {
         "model": "whisper-large-v3-turbo",
         "language": "en",
         "prompt": ""

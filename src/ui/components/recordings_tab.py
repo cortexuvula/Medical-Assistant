@@ -11,9 +11,11 @@ This module has been refactored to use mixins for better separation of concerns:
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Callable, Optional, List, Protocol, runtime_checkable, Any
-import logging
+from utils.structured_logging import get_logger
 
 from ui.components.recordings_tab_ui import RecordingsTabUIMixin
+
+logger = get_logger(__name__)
 from ui.components.recordings_tab_data import RecordingsTabDataMixin
 from ui.components.recordings_tab_events import RecordingsTabEventsMixin
 

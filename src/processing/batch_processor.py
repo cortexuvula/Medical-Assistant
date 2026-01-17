@@ -5,9 +5,11 @@ Handles batch processing of recordings and audio files.
 This module is extracted from document_generators.py for better code organization.
 """
 
-import logging
 import os
 from typing import Dict, Any, List, Callable, Optional
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BatchProcessor:

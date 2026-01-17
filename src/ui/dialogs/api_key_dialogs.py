@@ -6,8 +6,10 @@ Functions for prompting users for API keys and saving them.
 
 import os
 import re
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 import ttkbootstrap as ttk
 from ui.scaling_utils import ui_scaler
 
@@ -98,9 +100,9 @@ def save_api_key_to_env(key: str, env_var_name: str) -> None:
         with open(env_path, 'w') as f:
             f.write(env_content)
 
-        logging.info(f"{env_var_name} saved to .env file")
+        logger.info(f"{env_var_name} saved to .env file")
     except Exception as e:
-        logging.error(f"Failed to save {env_var_name}: {e}")
+        logger.error(f"Failed to save {env_var_name}: {e}")
 
 
 __all__ = ["prompt_for_api_key", "save_api_key_to_env"]

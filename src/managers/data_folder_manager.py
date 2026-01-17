@@ -2,13 +2,13 @@
 Data folder management for Medical Assistant application.
 Centralizes all application data files into a proper folder structure.
 """
-import logging
 import os
 import sys
 from pathlib import Path
 from typing import Optional
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DataFolderManager:

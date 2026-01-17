@@ -4,13 +4,13 @@ Database migration system for Medical Assistant.
 
 import os
 import sqlite3
-import logging
 from typing import List, Dict, Optional, Callable
 from datetime import datetime
 from pathlib import Path
 
 from database.db_pool import get_db_manager
 from utils.exceptions import DatabaseError
+from utils.structured_logging import get_logger
 
 
 class Migration:
@@ -37,7 +37,7 @@ class MigrationManager:
     
     def __init__(self):
         """Initialize migration manager."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.db_manager = get_db_manager()
         self._migrations = []
         self._init_migrations_table()

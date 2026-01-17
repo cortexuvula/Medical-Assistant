@@ -1,8 +1,10 @@
 import tkinter as tk
 from ttkbootstrap.constants import RIGHT
-import logging
+from utils.structured_logging import get_logger
 
 from ui.ui_constants import Colors, Fonts, Animation
+
+logger = get_logger(__name__)
 
 
 class StatusManager:

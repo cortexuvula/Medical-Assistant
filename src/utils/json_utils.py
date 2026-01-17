@@ -18,11 +18,12 @@ Usage:
 """
 
 import json
-import logging
 from pathlib import Path
 from typing import Any, Optional, Union
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def safe_json_loads(

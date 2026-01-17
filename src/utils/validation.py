@@ -2,10 +2,12 @@
 
 import os
 import re
-import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 from utils.error_codes import get_error_message
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
     STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
@@ -155,7 +157,7 @@ def sanitize_prompt(prompt: str) -> str:
     
     # Truncate if too long
     if len(prompt) > MAX_PROMPT_LENGTH:
-        logging.warning(f"Prompt truncated from {len(prompt)} to {MAX_PROMPT_LENGTH} characters")
+        logger.warning(f"Prompt truncated from {len(prompt)} to {MAX_PROMPT_LENGTH} characters")
         prompt = prompt[:MAX_PROMPT_LENGTH] + "..."
     
     # Remove dangerous patterns
@@ -164,7 +166,7 @@ def sanitize_prompt(prompt: str) -> str:
         prompt = pattern.sub('', prompt)
     
     if prompt != original_prompt:
-        logging.warning("Potentially dangerous content removed from prompt")
+        logger.warning("Potentially dangerous content removed from prompt")
     
     # Remove excessive whitespace
     prompt = ' '.join(prompt.split())
@@ -178,7 +180,7 @@ def sanitize_prompt(prompt: str) -> str:
     except UnicodeEncodeError:
         # Remove non-UTF-8 characters
         prompt = prompt.encode('utf-8', 'ignore').decode('utf-8')
-        logging.warning("Non-UTF-8 characters removed from prompt")
+        logger.warning("Non-UTF-8 characters removed from prompt")
     
     return prompt.strip()
 
@@ -326,7 +328,7 @@ def validate_model_name(model_name: str, provider: str) -> Tuple[bool, Optional[
     if provider.lower() == "openai":
         valid_prefixes = ['gpt-3.5', 'gpt-4', 'text-', 'davinci', 'curie', 'babbage', 'ada']
         if not any(model_name.startswith(prefix) for prefix in valid_prefixes):
-            logging.warning(f"Unusual OpenAI model name: {model_name}")
+            logger.warning(f"Unusual OpenAI model name: {model_name}")
     
     elif provider.lower() == "ollama":
         # Ollama models should not contain special characters
@@ -419,7 +421,7 @@ def validate_path_for_subprocess(path: str, must_exist: bool = True) -> Tuple[bo
 
     # Check for null bytes (can be used for injection)
     if '\x00' in path:
-        logging.warning(f"Null byte detected in path: {repr(path)}")
+        logger.warning(f"Null byte detected in path: {repr(path)}")
         return False, "Invalid path: contains null byte"
 
     # Check for shell metacharacters that could be exploited
@@ -428,7 +430,7 @@ def validate_path_for_subprocess(path: str, must_exist: bool = True) -> Tuple[bo
                        '<', '>', '\n', '\r', '!', '#']
     for char in dangerous_chars:
         if char in path:
-            logging.warning(f"Dangerous character '{char}' in path: {path}")
+            logger.warning(f"Dangerous character '{char}' in path: {path}")
             return False, f"Invalid path: contains dangerous character '{char}'"
 
     try:
@@ -443,7 +445,7 @@ def validate_path_for_subprocess(path: str, must_exist: bool = True) -> Tuple[bo
         # After resolving, the path should not escape expected locations
         if ".." in path:
             # Log but allow if resolved path is valid
-            logging.debug(f"Path contains '..', resolved to: {resolved_path}")
+            logger.debug(f"Path contains '..', resolved to: {resolved_path}")
 
         # Check existence if required
         if must_exist and not resolved_path.exists():
@@ -453,7 +455,7 @@ def validate_path_for_subprocess(path: str, must_exist: bool = True) -> Tuple[bo
         # This is a basic check - can be enhanced based on security requirements
         if resolved_path.is_symlink():
             target = resolved_path.resolve()
-            logging.debug(f"Symlink {path} -> {target}")
+            logger.debug(f"Symlink {path} -> {target}")
 
         return True, None
 
@@ -481,7 +483,7 @@ def open_file_or_folder_safely(path: str, operation: str = "open") -> Tuple[bool
     # Validate the path first
     is_valid, error = validate_path_for_subprocess(path, must_exist=True)
     if not is_valid:
-        logging.error(f"Path validation failed: {error}")
+        logger.error(f"Path validation failed: {error}")
         return False, error
 
     try:
@@ -514,13 +516,13 @@ def open_file_or_folder_safely(path: str, operation: str = "open") -> Tuple[bool
 
     except FileNotFoundError as e:
         error_msg = f"System command not found: {e}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         return False, error_msg
     except subprocess.CalledProcessError as e:
         error_msg = f"Failed to {operation} path: {e}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         return False, error_msg
     except OSError as e:
         error_msg = f"OS error opening path: {e}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         return False, error_msg

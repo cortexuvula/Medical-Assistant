@@ -6,7 +6,6 @@ Provides recording CRUD operations for the Database class.
 
 import datetime
 import json
-import logging
 from typing import Optional, Dict, List, Any, Union, Generator
 
 from utils.retry_decorator import db_retry
@@ -14,8 +13,9 @@ from database.schema import (
     RecordingSchema,
     RECORDING_FIELDS, RECORDING_INSERT_FIELDS, RECORDING_UPDATE_FIELDS
 )
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _validate_field_name(field: str, allowlist, context: str = "query") -> str:

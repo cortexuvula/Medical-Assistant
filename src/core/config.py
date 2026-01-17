@@ -5,12 +5,13 @@ Provides centralized configuration with validation and environment support.
 
 import os
 import json
-import logging
 from typing import Any, Dict, Optional, Union, List
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from managers.data_folder_manager import data_folder_manager
 from enum import Enum
+
+from utils.structured_logging import get_logger
 
 from utils.exceptions import ConfigurationError
 from utils.validation import validate_api_key, validate_model_name
@@ -165,7 +166,7 @@ class Config:
         Args:
             environment: Environment name (development, production, testing)
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.environment = self._get_environment(environment)
         self.config_dir = data_folder_manager.config_folder
         self.config_dir.mkdir(exist_ok=True)

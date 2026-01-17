@@ -5,7 +5,6 @@ Handles FHIR R4 JSON export operations for EHR/EMR integration.
 Extracted from ProcessingController for better separation of concerns.
 """
 
-import logging
 from tkinter import messagebox
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,11 +16,12 @@ from core.controllers.export.export_helpers import (
     validate_export_content,
     create_fhir_config
 )
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FHIRExporterHandler:

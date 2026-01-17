@@ -5,7 +5,6 @@ Handles all database operations for recordings, letters, and other data.
 Provides a clean interface for database interactions.
 """
 
-import logging
 import os
 from datetime import datetime as dt
 from typing import Dict, Any, List, Optional, Tuple
@@ -14,6 +13,9 @@ from pathlib import Path
 from database.database import Database
 from pydub import AudioSegment
 from managers.data_folder_manager import data_folder_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DatabaseManager:
@@ -35,7 +37,7 @@ class DatabaseManager:
             # Database class initializes tables via create_tables()
             self._db.create_tables()
         except Exception as e:
-            logging.error(f"Failed to initialize database: {e}")
+            logger.error(f"Failed to initialize database: {e}")
 
     def save_soap_recording(self, recording_data: Dict[str, Any]) -> Optional[int]:
         """Save SOAP recording to database.
@@ -69,11 +71,11 @@ class DatabaseManager:
                 soap_note=soap_note
             )
 
-            logging.info(f"SOAP recording saved to database with ID: {recording_id}")
+            logger.info(f"SOAP recording saved to database with ID: {recording_id}")
             return recording_id
 
         except Exception as e:
-            logging.error(f"Failed to save SOAP recording: {e}")
+            logger.error(f"Failed to save SOAP recording: {e}")
             return None
 
     def save_letter(self, letter_data: Dict[str, Any]) -> Optional[int]:
@@ -107,11 +109,11 @@ class DatabaseManager:
                 letter=content  # Store letter content in letter field
             )
 
-            logging.info(f"Letter saved to database with ID: {letter_id}")
+            logger.info(f"Letter saved to database with ID: {letter_id}")
             return letter_id
 
         except Exception as e:
-            logging.error(f"Failed to save letter: {e}")
+            logger.error(f"Failed to save letter: {e}")
             return None
 
     def get_recordings(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
@@ -130,7 +132,7 @@ class DatabaseManager:
             return self._db.get_recordings_paginated(limit=limit, offset=offset)
 
         except Exception as e:
-            logging.error(f"Failed to get recordings: {e}")
+            logger.error(f"Failed to get recordings: {e}")
             return []
 
     def get_recordings_count(self) -> int:
@@ -145,7 +147,7 @@ class DatabaseManager:
                 result = cursor.fetchone()
                 return result[0] if result else 0
         except Exception as e:
-            logging.error(f"Failed to get recordings count: {e}")
+            logger.error(f"Failed to get recordings count: {e}")
             return 0
 
     def get_recording_by_id(self, recording_id: int) -> Optional[Dict[str, Any]]:
@@ -162,7 +164,7 @@ class DatabaseManager:
             return self._db.get_recording(recording_id)
 
         except Exception as e:
-            logging.error(f"Failed to get recording {recording_id}: {e}")
+            logger.error(f"Failed to get recording {recording_id}: {e}")
             return None
 
     def update_recording(self, recording_id: int, updates: Dict[str, Any]) -> bool:
@@ -180,11 +182,11 @@ class DatabaseManager:
             result = self._db.update_recording(recording_id, **updates)
 
             if result:
-                logging.info(f"Recording {recording_id} updated successfully")
+                logger.info(f"Recording {recording_id} updated successfully")
             return result
 
         except Exception as e:
-            logging.error(f"Failed to update recording {recording_id}: {e}")
+            logger.error(f"Failed to update recording {recording_id}: {e}")
             return False
 
     def delete_recording(self, recording_id: int) -> bool:
@@ -210,17 +212,17 @@ class DatabaseManager:
                     if audio_path and os.path.exists(audio_path):
                         try:
                             os.remove(audio_path)
-                            logging.info(f"Deleted audio file: {audio_path}")
+                            logger.info(f"Deleted audio file: {audio_path}")
                         except Exception as e:
-                            logging.warning(f"Failed to delete audio file: {e}")
+                            logger.warning(f"Failed to delete audio file: {e}")
 
-                    logging.info(f"Recording {recording_id} deleted successfully")
+                    logger.info(f"Recording {recording_id} deleted successfully")
                     return True
 
             return False
 
         except Exception as e:
-            logging.error(f"Failed to delete recording {recording_id}: {e}")
+            logger.error(f"Failed to delete recording {recording_id}: {e}")
             return False
 
     def search_recordings(self, query: str, search_type: str = "all") -> List[Dict[str, Any]]:
@@ -239,7 +241,7 @@ class DatabaseManager:
             return self._db.search_recordings(query)
 
         except Exception as e:
-            logging.error(f"Failed to search recordings: {e}")
+            logger.error(f"Failed to search recordings: {e}")
             return []
 
     def get_statistics(self) -> Dict[str, Any]:
@@ -282,7 +284,7 @@ class DatabaseManager:
                 }
 
         except Exception as e:
-            logging.error(f"Failed to get statistics: {e}")
+            logger.error(f"Failed to get statistics: {e}")
             return {
                 "total_recordings": 0,
                 "total_duration_seconds": 0,

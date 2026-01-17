@@ -9,10 +9,12 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
 from typing import Optional, List, Dict, Any
-import logging
 from datetime import datetime
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
+
+logger = get_logger(__name__)
 from ui.scaling_utils import ui_scaler
 from ui.hover_effects import ButtonHoverEffect, add_hover_to_treeview
 from ui.loading_indicator import PulsingLabel

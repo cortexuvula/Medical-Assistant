@@ -6,14 +6,14 @@ This module combines the migration orchestration and the migrator class.
 """
 
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
+from utils.structured_logging import get_logger
 
 from core.config import Config, get_config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SettingsMigrator:

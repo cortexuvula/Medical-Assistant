@@ -18,14 +18,14 @@ Usage:
     TimeoutConfig.update_timeout("openai", 120.0)
 """
 
-import logging
 from typing import Dict, Optional
 from settings.settings import SETTINGS
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Default timeout values in seconds

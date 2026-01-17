@@ -7,21 +7,23 @@ Provides canned responses management functionality.
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import X, LEFT, RIGHT
-import logging
 from typing import TYPE_CHECKING, Optional, Dict, List, Callable
+from utils.structured_logging import get_logger, Logger
 
 from ui.tooltip import ToolTip
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 
 if TYPE_CHECKING:
     pass
+
+
+logger = get_logger(__name__)
 
 
 class ResponsesMixin:
     """Mixin for canned responses management."""
 
     dialog: Optional[tk.Toplevel]
-    logger: logging.Logger
     favorite_responses: List[str]
 
     # UI components
@@ -158,7 +160,7 @@ class ResponsesMixin:
             widget.destroy()
 
         # Get responses from settings
-        canned_settings = SETTINGS.get("translation_canned_responses", {})
+        canned_settings = settings_manager.get("translation_canned_responses", {})
         responses = canned_settings.get("responses", {})
 
         if not responses:
@@ -293,8 +295,7 @@ class ResponsesMixin:
             self.favorite_responses.append(response_text)
 
         # Save to settings
-        SETTINGS.setdefault("translation", {})["favorite_responses"] = self.favorite_responses
-        save_settings()
+        settings_manager.set_nested("translation.favorite_responses", self.favorite_responses)
 
         # Refresh display
         self._populate_canned_responses()

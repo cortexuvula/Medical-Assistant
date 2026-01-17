@@ -4,7 +4,6 @@ Diagnostic Generator Module
 Handles diagnostic analysis generation using the diagnostic agent.
 """
 
-import logging
 from tkinter import messagebox
 from typing import TYPE_CHECKING
 
@@ -13,6 +12,9 @@ from ai.agents import AgentTask, AgentType
 from ui.dialogs.diagnostic_dialog import DiagnosticAnalysisDialog
 from ui.dialogs.diagnostic_results_dialog import DiagnosticResultsDialog
 from utils.error_handling import AsyncUIErrorHandler, ErrorContext
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -304,12 +306,12 @@ class DiagnosticGeneratorMixin:
         Args:
             soap_note: The SOAP note text to analyze for diagnoses
         """
-        logging.info("_run_diagnostic_to_panel called")
+        logger.info("_run_diagnostic_to_panel called")
         self.app.status_manager.info("Starting differential diagnosis...")
 
         # Check if the analysis panel exists
         if not hasattr(self.app, 'differential_analysis_text') or self.app.differential_analysis_text is None:
-            logging.warning("Differential analysis panel not available")
+            logger.warning("Differential analysis panel not available")
             self.app.status_manager.warning("Differential panel not available")
             return
 
@@ -345,7 +347,7 @@ class DiagnosticGeneratorMixin:
                         'result': response.result,
                         'metadata': response.metadata or {}
                     }
-                    logging.debug(f"Stored diagnostic analysis on app (result length: {len(response.result)})")
+                    logger.debug(f"Stored diagnostic analysis on app (result length: {len(response.result)})")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_diagnostic_panel_formatted(
@@ -361,7 +363,7 @@ class DiagnosticGeneratorMixin:
                     ))
 
             except Exception as e:
-                logging.error(f"Diagnostic panel analysis failed: {e}")
+                logger.error(f"Diagnostic panel analysis failed: {e}")
                 self.app.after(0, lambda: self._update_analysis_panel(
                     self.app.differential_analysis_text,
                     f"Error: {str(e)}\n\n"
@@ -390,16 +392,16 @@ class DiagnosticGeneratorMixin:
                 view_btn = self.app.ui.components.get('differential_view_details_btn')
                 if view_btn:
                     view_btn.config(state='normal')
-                    logging.debug("Diagnostic View Details button enabled")
+                    logger.debug("Diagnostic View Details button enabled")
                 else:
-                    logging.warning("differential_view_details_btn not found in components")
+                    logger.warning("differential_view_details_btn not found in components")
             else:
-                logging.warning("Cannot access app.ui.components to enable View Details button")
+                logger.warning("Cannot access app.ui.components to enable View Details button")
 
             self.app.status_manager.success("Differential diagnosis complete")
 
         except Exception as e:
-            logging.error(f"Failed to format diagnostic panel: {e}")
+            logger.error(f"Failed to format diagnostic panel: {e}")
             # Fall back to plain text update
             self._update_analysis_panel(self.app.differential_analysis_text, str(result))
 

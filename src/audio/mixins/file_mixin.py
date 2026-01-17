@@ -5,11 +5,14 @@ Provides file loading, saving, and audio segment operations for the AudioHandler
 """
 
 import os
-import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from pydub import AudioSegment
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class FileMixin:
@@ -29,7 +32,7 @@ class FileMixin:
             Combined AudioSegment or None if list is empty
         """
         if not segments:
-            logging.warning("combine_audio_segments called with empty list")
+            logger.warning("combine_audio_segments called with empty list")
             return None
 
         try:
@@ -39,9 +42,9 @@ class FileMixin:
                 combined = sum(segments[1:], start=combined)
             return combined
         except Exception as e:
-            logging.error(f"Error combining audio segments: {e}", exc_info=True)
+            logger.error(f"Error combining audio segments: {e}", exc_info=True)
             # Fallback to iterative concatenation
-            logging.info("Falling back to iterative concatenation due to error.")
+            logger.info("Falling back to iterative concatenation due to error.")
             combined_fallback = segments[0]
             for segment in segments[1:]:
                 combined_fallback += segment
@@ -68,7 +71,7 @@ class FileMixin:
             return seg, transcript
 
         except Exception as e:
-            logging.error(f"Error loading audio file: {str(e)}", exc_info=True)
+            logger.error(f"Error loading audio file: {str(e)}", exc_info=True)
             return None, ""
 
     def save_audio(self, segments: List[AudioSegment], file_path: str) -> bool:
@@ -83,7 +86,7 @@ class FileMixin:
         """
         try:
             if not segments:
-                logging.warning("No audio segments to save")
+                logger.warning("No audio segments to save")
                 return False
 
             combined = self.combine_audio_segments(segments)
@@ -92,24 +95,24 @@ class FileMixin:
                     # Ensure directory exists
                     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
                 except Exception as dir_e:
-                    logging.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
+                    logger.error(f"Failed to create directory for {file_path}: {str(dir_e)}")
                     return False
 
-                logging.info(f"Exporting audio to {file_path} with format=mp3, bitrate=192k")
+                logger.info(f"Exporting audio to {file_path} with format=mp3, bitrate=192k")
                 combined.export(file_path, format="mp3", bitrate="192k")
 
                 # Verify file was created
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
-                    logging.info(f"Audio successfully saved to {file_path} (size: {file_size} bytes)")
+                    logger.info(f"Audio successfully saved to {file_path} (size: {file_size} bytes)")
                 else:
-                    logging.error(f"Audio export completed but file not found at {file_path}")
+                    logger.error(f"Audio export completed but file not found at {file_path}")
                     return False
 
                 return True
             return False
         except Exception as e:
-            logging.error(f"Error saving audio: {str(e)}", exc_info=True)
+            logger.error(f"Error saving audio: {str(e)}", exc_info=True)
             return False
 
 

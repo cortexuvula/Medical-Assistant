@@ -6,14 +6,16 @@ Provides left sidebar navigation with collapsible sections
 import tkinter as tk
 import ttkbootstrap as ttk
 from typing import Dict, Callable, Optional, List
-import logging
 import platform
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Icons, SidebarConfig, Fonts
 from settings.settings import SETTINGS
 from settings.settings_manager import settings_manager
+
+logger = get_logger(__name__)
 
 
 class SidebarNavigation:
@@ -890,7 +892,7 @@ class SidebarNavigation:
 
     def _on_nav_click(self, item_id: str):
         """Handle click on navigation item."""
-        logging.debug(f"Navigation clicked: {item_id}")
+        logger.debug(f"Navigation clicked: {item_id}")
         self.set_active_item(item_id)
 
         # Notify navigation controller
@@ -899,7 +901,7 @@ class SidebarNavigation:
 
     def _on_tool_click(self, tool_id: str):
         """Handle click on tool item or generate item."""
-        logging.debug(f"Tool/Generate clicked: {tool_id}")
+        logger.debug(f"Tool/Generate clicked: {tool_id}")
 
         # Map tool IDs to command map keys or methods
         tool_commands = {
@@ -930,15 +932,15 @@ class SidebarNavigation:
                 try:
                     self._command_map[command_key]()
                 except Exception as e:
-                    logging.error(f"Error executing tool command {command_key}: {e}")
+                    logger.error(f"Error executing tool command {command_key}: {e}")
             # Try parent method
             elif hasattr(self.parent, command_key):
                 try:
                     getattr(self.parent, command_key)()
                 except Exception as e:
-                    logging.error(f"Error executing tool method {command_key}: {e}")
+                    logger.error(f"Error executing tool method {command_key}: {e}")
             else:
-                logging.warning(f"No handler found for tool: {tool_id}")
+                logger.warning(f"No handler found for tool: {tool_id}")
 
     def _toggle_sidebar(self):
         """Toggle sidebar between expanded and collapsed states."""
@@ -1060,7 +1062,7 @@ class SidebarNavigation:
                 except tk.TclError:
                     pass  # Sash position update not needed or failed
         except Exception as e:
-            logging.debug(f"Could not update parent geometry: {e}")
+            logger.debug(f"Could not update parent geometry: {e}")
 
     def _find_managing_panedwindow(self):
         """Find the Panedwindow that manages this sidebar.

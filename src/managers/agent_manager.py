@@ -11,13 +11,13 @@ Error Handling Contract:
 - AgentResponse.error contains a human-readable error message when success=False
 """
 
-import logging
 import time
 import asyncio
 from typing import Dict, Optional, Type, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 from ai.agents.base import BaseAgent
+from utils.structured_logging import get_logger
 from ai.agents.models import (
     AgentConfig, AgentType, AgentTask, AgentResponse, SubAgentConfig,
     AdvancedConfig, RetryConfig, RetryStrategy, PerformanceMetrics,
@@ -31,7 +31,7 @@ from ai.agents.referral import ReferralAgent
 from ai.agents.data_extraction import DataExtractionAgent
 from ai.agents.workflow import WorkflowAgent
 from ai.agents.chat import ChatAgent
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.safe_eval import safe_eval
 
 
@@ -50,7 +50,7 @@ class AgentNotAvailableError(Exception):
     pass
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentManager:
@@ -98,7 +98,7 @@ class AgentManager:
         Errors during initialization are logged but do not propagate,
         allowing other agents to still be loaded.
         """
-        agent_config = SETTINGS.get("agent_config", {})
+        agent_config = settings_manager.get("agent_config", {})
 
         for agent_type in AgentType:
             agent_key = agent_type.value
@@ -232,7 +232,7 @@ class AgentManager:
         Returns:
             True if agent is enabled, False otherwise
         """
-        agent_config = SETTINGS.get("agent_config", {})
+        agent_config = settings_manager.get("agent_config", {})
         agent_key = agent_type.value
         return agent_config.get(agent_key, {}).get("enabled", False)
         
@@ -545,10 +545,7 @@ class AgentManager:
         """Reload agents from current settings."""
         logger.info("Reloading agents from settings")
         # Reload settings from file to get latest changes
-        global SETTINGS
-        from settings.settings import load_settings
-        SETTINGS.clear()
-        SETTINGS.update(load_settings())
+        settings_manager.reload()
         self._agents.clear()
         self._load_agents()
         

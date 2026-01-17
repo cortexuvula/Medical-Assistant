@@ -2,13 +2,12 @@
 Tool registry for managing available tools.
 """
 
-import logging
 from typing import Dict, Type, Optional, List, Tuple
 from .base_tool import BaseTool
 from ..agents.models import Tool
+from utils.structured_logging import get_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolRegistry:

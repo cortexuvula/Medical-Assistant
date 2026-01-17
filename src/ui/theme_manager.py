@@ -5,12 +5,14 @@ Handles theme switching and UI styling management including light/dark mode
 toggles, color updates, and component styling.
 """
 
-import logging
 import tkinter as tk
 import ttkbootstrap as ttk
+from utils.structured_logging import get_logger
 from settings.settings import SETTINGS, save_settings
 from ui.ui_constants import Colors, Icons
 from ui.theme_observer import notify_theme_change
+
+logger = get_logger(__name__)
 
 
 class ThemeManager:
@@ -52,7 +54,7 @@ class ThemeManager:
         except tk.TclError as e:
             # Catch and log the error instead of crashing
             if "Duplicate element" in str(e):
-                logging.info(f"Ignoring harmless duplicate element error during theme change: {e}")
+                logger.info(f"Ignoring harmless duplicate element error during theme change: {e}")
             else:
                 # Re-raise if it's not the specific error we're handling
                 raise

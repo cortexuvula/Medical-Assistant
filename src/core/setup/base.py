@@ -2,9 +2,10 @@
 Base setup class for initialization components.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
+
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -28,7 +29,7 @@ class BaseSetup(ABC):
             app: The main application instance
         """
         self.app = app
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = get_logger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
     def initialize(self) -> None:

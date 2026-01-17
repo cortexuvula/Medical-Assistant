@@ -7,7 +7,6 @@ both exception-based (original) and OperationResult-based (safe) variants
 for flexibility in error handling.
 """
 
-import logging
 import pygame
 import threading
 from typing import Optional, Dict, Any, List
@@ -15,10 +14,11 @@ from pydub import AudioSegment
 from pydub.playback import play
 
 from tts_providers.base import BaseTTSProvider
+from utils.structured_logging import get_logger
 from tts_providers.pyttsx_provider import PyttsxProvider
 from tts_providers.elevenlabs_tts import ElevenLabsTTSProvider
 from tts_providers.google_tts import GoogleTTSProvider
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.security import get_security_manager
 from utils.exceptions import APIError
 from utils.error_handling import OperationResult
@@ -26,10 +26,10 @@ from utils.error_handling import OperationResult
 
 class TTSManager:
     """Manages TTS providers and handles speech synthesis operations."""
-    
+
     def __init__(self):
         """Initialize the TTSManager."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.providers = {
             "pyttsx3": PyttsxProvider,
             "elevenlabs": ElevenLabsTTSProvider,
@@ -58,7 +58,7 @@ class TTSManager:
         """
         try:
             # Get provider settings
-            tts_settings = SETTINGS.get("tts", {})
+            tts_settings = settings_manager.get("tts", {})
             provider_name = tts_settings.get("provider", "pyttsx3")
             
             # Check if we need to recreate the provider
@@ -123,13 +123,13 @@ class TTSManager:
 
             # Get language from settings if not provided
             if language is None:
-                tts_settings = SETTINGS.get("tts", {})
-                translation_settings = SETTINGS.get("translation", {})
+                tts_settings = settings_manager.get("tts", {})
+                translation_settings = settings_manager.get("translation", {})
                 language = tts_settings.get("language", translation_settings.get("patient_language", "en"))
 
             # Get voice from settings if not provided
             if voice is None:
-                tts_settings = SETTINGS.get("tts", {})
+                tts_settings = settings_manager.get("tts", {})
                 voice = tts_settings.get("voice", None)
 
             # Synthesize speech
@@ -416,17 +416,17 @@ class TTSManager:
     
     def update_settings(self, settings: Dict[str, Any]):
         """Update TTS settings.
-        
+
         Args:
             settings: New TTS settings
         """
         # Update settings
-        SETTINGS["tts"] = settings
-        
+        settings_manager.set("tts", settings)
+
         # Clear current provider to force recreation
         self._current_provider = None
         self._provider_instance = None
-        
+
         self.logger.info("TTS settings updated")
 
 

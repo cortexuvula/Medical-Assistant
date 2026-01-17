@@ -6,12 +6,12 @@ Provides a consistent interface for displaying messages to users,
 with support for different notification types and future extensibility.
 """
 
-import logging
 from tkinter import messagebox
 from typing import Optional, Callable, Any
 from enum import Enum
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NotificationType(Enum):

@@ -5,10 +5,10 @@ Exports clinical documents as Word (.docx) files with optional
 letterhead support.
 """
 
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
+from utils.structured_logging import get_logger
 
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -17,7 +17,7 @@ from docx.enum.style import WD_STYLE_TYPE
 
 from exporters.base_exporter import BaseExporter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DocxExporter(BaseExporter):

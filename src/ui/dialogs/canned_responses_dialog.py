@@ -8,11 +8,13 @@ import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, CENTER, W
-import logging
 from typing import Dict, List, Tuple
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox
 
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 from ui.tooltip import ToolTip
 
 
@@ -27,10 +29,10 @@ class CannedResponsesDialog:
         """
         self.parent = parent
         self.dialog = None
-        self.logger = logging.getLogger(__name__)
+        # Using module-level logger
         
         # Load current settings
-        self.canned_settings = SETTINGS.get("translation_canned_responses", {})
+        self.canned_settings = settings_manager.get("translation_canned_responses", {})
         self.categories = self.canned_settings.get("categories", [])
         self.responses = self.canned_settings.get("responses", {})
         
@@ -303,8 +305,7 @@ class CannedResponsesDialog:
             parent=self.dialog
         ):
             # Get defaults from settings
-            from settings.settings import _DEFAULT_SETTINGS
-            default_responses = _DEFAULT_SETTINGS.get("translation_canned_responses", {})
+            default_responses = settings_manager.get_default("translation_canned_responses", {})
             
             self.working_categories = default_responses.get("categories", []).copy()
             self.working_responses = default_responses.get("responses", {}).copy()
@@ -341,11 +342,8 @@ class CannedResponsesDialog:
             # Update settings
             self.canned_settings["categories"] = self.working_categories
             self.canned_settings["responses"] = self.working_responses
-            SETTINGS["translation_canned_responses"] = self.canned_settings
-            
-            # Save to file
-            save_settings(SETTINGS)
-            
+            settings_manager.set("translation_canned_responses", self.canned_settings)
+
             result["saved"] = True
             self.dialog.destroy()
         

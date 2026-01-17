@@ -8,7 +8,6 @@ Supports multiple recipient types with tailored formatting:
 - diagnostic: Diagnostic services request
 """
 
-import logging
 import re
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from datetime import datetime
@@ -16,12 +15,13 @@ from enum import Enum
 
 from .base import BaseAgent
 from .models import AgentConfig, AgentTask, AgentResponse, ToolCall
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from .ai_caller import AICallerProtocol
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ReferralRecipientType(Enum):

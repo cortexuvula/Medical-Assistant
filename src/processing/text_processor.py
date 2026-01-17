@@ -1,7 +1,10 @@
 import tkinter as tk
 import string
-import logging
 from typing import Optional, Dict, Callable, List
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class TextProcessor:
     """Handles text processing, manipulation, and command handling for voice recognition"""

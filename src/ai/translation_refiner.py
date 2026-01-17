@@ -5,8 +5,9 @@ Provides hybrid translation refinement using LLM to improve
 medical terminology accuracy in Google/DeepL translations.
 """
 
-import logging
 import threading
+
+from utils.structured_logging import get_logger
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -72,7 +73,7 @@ Return ONLY the refined translation, nothing else."""
     ]
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self._load_settings()
 
     def _load_settings(self):

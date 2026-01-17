@@ -4,8 +4,10 @@ Custom Suggestions Dialog
 Dialog for managing custom chat suggestions.
 """
 
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox
 import ttkbootstrap as ttk
 
@@ -223,7 +225,7 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
             dialog.destroy()
 
         except Exception as e:
-            logging.error(f"Error saving custom suggestions: {e}")
+            logger.error(f"Error saving custom suggestions: {e}")
             messagebox.showerror("Error", f"Failed to save suggestions: {str(e)}", parent=dialog)
 
     def cancel():

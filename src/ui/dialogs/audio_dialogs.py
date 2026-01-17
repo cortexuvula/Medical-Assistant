@@ -7,7 +7,6 @@ prefix audio recording and other audio-related UI components.
 
 import os
 import sys
-import logging
 import tempfile
 import threading
 import tkinter as tk
@@ -16,7 +15,11 @@ import ttkbootstrap as ttk
 
 from ui.dialogs.dialogs import create_toplevel_dialog
 from utils.utils import get_valid_microphones
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+from utils.error_handling import ErrorContext
+
+logger = get_logger(__name__)
 
 
 class AudioDialogManager:
@@ -60,7 +63,7 @@ class AudioDialogManager:
         mic_var = tk.StringVar(prefix_dialog)
         
         # Get the currently selected microphone from settings
-        selected_mic = SETTINGS.get("selected_microphone", "")
+        selected_mic = settings_manager.get("selected_microphone", "")
         
         # Set the dropdown to the currently selected microphone if available
         if selected_mic and selected_mic in available_mics:
@@ -99,8 +102,12 @@ class AudioDialogManager:
                     duration = sum(seg.duration_seconds for seg in audio_segments)
                     status_var.set(f"Recording... {duration:.1f} seconds captured")
             except Exception as e:
-                logging.error(f"Error processing prefix audio: {e}", exc_info=True)
-                status_var.set(f"Error: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Processing prefix audio",
+                    exception=e
+                )
+                logger.error(ctx.to_log_string(), exc_info=True)
+                status_var.set(f"Error: {ctx.user_message}")
         
         # Function to start recording
         def start_recording():
@@ -141,8 +148,13 @@ class AudioDialogManager:
                 )
             except Exception as e:
                 recording_active = False
-                logging.error(f"Error starting prefix recording: {e}", exc_info=True)
-                status_var.set(f"Error: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Starting prefix recording",
+                    exception=e,
+                    input_summary=f"mic={mic_name if 'mic_name' in dir() else 'unknown'}"
+                )
+                logger.error(ctx.to_log_string(), exc_info=True)
+                status_var.set(f"Error: {ctx.user_message}")
                 record_button.config(state=NORMAL)
                 stop_button.config(state=DISABLED)
         
@@ -195,9 +207,13 @@ class AudioDialogManager:
                             record_button.config(state=NORMAL)
                         ])
                 except Exception as e:
-                    logging.error(f"Error stopping prefix recording: {e}", exc_info=True)
-                    prefix_dialog.after(0, lambda: [
-                        status_var.set(f"Error: {str(e)}"),
+                    ctx = ErrorContext.capture(
+                        operation="Stopping prefix recording",
+                        exception=e
+                    )
+                    logger.error(ctx.to_log_string(), exc_info=True)
+                    prefix_dialog.after(0, lambda msg=ctx.user_message: [
+                        status_var.set(f"Error: {msg}"),
                         record_button.config(state=NORMAL)
                     ])
             
@@ -223,8 +239,12 @@ class AudioDialogManager:
                         subprocess.Popen(['open', temp_file.name] if sys.platform == 'darwin' else ['xdg-open', temp_file.name])
                 status_var.set("Playing preview")
             except Exception as e:
-                logging.error(f"Error previewing audio: {e}", exc_info=True)
-                status_var.set(f"Error previewing: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Previewing audio",
+                    exception=e
+                )
+                logger.error(ctx.to_log_string(), exc_info=True)
+                status_var.set(f"Error previewing: {ctx.user_message}")
         
         # Function to save the recorded audio
         def save_audio():
@@ -244,8 +264,13 @@ class AudioDialogManager:
                 
                 prefix_dialog.destroy()
             except Exception as e:
-                logging.error(f"Error saving prefix audio: {e}", exc_info=True)
-                status_var.set(f"Error saving: {str(e)}")
+                ctx = ErrorContext.capture(
+                    operation="Saving prefix audio",
+                    exception=e,
+                    input_summary=f"path={prefix_audio_path}"
+                )
+                logger.error(ctx.to_log_string(), exc_info=True)
+                status_var.set(f"Error saving: {ctx.user_message}")
         
         # Add buttons
         record_button = ttk.Button(button_frame, text="Record", command=start_recording)
@@ -275,8 +300,13 @@ class AudioDialogManager:
                     status_var.set("Existing prefix audio deleted")
                     delete_button.config(state=DISABLED)
                 except Exception as e:
-                    logging.error(f"Error deleting prefix audio: {e}", exc_info=True)
-                    status_var.set(f"Error deleting: {str(e)}")
+                    ctx = ErrorContext.capture(
+                        operation="Deleting prefix audio",
+                        exception=e,
+                        input_summary=f"path={prefix_audio_path}"
+                    )
+                    logger.error(ctx.to_log_string(), exc_info=True)
+                    status_var.set(f"Error deleting: {ctx.user_message}")
             
             delete_button = ttk.Button(prefix_dialog, text="Delete Existing Prefix", command=delete_prefix)
             delete_button.pack(pady=5)

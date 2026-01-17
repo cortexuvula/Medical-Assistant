@@ -5,7 +5,6 @@ except ImportError:
     pass  # Not critical if it fails
 
 from string import punctuation
-import logging
 import os
 import sys
 import concurrent.futures
@@ -25,9 +24,10 @@ from database.database import Database
 from audio.audio import AudioHandler
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
 
-# Initialize logging
-from managers.log_manager import setup_application_logging
-log_manager = setup_application_logging()
+# Initialize structured logging
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 from utils.utils import get_valid_microphones
@@ -58,7 +58,7 @@ def main() -> None:
     load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
     
     # Log application startup
-    logging.info("Medical Dictation application starting")
+    logger.info("Medical Dictation application starting")
     
         
     # Create and start main app
@@ -70,7 +70,7 @@ def main() -> None:
             # Try to log the error with full traceback
             import traceback
             tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            logging.error(f"Uncaught exception: type: {exc_type}\n{''.join(tb_lines)}")
+            logger.error(f"Uncaught exception: type: {exc_type}\n{''.join(tb_lines)}")
         except (OSError, IOError):
             # If logging fails, write to stderr as fallback
             sys.stderr.write(f"Error: {exc_type.__name__}: {exc_value}\n")
@@ -90,7 +90,7 @@ def main() -> None:
     app.mainloop()
     
     # Log application shutdown
-    logging.info("Medical Dictation application shutting down")
+    logger.info("Medical Dictation application shutting down")
 
 class MedicalDictationApp(
     ttk.Window,
@@ -552,7 +552,7 @@ class MedicalDictationApp(
                 display_names.append(display_name)
 
         if not available:
-            logging.warning(f"No {provider_type.upper()} providers have API keys configured, showing all options")
+            logger.warning(f"No {provider_type.upper()} providers have API keys configured, showing all options")
             available = [p[0] for p in all_providers]
             display_names = [p[1] for p in all_providers]
 
@@ -839,7 +839,7 @@ class MedicalDictationApp(
             if hasattr(self, 'navigation_controller'):
                 self.navigation_controller.sync_with_notebook(current_tab)
         except Exception as e:
-            logging.debug(f"Error syncing navigation: {e}")
+            logger.debug(f"Error syncing navigation: {e}")
 
         # Update chat UI context indicator
         if hasattr(self, 'chat_ui') and self.chat_ui:
@@ -1012,7 +1012,7 @@ class MedicalDictationApp(
             paused: Whether recording is paused
             caller: Identifier for debugging which code called this method
         """
-        logging.info(f"_update_recording_ui_state called by {caller}: recording={recording}, paused={paused}")
+        logger.info(f"_update_recording_ui_state called by {caller}: recording={recording}, paused={paused}")
 
         # Delegate to UI state manager if available
         if hasattr(self, 'ui_state_manager') and self.ui_state_manager:

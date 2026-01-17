@@ -10,16 +10,16 @@ This controller merges:
 Extracted from the main App class to improve maintainability and separation of concerns.
 """
 
-import logging
 import tkinter as tk
 from typing import TYPE_CHECKING, Tuple, List
 
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConfigController:
@@ -76,7 +76,7 @@ class ConfigController:
 
         # If no providers have keys, show all (fallback)
         if not available:
-            logging.warning("No AI providers have API keys configured, showing all options")
+            logger.warning("No AI providers have API keys configured, showing all options")
             available = [p[0] for p in all_providers]
             display_names = [p[1] for p in all_providers]
 
@@ -113,7 +113,7 @@ class ConfigController:
 
         # If no providers have keys, show all (fallback)
         if not available:
-            logging.warning("No STT providers have API keys configured, showing all options")
+            logger.warning("No STT providers have API keys configured, showing all options")
             available = [p[0] for p in all_providers]
             display_names = [p[1] for p in all_providers]
 
@@ -228,7 +228,7 @@ class ConfigController:
             # Update audio handler
             self.app.audio_handler.set_stt_provider(self.app._available_stt_providers[0])
 
-        logging.info(f"Provider dropdowns refreshed. AI: {self.app._ai_display_names}, STT: {self.app._stt_display_names}")
+        logger.info(f"Provider dropdowns refreshed. AI: {self.app._ai_display_names}, STT: {self.app._stt_display_names}")
 
     # =========================================================================
     # Transcription Fallback Handler
@@ -281,7 +281,7 @@ class ConfigController:
         if selected_mic and selected_mic != "No microphones found":
             # Update the settings with the selected microphone
             settings_manager.set("selected_microphone", selected_mic)
-            logging.info(f"Saved selected microphone: {selected_mic}")
+            logger.info(f"Saved selected microphone: {selected_mic}")
 
     # =========================================================================
     # Microphone Refresh Methods
@@ -323,7 +323,7 @@ class ConfigController:
                 self.app.after(100, lambda: animate_refresh(frame + 1))
             else:
                 # Animation complete, perform actual refresh
-                logging.debug("Microphone refresh animation complete, starting refresh")
+                logger.debug("Microphone refresh animation complete, starting refresh")
                 do_refresh()
 
         def do_refresh():
@@ -352,12 +352,12 @@ class ConfigController:
                     self.app.update_status("No microphones detected", "warning")
 
             except (OSError, RuntimeError, tk.TclError) as e:
-                logging.error(f"Error refreshing microphones: {e}", exc_info=True)
+                logger.error(f"Error refreshing microphones: {e}", exc_info=True)
                 self.app.update_status("Error detecting microphones", "error")
             finally:
                 # Reset animation state
                 self._refreshing = False
-                logging.debug("Resetting microphone refresh state and cursor")
+                logger.debug("Resetting microphone refresh state and cursor")
 
                 # Reset button state and cursor
                 if refresh_btn:
@@ -384,30 +384,30 @@ class ConfigController:
         try:
             self.app.config(cursor="")
             cursor_reset = True
-            logging.debug("Cursor reset to default successfully")
+            logger.debug("Cursor reset to default successfully")
         except Exception as e:
-            logging.debug(f"Failed to reset cursor to default: {e}")
+            logger.debug(f"Failed to reset cursor to default: {e}")
             try:
                 self.app.config(cursor="arrow")
                 cursor_reset = True
-                logging.debug("Cursor reset to arrow successfully")
+                logger.debug("Cursor reset to arrow successfully")
             except Exception as e2:
-                logging.debug(f"Failed to reset cursor to arrow: {e2}")
+                logger.debug(f"Failed to reset cursor to arrow: {e2}")
                 try:
                     self.app.config(cursor="left_ptr")
                     cursor_reset = True
-                    logging.debug("Cursor reset to left_ptr successfully")
+                    logger.debug("Cursor reset to left_ptr successfully")
                 except Exception as e3:
-                    logging.debug(f"Failed to reset cursor to left_ptr: {e3}")
+                    logger.debug(f"Failed to reset cursor to left_ptr: {e3}")
 
         if not cursor_reset:
-            logging.warning("Could not reset cursor after microphone refresh")
+            logger.warning("Could not reset cursor after microphone refresh")
 
     def reset_cursor_fallback(self) -> None:
         """Fallback method to reset cursor if it gets stuck."""
         try:
             if self._refreshing:
-                logging.warning("Cursor reset fallback triggered - microphone refresh may have failed")
+                logger.warning("Cursor reset fallback triggered - microphone refresh may have failed")
                 self._refreshing = False
                 # Try to reset cursor
                 try:
@@ -422,4 +422,4 @@ class ConfigController:
                 if refresh_btn:
                     refresh_btn.config(text="⟳", state=tk.NORMAL)
         except Exception as e:
-            logging.error(f"Error in cursor reset fallback: {e}")
+            logger.error(f"Error in cursor reset fallback: {e}")

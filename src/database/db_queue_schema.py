@@ -5,11 +5,14 @@ Adds processing queue related columns and tables to the existing database.
 """
 
 import sqlite3
-import logging
 import re
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple
 from contextlib import contextmanager
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Allowlist of valid column definitions for schema migrations
@@ -87,10 +90,10 @@ class QueueDatabaseSchema:
             try:
                 # Check if upgrades are needed
                 if not self._needs_upgrade(cursor):
-                    logging.info("Database schema is up to date")
+                    logger.info("Database schema is up to date")
                     return
 
-                logging.info("Upgrading database schema for processing queue support...")
+                logger.info("Upgrading database schema for processing queue support...")
 
                 # Add new columns to recordings table
                 self._add_processing_columns(cursor)
@@ -103,11 +106,11 @@ class QueueDatabaseSchema:
 
                 # Commit all changes
                 conn.commit()
-                logging.info("Database schema upgrade completed successfully")
+                logger.info("Database schema upgrade completed successfully")
 
             except Exception as e:
                 conn.rollback()
-                logging.error(f"Failed to upgrade database schema: {str(e)}")
+                logger.error(f"Failed to upgrade database schema: {str(e)}")
                 raise
     
     def _needs_upgrade(self, cursor) -> bool:
@@ -153,7 +156,7 @@ class QueueDatabaseSchema:
         """)
 
         if not cursor.fetchone():
-            logging.warning("Cannot add processing columns - recordings table does not exist")
+            logger.warning("Cannot add processing columns - recordings table does not exist")
             return
 
         # Get existing columns
@@ -165,7 +168,7 @@ class QueueDatabaseSchema:
             if column_name not in existing_columns:
                 # Validate column name against allowlist (defense in depth)
                 if column_name not in ALLOWED_COLUMNS:
-                    logging.error(f"Attempted to add non-allowlisted column: {column_name}")
+                    logger.error(f"Attempted to add non-allowlisted column: {column_name}")
                     continue
 
                 _validate_identifier(column_name, "column name")
@@ -173,7 +176,7 @@ class QueueDatabaseSchema:
                 try:
                     # Safe: column_name and column_def are from allowlist
                     cursor.execute(f"ALTER TABLE recordings ADD COLUMN {column_name} {column_def}")
-                    logging.info(f"Added column {column_name} to recordings table")
+                    logger.info(f"Added column {column_name} to recordings table")
                 except sqlite3.OperationalError as e:
                     # Column might already exist in some databases
                     if "duplicate column name" not in str(e).lower():
@@ -188,7 +191,7 @@ class QueueDatabaseSchema:
         """)
         
         if not cursor.fetchone():
-            logging.warning("Cannot create processing_queue table - recordings table does not exist")
+            logger.warning("Cannot create processing_queue table - recordings table does not exist")
             return
         
         cursor.execute('''
@@ -208,7 +211,7 @@ class QueueDatabaseSchema:
         )
         ''')
         
-        logging.info("Created processing_queue table")
+        logger.info("Created processing_queue table")
     
     def _create_indexes(self, cursor):
         """Create indexes for better query performance.
@@ -237,7 +240,7 @@ class QueueDatabaseSchema:
                 cursor.execute(
                     f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_expr})"
                 )
-                logging.info(f"Created index {index_name}")
+                logger.info(f"Created index {index_name}")
             except sqlite3.OperationalError as e:
                 # Index might already exist
                 if "already exists" not in str(e).lower():
@@ -252,5 +255,6 @@ def upgrade_database():
 
 if __name__ == "__main__":
     # Run the upgrade if called directly
+    import logging
     logging.basicConfig(level=logging.INFO)
     upgrade_database()

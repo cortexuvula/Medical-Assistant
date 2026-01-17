@@ -5,7 +5,6 @@ Handles PDF export operations for medical documents.
 Extracted from ProcessingController for better separation of concerns.
 """
 
-import logging
 import os
 import tempfile
 from tkinter import messagebox, filedialog
@@ -22,11 +21,12 @@ from core.controllers.export.export_helpers import (
     validate_export_content
 )
 from settings import settings_manager
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PDFExporterHandler:

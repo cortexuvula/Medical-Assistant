@@ -6,10 +6,12 @@ Handles the recording workflow UI elements
 import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
-import logging
 from datetime import datetime
 from typing import Dict, Callable, Optional
+from utils.structured_logging import get_logger
 from ui.tooltip import ToolTip
+
+logger = get_logger(__name__)
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Icons
 from settings.settings import SETTINGS, save_settings

@@ -4,13 +4,13 @@ Setup orchestrator for Medical Assistant.
 Coordinates initialization of all setup components in the correct order.
 """
 
-import logging
 from typing import List, TYPE_CHECKING
 
 from .base import BaseSetup
 from .threading_setup import ThreadingSetup
 from .security_setup import SecuritySetup
 from .database_setup import DatabaseSetup
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -39,7 +39,7 @@ class SetupOrchestrator:
             app: The main application instance
         """
         self.app = app
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self._setup_components: List[BaseSetup] = []
         self._initialized_components: List[BaseSetup] = []
 

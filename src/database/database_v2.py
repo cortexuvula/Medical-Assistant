@@ -5,13 +5,13 @@ Improved database module with connection pooling, context managers, and better s
 import sqlite3
 import datetime
 import json
-import logging
 from typing import Optional, Dict, List, Any, Union, Tuple
 from contextlib import contextmanager
 
 from database.db_pool import get_db_manager
 from database.db_migrations import get_migration_manager
 from utils.exceptions import DatabaseError
+from utils.structured_logging import get_logger
 
 
 class ImprovedDatabase:
@@ -19,7 +19,7 @@ class ImprovedDatabase:
     
     def __init__(self):
         """Initialize database with connection pool."""
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self.db_manager = get_db_manager()
         self._ensure_migrations()
     

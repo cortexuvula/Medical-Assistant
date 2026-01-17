@@ -12,12 +12,12 @@ Error Handling:
 
 import sqlite3
 import threading
-import logging
 import re
 from typing import Dict, List, FrozenSet
 
 from managers.data_folder_manager import data_folder_manager
 from utils.error_handling import ErrorContext
+from utils.structured_logging import get_logger
 
 # Import centralized schema definitions
 from database.schema import (
@@ -35,7 +35,7 @@ from database.mixins import (
     DiagnosticsMixin,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Valid SQL identifier pattern (alphanumeric and underscore, must start with letter/underscore)
 _VALID_IDENTIFIER_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
@@ -179,11 +179,11 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
 
             for column_name, column_type in critical_columns:
                 if column_name not in existing_columns:
-                    logging.info(f"Adding missing column '{column_name}' to recordings table")
+                    logger.info(f"Adding missing column '{column_name}' to recordings table")
                     try:
                         conn.execute(f"ALTER TABLE recordings ADD COLUMN {column_name} {column_type}")
                         conn.commit()
-                        logging.info(f"Successfully added column '{column_name}'")
+                        logger.info(f"Successfully added column '{column_name}'")
                     except sqlite3.OperationalError as e:
                         if "duplicate column" not in str(e).lower():
                             ctx = ErrorContext.capture(

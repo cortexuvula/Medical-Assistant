@@ -10,7 +10,7 @@ from ai.prompts import (
     REFINE_PROMPT, REFINE_SYSTEM_MESSAGE,
     IMPROVE_PROMPT, IMPROVE_SYSTEM_MESSAGE
 )
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 def clean_text(text: str, remove_markdown: bool = True, remove_citations: bool = True) -> str:
@@ -51,11 +51,12 @@ def adjust_text_with_openai(text: str) -> str:
     Returns:
         Refined text
     """
-    model = SETTINGS["refine_text"]["model"]  # Use actual settings, not defaults
+    refine_config = settings_manager.get_model_config("refine_text")
+    model = refine_config.get("model", "gpt-4")
 
     full_prompt = f"{REFINE_PROMPT}\n\nOriginal: {text}\n\nCorrected:"
     # Get temperature from settings or use a reasonable default
-    temperature = SETTINGS.get("refine_text", {}).get("temperature", 0.0)
+    temperature = refine_config.get("temperature", 0.0)
     return call_ai(model, REFINE_SYSTEM_MESSAGE, full_prompt, temperature)
 
 
@@ -68,9 +69,10 @@ def improve_text_with_openai(text: str) -> str:
     Returns:
         Improved text
     """
-    model = SETTINGS["improve_text"]["model"]  # Use actual settings, not defaults
+    improve_config = settings_manager.get_model_config("improve_text")
+    model = improve_config.get("model", "gpt-4")
 
     full_prompt = f"{IMPROVE_PROMPT}\n\nOriginal: {text}\n\nImproved:"
     # Get temperature from settings or use a reasonable default
-    temperature = SETTINGS.get("improve_text", {}).get("temperature", 0.5)
+    temperature = improve_config.get("temperature", 0.5)
     return call_ai(model, IMPROVE_SYSTEM_MESSAGE, full_prompt, temperature)

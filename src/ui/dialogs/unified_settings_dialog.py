@@ -14,7 +14,6 @@ from typing import Dict, Optional, Callable
 from ui.scaling_utils import ui_scaler
 from ui.dialogs.dialog_utils import create_toplevel_dialog
 from ui.tooltip import ToolTip
-from settings.settings import SETTINGS, save_settings, _DEFAULT_SETTINGS
 from settings.settings_manager import settings_manager
 
 
@@ -261,8 +260,8 @@ class UnifiedSettingsDialog:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="ElevenLabs")
 
-        elevenlabs_settings = SETTINGS.get("elevenlabs", {})
-        defaults = _DEFAULT_SETTINGS.get("elevenlabs", {})
+        elevenlabs_settings = settings_manager.get("elevenlabs", {})
+        defaults = settings_manager.get_default("elevenlabs", {})
 
         self.widgets['audio_stt']['elevenlabs'] = {}
         row = 0
@@ -344,8 +343,8 @@ class UnifiedSettingsDialog:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Deepgram")
 
-        deepgram_settings = SETTINGS.get("deepgram", {})
-        defaults = _DEFAULT_SETTINGS.get("deepgram", {})
+        deepgram_settings = settings_manager.get("deepgram", {})
+        defaults = settings_manager.get_default("deepgram", {})
 
         self.widgets['audio_stt']['deepgram'] = {}
         row = 0
@@ -401,8 +400,8 @@ class UnifiedSettingsDialog:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Groq")
 
-        groq_settings = SETTINGS.get("groq", {})
-        defaults = _DEFAULT_SETTINGS.get("groq", {})
+        groq_settings = settings_manager.get("groq", {})
+        defaults = settings_manager.get_default("groq", {})
 
         self.widgets['audio_stt']['groq'] = {}
         row = 0
@@ -436,8 +435,8 @@ class UnifiedSettingsDialog:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="TTS")
 
-        tts_settings = SETTINGS.get("tts", {})
-        defaults = _DEFAULT_SETTINGS.get("tts", {})
+        tts_settings = settings_manager.get("tts", {})
+        defaults = settings_manager.get_default("tts", {})
 
         self.widgets['audio_stt']['tts'] = {}
         row = 0
@@ -518,7 +517,7 @@ class UnifiedSettingsDialog:
         ToolTip(header_label, "Controls randomness/creativity of AI responses")
 
         # Global temperature
-        current_temp = SETTINGS.get("temperature", 0.7)
+        current_temp = settings_manager.get("temperature", 0.7)
 
         temp_frame = ttk.Frame(frame)
         temp_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
@@ -556,8 +555,8 @@ class UnifiedSettingsDialog:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Translation")
 
-        translation_settings = SETTINGS.get("translation", {})
-        defaults = _DEFAULT_SETTINGS.get("translation", {})
+        translation_settings = settings_manager.get("translation", {})
+        defaults = settings_manager.get_default("translation", {})
 
         self.widgets['ai_models']['translation'] = {}
         row = 0
@@ -654,7 +653,7 @@ class UnifiedSettingsDialog:
         folder_label = ttk.Label(tab, text="Default Storage Folder:")
         folder_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(folder_label, "Default folder for saving documents")
-        folder_var = tk.StringVar(value=SETTINGS.get("default_folder", ""))
+        folder_var = tk.StringVar(value=settings_manager.get("default_folder", ""))
         self.widgets['storage']['default_folder'] = folder_var
         folder_entry = ttk.Entry(tab, textvariable=folder_var, width=50)
         folder_entry.grid(row=row, column=1, sticky="ew", padx=(10, 5), pady=10)
@@ -720,7 +719,7 @@ class UnifiedSettingsDialog:
         qc_label = ttk.Label(tab, text="Quick Continue Mode:")
         qc_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(qc_label, "Enable to start new recordings while previous ones process")
-        quick_continue_var = tk.BooleanVar(value=SETTINGS.get("quick_continue_mode", False))
+        quick_continue_var = tk.BooleanVar(value=settings_manager.get("quick_continue_mode", False))
         self.widgets['general']['quick_continue_mode'] = quick_continue_var
         qc_check = ttk.Checkbutton(tab, variable=quick_continue_var)
         qc_check.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
@@ -733,7 +732,7 @@ class UnifiedSettingsDialog:
         theme_label = ttk.Label(tab, text="Theme:")
         theme_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(theme_label, "Application color theme")
-        theme_var = tk.StringVar(value=SETTINGS.get("theme", "darkly"))
+        theme_var = tk.StringVar(value=settings_manager.get("theme", "darkly"))
         self.widgets['general']['theme'] = theme_var
         theme_combo = ttk.Combobox(tab, textvariable=theme_var, width=20,
                                    values=["darkly", "solar", "cyborg", "superhero", "vapor",
@@ -746,7 +745,7 @@ class UnifiedSettingsDialog:
         sidebar_label = ttk.Label(tab, text="Sidebar Collapsed:")
         sidebar_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(sidebar_label, "Start with sidebar collapsed")
-        sidebar_var = tk.BooleanVar(value=SETTINGS.get("sidebar_collapsed", False))
+        sidebar_var = tk.BooleanVar(value=settings_manager.get("sidebar_collapsed", False))
         self.widgets['general']['sidebar_collapsed'] = sidebar_var
         sidebar_check = ttk.Checkbutton(tab, variable=sidebar_var)
         sidebar_check.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
@@ -902,7 +901,7 @@ class UnifiedSettingsDialog:
         audio_stt = self.widgets.get('audio_stt', {})
 
         if 'elevenlabs' in audio_stt:
-            defaults = _DEFAULT_SETTINGS.get('elevenlabs', {})
+            defaults = settings_manager.get_default('elevenlabs', {})
             el_widgets = audio_stt['elevenlabs']
 
             # Reset entity detection checkboxes
@@ -929,19 +928,19 @@ class UnifiedSettingsDialog:
                     var.set(defaults[key])
 
         if 'deepgram' in audio_stt:
-            defaults = _DEFAULT_SETTINGS.get('deepgram', {})
+            defaults = settings_manager.get_default('deepgram', {})
             for key, var in audio_stt['deepgram'].items():
                 if key in defaults:
                     var.set(defaults[key])
 
         if 'groq' in audio_stt:
-            defaults = _DEFAULT_SETTINGS.get('groq', {})
+            defaults = settings_manager.get_default('groq', {})
             for key, var in audio_stt['groq'].items():
                 if key in defaults:
                     var.set(defaults[key])
 
         if 'tts' in audio_stt:
-            defaults = _DEFAULT_SETTINGS.get('tts', {})
+            defaults = settings_manager.get_default('tts', {})
             for key, var in audio_stt['tts'].items():
                 if key in defaults:
                     var.set(defaults[key])
@@ -952,7 +951,7 @@ class UnifiedSettingsDialog:
             ai_models['temperature']['global'].set(0.7)
 
         if 'translation' in ai_models:
-            defaults = _DEFAULT_SETTINGS.get('translation', {})
+            defaults = settings_manager.get_default('translation', {})
             for key, var in ai_models['translation'].items():
                 if key in defaults:
                     var.set(defaults[key])

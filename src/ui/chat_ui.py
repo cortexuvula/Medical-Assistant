@@ -7,9 +7,11 @@ import tkinter as tk
 from tkinter import ttk
 import ttkbootstrap as ttk
 from typing import Callable, Optional, Dict, Any
-import logging
+from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
+
+logger = get_logger(__name__)
 
 
 class ChatUI:

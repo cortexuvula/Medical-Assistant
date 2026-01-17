@@ -28,7 +28,7 @@ Excellent error handling infrastructure exists but is underutilized. Most code u
 |------|-------|----------|--------|
 | `src/processing/processing_queue.py` | 26+ bare `except Exception` catches | P1 | ✅ Fixed - Uses ErrorContext, specific exceptions |
 | `src/translation/deep_translator_provider.py` | Multiple broad Exception catches | P2 | ✅ Fixed - Uses ErrorContext |
-| `src/ui/dialogs/*.py` | Many files use `messagebox.showerror()` directly | P2 | Pending |
+| `src/ui/dialogs/*.py` | Many files use `messagebox.showerror()` directly | P2 | Phase 1 ✅ (6 files), Phase 2 ✅ (7 files) |
 | `src/audio/audio.py` | Some silently swallowed errors | P2 | ✅ Fixed - Uses ErrorContext |
 | `src/database/database.py` | Migration errors not always re-raised | P2 | ✅ Fixed - Uses ErrorContext, documented design |
 
@@ -103,7 +103,7 @@ raise TranscriptionError("Failed")
 | `src/ai/providers/router.py` | AIResult | P2 | ✅ Updated |
 | `src/ai/letter_generation.py` | Uses AIResult.text | P2 | ✅ Updated |
 | `src/processing/document_generators.py` | Via AIResult | P2 | ✅ Inherited |
-| `src/managers/*.py` | Various return styles | P3 | Pending |
+| `src/managers/*.py` | Various return styles | P3 | ✅ Logging standardized |
 
 ---
 
@@ -135,7 +135,7 @@ logger.error(
 | `src/processing/processing_queue.py` | ~67 | P2 | ✅ Fixed - Uses structured logger with context |
 | `src/ai/ai_processor.py` | ~10 | P2 | ✅ Fixed - Uses structured logger with context |
 | `src/audio/recording_manager.py` | ~18 | P3 | ✅ Fixed - Uses structured logger with context |
-| `src/database/database.py` | ~12 | P3 | Pending |
+| `src/database/database.py` | ~12 | P3 | ✅ Fixed - Uses structured logger |
 
 ### Migration Strategy
 1. Replace `import logging` with `from utils.structured_logging import get_logger`
@@ -147,25 +147,48 @@ logger.error(
 ## 4. Settings Access Patterns
 
 ### Issue
-`SettingsManager` provides typed accessors but most code directly accesses `SETTINGS[...]` dict.
+`SettingsManager` provides typed accessors but some code directly accesses `SETTINGS[...]` dict.
 
 ### Current State
 ```python
-# Common pattern (direct access):
+# Preferred pattern (typed accessors):
+from settings.settings_manager import settings_manager
+provider = settings_manager.get_ai_provider()
+temperature = settings_manager.get_nested("soap_note.temperature", 0.4)
+soap_config = settings_manager.get_soap_config()
+
+# Legacy pattern (direct access) - still in some UI/test files:
 provider = SETTINGS.get("ai_provider", "openai")
 temperature = SETTINGS.get("soap_note", {}).get("temperature", 0.4)
-
-# Available but unused:
-from settings.settings_manager import SettingsManager
-manager = SettingsManager()
-provider = manager.get_ai_provider()
-temperature = manager.get_nested("soap_note.temperature", 0.4)
 ```
 
-### Recommendation
-For new code, prefer `SettingsManager` typed accessors. Gradual migration for existing code.
+### Migration Progress (2026-01)
 
-### Priority: P3 (Low impact, high effort)
+| Category | Files Migrated | Status |
+|----------|---------------|--------|
+| AI Processing | ai_processor.py, chat_processor.py, text_processing.py, soap_processor.py | ✅ |
+| Managers | file_manager.py, tts_manager.py, translation_manager.py, agent_manager.py | ✅ |
+| Processing | processing_queue.py | ✅ |
+| STT Providers | elevenlabs.py | ✅ |
+| UI/Dialogs | All dialog files migrated | ✅ |
+| Tests/Examples | Expected - uses SETTINGS | N/A |
+
+### UI Dialog Migration (2026-01)
+All UI dialog files migrated from direct `SETTINGS[...]` access to `settings_manager`:
+- folder_dialogs.py, canned_responses_dialog.py, vocabulary_dialog.py
+- audio_dialogs.py, recordings_dialog_manager.py, rsvp_dialog.py
+- translation/__init__.py, translation/languages.py, translation/responses.py, translation/recording.py
+- standalone_rsvp_dialog.py, unified_settings_dialog.py, document_dialogs.py
+- groq_settings_dialog.py, translation_settings_dialog.py, elevenlabs_settings_dialog.py
+- deepgram_settings_dialog.py, tts_settings_dialog.py, temperature_dialog.py
+- agent_settings_dialog.py, advanced_agent_settings_dialog.py, mcp_config_dialog.py
+
+### Recommendation
+- New code should use `settings_manager` typed accessors
+- `settings_manager.py` wraps SETTINGS and provides typed methods
+- Added `get_default()` method to access `_DEFAULT_SETTINGS` via settings_manager
+
+### Status: ✅ Complete
 
 ---
 
@@ -176,15 +199,24 @@ Some files are too large, making them hard to navigate and maintain.
 
 ### Files Over 500 Lines
 
-| File | Lines | Suggestion | Priority |
-|------|-------|------------|----------|
-| `src/core/app.py` | ~1100 | Further mixin extraction | P3 |
-| `src/ui/workflow_ui.py` | ~800 | Split by tab/concern | P3 |
-| `src/processing/processing_queue.py` | ~600 | Extract batch processing | P3 |
-| `src/settings/settings.py` | ~700 | Already improved, acceptable | - |
+| File | Lines | Suggestion | Priority | Status |
+|------|-------|------------|----------|--------|
+| `src/core/app.py` | ~1100 | Further mixin extraction | P3 | ✅ Uses 5 mixins, delegates to controllers |
+| `src/ui/workflow_ui.py` | 344 | Split by tab/concern | P3 | ✅ Refactored to use component classes |
+| `src/processing/processing_queue.py` | ~1400 | Extract batch processing | P3 | ✅ Uses 3 mixins (batch, docs, reprocess) |
+| `src/settings/settings.py` | ~700 | Already improved, acceptable | - | ✅ |
 
 ### Note
-`app.py` already uses mixins. Further splitting may introduce complexity without benefit. Monitor but don't force.
+All large files now use mixins or component classes for organization. `app.py` uses:
+- AppSettingsMixin, AppChatMixin, AppDialogMixin, AppUiLayoutMixin, AppRecordingMixin
+
+`processing_queue.py` uses:
+- BatchProcessingMixin, DocumentGenerationMixin, ReprocessingMixin
+
+`workflow_ui.py` uses component classes:
+- RecordTab, RecordingsTab, ContextPanel, StatusBar, NotebookTabs, etc.
+
+### Status: ✅ Complete
 
 ---
 
@@ -202,16 +234,16 @@ Excellent resilience decorators exist but only applied to some providers.
 
 | Component | Current | Suggested | Priority |
 |-----------|---------|-----------|----------|
-| Translation API calls | No retry | Add `@smart_retry` | P2 |
-| Database operations | Basic `@db_retry` | Add circuit breaker for persistent failures | P3 |
-| HTTP fetches (RAG, webhooks) | No retry | Add `@network_retry` | P2 |
+| Translation API calls | Has `@resilient_api_call` | ✅ Already uses retry + circuit breaker | - |
+| Database operations | `@db_retry` + `@db_resilient` | ✅ Circuit breaker added via `db_resilient` decorator | - |
+| HTTP fetches (RAG, webhooks) | Has `@smart_retry` | ✅ RAG processor uses retry with backoff | - |
 
 ---
 
 ## 7. Test Infrastructure
 
 ### Issue
-Tests exist but pytest not installed in current environment. Test coverage unclear.
+Tests exist but test coverage unclear.
 
 ### Files in `tests/`
 - `tests/unit/test_minimal.py`
@@ -220,12 +252,26 @@ Tests exist but pytest not installed in current environment. Test coverage uncle
 - `tests/unit/test_resilience.py`
 - `tests/unit/test_stt_providers/`
 
-### Recommendations
-1. Add pytest to requirements.txt (may already be in requirements-dev.txt)
-2. Add CI/CD pipeline for automated testing
-3. Add error path tests (currently most tests are happy path)
+### Status
+- ✅ pytest is in `requirements-dev.txt` with full test suite:
+  - pytest==7.4.3
+  - pytest-cov==4.1.0
+  - pytest-mock==3.12.0
+  - pytest-asyncio==0.21.1
+  - pytest-timeout==2.2.0
+  - pytest-xdist==3.5.0 (parallel execution)
 
-### Priority: P2
+### Recommendations
+1. ✅ CI/CD pipeline exists in `.github/workflows/tests.yml`:
+   - Multi-platform (Ubuntu, Windows, macOS)
+   - Multiple Python versions (3.10, 3.11, 3.12)
+   - Coverage reporting via Codecov
+   - Security scanning (safety, bandit)
+   - Build testing with PyInstaller
+2. ✅ Error path tests exist in key modules (test_resilience.py, test_processing_queue.py)
+3. Run `pip install -r requirements-dev.txt` to install test dependencies
+
+### Status: ✅ Complete
 
 ---
 
@@ -240,7 +286,7 @@ Some patterns duplicated across files.
 |---------|-------|------------|
 | TclError handling in UI | 10+ dialog files | Already consistent, acceptable |
 | Provider model/temperature config | Now uses `_make_provider_model_config()` | Resolved |
-| Retry logic | `retry_decorator.py` + `resilience.py` | Consider consolidating | P3 |
+| Retry logic | `retry_decorator.py` + `resilience.py` | Keep separate (different domains) | ✅ |
 
 ---
 
@@ -265,7 +311,20 @@ Logging:
 """
 ```
 
-### Priority: P3
+### Status
+- ✅ `exceptions.py` - Full exception hierarchy documentation
+- ✅ `resilience.py` - Error handling and usage documentation
+- ✅ `retry_decorator.py` - Component documentation with usage examples
+- ✅ `error_handling.py` - Comprehensive usage examples in docstring
+- ✅ `ai_processor.py` - Error handling, logging, and usage documentation
+- ✅ `recording_manager.py` - Error handling, logging, and thread safety documentation
+- ✅ `processing_queue.py` - Error handling, logging, thread safety, and deduplication documentation
+- ✅ `chat_processor.py` - Error handling, logging, and thread safety documentation
+- ✅ `router.py` - Error handling, logging, and usage documentation
+- ✅ `stt_providers/base.py` - Error handling, logging, and usage documentation
+- ✅ `tts_providers/base.py` - Error handling, logging, and usage documentation
+
+### Priority: P3 (Gradual - add documentation when touching files) - ✅ Key modules documented
 
 ---
 
@@ -288,6 +347,64 @@ Logging:
 | Logging: processing_queue.py (P2) | 2026-01 | Structured logger with context |
 | Logging: ai_processor.py (P2) | 2026-01 | Structured logger with context |
 | Logging: recording_manager.py (P3) | 2026-01 | Structured logger with context |
+| Error handling: diagnostic_history_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: base_results_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: mcp_config_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: medication_results_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: workflow_results_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: recordings_dialog_manager.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: translation dialogs (P2) | 2026-01 | ErrorContext + structured logging (recording.py, history.py, tts.py, __init__.py) |
+| Error handling: audio_dialogs.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: data_extraction_results_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: vocabulary_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: agent_settings_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Error handling: advanced_agent_settings_dialog.py (P2) | 2026-01 | ErrorContext + structured logging |
+| Logging: database.py + all mixins (P3) | 2026-01 | Structured logging across database layer |
+| Logging: db_migrations.py (P3) | 2026-01 | Structured logging |
+| Logging: db_pool.py (P3) | 2026-01 | Structured logging |
+| Logging: db_manager.py (P3) | 2026-01 | Structured logging |
+| Logging: db_queue_schema.py (P3) | 2026-01 | Structured logging |
+| Logging: database_v2.py (P3) | 2026-01 | Structured logging |
+| Resilience: rag_processor.py (P2) | 2026-01 | @smart_retry for HTTP webhook calls |
+| Logging: managers/*.py (P3) | 2026-01 | Structured logging across all managers |
+| Logging: retry_decorator.py (P3) | 2026-01 | Structured logging |
+| Logging: resilience.py (P3) | 2026-01 | Structured logging |
+| Duplicate Code: retry logic decision | 2026-01 | Keep separate - different domains (DB vs API) |
+| Documentation: exceptions.py | 2026-01 | Full exception hierarchy documentation |
+| Documentation: resilience.py | 2026-01 | Error handling and usage documentation |
+| Test Infrastructure: Error path tests | 2026-01 | Verified - tests exist in test_resilience.py, test_processing_queue.py |
+| Resilience: Database circuit breaker (P3) | 2026-01 | Added DatabaseCircuitBreaker class + db_resilient decorator |
+| Test Infrastructure: CI/CD Pipeline (P3) | 2026-01 | Verified - tests.yml exists with multi-platform, multi-version testing |
+| Logging: error_handling.py (P3) | 2026-01 | Updated to use structured logging |
+| Documentation: error_handling.py (P3) | 2026-01 | Already has comprehensive usage documentation |
+| Logging: utils/*.py (P3) | 2026-01 | All utility files updated to structured logging |
+| Logging: processing/generators/*.py (P3) | 2026-01 | All generator mixins updated to structured logging |
+| Logging: tts_providers/*.py (P3) | 2026-01 | Base TTS provider updated to structured logging |
+| Settings: ai_processor.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: chat_processor.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: file_manager.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: processing_queue.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: soap_processor.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: text_processing.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: tts_manager.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: translation_manager.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: agent_manager.py (P3) | 2026-01 | Migrated to settings_manager |
+| Settings: elevenlabs.py (STT) (P3) | 2026-01 | Migrated to settings_manager |
+| Documentation: ai_processor.py (P3) | 2026-01 | Error handling, logging, usage docstrings |
+| Documentation: recording_manager.py (P3) | 2026-01 | Error handling, logging, thread safety docstrings |
+| Documentation: processing_queue.py (P3) | 2026-01 | Comprehensive error/logging/threading documentation |
+| Documentation: chat_processor.py (P3) | 2026-01 | Error handling, logging, thread safety docstrings |
+| Documentation: router.py (P3) | 2026-01 | Error handling, logging, usage docstrings |
+| Documentation: stt_providers/base.py (P3) | 2026-01 | Error handling, logging, usage docstrings |
+| Documentation: tts_providers/base.py (P3) | 2026-01 | Error handling, logging, usage docstrings |
+| Large File Refactoring: batch_processor.py | 2026-01 | Evaluated - existing separation adequate |
+| Settings: UI dialogs migration (P3) | 2026-01 | All 22 dialog files migrated to settings_manager |
+| Settings: Added get_default() method | 2026-01 | Access _DEFAULT_SETTINGS via settings_manager |
+| Settings: Added get_all() method | 2026-01 | Returns full settings dict for dialogs |
+| Large File: processing_queue.py mixins | 2026-01 | Added BatchProcessingMixin, DocumentGenerationMixin, ReprocessingMixin |
+| Large File: workflow_ui.py components | 2026-01 | Already uses RecordTab, RecordingsTab, etc. component classes |
+| Large File: app.py mixins | 2026-01 | Already uses 5 mixins + controller delegation |
+| Bug fix: error_handling.py missing import | 2026-01 | Added missing `import logging` |
 
 ---
 

@@ -1,5 +1,51 @@
 """
 Custom exception hierarchy for Medical Assistant application.
+
+This module defines all application-specific exceptions organized by domain:
+
+Audio Errors:
+    - AudioError: Base class for audio-related errors
+    - RecordingError: Audio recording failures
+    - PlaybackError: Audio playback failures
+    - AudioSaveError: Failed to save audio file
+
+Transcription Errors:
+    - TranscriptionError: Speech-to-text failures
+
+Translation Errors:
+    - TranslationError: Text translation failures
+
+API Errors:
+    - APIError: Base class for API-related errors (includes status_code)
+    - RateLimitError: Rate limit exceeded (includes retry_after)
+    - AuthenticationError: Invalid API key or credentials
+    - ServiceUnavailableError: External service temporarily unavailable
+    - APITimeoutError: Request timed out
+    - QuotaExceededError: Usage quota exceeded
+    - InvalidRequestError: Malformed or invalid request
+
+Processing Errors:
+    - ProcessingError: Background task processing failures
+    - DocumentGenerationError: SOAP/Referral/Letter generation failures
+    - ValidationError: Input validation failures
+
+Storage Errors:
+    - DatabaseError: Database operation failures
+    - FileOperationError: File I/O failures
+
+Usage:
+    Prefer specific exceptions over generic ones:
+
+        # Good - specific exception
+        raise TranscriptionError("Deepgram API returned empty response")
+
+        # Avoid - too generic
+        raise Exception("Something went wrong")
+
+Error Codes:
+    All exceptions support an optional error_code for programmatic handling:
+
+        raise APIError("Failed", error_code="PROVIDER_UNAVAILABLE")
 """
 
 class MedicalAssistantError(Exception):
@@ -26,7 +72,12 @@ class PlaybackError(AudioError):
     pass
 
 
-class TranscriptionError(MedicalAssistantError):
+class ProcessingError(MedicalAssistantError):
+    """Base exception for processing queue errors."""
+    pass
+
+
+class TranscriptionError(ProcessingError):
     """Exceptions related to speech-to-text transcription."""
     pass
 
@@ -114,9 +165,7 @@ class DeviceDisconnectedError(AudioError):
 # Processing Queue Exceptions
 # =============================================================================
 
-class ProcessingError(MedicalAssistantError):
-    """Base exception for processing queue errors."""
-    pass
+# Note: ProcessingError is defined earlier in the file for inheritance ordering
 
 
 class AudioSaveError(ProcessingError):

@@ -5,9 +5,12 @@ Contains chat-related methods for the MedicalDictationApp class.
 These are extracted as a mixin to reduce the size of the main app.py file.
 """
 
-import logging
 import tkinter as tk
 from typing import List
+
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AppChatMixin:
@@ -15,7 +18,7 @@ class AppChatMixin:
 
     def _handle_chat_message(self, message: str):
         """Handle chat message from the chat UI."""
-        logging.info(f"Chat message received: {message}")
+        logger.info(f"Chat message received: {message}")
 
         # Check which tab is currently active
         current_tab = self.notebook.index(self.notebook.select())

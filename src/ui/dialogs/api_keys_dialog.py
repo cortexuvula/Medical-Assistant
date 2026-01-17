@@ -5,8 +5,10 @@ Dialog for viewing and updating API keys for all providers.
 """
 
 import os
-import logging
 import tkinter as tk
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 from tkinter import messagebox
 import ttkbootstrap as ttk
 
@@ -292,7 +294,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 if key:
                     success, error = security_mgr.store_api_key(provider, key)
                     if not success:
-                        logging.warning(f"Failed to store {provider} key securely: {error}")
+                        logger.warning(f"Failed to store {provider} key securely: {error}")
 
             # Update environment variables in memory
             if new_openai:

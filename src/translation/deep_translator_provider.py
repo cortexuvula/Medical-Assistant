@@ -2,9 +2,11 @@
 Deep Translator provider implementation supporting multiple translation services.
 """
 
-import logging
 from typing import List, Tuple, Optional
+from utils.structured_logging import get_logger
 from deep_translator import GoogleTranslator, DeeplTranslator, MicrosoftTranslator
+
+logger = get_logger(__name__)
 from deep_translator.exceptions import (
     NotValidLength, 
     RequestError, 

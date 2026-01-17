@@ -6,7 +6,6 @@ These are legacy fallback implementations for when recording_controller is not a
 Extracted from app.py for better separation of concerns.
 """
 
-import logging
 import time
 import threading
 import tkinter as tk
@@ -15,12 +14,13 @@ from typing import TYPE_CHECKING, Optional
 
 from settings.settings import SETTINGS
 from utils.cleanup_utils import clear_content_except_context
+from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from audio.recording_manager import RecordingManager
     from audio.audio import AudioHandler
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AppRecordingMixin:
@@ -118,7 +118,7 @@ class AppRecordingMixin:
             device_index = get_device_index_from_name(selected_device)
 
             # Log the selected device information
-            logging.info(f"Resuming SOAP recording with device: {selected_device} (index {device_index})")
+            logger.info(f"Resuming SOAP recording with device: {selected_device} (index {device_index})")
 
             # Start new recording session
             self.soap_stop_listening_function = self.audio_handler.listen_in_background(
@@ -132,7 +132,7 @@ class AppRecordingMixin:
             self.update_status("SOAP recording resumed.", "info")
 
         except Exception as e:
-            logging.error("Error resuming SOAP recording", exc_info=True)
+            logger.error("Error resuming SOAP recording", exc_info=True)
             self.update_status(f"Error resuming SOAP recording: {str(e)}", "error")
 
     def cancel_soap_recording(self) -> None:
@@ -206,7 +206,7 @@ class AppRecordingMixin:
     def play_recording_sound(self, start: bool = True) -> None:
         """Play a sound to indicate recording start/stop."""
         # Sound disabled - just log the event
-        logging.debug(f"Recording {'started' if start else 'stopped'}")
+        logger.debug(f"Recording {'started' if start else 'stopped'}")
 
 
 __all__ = ["AppRecordingMixin"]
