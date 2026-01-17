@@ -19,6 +19,8 @@ from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
 
+logger = get_logger(__name__)
+
 from .languages import LanguagesMixin
 from .recording import RecordingMixin
 from .translation import TranslationMixin
