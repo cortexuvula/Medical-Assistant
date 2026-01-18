@@ -163,10 +163,10 @@ class TestAIProcessor:
 
     @patch('src.ai.ai_processor.adjust_text_with_openai')
     def test_additional_context_handling(self, mock_adjust, ai_processor):
-        """Test handling of additional context in refine and improve."""
-        mock_adjust.return_value = "Refined with context"
+        """Test handling of text refinement."""
+        mock_adjust.return_value = "Refined text"
 
-        result = ai_processor.refine_text("test text", "additional context")
+        result = ai_processor.refine_text("test text")
 
         assert result.success is True
 
