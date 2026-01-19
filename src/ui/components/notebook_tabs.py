@@ -259,6 +259,19 @@ class NotebookTabs:
         # Analysis content frame - pack if not collapsed
         if not is_collapsed:
             analysis_content.pack(fill=tk.BOTH, expand=True)
+        else:
+            # Schedule sash adjustment after widget is visible
+            def adjust_collapsed_sash():
+                try:
+                    soap_paned.update_idletasks()
+                    total_height = soap_paned.winfo_height()
+                    if total_height > 50:  # Only adjust if widget is properly sized
+                        collapsed_height = max(30, total_height - 30)
+                        soap_paned.sashpos(0, collapsed_height)
+                except Exception:
+                    pass  # Widget might not be ready yet
+            # Use after to let widget realize its size first
+            self.parent.after(100, adjust_collapsed_sash)
 
         # Create notebook for analysis tabs
         analysis_notebook = ttk.Notebook(analysis_content)
@@ -393,7 +406,7 @@ class NotebookTabs:
         """Toggle collapse/expand state of the Analysis panel.
 
         When collapsed, the analysis content is hidden and only the header remains visible.
-        The SOAP note editor expands to fill the available space.
+        The SOAP note editor expands to fill the available space by adjusting the PanedWindow sash.
         """
         self._analysis_collapsed = not self._analysis_collapsed
 
@@ -404,22 +417,56 @@ class NotebookTabs:
         # Get references
         analysis_content = self.components.get('analysis_content')
         collapse_btn = self.components.get('analysis_collapse_btn')
+        soap_paned = self.components.get('soap_paned')
+        bottom_frame = self.components.get('analysis_bottom_frame')
 
-        if not analysis_content or not collapse_btn:
+        if not analysis_content or not collapse_btn or not soap_paned:
             return
 
         if self._analysis_collapsed:
-            # Collapse: hide the analysis content
+            # Collapse: hide the analysis content and move sash to bottom
             analysis_content.pack_forget()
             collapse_btn.config(text=Icons.COLLAPSE)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Expand Analysis Panel"
+
+            # Save current sash position before collapsing (for later restoration)
+            soap_paned.update_idletasks()
+            try:
+                current_sash = soap_paned.sashpos(0)
+                self._saved_sash_position = current_sash
+            except Exception:
+                self._saved_sash_position = None
+
+            # Move sash to nearly the bottom (leave room for header only ~30px)
+            soap_paned.update_idletasks()
+            try:
+                total_height = soap_paned.winfo_height()
+                # Leave just enough room for the header (approximately 30 pixels)
+                collapsed_height = max(30, total_height - 30)
+                soap_paned.sashpos(0, collapsed_height)
+            except Exception as e:
+                logger.debug(f"Could not set sash position: {e}")
         else:
-            # Expand: show the analysis content
+            # Expand: show the analysis content and restore sash position
             analysis_content.pack(fill=tk.BOTH, expand=True)
             collapse_btn.config(text=Icons.EXPAND)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Collapse Analysis Panel"
+
+            # Restore sash to previous position or default 70/30 split
+            soap_paned.update_idletasks()
+            try:
+                total_height = soap_paned.winfo_height()
+                if hasattr(self, '_saved_sash_position') and self._saved_sash_position:
+                    # Restore saved position
+                    soap_paned.sashpos(0, self._saved_sash_position)
+                else:
+                    # Default to 70% for SOAP note
+                    default_sash = int(total_height * 0.7)
+                    soap_paned.sashpos(0, default_sash)
+            except Exception as e:
+                logger.debug(f"Could not restore sash position: {e}")
 
     def _clear_chat_history(self):
         """Clear the chat conversation history."""
