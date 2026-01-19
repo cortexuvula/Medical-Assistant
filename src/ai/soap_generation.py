@@ -246,7 +246,9 @@ def create_soap_note_streaming(
         # Fall back to non-streaming if no callback provided
         result = call_ai(model, system_message, full_prompt, temperature)
 
-    return _postprocess_soap_result(result, context, on_chunk)
+    # Extract text from AIResult for post-processing
+    result_text = result.text if hasattr(result, 'text') else str(result)
+    return _postprocess_soap_result(result_text, context, on_chunk)
 
 
 def create_soap_note_with_openai(text: str, context: str = "") -> str:
@@ -266,4 +268,6 @@ def create_soap_note_with_openai(text: str, context: str = "") -> str:
 
     result = call_ai(model, system_message, full_prompt, temperature)
 
-    return _postprocess_soap_result(result, context)
+    # Extract text from AIResult for post-processing
+    result_text = result.text if hasattr(result, 'text') else str(result)
+    return _postprocess_soap_result(result_text, context)

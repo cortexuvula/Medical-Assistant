@@ -148,15 +148,15 @@ Return ONLY the refined translation, nothing else."""
 
             # Call LLM for refinement
             self.logger.debug(f"Refining translation with LLM: {self.refinement_model}")
-            refined = call_ai(
+            result = call_ai(
                 model=self.refinement_model,
                 system_message=self.MEDICAL_SYSTEM_MESSAGE,
                 prompt=prompt,
                 temperature=self.refinement_temperature
             )
 
-            # Clean up result
-            refined = refined.strip()
+            # Extract text from AIResult and clean up
+            refined = (result.text if hasattr(result, 'text') else str(result)).strip()
 
             # Remove any quotes if the LLM wrapped the response
             if refined.startswith('"') and refined.endswith('"'):

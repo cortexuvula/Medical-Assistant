@@ -496,4 +496,6 @@ class AIProcessor:
         analysis = call_ai(model, system_message, prompt, temperature, provider=ai_provider)
 
         logger.info("Generated differential diagnosis successfully", provider=ai_provider)
-        return OperationResult.success({"text": analysis})
+        # Extract text from AIResult
+        analysis_text = analysis.text if hasattr(analysis, 'text') else str(analysis)
+        return OperationResult.success({"text": analysis_text})

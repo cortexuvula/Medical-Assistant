@@ -432,7 +432,9 @@ class ChatProcessor:
                 if response:
                     # Record success in circuit breaker
                     self._ai_circuit_breaker._on_success()
-                    return response, None  # No tool info for regular AI calls
+                    # Extract text from AIResult for consistency with chat agent path
+                    response_text = response.text if hasattr(response, 'text') else str(response)
+                    return response_text, None  # No tool info for regular AI calls
                 else:
                     # Empty response, might be a transient issue
                     raise ValueError("Empty response from AI provider")
