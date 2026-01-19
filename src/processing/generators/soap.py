@@ -115,12 +115,13 @@ class SOAPGeneratorMixin:
 
             except Exception as e:
                 logger.error(f"SOAP note creation failed: {e}")
+                error_msg = str(e)  # Capture before closure
                 def handle_error():
                     self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()
                     if self.app.soap_button:
                         self.app.soap_button.config(state=NORMAL)
-                    self.app.status_manager.error(f"SOAP note creation failed: {str(e)}")
+                    self.app.status_manager.error(f"SOAP note creation failed: {error_msg}")
                 self.app.after(0, handle_error)
 
         # Use I/O executor for task management since it involves UI coordination

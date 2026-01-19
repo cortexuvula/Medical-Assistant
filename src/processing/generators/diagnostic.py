@@ -364,9 +364,10 @@ class DiagnosticGeneratorMixin:
 
             except Exception as e:
                 logger.error(f"Diagnostic panel analysis failed: {e}")
+                error_msg = str(e)  # Capture before closure
                 self.app.after(0, lambda: self._update_analysis_panel(
                     self.app.differential_analysis_text,
-                    f"Error: {str(e)}\n\n"
+                    f"Error: {error_msg}\n\n"
                     "Check your API key and network connection."
                 ))
 

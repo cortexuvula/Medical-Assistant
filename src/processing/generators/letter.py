@@ -119,12 +119,13 @@ class LetterGeneratorMixin:
 
             except Exception as e:
                 logger.error(f"Letter creation failed: {e}")
+                error_msg = str(e)  # Capture before closure
                 def handle_error():
                     self.app.progress_bar.stop()
                     self.app.progress_bar.pack_forget()
                     if self.app.letter_button:
                         self.app.letter_button.config(state=NORMAL)
-                    self.app.status_manager.error(f"Letter creation failed: {str(e)}")
+                    self.app.status_manager.error(f"Letter creation failed: {error_msg}")
                 self.app.after(0, handle_error)
 
         # Submit the task to be executed

@@ -300,9 +300,10 @@ class MedicationGeneratorMixin:
 
             except Exception as e:
                 logger.error(f"Medication panel analysis failed: {e}")
+                error_msg = str(e)  # Capture before closure
                 self.app.after(0, lambda: self._update_analysis_panel(
                     self.app.medication_analysis_text,
-                    f"Error: {str(e)}\n\n"
+                    f"Error: {error_msg}\n\n"
                     "Check your API key and network connection."
                 ))
 
