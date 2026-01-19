@@ -110,7 +110,7 @@ def configure_pydub():
         # Replace both pydub's Popen and the global subprocess.Popen
         pydub.utils.Popen = no_window_popen
         subprocess.Popen = no_window_popen
-        logging.debug("Configured pydub and subprocess to suppress console windows on Windows")
+        logger.debug("Configured pydub and subprocess to suppress console windows on Windows")
     
     logger.info(f"Configured pydub with FFmpeg: {ffmpeg_path}")
     
@@ -120,6 +120,6 @@ def configure_pydub():
     try:
         # Create a 1ms silent audio segment
         silent = AudioSegment.silent(duration=1)
-        logging.debug("Pre-initialized pydub with silent segment")
+        logger.debug("Pre-initialized pydub with silent segment")
     except Exception as e:
         logger.warning(f"Could not pre-initialize pydub: {e}")
