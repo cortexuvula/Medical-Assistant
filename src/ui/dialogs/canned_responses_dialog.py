@@ -7,7 +7,7 @@ Allows users to add, edit, and delete canned responses for the translation dialo
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, CENTER, W
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, CENTER, W, WORD
 from typing import Dict, List, Tuple
 from utils.structured_logging import get_logger
 

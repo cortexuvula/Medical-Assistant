@@ -7,7 +7,7 @@ Displays saved diagnostic analyses with the ability to view, re-open, or delete 
 import tkinter as tk
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, CENTER, W
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, CENTER, W, END
 from tkinter import messagebox
 import re
 from typing import Dict, List, Optional, Any

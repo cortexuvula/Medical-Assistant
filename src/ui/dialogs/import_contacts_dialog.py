@@ -8,7 +8,7 @@ saved recipients database for use in referral generation.
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, W, END
 from typing import Optional, Dict, List, Any
 
 from managers.recipient_manager import get_recipient_manager

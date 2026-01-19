@@ -7,7 +7,7 @@ undoing to a specific point in history.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT
+from ttkbootstrap.constants import BOTH, X, Y, LEFT, RIGHT, SINGLE, END
 from typing import TYPE_CHECKING, Optional, Callable
 
 from ui.dialogs.dialog_utils import create_toplevel_dialog

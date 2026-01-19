@@ -69,12 +69,15 @@ jobs:
         python -c "import os; os.makedirs('AppData', exist_ok=True)"
     
     # Run linting (only on one combination to save time)
-    - name: Run linting
+    - name: Run ruff linter
       if: matrix.python-version == '3.10' && matrix.os == 'ubuntu-latest'
       run: |
-        black --check . || true  # Don't fail on formatting
-        flake8 . --max-line-length=120 --extend-ignore=E203,W503 || true
-        # mypy . --ignore-missing-imports || true
+        pip install ruff
+        # Critical checks that MUST pass (undefined names, common bugs)
+        ruff check src/ --select=F821,B023 --output-format=github
+        # Full lint check (informational, doesn't fail build)
+        echo "--- Full lint report (informational) ---"
+        ruff check src/ || true
     
     # Run tests (Linux with xvfb)
     - name: Run tests with coverage (Linux)

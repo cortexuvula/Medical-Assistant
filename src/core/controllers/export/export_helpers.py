@@ -19,6 +19,7 @@ from core.controllers.export.document_constants import (
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
+    from exporters.fhir_config import FHIRExportConfig
 
 
 def get_text_widgets(app: 'MedicalDictationApp') -> List[tk.Widget]:

@@ -6,6 +6,7 @@ Files are stored in the proper AppData/debug directory and cleaned up periodical
 """
 
 import json
+import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional, List

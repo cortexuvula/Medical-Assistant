@@ -23,7 +23,7 @@ Usage:
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT
+from ttkbootstrap.constants import BOTH, X, Y, VERTICAL, LEFT, RIGHT, WORD
 from tkinter import messagebox, filedialog
 import pyperclip
 import os

@@ -7,7 +7,7 @@ for use in referral generation.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W
+from ttkbootstrap.constants import BOTH, X, Y, HORIZONTAL, VERTICAL, LEFT, RIGHT, CENTER, W, END
 from typing import Dict, List, Optional, Any
 from tkinter import messagebox
 

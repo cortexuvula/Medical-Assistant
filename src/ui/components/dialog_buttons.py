@@ -7,7 +7,7 @@ Follows the standard layout: [Secondary buttons...] [Cancel] [Primary]
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import X, LEFT, RIGHT
+from ttkbootstrap.constants import X, LEFT, RIGHT, NORMAL, DISABLED
 from typing import Callable, Optional, List, Tuple
 from utils.structured_logging import get_logger
 

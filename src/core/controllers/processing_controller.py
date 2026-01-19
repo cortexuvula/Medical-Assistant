@@ -414,8 +414,9 @@ class ProcessingController:
                 self.app.after(0, handle_timeout)
             except Exception as e:
                 logger.error(f"Error processing text: {str(e)}", exc_info=True)
+                error_msg = str(e)  # Capture before closure
                 def handle_error():
-                    self.app.status_manager.error(f"Error processing {processor_type}: {str(e)}")
+                    self.app.status_manager.error(f"Error processing {processor_type}: {error_msg}")
                     if button:
                         button.config(state=NORMAL)
                     self.app.progress_bar.stop()

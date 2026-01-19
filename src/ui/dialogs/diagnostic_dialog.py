@@ -463,14 +463,14 @@ class DiagnosticAnalysisDialog:
                     ent.delete(0, "end")
                     ent.config(foreground="black")
 
-            def on_entry_focus_out(e, ent=entry, k=key):
+            def on_entry_focus_out(e, ent=entry, k=key, lbl=label):
                 if not ent.get():
                     ent.insert(0, "details...")
                     ent.config(foreground="gray")
                 else:
                     # Update the ROS var with details
                     if self.ros_vars[k].get():
-                        self.ros_vars[k].set(f"{label}: {ent.get()}")
+                        self.ros_vars[k].set(f"{lbl}: {ent.get()}")
 
             entry.bind("<FocusIn>", on_entry_focus_in)
             entry.bind("<FocusOut>", on_entry_focus_out)

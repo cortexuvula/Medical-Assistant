@@ -2,6 +2,7 @@
 Database migration system for Medical Assistant.
 """
 
+import logging
 import os
 import sqlite3
 from typing import List, Dict, Optional, Callable
@@ -11,6 +12,8 @@ from pathlib import Path
 from database.db_pool import get_db_manager
 from utils.exceptions import DatabaseError
 from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Migration:

@@ -11,8 +11,11 @@ Controllers can gradually migrate from direct app reference to using
 these interfaces as their dependencies are extracted.
 """
 
-from typing import Protocol, Optional, Callable, Dict, Any, List
+from typing import Protocol, Optional, Callable, Dict, Any, List, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from core.app import MedicalDictationApp
 
 
 class StatusManagerProtocol(Protocol):
