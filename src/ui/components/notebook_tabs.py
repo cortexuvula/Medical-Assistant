@@ -227,18 +227,11 @@ class NotebookTabs:
         is_collapsed = SETTINGS.get("analysis_panel_collapsed", False)
         self._analysis_collapsed = is_collapsed
 
-        # Header with collapse button
+        # Header with collapse button on the left
         header_frame = ttk.Frame(bottom_frame)
         header_frame.pack(fill=tk.X, padx=2, pady=2)
 
-        header_label = ttk.Label(header_frame, text="Analysis", font=("", 10, "bold"))
-        header_label.pack(side=tk.LEFT, padx=5)
-
-        # Analysis content frame
-        analysis_content = ttk.Frame(bottom_frame)
-        self.components['analysis_content'] = analysis_content
-
-        # Collapse button with arrow icon
+        # Collapse button first (on the left)
         initial_icon = Icons.COLLAPSE if is_collapsed else Icons.EXPAND
         collapse_btn = ttk.Button(
             header_frame,
@@ -247,8 +240,16 @@ class NotebookTabs:
             bootstyle="secondary-outline",
             command=self._toggle_analysis_panel
         )
-        collapse_btn.pack(side=tk.RIGHT, padx=2)
+        collapse_btn.pack(side=tk.LEFT, padx=2)
         self.components['analysis_collapse_btn'] = collapse_btn
+
+        # Then the label
+        header_label = ttk.Label(header_frame, text="Analysis", font=("", 10, "bold"))
+        header_label.pack(side=tk.LEFT, padx=5)
+
+        # Analysis content frame
+        analysis_content = ttk.Frame(bottom_frame)
+        self.components['analysis_content'] = analysis_content
 
         # Add tooltip
         self._analysis_collapse_tooltip = ToolTip(
