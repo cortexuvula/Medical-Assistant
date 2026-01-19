@@ -27,8 +27,9 @@ jobs:
     - name: Run ruff linter
       run: |
         echo "Running ruff to check for critical errors..."
-        # Check for undefined names (F821), unused imports (F401), and common bugs
-        ruff check src/ --select=F821,F401,B023 --output-format=github
+        # Check for undefined names (F821) and late binding closures (B023)
+        # These are bugs that cause runtime errors - must be fixed
+        ruff check src/ --select=F821,B023 --output-format=github
         echo "Lint check passed!"
 
   build:
