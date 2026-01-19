@@ -39,7 +39,7 @@ class SOAPAudioProcessor:
                            f"shape={audio_data.shape}, dtype={audio_data.dtype}, "
                            f"max_amp={np.abs(audio_data).max():.4f}")
             else:
-                logging.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
+                logger.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
         
         # Visual feedback for UI updates
         try:

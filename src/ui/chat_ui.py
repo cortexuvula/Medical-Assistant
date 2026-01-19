@@ -445,7 +445,7 @@ class ChatUI:
                 self.app._update_chat_suggestions()
         except Exception as e:
             import logging
-            logging.error(f"Error showing suggestions manager: {e}")
+            logger.error(f"Error showing suggestions manager: {e}")
             import tkinter.messagebox
             tkinter.messagebox.showerror("Error", f"Failed to open suggestions manager: {str(e)}")
         
@@ -696,5 +696,5 @@ class ChatUI:
                 self.app.status_manager.success("MCP configuration updated")
                 
         except Exception as e:
-            logging.error(f"Error showing MCP config dialog: {e}")
+            logger.error(f"Error showing MCP config dialog: {e}")
             self.app.status_manager.error("Failed to open MCP configuration")

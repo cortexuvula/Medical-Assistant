@@ -576,7 +576,7 @@ class ContextPanel:
                 tkinter.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
 
             except Exception as e:
-                logging.error(f"Error saving context template: {e}")
+                logger.error(f"Error saving context template: {e}")
                 tkinter.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
         
         def cancel():
@@ -630,7 +630,7 @@ class ContextPanel:
                     tkinter.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
 
             except Exception as e:
-                logging.error(f"Error deleting custom template: {e}")
+                logger.error(f"Error deleting custom template: {e}")
                 tkinter.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")
     
     def _clear_context(self):

@@ -88,7 +88,7 @@ class ThemeObserver:
         # Create weak reference with cleanup callback
         ref = weakref.ref(component, self._remove_dead_ref)
         self._observers.add(ref)
-        logging.debug(f"Registered theme observer: {type(component).__name__}")
+        logger.debug(f"Registered theme observer: {type(component).__name__}")
 
     def register_callback(self, callback: Callable[[bool], None]) -> None:
         """Register a callback function for theme changes.
@@ -105,7 +105,7 @@ class ThemeObserver:
             # Function is not weak-referenceable (e.g., lambda)
             # Store it directly (be careful with memory)
             self._callbacks.add(callback)
-        logging.debug(f"Registered theme callback")
+        logger.debug(f"Registered theme callback")
 
     def unregister(self, component: ThemeAware) -> None:
         """Unregister a component from theme updates.
@@ -124,7 +124,7 @@ class ThemeObserver:
                 refs_to_remove.add(ref)
 
         self._observers -= refs_to_remove
-        logging.debug(f"Unregistered theme observer: {type(component).__name__}")
+        logger.debug(f"Unregistered theme observer: {type(component).__name__}")
 
     def unregister_callback(self, callback: Callable[[bool], None]) -> None:
         """Unregister a callback function.
@@ -160,7 +160,7 @@ class ThemeObserver:
         self._is_dark = is_dark
         colors = Colors.get_theme_colors(is_dark)
 
-        logging.debug(f"Notifying theme change: is_dark={is_dark}")
+        logger.debug(f"Notifying theme change: is_dark={is_dark}")
 
         # Collect dead references
         dead_refs = set()
@@ -173,7 +173,7 @@ class ThemeObserver:
                     try:
                         component.update_theme(is_dark)
                     except Exception as e:
-                        logging.error(f"Error updating theme for {type(component).__name__}: {e}")
+                        logger.error(f"Error updating theme for {type(component).__name__}: {e}")
                 else:
                     dead_refs.add(ref)
 
@@ -185,14 +185,14 @@ class ThemeObserver:
                     try:
                         callback(is_dark)
                     except Exception as e:
-                        logging.error(f"Error in theme callback: {e}")
+                        logger.error(f"Error in theme callback: {e}")
                 else:
                     dead_refs.add(ref)
             elif callable(ref):
                 try:
                     ref(is_dark)
                 except Exception as e:
-                    logging.error(f"Error in theme callback: {e}")
+                    logger.error(f"Error in theme callback: {e}")
 
         # Clean up dead references
         self._observers -= dead_refs

@@ -1058,21 +1058,21 @@ def run_migrations():
     pending = manager.get_pending_migrations()
 
     if not pending:
-        logging.info(f"Database is up to date (version {current_version})")
+        logger.info(f"Database is up to date (version {current_version})")
         return
 
-    logging.info(f"Current database version: {current_version}")
-    logging.info(f"Found {len(pending)} pending migrations:")
+    logger.info(f"Current database version: {current_version}")
+    logger.info(f"Found {len(pending)} pending migrations:")
     for migration in pending:
-        logging.info(f"  - Version {migration.version}: {migration.name}")
+        logger.info(f"  - Version {migration.version}: {migration.name}")
 
     # Apply migrations
     try:
         applied = manager.migrate()
-        logging.info(f"Successfully applied {applied} migrations")
-        logging.info(f"Database is now at version {manager.get_current_version()}")
+        logger.info(f"Successfully applied {applied} migrations")
+        logger.info(f"Database is now at version {manager.get_current_version()}")
     except DatabaseError as e:
-        logging.error(f"Error applying migrations: {e}")
+        logger.error(f"Error applying migrations: {e}")
         raise
 
 

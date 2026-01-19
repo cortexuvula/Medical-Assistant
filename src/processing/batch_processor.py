@@ -106,7 +106,7 @@ class BatchProcessor:
                     skip = True
 
                 if skip:
-                    logging.info(f"Skipping recording {rec_id} - already has requested content")
+                    logger.info(f"Skipping recording {rec_id} - already has requested content")
                     total_count -= 1
                     continue
 
@@ -144,7 +144,7 @@ class BatchProcessor:
 
         batch_id = self.app.processing_queue.add_batch_recordings(batch_recordings, batch_options)
 
-        logging.info(f"Started batch processing with ID {batch_id} for {len(batch_recordings)} recordings")
+        logger.info(f"Started batch processing with ID {batch_id} for {len(batch_recordings)} recordings")
 
     def process_batch_files(self, file_paths: List[str], options: Dict[str, Any],
                             on_complete: Callable = None, on_progress: Callable = None) -> None:
@@ -171,7 +171,7 @@ class BatchProcessor:
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 valid_files.append(file_path)
             else:
-                logging.warning(f"Invalid file path: {file_path}")
+                logger.warning(f"Invalid file path: {file_path}")
 
         if not valid_files:
             self.app.status_manager.error("No valid audio files found for batch processing")
@@ -222,7 +222,7 @@ class BatchProcessor:
 
                 except Exception as e:
                     error_msg = f"Transcription failed: {str(e)}"
-                    logging.error(f"Failed to transcribe {file_path}: {e}")
+                    logger.error(f"Failed to transcribe {file_path}: {e}")
 
                 if error_msg:
                     if options.get("continue_on_error", True):
@@ -275,7 +275,7 @@ class BatchProcessor:
                                 completed_count, total_count)
 
             except Exception as e:
-                logging.error(f"Error processing file {file_path}: {e}")
+                logger.error(f"Error processing file {file_path}: {e}")
                 if not options.get("continue_on_error", True):
                     raise
                 if on_progress:
@@ -296,7 +296,7 @@ class BatchProcessor:
             )
 
         except Exception as e:
-            logging.error(f"Batch file processing failed: {e}")
+            logger.error(f"Batch file processing failed: {e}")
             if on_complete:
                 on_complete()
             raise

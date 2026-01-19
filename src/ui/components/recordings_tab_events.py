@@ -61,7 +61,7 @@ class RecordingsTabEventsMixin:
                 deleted_count += 1
 
             except Exception as e:
-                logging.error(f"Error deleting recording {rec_id}: {e}")
+                logger.error(f"Error deleting recording {rec_id}: {e}")
                 errors.append(f"Recording {rec_id}: {str(e)}")
 
         self.invalidate_recordings_cache()
@@ -128,7 +128,7 @@ class RecordingsTabEventsMixin:
                 )
 
         except Exception as e:
-            logging.error(f"Error clearing all recordings: {e}")
+            logger.error(f"Error clearing all recordings: {e}")
             tkinter.messagebox.showerror(
                 "Clear Error",
                 f"Failed to clear recordings: {str(e)}"
@@ -158,7 +158,7 @@ class RecordingsTabEventsMixin:
                 else:
                     non_failed_count += 1
             except Exception as e:
-                logging.error(f"Error checking recording {rec_id}: {e}")
+                logger.error(f"Error checking recording {rec_id}: {e}")
 
         if not failed_recording_ids:
             if non_failed_count > 0:
@@ -183,7 +183,7 @@ class RecordingsTabEventsMixin:
                 tk.messagebox.showerror("Error", "Reprocessing functionality not available")
 
         except Exception as e:
-            logging.error(f"Error reprocessing recordings: {e}")
+            logger.error(f"Error reprocessing recordings: {e}")
             tk.messagebox.showerror("Reprocess Error", f"Failed to reprocess recordings: {str(e)}")
 
     # ========================================
@@ -263,7 +263,7 @@ class RecordingsTabEventsMixin:
                             lambda: self._update_batch_progress(msg, count, total))
                     )
             except Exception as e:
-                logging.error(f"Batch processing error: {e}")
+                logger.error(f"Batch processing error: {e}")
                 self.parent.after(0, lambda: [
                     self.parent.status_manager.error(f"Batch processing failed: {str(e)}"),
                     self.batch_progress_dialog.add_detail(f"Batch processing failed: {str(e)}", "error"),

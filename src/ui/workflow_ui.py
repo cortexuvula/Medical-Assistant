@@ -61,7 +61,7 @@ class WorkflowUI:
         Returns:
             ttk.Notebook: The workflow notebook widget
         """
-        logging.warning("create_workflow_tabs is deprecated. Use create_shared_panel() instead.")
+        logger.warning("create_workflow_tabs is deprecated. Use create_shared_panel() instead.")
 
         # Create main workflow notebook with hidden tabs
         style = ttk.Style()
@@ -158,7 +158,7 @@ class WorkflowUI:
 
             if 0 <= tab_index < len(tab_names):
                 self.current_workflow = tab_names[tab_index]
-                logging.debug(f"Switched to {self.current_workflow} workflow")
+                logger.debug(f"Switched to {self.current_workflow} workflow")
 
                 # Refresh recordings list when switching to Recordings tab
                 if self.current_workflow == "recordings":
@@ -169,7 +169,7 @@ class WorkflowUI:
                     self.parent.on_workflow_changed(self.current_workflow)
         except Exception as e:
             # Ignore errors during shutdown
-            logging.debug(f"Tab change error (likely during shutdown): {e}")
+            logger.debug(f"Tab change error (likely during shutdown): {e}")
     
     def create_sidebar(self, command_map: Dict[str, Callable]) -> ttk.Frame:
         """Create the left sidebar navigation panel.

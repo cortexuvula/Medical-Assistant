@@ -87,7 +87,7 @@ class StatusManager:
             stt_provider = SETTINGS.get("stt_provider", "deepgram").capitalize()
             self.provider_indicator.config(text=f"Using: {provider} | STT: {stt_provider}")
         except Exception as e:
-            logging.error(f"Error updating provider info: {e}", exc_info=True)
+            logger.error(f"Error updating provider info: {e}", exc_info=True)
     
     def reset_status(self):
         """Reset status to idle state after timeout."""

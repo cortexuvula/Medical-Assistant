@@ -155,7 +155,7 @@ class StateMachine:
             StateTransitionError: If transition is not allowed and force=False
         """
         if target_state == self._current_state:
-            logging.debug(f"Already in state: {target_state}")
+            logger.debug(f"Already in state: {target_state}")
             return True
 
         # Validate transition
@@ -173,7 +173,7 @@ class StateMachine:
                 try:
                     current_config.on_exit()
                 except Exception as e:
-                    logging.error(f"Error in on_exit for state '{self._current_state}': {e}")
+                    logger.error(f"Error in on_exit for state '{self._current_state}': {e}")
 
         # Update state
         self._current_state = target_state
@@ -190,16 +190,16 @@ class StateMachine:
                 try:
                     new_config.on_enter()
                 except Exception as e:
-                    logging.error(f"Error in on_enter for state '{target_state}': {e}")
+                    logger.error(f"Error in on_enter for state '{target_state}': {e}")
 
         # Execute global state change callback
         if self._on_state_change:
             try:
                 self._on_state_change(old_state, target_state)
             except Exception as e:
-                logging.error(f"Error in on_state_change callback: {e}")
+                logger.error(f"Error in on_state_change callback: {e}")
 
-        logging.debug(f"State transition: {old_state} -> {target_state}")
+        logger.debug(f"State transition: {old_state} -> {target_state}")
         return True
 
     def reset(self, initial_state: Optional[str] = None) -> None:

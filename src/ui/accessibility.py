@@ -106,7 +106,7 @@ class ShortcutManager:
         # Bind to root window
         self.root.bind(binding, lambda e: self._handle_shortcut(binding, e))
 
-        logging.debug(f"Registered shortcut: {shortcut.get_display_string()} - {description}")
+        logger.debug(f"Registered shortcut: {shortcut.get_display_string()} - {description}")
 
     def unregister(self, key: str, modifiers: Optional[List[str]] = None) -> None:
         """Unregister a keyboard shortcut.
@@ -139,7 +139,7 @@ class ShortcutManager:
             try:
                 self.shortcuts[binding].callback()
             except Exception as e:
-                logging.error(f"Error in shortcut handler: {e}")
+                logger.error(f"Error in shortcut handler: {e}")
             return "break"
         return None
 
@@ -361,7 +361,7 @@ class HighContrastMode:
         # Apply high contrast colors
         self._apply_high_contrast(self.root)
 
-        logging.info("High contrast mode enabled")
+        logger.info("High contrast mode enabled")
 
     def disable(self) -> None:
         """Disable high contrast mode."""
@@ -373,7 +373,7 @@ class HighContrastMode:
         # Restore original colors
         self._restore_colors(self.root)
 
-        logging.info("High contrast mode disabled")
+        logger.info("High contrast mode disabled")
 
     def _apply_high_contrast(self, widget: tk.Widget) -> None:
         """Apply high contrast colors to a widget and its children."""
@@ -419,7 +419,7 @@ class HighContrastMode:
                 )
 
         except Exception as e:
-            logging.debug(f"Could not apply high contrast to widget: {e}")
+            logger.debug(f"Could not apply high contrast to widget: {e}")
 
         # Apply to children
         for child in widget.winfo_children():
@@ -482,4 +482,4 @@ def announce_for_screen_reader(widget: tk.Widget, message: str) -> None:
     """
     # For now, we log the message. Full implementation would use
     # platform-specific APIs like MSAA/UIA on Windows or ATK on Linux
-    logging.debug(f"Screen reader announcement: {message}")
+    logger.debug(f"Screen reader announcement: {message}")

@@ -343,7 +343,7 @@ class RecordingsTabUIMixin:
 
                 self.recordings_context_menu.post(event.x_root, event.y_root)
         except Exception as e:
-            logging.error(f"Error showing context menu: {e}")
+            logger.error(f"Error showing context menu: {e}")
 
     # ========================================
     # Display State Methods
@@ -458,7 +458,7 @@ class RecordingsTabUIMixin:
                     tags=(tag,)
                 )
             except Exception as e:
-                logging.error(f"Error adding recording to tree: {e}")
+                logger.error(f"Error adding recording to tree: {e}")
 
         count = len(self.recordings_tree.get_children())
         self.recording_count_label.config(

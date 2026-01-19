@@ -81,7 +81,7 @@ class DeviceMixin:
         # Sanitize device name to prevent log injection attacks
         from utils.validation import sanitize_device_name
         device_name = sanitize_device_name(device_name)
-        logging.debug(f"Resolving sounddevice index for: '{device_name}'")
+        logger.debug(f"Resolving sounddevice index for: '{device_name}'")
 
         devices = sd.query_devices()
         device_id = None
@@ -98,7 +98,7 @@ class DeviceMixin:
         for i in input_device_indices:
             if devices[i]['name'] == device_name:
                 device_id = i
-                logging.debug(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
+                logger.debug(f"Exact match found: Index={device_id}, Name='{devices[i]['name']}'")
                 break
 
         # 2. If no exact match, try case-insensitive match
@@ -106,7 +106,7 @@ class DeviceMixin:
             for i in input_device_indices:
                 if devices[i]['name'].lower() == device_name.lower():
                     device_id = i
-                    logging.debug(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Case-insensitive match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
 
         # 3. Try partial match
@@ -114,7 +114,7 @@ class DeviceMixin:
             for i in input_device_indices:
                 if device_name in devices[i]['name'] or devices[i]['name'] in device_name:
                     device_id = i
-                    logging.debug(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Partial match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
 
         # 3.5 Platform-specific matching
@@ -129,7 +129,7 @@ class DeviceMixin:
 
                 if device_name_clean.lower() in dev_name_clean.lower() or dev_name_clean.lower() in device_name_clean.lower():
                     device_id = i
-                    logging.debug(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
+                    logger.debug(f"Windows platform match found: Index={device_id}, Name='{devices[i]['name']}'")
                     break
 
         # 4. Special handling for device names with "(Device X)" suffix
@@ -142,7 +142,7 @@ class DeviceMixin:
                         device_id = potential_id
                         logger.info(f"Extracted device index from name: Index={device_id}, Name='{devices[device_id]['name']}'")
             except Exception as e:
-                logging.debug(f"Failed to extract device index from name: {e}")
+                logger.debug(f"Failed to extract device index from name: {e}")
 
         if device_id is None:
             logger.error(f"Could not find device '{device_name}' in sounddevice list")

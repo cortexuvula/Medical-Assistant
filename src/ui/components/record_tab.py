@@ -240,7 +240,7 @@ class RecordTab:
             recording: Whether recording is active
             paused: Whether recording is paused
         """
-        logging.info(f"RecordTab.set_recording_state called: recording={recording}, paused={paused}")
+        logger.info(f"RecordTab.set_recording_state called: recording={recording}, paused={paused}")
 
         if recording and not paused:
             # Clear the analysis display when starting a new recording
@@ -295,7 +295,7 @@ class RecordTab:
             self.parent.clipboard_append(text)
             self._show_feedback("Copied to clipboard")
         except Exception as e:
-            logging.error(f"Error copying analysis: {e}")
+            logger.error(f"Error copying analysis: {e}")
             self._show_feedback("Copy failed")
 
     def _add_analysis_to_soap(self):
@@ -327,7 +327,7 @@ class RecordTab:
             else:
                 self._show_feedback("SOAP note not available")
         except Exception as e:
-            logging.error(f"Error adding to SOAP: {e}")
+            logger.error(f"Error adding to SOAP: {e}")
             self._show_feedback("Failed to add")
 
     def _clear_analysis(self):
@@ -486,7 +486,7 @@ class RecordTab:
             text_widget.see(tk.END)
 
         except Exception as e:
-            logging.error(f"Error updating analysis display: {e}")
+            logger.error(f"Error updating analysis display: {e}")
 
     def get_analysis_interval_seconds(self) -> int:
         """Get the current analysis interval in seconds.

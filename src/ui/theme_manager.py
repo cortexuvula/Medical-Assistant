@@ -178,7 +178,7 @@ class ThemeManager:
         """Update theme button icon and tooltip if available."""
         if hasattr(self.app, 'theme_btn') and self.app.theme_btn:
             # Log the current state for debugging
-            logging.debug(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
+            logger.debug(f"Updating theme button - is_dark: {is_dark}, theme: {new_theme}")
 
             # Update icon and text based on new theme
             icon = Icons.MOON if not is_dark else Icons.SUN
@@ -196,13 +196,13 @@ class ThemeManager:
                 
                 # Update tooltip text
                 self.app.theme_btn._tooltip.text = tooltip_text
-                logging.debug(f"Updated tooltip text to: {tooltip_text}")
+                logger.debug(f"Updated tooltip text to: {tooltip_text}")
         
         # Update the theme label if available
         if hasattr(self.app, 'theme_label') and self.app.theme_label:
             mode_text = "Light Mode" if not is_dark else "Dark Mode"
             self.app.theme_label.config(text=f"({mode_text})")
-            logging.debug(f"Updated theme label to: ({mode_text})")
+            logger.debug(f"Updated theme label to: ({mode_text})")
     
     def _update_refresh_buttons(self, is_dark: bool):
         """Configure refresh button style based on theme."""
@@ -250,15 +250,15 @@ class ThemeManager:
         if hasattr(self.app, 'chat_ui') and self.app.chat_ui:
             try:
                 self.app.chat_ui.update_theme()
-                logging.debug(f"Updated chat UI for {'dark' if is_dark else 'light'} theme")
+                logger.debug(f"Updated chat UI for {'dark' if is_dark else 'light'} theme")
             except Exception as e:
-                logging.error(f"Error updating chat UI theme: {e}")
+                logger.error(f"Error updating chat UI theme: {e}")
 
     def _update_sidebar(self, is_dark: bool):
         """Update sidebar colors for theme changes."""
         if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'sidebar_navigation'):
             try:
                 self.app.ui.sidebar_navigation.update_theme(is_dark)
-                logging.debug(f"Updated sidebar for {'dark' if is_dark else 'light'} theme")
+                logger.debug(f"Updated sidebar for {'dark' if is_dark else 'light'} theme")
             except Exception as e:
-                logging.error(f"Error updating sidebar theme: {e}")
+                logger.error(f"Error updating sidebar theme: {e}")

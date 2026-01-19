@@ -147,9 +147,9 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
             migration_manager = get_migration_manager()
             pending = migration_manager.get_pending_migrations()
             if pending:
-                logging.info(f"Found {len(pending)} pending database migrations")
+                logger.info(f"Found {len(pending)} pending database migrations")
                 migration_manager.migrate()
-                logging.info("Database migrations applied successfully")
+                logger.info("Database migrations applied successfully")
         except Exception as e:
             ctx = ErrorContext.capture(
                 operation="Apply database migrations",
@@ -259,7 +259,7 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_results'"
             )
             if cursor.fetchone() is None:
-                logging.info("Creating missing analysis_results table")
+                logger.info("Creating missing analysis_results table")
                 conn.executescript("""
                     CREATE TABLE IF NOT EXISTS analysis_results (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,7 +282,7 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                     CREATE INDEX IF NOT EXISTS idx_analysis_type_created ON analysis_results(analysis_type, created_at DESC);
                 """)
                 conn.commit()
-                logging.info("Created analysis_results table successfully")
+                logger.info("Created analysis_results table successfully")
         except Exception as e:
             ctx = ErrorContext.capture(
                 operation="Ensure analysis_results table",

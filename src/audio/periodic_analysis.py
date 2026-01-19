@@ -105,7 +105,7 @@ class PeriodicAnalyzer:
             if len(self._analysis_history) > self.max_history_items:
                 self._analysis_history.pop(0)
 
-            logging.debug(f"Added analysis #{self._analysis_count} to history "
+            logger.debug(f"Added analysis #{self._analysis_count} to history "
                          f"(total: {len(self._analysis_history)})")
 
     def get_history_summary(self) -> Dict[str, Any]:

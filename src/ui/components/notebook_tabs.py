@@ -385,7 +385,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("Copied to clipboard")
         except Exception as e:
-            logging.error(f"Failed to copy to clipboard: {e}")
+            logger.error(f"Failed to copy to clipboard: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to copy")
 
@@ -454,10 +454,10 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("Chat history cleared")
                 
-            logging.info("Chat history cleared successfully")
+            logger.info("Chat history cleared successfully")
             
         except Exception as e:
-            logging.error(f"Error clearing chat history: {e}")
+            logger.error(f"Error clearing chat history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear chat history")
     
@@ -493,43 +493,43 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("RAG history cleared")
                 
-            logging.info("RAG history cleared successfully")
+            logger.info("RAG history cleared successfully")
             
         except Exception as e:
-            logging.error(f"Error clearing RAG history: {e}")
+            logger.error(f"Error clearing RAG history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear RAG history")
 
     def _open_medication_details(self) -> None:
         """Open full medication results dialog with current analysis."""
         try:
-            logging.info("View Details button clicked - opening medication details")
-            logging.info(f"self.parent type: {type(self.parent)}, id: {id(self.parent)}")
+            logger.info("View Details button clicked - opening medication details")
+            logger.info(f"self.parent type: {type(self.parent)}, id: {id(self.parent)}")
 
             # Check if analysis exists and has content
             analysis = getattr(self.parent, '_last_medication_analysis', None)
-            logging.info(f"_last_medication_analysis found: {analysis is not None}")
+            logger.info(f"_last_medication_analysis found: {analysis is not None}")
 
             if not analysis:
-                logging.warning("No medication analysis available on parent")
-                logging.info(f"Parent attributes starting with '_last': {[a for a in dir(self.parent) if a.startswith('_last')]}")
+                logger.warning("No medication analysis available on parent")
+                logger.info(f"Parent attributes starting with '_last': {[a for a in dir(self.parent) if a.startswith('_last')]}")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No medication analysis available. Generate a SOAP note first.")
                 return
 
             result = analysis.get('result', '')
-            logging.info(f"Analysis result type: {type(result)}, length: {len(result) if result else 0}")
+            logger.info(f"Analysis result type: {type(result)}, length: {len(result) if result else 0}")
 
             if not result:
-                logging.warning("Medication analysis exists but result is empty")
-                logging.info(f"Analysis keys: {list(analysis.keys())}")
+                logger.warning("Medication analysis exists but result is empty")
+                logger.info(f"Analysis keys: {list(analysis.keys())}")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("Medication analysis is empty")
                 return
 
             from ui.dialogs.medication_results_dialog import MedicationResultsDialog
 
-            logging.info(f"Opening MedicationResultsDialog with result length: {len(result)}")
+            logger.info(f"Opening MedicationResultsDialog with result length: {len(result)}")
             dialog = MedicationResultsDialog(self.parent)
             dialog.show_results(
                 result,
@@ -537,21 +537,21 @@ class NotebookTabs:
                 'SOAP Note',
                 analysis.get('metadata', {})
             )
-            logging.info("MedicationResultsDialog.show_results() completed")
+            logger.info("MedicationResultsDialog.show_results() completed")
         except Exception as e:
-            logging.error(f"Error opening medication details: {e}", exc_info=True)
+            logger.error(f"Error opening medication details: {e}", exc_info=True)
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open medication details: {str(e)}")
 
     def _open_diagnostic_details(self) -> None:
         """Open full diagnostic results dialog with current analysis."""
         try:
-            logging.debug("View Details button clicked - opening diagnostic details")
+            logger.debug("View Details button clicked - opening diagnostic details")
 
             # Check if analysis exists and has content
             analysis = getattr(self.parent, '_last_diagnostic_analysis', None)
             if not analysis:
-                logging.warning("No diagnostic analysis available on parent")
+                logger.warning("No diagnostic analysis available on parent")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No diagnostic analysis available. Generate a SOAP note first.")
                 return
@@ -604,6 +604,6 @@ class NotebookTabs:
             dialog.geometry(f"+{x}+{y}")
 
         except Exception as e:
-            logging.error(f"Error opening diagnostic details: {e}")
+            logger.error(f"Error opening diagnostic details: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to open diagnostic details")

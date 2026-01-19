@@ -70,9 +70,9 @@ class FileProcessor:
                         try:
                             recording_id = self.app.db.add_recording(filename=filename, transcript=transcript)
                             self.app.current_recording_id = recording_id  # Track the current recording ID
-                            logging.info(f"Added recording to database with ID: {recording_id}")
+                            logger.info(f"Added recording to database with ID: {recording_id}")
                         except Exception as db_err:
-                            logging.error(f"Failed to add to database: {str(db_err)}", exc_info=True)
+                            logger.error(f"Failed to add to database: {str(db_err)}", exc_info=True)
                         
                         # Always append to transcript_text widget and switch to transcript tab
                         self.app.after(0, lambda: [
@@ -92,7 +92,7 @@ class FileProcessor:
                     ])
             except Exception as e:
                 error_msg = f"Error processing audio file: {str(e)}"
-                logging.error(error_msg, exc_info=True)
+                logger.error(error_msg, exc_info=True)
                 self.app.after(0, lambda: [
                     self.app.status_manager.error(error_msg),
                     self.app.progress_bar.stop(),
