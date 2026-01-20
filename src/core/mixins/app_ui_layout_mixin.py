@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from settings.settings import SETTINGS, save_settings
 from utils.structured_logging import get_logger
+from ui.ui_constants import Icons
 
 if TYPE_CHECKING:
     from ui.workflow_ui import WorkflowUI
@@ -42,11 +43,13 @@ class AppUiLayoutMixin:
         if self._bottom_collapsed:
             # Collapse: hide the content
             self._bottom_content.pack_forget()
-            self._bottom_collapse_btn.config(text="▶")
+            # Show expand icon (▼) when collapsed - indicates "click to expand"
+            self._bottom_collapse_btn.config(text=Icons.EXPAND)
         else:
             # Expand: show the content
             self._bottom_content.pack(fill=tk.BOTH, expand=True)
-            self._bottom_collapse_btn.config(text="▼")
+            # Show collapse icon (▲) when expanded - indicates "click to collapse"
+            self._bottom_collapse_btn.config(text=Icons.COLLAPSE)
 
         # Adjust the sash position
         self._adjust_bottom_sash()
