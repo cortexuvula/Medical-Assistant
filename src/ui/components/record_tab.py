@@ -83,7 +83,8 @@ class RecordTab:
             header_frame.pack(fill=X, pady=(0, 2))
 
             # Collapse button on the left
-            initial_icon = Icons.COLLAPSE if self._analysis_results_collapsed else Icons.EXPAND
+            # Icon shows the ACTION: when collapsed show expand icon (▼), when expanded show collapse icon (▲)
+            initial_icon = Icons.EXPAND if self._analysis_results_collapsed else Icons.COLLAPSE
             self._analysis_collapse_btn = ttk.Button(
                 header_frame,
                 text=initial_icon,
@@ -355,14 +356,16 @@ class RecordTab:
             # Collapse: hide the content
             self._analysis_content_frame.pack_forget()
             if hasattr(self, '_analysis_collapse_btn') and self._analysis_collapse_btn:
-                self._analysis_collapse_btn.config(text=Icons.COLLAPSE)
+                # Show expand icon (▼) when collapsed - indicates "click to expand"
+                self._analysis_collapse_btn.config(text=Icons.EXPAND)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Expand Analysis Results"
         else:
             # Expand: show the content
             self._analysis_content_frame.pack(fill=BOTH, expand=True)
             if hasattr(self, '_analysis_collapse_btn') and self._analysis_collapse_btn:
-                self._analysis_collapse_btn.config(text=Icons.EXPAND)
+                # Show collapse icon (▲) when expanded - indicates "click to collapse"
+                self._analysis_collapse_btn.config(text=Icons.COLLAPSE)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Collapse Analysis Results"
 

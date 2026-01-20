@@ -232,7 +232,8 @@ class NotebookTabs:
         header_frame.pack(fill=tk.X, padx=2, pady=2)
 
         # Collapse button first (on the left)
-        initial_icon = Icons.COLLAPSE if is_collapsed else Icons.EXPAND
+        # Icon shows the ACTION: when collapsed show expand icon (▼), when expanded show collapse icon (▲)
+        initial_icon = Icons.EXPAND if is_collapsed else Icons.COLLAPSE
         collapse_btn = ttk.Button(
             header_frame,
             text=initial_icon,
@@ -427,7 +428,8 @@ class NotebookTabs:
         if self._analysis_collapsed:
             # Collapse: hide the analysis content and move sash to bottom
             analysis_content.pack_forget()
-            collapse_btn.config(text=Icons.COLLAPSE)
+            # Show expand icon (▼) when collapsed - indicates "click to expand"
+            collapse_btn.config(text=Icons.EXPAND)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Expand Analysis Panel"
 
@@ -451,7 +453,8 @@ class NotebookTabs:
         else:
             # Expand: show the analysis content and restore sash position
             analysis_content.pack(fill=tk.BOTH, expand=True)
-            collapse_btn.config(text=Icons.EXPAND)
+            # Show collapse icon (▲) when expanded - indicates "click to collapse"
+            collapse_btn.config(text=Icons.COLLAPSE)
             if hasattr(self, '_analysis_collapse_tooltip') and self._analysis_collapse_tooltip:
                 self._analysis_collapse_tooltip.text = "Collapse Analysis Panel"
 
