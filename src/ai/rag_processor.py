@@ -1,6 +1,13 @@
 """
 RAG Processor for Medical Assistant
-Handles RAG queries via N8N webhook with security validation
+
+Supports two modes:
+1. N8N webhook mode (legacy) - sends queries to external N8N workflow
+2. Local RAG mode - uses local document embeddings with Neon pgvector
+
+The mode is determined by configuration:
+- If NEON_DATABASE_URL is set, local RAG mode is preferred
+- Falls back to N8N webhook mode if configured
 """
 
 import threading
@@ -85,6 +92,36 @@ class RagProcessor:
         self.app = app
         self.is_processing = False
 
+        # Check for local RAG mode (Neon database)
+        self.neon_database_url = os.getenv("NEON_DATABASE_URL")
+        self.use_local_rag = bool(self.neon_database_url)
+        self._hybrid_retriever = None
+
+        if self.use_local_rag:
+            logger.info("Local RAG mode enabled (Neon database configured)")
+        else:
+            logger.info("N8N webhook mode (local RAG not configured)")
+
+        # Typing indicator state for progress feedback
+        self._typing_indicator_mark = None
+        self._typing_animation_id = None
+        self._typing_frame_index = 0
+        self._current_indicator_type = None  # 'search' or 'generate'
+
+        # Animation frames for different RAG stages
+        self._search_frames = [
+            "🔍 Searching documents",
+            "🔍 Searching documents.",
+            "🔍 Searching documents..",
+            "🔍 Searching documents..."
+        ]
+        self._generate_frames = [
+            "⏳ Generating response",
+            "⏳ Generating response.",
+            "⏳ Generating response..",
+            "⏳ Generating response..."
+        ]
+
         # Get N8N webhook configuration from environment
         raw_url = os.getenv("N8N_URL")
         self.n8n_auth_header = os.getenv("N8N_AUTHORIZATION_SECRET")
@@ -98,10 +135,167 @@ class RagProcessor:
             else:
                 logger.error(f"Invalid N8N_URL: {error}")
         else:
-            logger.warning("N8N_URL not found in environment variables")
+            if not self.use_local_rag:
+                logger.warning("N8N_URL not found in environment variables")
 
-        if not self.n8n_auth_header:
+        if not self.n8n_auth_header and not self.use_local_rag:
             logger.warning("N8N_AUTHORIZATION_SECRET not found in environment variables")
+
+    def _get_hybrid_retriever(self):
+        """Get or create hybrid retriever for local RAG mode."""
+        if self._hybrid_retriever is None:
+            try:
+                from src.rag.hybrid_retriever import get_hybrid_retriever
+                self._hybrid_retriever = get_hybrid_retriever()
+            except Exception as e:
+                logger.error(f"Failed to initialize hybrid retriever: {e}")
+                return None
+        return self._hybrid_retriever
+
+    def _show_typing_indicator(self, indicator_type: str = 'search'):
+        """Show animated typing indicator in RAG text widget.
+
+        Args:
+            indicator_type: 'search' for document search phase,
+                          'generate' for AI response generation phase
+        """
+        def show():
+            try:
+                if not hasattr(self.app, 'rag_text'):
+                    return
+
+                rag_widget = self.app.rag_text
+                self._current_indicator_type = indicator_type
+
+                # Select appropriate frames based on type
+                frames = self._search_frames if indicator_type == 'search' else self._generate_frames
+
+                # If indicator already showing, just update text
+                if self._typing_indicator_mark:
+                    try:
+                        rag_widget.delete(self._typing_indicator_mark, "end-1c")
+                        self._typing_frame_index = 0
+                        rag_widget.insert(self._typing_indicator_mark, frames[0], "typing_indicator")
+                        return
+                    except Exception:
+                        pass
+
+                # Mark the position where we insert the indicator
+                self._typing_indicator_mark = rag_widget.index("end-1c")
+
+                # Insert initial typing indicator
+                self._typing_frame_index = 0
+                rag_widget.insert("end", frames[0], "typing_indicator")
+                rag_widget.tag_config("typing_indicator", foreground="#888888", font=("Arial", 10, "italic"))
+
+                # Scroll to bottom
+                rag_widget.see("end")
+
+                # Start animation
+                self._animate_typing_indicator()
+
+            except Exception as e:
+                logger.debug(f"Error showing typing indicator: {e}")
+
+        # Execute on main thread
+        self.app.after(0, show)
+
+    def _animate_typing_indicator(self):
+        """Animate the typing indicator with cycling dots."""
+        def animate():
+            try:
+                if not self._typing_indicator_mark:
+                    return
+
+                if not hasattr(self.app, 'rag_text'):
+                    return
+
+                rag_widget = self.app.rag_text
+
+                # Select appropriate frames based on current type
+                frames = self._search_frames if self._current_indicator_type == 'search' else self._generate_frames
+
+                # Delete old indicator text
+                rag_widget.delete(self._typing_indicator_mark, "end-1c")
+
+                # Cycle through frames
+                self._typing_frame_index = (self._typing_frame_index + 1) % len(frames)
+
+                # Insert new frame
+                rag_widget.insert(self._typing_indicator_mark, frames[self._typing_frame_index], "typing_indicator")
+
+                # Scroll to keep indicator visible
+                rag_widget.see("end")
+
+                # Schedule next animation (500ms interval)
+                self._typing_animation_id = self.app.after(500, animate)
+
+            except Exception as e:
+                logger.debug(f"Error animating typing indicator: {e}")
+
+        animate()
+
+    def _hide_typing_indicator(self):
+        """Remove typing indicator from RAG text widget."""
+        def hide():
+            try:
+                # Cancel animation
+                if self._typing_animation_id:
+                    try:
+                        self.app.after_cancel(self._typing_animation_id)
+                    except Exception:
+                        pass
+                    self._typing_animation_id = None
+
+                # Remove indicator text if mark exists
+                if self._typing_indicator_mark and hasattr(self.app, 'rag_text'):
+                    rag_widget = self.app.rag_text
+                    try:
+                        # Delete from mark to end
+                        rag_widget.delete(self._typing_indicator_mark, "end")
+                    except Exception:
+                        pass
+                    self._typing_indicator_mark = None
+
+                self._typing_frame_index = 0
+                self._current_indicator_type = None
+
+            except Exception as e:
+                logger.debug(f"Error hiding typing indicator: {e}")
+
+        # Execute on main thread
+        self.app.after(0, hide)
+
+    def is_local_rag_available(self) -> bool:
+        """Check if local RAG mode is available and configured.
+
+        Returns:
+            True if local RAG can be used
+        """
+        if not self.use_local_rag:
+            return False
+
+        try:
+            retriever = self._get_hybrid_retriever()
+            if retriever:
+                stats = retriever.get_retrieval_stats()
+                return stats.get("vector_store_available", False)
+        except Exception:
+            pass
+
+        return False
+
+    def get_rag_mode(self) -> str:
+        """Get current RAG mode.
+
+        Returns:
+            'local' for local RAG, 'n8n' for webhook, 'none' if unconfigured
+        """
+        if self.use_local_rag and self.is_local_rag_available():
+            return "local"
+        elif self.n8n_webhook_url:
+            return "n8n"
+        return "none"
 
     @smart_retry(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def _make_webhook_request(
@@ -199,7 +393,10 @@ class RagProcessor:
     def process_message(self, user_message: str, callback: Optional[Callable] = None):
         """
         Process a RAG query from the user.
-        
+
+        Automatically selects between local RAG mode and N8N webhook mode
+        based on configuration.
+
         Args:
             user_message: The user's query
             callback: Optional callback to call when processing is complete
@@ -207,53 +404,259 @@ class RagProcessor:
         if self.is_processing:
             logger.warning("RAG processor is already processing a message")
             return
-            
-        if not self.n8n_webhook_url:
-            self._display_error("N8N webhook URL not configured. Please set N8N_URL in .env file.")
+
+        # Check available RAG mode
+        rag_mode = self.get_rag_mode()
+
+        if rag_mode == "none":
+            self._display_error(
+                "No RAG system configured. Please either:\n"
+                "• Set NEON_DATABASE_URL for local RAG mode\n"
+                "• Set N8N_URL for webhook mode"
+            )
             if callback:
                 callback()
             return
-            
+
         # Run processing in a separate thread to avoid blocking UI
-        thread = threading.Thread(
-            target=self._process_message_async,
-            args=(user_message, callback),
-            daemon=True
-        )
+        if rag_mode == "local":
+            thread = threading.Thread(
+                target=self._process_message_local,
+                args=(user_message, callback),
+                daemon=True
+            )
+        else:
+            thread = threading.Thread(
+                target=self._process_message_async,
+                args=(user_message, callback),
+                daemon=True
+            )
         thread.start()
-        
-    def _process_message_async(self, user_message: str, callback: Optional[Callable]):
-        """Async processing of RAG query."""
+
+    def _process_message_local(self, user_message: str, callback: Optional[Callable]):
+        """Process RAG query using local vector database.
+
+        Args:
+            user_message: The user's query
+            callback: Optional callback when processing is complete
+        """
         try:
             self.is_processing = True
-            
+
             # Add user message to RAG tab
             self._add_message_to_rag_tab("User", user_message)
-            
+
+            # Show search progress indicator
+            self._show_typing_indicator('search')
+
+            # Get hybrid retriever
+            retriever = self._get_hybrid_retriever()
+            if not retriever:
+                self._hide_typing_indicator()
+                self._display_error("Failed to initialize RAG retriever.")
+                return
+
+            logger.info(f"Processing local RAG query: {user_message[:100]}...")
+
+            # Perform hybrid search
+            from src.rag.models import RAGQueryRequest
+            request = RAGQueryRequest(
+                query=user_message,
+                top_k=5,
+                use_graph_search=True,
+                similarity_threshold=0.3,  # Lower threshold - scores typically 0.3-0.6
+            )
+
+            response = retriever.search(request)
+
+            if not response.results:
+                # Hide indicator before showing message
+                self._hide_typing_indicator()
+                output = (
+                    "I couldn't find any relevant information in the document database "
+                    "for your query. Try uploading more documents or rephrasing your question."
+                )
+            else:
+                # Update indicator to show we're generating the response
+                self._show_typing_indicator('generate')
+                # Generate AI response using retrieved context
+                output = self._generate_rag_response(user_message, response)
+
+            # Hide indicator before adding response
+            self._hide_typing_indicator()
+
+            # Add response to RAG tab
+            self._add_message_to_rag_tab("RAG Assistant", output)
+
+            logger.info(f"Local RAG query completed: {response.total_results} results in {response.processing_time_ms:.0f}ms")
+
+        except Exception as e:
+            error_msg = f"Error processing local RAG query: {str(e)}"
+            logger.error(error_msg)
+            self._hide_typing_indicator()  # Cleanup on error
+            self._display_error(error_msg)
+
+        finally:
+            self._hide_typing_indicator()  # Ensure cleanup
+            self.is_processing = False
+            if callback:
+                self.app.after(0, callback)
+
+    def _generate_rag_response(self, query: str, response) -> str:
+        """Generate AI response using retrieved document context.
+
+        Args:
+            query: Original user query
+            response: RAGQueryResponse from hybrid retriever
+
+        Returns:
+            AI-generated response based on document context
+        """
+        from ai.ai import call_openai
+        from settings.settings_manager import settings_manager
+
+        # Build context from retrieved documents
+        context_parts = []
+        sources = []
+        for i, result in enumerate(response.results, 1):
+            sources.append(f"Source {i}: {result.document_filename}")
+            context_parts.append(f"[Document {i}: {result.document_filename}]\n{result.chunk_text}")
+            if result.related_entities:
+                entities = ", ".join(result.related_entities[:5])
+                context_parts.append(f"Related concepts: {entities}")
+            context_parts.append("")
+
+        context_text = "\n".join(context_parts)
+
+        # Build the prompt for the LLM
+        system_message = """You are a helpful medical AI assistant. Answer the user's question based ONLY on the provided document context.
+
+Guidelines:
+- Provide clear, well-organized answers with proper formatting
+- Use bullet points and headers to organize information when appropriate
+- If the context doesn't contain enough information to fully answer, say so
+- Cite which document source(s) your answer comes from
+- Be concise but thorough
+- Use medical terminology appropriately"""
+
+        prompt = f"""Based on the following document excerpts, please answer this question:
+
+**Question:** {query}
+
+---
+**Document Context:**
+
+{context_text}
+---
+
+Please provide a comprehensive answer based on the above context. If you cite specific information, indicate which source document it came from."""
+
+        try:
+            # Call the AI to generate a response
+            model = settings_manager.get_nested("openai.model", "gpt-4")
+            temperature = settings_manager.get_nested("temperature_settings.chat_temperature", 0.3)
+
+            logger.info(f"Generating RAG response with {model}")
+
+            ai_response = call_openai(
+                model=model,
+                system_message=system_message,
+                prompt=prompt,
+                temperature=temperature
+            )
+
+            if ai_response and hasattr(ai_response, 'text'):
+                response_text = ai_response.text
+            elif ai_response:
+                response_text = str(ai_response)
+            else:
+                # Fallback to formatted results if AI call fails
+                return self._format_local_rag_response(query, response)
+
+            # Add sources footer
+            sources_list = "\n".join(f"- {s}" for s in sources)
+            response_text += f"\n\n---\n**Sources:**\n{sources_list}\n\n*Search completed in {response.processing_time_ms:.0f}ms*"
+
+            return response_text
+
+        except Exception as e:
+            logger.error(f"Failed to generate AI response: {e}")
+            # Fallback to formatted results
+            return self._format_local_rag_response(query, response)
+
+    def _format_local_rag_response(self, query: str, response) -> str:
+        """Format local RAG response for display (fallback when AI generation fails).
+
+        Args:
+            query: Original user query
+            response: RAGQueryResponse from hybrid retriever
+
+        Returns:
+            Formatted response string
+        """
+        parts = []
+
+        # Add summary line
+        parts.append(f"Found **{response.total_results} relevant passages** in your documents.\n")
+
+        # Add context from results
+        for i, result in enumerate(response.results, 1):
+            parts.append(f"### Source {i}: {result.document_filename}")
+            parts.append(f"*Relevance: {result.combined_score:.0%}*\n")
+
+            # Truncate long chunks for display
+            chunk_preview = result.chunk_text
+            if len(chunk_preview) > 500:
+                chunk_preview = chunk_preview[:500] + "..."
+
+            parts.append(chunk_preview)
+
+            if result.related_entities:
+                entities = ", ".join(result.related_entities[:5])
+                parts.append(f"\n**Related concepts:** {entities}")
+
+            parts.append("")  # Blank line between results
+
+        # Add processing time
+        parts.append(f"\n---\n*Search completed in {response.processing_time_ms:.0f}ms*")
+
+        return "\n".join(parts)
+        
+    def _process_message_async(self, user_message: str, callback: Optional[Callable]):
+        """Async processing of RAG query via N8N webhook."""
+        try:
+            self.is_processing = True
+
+            # Add user message to RAG tab
+            self._add_message_to_rag_tab("User", user_message)
+
+            # Show search progress indicator
+            self._show_typing_indicator('search')
+
             # Make request to N8N webhook
             try:
                 headers = {
                     "Content-Type": "application/json"
                 }
-                
+
                 # Add authorization header if provided
                 if self.n8n_auth_header:
                     # Remove quotes if present
                     auth_value = self.n8n_auth_header.strip("'\"")
                     headers["Authorization"] = auth_value
-                
+
                 # Prepare request payload with sessionId
                 # Generate a session ID - you can make this persistent per user session if needed
                 session_id = getattr(self, 'session_id', None)
                 if not session_id:
                     self.session_id = str(uuid.uuid4())
                     session_id = self.session_id
-                
+
                 payload = {
                     "chatInput": user_message,
                     "sessionId": session_id
                 }
-                
+
                 logger.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
                 logger.debug(f"Payload: {payload}")
 
@@ -266,13 +669,16 @@ class RagProcessor:
 
                 # Check for client errors (4xx) - these weren't raised in _make_webhook_request
                 response.raise_for_status()
-                
+
+                # Update indicator to show response generation phase
+                self._show_typing_indicator('generate')
+
                 # Log raw response for debugging
                 logger.info(f"Response status code: {response.status_code}")
                 logger.info(f"Response headers: {response.headers}")
                 response_text = response.text
                 logger.info(f"Raw response: {response_text[:500]}...")  # Log first 500 chars
-                
+
                 # Parse response
                 if not response_text or response_text.strip() == "":
                     logger.warning("Empty response from N8N webhook - the webhook may need to be configured to return data")
@@ -280,7 +686,7 @@ class RagProcessor:
                 else:
                     try:
                         response_data = response.json()
-                        
+
                         # Handle the expected response format
                         # Example: [{"output": "response text"}]
                         if isinstance(response_data, list) and len(response_data) > 0:
@@ -292,31 +698,39 @@ class RagProcessor:
                     except json.JSONDecodeError:
                         # If it's not JSON, just use the text response
                         output = f"RAG Response: {response_text}"
-                
+
+                # Hide indicator before adding response
+                self._hide_typing_indicator()
+
                 # Add response to RAG tab
                 self._add_message_to_rag_tab("RAG Assistant", output)
-                
+
             except requests.exceptions.Timeout:
+                self._hide_typing_indicator()  # Cleanup on error
                 error_msg = "Request timed out. The RAG system took too long to respond."
                 logger.error(error_msg)
                 self._display_error(error_msg)
-                
+
             except requests.exceptions.RequestException as e:
+                self._hide_typing_indicator()  # Cleanup on error
                 error_msg = f"Error connecting to RAG system: {str(e)}"
                 logger.error(error_msg)
                 self._display_error(error_msg)
-                
+
             except json.JSONDecodeError as e:
+                self._hide_typing_indicator()  # Cleanup on error
                 error_msg = f"Error parsing RAG response: {str(e)}"
                 logger.error(error_msg)
                 self._display_error(error_msg)
-                
+
         except Exception as e:
+            self._hide_typing_indicator()  # Cleanup on error
             error_msg = f"Unexpected error in RAG processor: {str(e)}"
             logger.error(error_msg)
             self._display_error(error_msg)
-            
+
         finally:
+            self._hide_typing_indicator()  # Ensure cleanup
             self.is_processing = False
             if callback:
                 self.app.after(0, callback)
