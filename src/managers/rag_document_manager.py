@@ -298,9 +298,9 @@ class RAGDocumentManager:
         results = []
 
         for i, file_path in enumerate(file_paths):
-            def file_progress(progress: DocumentUploadProgress):
+            def file_progress(progress: DocumentUploadProgress, idx: int = i):
                 if progress_callback:
-                    progress_callback(i, progress)
+                    progress_callback(idx, progress)
 
             try:
                 doc = self.upload_document(

@@ -646,7 +646,8 @@ class NotebookTabs:
 
             except Exception as e:
                 logger.error(f"Error processing RAG uploads: {e}")
-                self.parent.after(0, lambda: self._show_upload_error(str(e)))
+                error_msg = str(e)
+                self.parent.after(0, lambda msg=error_msg: self._show_upload_error(msg))
 
         thread = threading.Thread(target=upload_thread, daemon=True)
         thread.start()

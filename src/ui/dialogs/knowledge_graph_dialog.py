@@ -312,7 +312,8 @@ class KnowledgeGraphDialog(tk.Toplevel):
 
             except Exception as e:
                 logger.error(f"Failed to load graph data: {e}")
-                self.after(0, lambda: self._show_error(f"Failed to load graph data:\n{e}"))
+                error_msg = f"Failed to load graph data:\n{e}"
+                self.after(0, lambda msg=error_msg: self._show_error(msg))
 
             finally:
                 self._loading = False
