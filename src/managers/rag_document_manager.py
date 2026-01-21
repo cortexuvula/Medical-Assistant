@@ -28,6 +28,7 @@ from src.rag.models import (
     RAGDocument,
     UploadStatus,
 )
+from rag.cancellation import CancellationError, CancellationToken
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,249 @@ class RAGDocumentManager:
                 ))
 
         return doc
+
+    def upload_document_async(
+        self,
+        file_path: str,
+        options: Optional[dict] = None,
+        progress_callback: Optional[Callable[[str, float], None]] = None,
+        cancellation_token: Optional[CancellationToken] = None,
+    ) -> Optional[dict]:
+        """Upload and process a document with cancellation support.
+
+        This method is designed to be called from RAGUploadQueueManager
+        and supports cancellation at each processing step.
+
+        Args:
+            file_path: Path to the document file
+            options: Upload options dict with keys:
+                - category: Optional category
+                - tags: Optional list of tags
+                - enable_ocr: Whether to use OCR (default True)
+                - enable_graph: Whether to add to knowledge graph (default True)
+            progress_callback: Callback(status_message, progress_percent)
+            cancellation_token: Token for cancellation support
+
+        Returns:
+            Dict with document_id and status, or None if cancelled/failed
+
+        Raises:
+            CancellationError: If cancelled during processing
+        """
+        options = options or {}
+        category = options.get("category")
+        tags = options.get("tags")
+        enable_ocr = options.get("enable_ocr", True)
+        enable_graph = options.get("enable_graph", True)
+
+        file_path = str(Path(file_path).resolve())
+        filename = os.path.basename(file_path)
+        document_id = None
+
+        def check_cancelled():
+            """Check if cancelled and raise if so."""
+            if cancellation_token:
+                cancellation_token.raise_if_cancelled()
+
+        def report(status: str, progress: float):
+            """Report progress to callback."""
+            if progress_callback:
+                progress_callback(status, progress)
+
+        try:
+            # Validate file
+            check_cancelled()
+
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            file_size = os.path.getsize(file_path)
+            if file_size > MAX_FILE_SIZE:
+                raise ValueError(f"File exceeds maximum size ({MAX_FILE_SIZE // (1024*1024)} MB)")
+
+            # Determine document type
+            processor = self._get_document_processor()
+            doc_type = processor.get_document_type(file_path)
+            if not doc_type:
+                raise ValueError(f"Unsupported file type: {filename}")
+
+            # Create document record
+            document_id = str(uuid4())
+            doc = RAGDocument(
+                document_id=document_id,
+                filename=filename,
+                file_type=doc_type,
+                file_path=file_path,
+                file_size_bytes=file_size,
+                upload_status=UploadStatus.PENDING,
+            )
+
+            # Save initial record
+            self._save_document_to_db(doc)
+            report("Extracting text...", 10.0)
+
+            # Step 1: Extract text
+            check_cancelled()
+            self._update_document_status(document_id, UploadStatus.EXTRACTING)
+
+            text, metadata, page_count, ocr_used = processor.extract_text(
+                file_path, enable_ocr=enable_ocr
+            )
+
+            doc.page_count = page_count
+            doc.ocr_required = ocr_used
+            doc.metadata = metadata
+            if category:
+                doc.metadata.category = category
+            if tags:
+                doc.metadata.custom_tags = tags
+
+            # Step 2: Chunk text
+            check_cancelled()
+            report("Chunking text...", 30.0)
+            self._update_document_status(document_id, UploadStatus.CHUNKING)
+
+            chunks = processor.chunk_text(text)
+            doc.chunks = chunks
+            doc.chunk_count = len(chunks)
+
+            # Save chunks to local database
+            self._save_chunks_to_db(document_id, chunks)
+
+            # Step 3: Generate embeddings
+            check_cancelled()
+            report("Generating embeddings...", 50.0)
+            self._update_document_status(document_id, UploadStatus.EMBEDDING)
+
+            embedding_manager = self._get_embedding_manager()
+            chunk_texts = [c.chunk_text for c in chunks]
+            embedding_response = embedding_manager.generate_embeddings(chunk_texts)
+
+            # Step 4: Sync to Neon
+            check_cancelled()
+            report("Syncing to vector store...", 70.0)
+            self._update_document_status(document_id, UploadStatus.SYNCING)
+
+            vector_store = self._get_vector_store()
+
+            # Prepare batch data
+            batch_data = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, embedding_response.embeddings)):
+                chunk_metadata = {
+                    "filename": filename,
+                    "chunk_index": chunk.chunk_index,
+                    "start_page": chunk.start_page,
+                    "end_page": chunk.end_page,
+                }
+                if doc.metadata.category:
+                    chunk_metadata["category"] = doc.metadata.category
+                if doc.metadata.custom_tags:
+                    chunk_metadata["tags"] = doc.metadata.custom_tags
+
+                batch_data.append((
+                    chunk.chunk_index,
+                    chunk.chunk_text,
+                    embedding,
+                    chunk_metadata,
+                ))
+
+            # Upsert to Neon
+            neon_ids = vector_store.upsert_embeddings_batch(document_id, batch_data)
+
+            # Update chunk records with Neon IDs
+            for chunk, neon_id in zip(chunks, neon_ids):
+                chunk.neon_id = str(neon_id)
+
+            doc.neon_synced = True
+
+            # Step 5: Add to knowledge graph (optional) - runs in BACKGROUND
+            if enable_graph:
+                graphiti = self._get_graphiti_client()
+                if graphiti:
+                    # Start background thread for knowledge graph processing
+                    graph_thread = threading.Thread(
+                        target=self._process_knowledge_graph_background,
+                        args=(document_id, text, filename, category, doc.metadata.title),
+                        daemon=True,
+                        name=f"graphiti-{document_id[:8]}",
+                    )
+                    graph_thread.start()
+                    logger.info(f"Started background knowledge graph processing for {filename}")
+
+            # Complete
+            check_cancelled()
+            report("Completing upload...", 90.0)
+
+            doc.upload_status = UploadStatus.COMPLETED
+            self._update_document_record(doc)
+
+            logger.info(f"Async upload completed: {filename} ({doc.chunk_count} chunks)")
+
+            return {
+                "document_id": document_id,
+                "filename": filename,
+                "chunk_count": doc.chunk_count,
+                "status": "completed",
+            }
+
+        except CancellationError as e:
+            # Cancelled - rollback any partial data
+            logger.info(f"Upload cancelled for {filename}: {e}")
+            if document_id:
+                self._rollback_upload(document_id)
+            raise  # Re-raise for queue manager to handle
+
+        except Exception as e:
+            # Failed - mark as failed but keep record
+            logger.error(f"Async upload failed for {filename}: {e}")
+            if document_id:
+                self._update_document_status(document_id, UploadStatus.FAILED, str(e))
+            raise
+
+    def _rollback_upload(self, document_id: str) -> bool:
+        """Rollback a partial upload by deleting all associated data.
+
+        Called when an upload is cancelled mid-process to ensure
+        no orphaned data remains.
+
+        Args:
+            document_id: Document ID to rollback
+
+        Returns:
+            True if rollback successful, False otherwise
+        """
+        try:
+            logger.info(f"Rolling back upload for document: {document_id}")
+
+            # Delete from Neon vector store first
+            try:
+                vector_store = self._get_vector_store()
+                vector_store.delete_document(document_id)
+                logger.debug(f"Rolled back Neon data for {document_id}")
+            except Exception as e:
+                logger.warning(f"Could not rollback Neon data for {document_id}: {e}")
+
+            # Delete from local database
+            db = self._get_db_manager()
+
+            # Delete chunks first (foreign key)
+            db.execute(
+                "DELETE FROM rag_document_chunks WHERE document_id = ?",
+                (document_id,)
+            )
+
+            # Delete document record
+            db.execute(
+                "DELETE FROM rag_documents WHERE document_id = ?",
+                (document_id,)
+            )
+
+            logger.info(f"Successfully rolled back upload for {document_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to rollback upload for {document_id}: {e}")
+            return False
 
     def upload_documents_batch(
         self,

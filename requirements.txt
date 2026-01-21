@@ -42,3 +42,5 @@ pgvector>=0.2.0  # pgvector Python bindings for vector search
 tiktoken>=0.5.0  # Token counting for semantic chunking
 graphiti-core>=0.3.0  # Zep AI Graphiti for knowledge graphs
 neo4j>=5.0.0  # Neo4j Python driver (Graphiti dependency)
+redis>=4.0.0  # Optional: Redis for distributed embedding cache
+networkx>=3.0  # Graph layout for knowledge graph visualization

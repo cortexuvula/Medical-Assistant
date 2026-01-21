@@ -1175,6 +1175,197 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
+    # Migration 16: RAG Conversation Context and Feedback System
+    migrations.append(Migration(
+        version=16,
+        name="RAG conversation context and feedback system",
+        up_sql="""
+        -- Conversation sessions with summaries
+        CREATE TABLE IF NOT EXISTS rag_conversation_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            exchange_count INTEGER DEFAULT 0,
+            summary_text TEXT,
+            key_topics_json TEXT,
+            key_entities_json TEXT
+        );
+
+        -- Individual exchanges with embeddings
+        CREATE TABLE IF NOT EXISTS rag_conversation_exchanges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            exchange_index INTEGER NOT NULL,
+            query_text TEXT NOT NULL,
+            query_embedding_json TEXT,
+            response_summary TEXT,
+            extracted_entities_json TEXT,
+            is_followup BOOLEAN DEFAULT FALSE,
+            followup_confidence REAL,
+            intent_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES rag_conversation_sessions(session_id),
+            UNIQUE(session_id, exchange_index)
+        );
+
+        -- User feedback on results
+        CREATE TABLE IF NOT EXISTS rag_result_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            result_document_id TEXT NOT NULL,
+            result_chunk_index INTEGER NOT NULL,
+            feedback_type TEXT NOT NULL CHECK(feedback_type IN ('upvote', 'downvote', 'flag')),
+            feedback_reason TEXT,
+            original_score REAL,
+            query_text TEXT,
+            session_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Aggregated feedback for relevance boosting
+        CREATE TABLE IF NOT EXISTS rag_feedback_aggregates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            upvote_count INTEGER DEFAULT 0,
+            downvote_count INTEGER DEFAULT 0,
+            relevance_boost REAL DEFAULT 0.0,
+            last_calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(document_id, chunk_index)
+        );
+
+        -- Named entities extracted from queries
+        CREATE TABLE IF NOT EXISTS rag_named_entities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_text TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            normalized_name TEXT,
+            confidence REAL,
+            source_type TEXT,
+            source_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Indexes
+        CREATE INDEX IF NOT EXISTS idx_conv_sessions_activity ON rag_conversation_sessions(last_activity_at);
+        CREATE INDEX IF NOT EXISTS idx_conv_exchanges_session ON rag_conversation_exchanges(session_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_document ON rag_result_feedback(result_document_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_agg_doc ON rag_feedback_aggregates(document_id);
+        CREATE INDEX IF NOT EXISTS idx_entities_type ON rag_named_entities(entity_type);
+        CREATE INDEX IF NOT EXISTS idx_entities_text ON rag_named_entities(entity_text);
+        """,
+        down_sql="""
+        DROP INDEX IF EXISTS idx_entities_text;
+        DROP INDEX IF EXISTS idx_entities_type;
+        DROP INDEX IF EXISTS idx_feedback_agg_doc;
+        DROP INDEX IF EXISTS idx_feedback_document;
+        DROP INDEX IF EXISTS idx_conv_exchanges_session;
+        DROP INDEX IF EXISTS idx_conv_sessions_activity;
+        DROP TABLE IF EXISTS rag_named_entities;
+        DROP TABLE IF EXISTS rag_feedback_aggregates;
+        DROP TABLE IF EXISTS rag_result_feedback;
+        DROP TABLE IF EXISTS rag_conversation_exchanges;
+        DROP TABLE IF EXISTS rag_conversation_sessions;
+        """
+    ))
+
+    # Migration 17: Knowledge Graph Entity Clusters and Relationship Confidence
+    migrations.append(Migration(
+        version=17,
+        name="Knowledge Graph entity clusters and relationship confidence",
+        up_sql="""
+        -- Entity clusters for cross-document entity deduplication
+        CREATE TABLE IF NOT EXISTS entity_clusters (
+            id TEXT PRIMARY KEY,
+            canonical_name TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            variants_json TEXT,                              -- JSON array of text variants
+            source_documents_json TEXT,                      -- JSON array of document IDs
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            mention_count INTEGER DEFAULT 1,
+            confidence REAL DEFAULT 1.0,
+            embedding_json TEXT                              -- Canonical embedding vector
+        );
+
+        -- Graph relationships with confidence tracking
+        CREATE TABLE IF NOT EXISTS graph_relationships (
+            id TEXT PRIMARY KEY,
+            source_entity_id TEXT NOT NULL,                  -- References entity_clusters.id
+            target_entity_id TEXT NOT NULL,                  -- References entity_clusters.id
+            relationship_type TEXT NOT NULL,
+            fact TEXT,
+            confidence REAL DEFAULT 1.0,
+            evidence_count INTEGER DEFAULT 1,
+            source_documents_json TEXT,                      -- JSON array of source document IDs
+            evidence_type TEXT DEFAULT 'inferred',           -- explicit, inferred, aggregated
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(source_entity_id, target_entity_id, relationship_type)
+        );
+
+        -- Indexes for efficient queries
+        CREATE INDEX IF NOT EXISTS idx_entity_clusters_name ON entity_clusters(canonical_name);
+        CREATE INDEX IF NOT EXISTS idx_entity_clusters_type ON entity_clusters(entity_type);
+        CREATE INDEX IF NOT EXISTS idx_entity_clusters_confidence ON entity_clusters(confidence DESC);
+        CREATE INDEX IF NOT EXISTS idx_entity_clusters_mentions ON entity_clusters(mention_count DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_source ON graph_relationships(source_entity_id);
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_target ON graph_relationships(target_entity_id);
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_type ON graph_relationships(relationship_type);
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_confidence ON graph_relationships(confidence DESC);
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_evidence ON graph_relationships(evidence_count DESC);
+
+        -- Full-text search for entity clusters
+        CREATE VIRTUAL TABLE IF NOT EXISTS entity_clusters_fts USING fts5(
+            canonical_name,
+            variants_json,
+            content=entity_clusters,
+            content_rowid=rowid
+        );
+
+        -- Triggers to keep entity FTS in sync
+        CREATE TRIGGER IF NOT EXISTS entity_clusters_ai AFTER INSERT ON entity_clusters BEGIN
+            INSERT INTO entity_clusters_fts(rowid, canonical_name, variants_json)
+            SELECT rowid, new.canonical_name, new.variants_json FROM entity_clusters WHERE id = new.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS entity_clusters_ad AFTER DELETE ON entity_clusters BEGIN
+            DELETE FROM entity_clusters_fts WHERE rowid = old.rowid;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS entity_clusters_au AFTER UPDATE ON entity_clusters BEGIN
+            UPDATE entity_clusters_fts
+            SET canonical_name = new.canonical_name,
+                variants_json = new.variants_json
+            WHERE rowid = new.rowid;
+        END;
+
+        -- Temporal index for time-based queries
+        CREATE INDEX IF NOT EXISTS idx_entity_clusters_last_seen ON entity_clusters(last_seen DESC);
+        CREATE INDEX IF NOT EXISTS idx_graph_rel_last_seen ON graph_relationships(last_seen DESC);
+        """,
+        down_sql="""
+        DROP TRIGGER IF EXISTS entity_clusters_au;
+        DROP TRIGGER IF EXISTS entity_clusters_ad;
+        DROP TRIGGER IF EXISTS entity_clusters_ai;
+        DROP TABLE IF EXISTS entity_clusters_fts;
+        DROP INDEX IF EXISTS idx_graph_rel_last_seen;
+        DROP INDEX IF EXISTS idx_entity_clusters_last_seen;
+        DROP INDEX IF EXISTS idx_graph_rel_evidence;
+        DROP INDEX IF EXISTS idx_graph_rel_confidence;
+        DROP INDEX IF EXISTS idx_graph_rel_type;
+        DROP INDEX IF EXISTS idx_graph_rel_target;
+        DROP INDEX IF EXISTS idx_graph_rel_source;
+        DROP INDEX IF EXISTS idx_entity_clusters_mentions;
+        DROP INDEX IF EXISTS idx_entity_clusters_confidence;
+        DROP INDEX IF EXISTS idx_entity_clusters_type;
+        DROP INDEX IF EXISTS idx_entity_clusters_name;
+        DROP TABLE IF EXISTS graph_relationships;
+        DROP TABLE IF EXISTS entity_clusters;
+        """
+    ))
+
     return migrations
 
 

@@ -3,19 +3,44 @@ Neon PostgreSQL vector store for RAG system.
 
 Handles pgvector operations for document embeddings:
 - Upsert embeddings
-- Vector similarity search
+- Vector similarity search (with HNSW index support)
 - Document management
+
+Performance optimizations:
+- HNSW index for approximate nearest neighbor search (10-50x faster)
+- Cosine similarity for semantic search
+- Configurable ef_search parameter for quality/speed tradeoff
 """
 
 import json
 import logging
 import os
+import pathlib
 from typing import Any, Optional
 from uuid import UUID
 
+from dotenv import load_dotenv
+
 from src.rag.models import VectorSearchQuery, VectorSearchResult
 
+# Load environment variables from .env file
+# Try loading from root .env first, then fall back to AppData .env
+_root_env = pathlib.Path(__file__).parent.parent.parent / '.env'
+if _root_env.exists():
+    load_dotenv(dotenv_path=str(_root_env))
+else:
+    try:
+        from managers.data_folder_manager import data_folder_manager
+        load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
+    except Exception:
+        pass  # data_folder_manager not available yet
+
 logger = logging.getLogger(__name__)
+
+# Default HNSW search parameter
+# Higher values = better recall but slower search
+# Typical values: 40 (fast), 100 (balanced), 200+ (high recall)
+DEFAULT_HNSW_EF_SEARCH = 40
 
 
 class NeonVectorStore:
@@ -201,17 +226,24 @@ class NeonVectorStore:
         top_k: int = 10,
         similarity_threshold: float = 0.0,
         filter_document_ids: Optional[list[str]] = None,
+        ef_search: Optional[int] = None,
     ) -> list[VectorSearchResult]:
-        """Search for similar embeddings.
+        """Search for similar embeddings using cosine similarity.
+
+        When an HNSW index exists, this uses approximate nearest neighbor
+        search for significantly faster queries (10-50x improvement).
 
         Args:
             query_embedding: Query embedding vector
             top_k: Number of results to return
-            similarity_threshold: Minimum similarity score
+            similarity_threshold: Minimum similarity score (0-1 for cosine)
             filter_document_ids: Optional list of document IDs to filter
+            ef_search: HNSW ef_search parameter for quality/speed tradeoff.
+                      Higher values = better recall but slower.
+                      Default: 40. Typical values: 40 (fast), 100 (balanced), 200+ (high recall)
 
         Returns:
-            List of VectorSearchResult objects
+            List of VectorSearchResult objects with cosine similarity scores
         """
         pool = self._get_pool()
 
@@ -219,11 +251,17 @@ class NeonVectorStore:
             self._ensure_pgvector(conn)
 
             with conn.cursor() as cur:
+                # Set HNSW ef_search parameter for this session
+                # This controls the trade-off between search quality and speed
+                ef_search_val = ef_search or DEFAULT_HNSW_EF_SEARCH
+                cur.execute(f"SET hnsw.ef_search = {ef_search_val}")
+
                 # Convert embedding to string format for vector cast
                 embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-                # Build query with optional filters
-                # Note: Must cast embedding string to vector type explicitly
+                # Build query using cosine distance operator (<=>)
+                # Cosine similarity = 1 - cosine_distance
+                # The <=> operator uses HNSW index when available
                 query = """
                     SELECT
                         document_id,
@@ -532,6 +570,76 @@ class NeonVectorStore:
         except Exception as e:
             logger.error(f"Failed to check search_vector column: {e}")
             return False
+
+    def get_index_health(self) -> dict:
+        """Get health and statistics for vector indexes.
+
+        Returns:
+            Dict with index health info including:
+            - hnsw_index_exists: Whether HNSW index exists
+            - hnsw_index_valid: Whether HNSW index is valid
+            - hnsw_index_size_mb: Size of HNSW index in MB
+            - search_vector_index_exists: Whether BM25 GIN index exists
+            - total_embeddings: Total number of embeddings
+            - pgvector_version: Version of pgvector extension
+        """
+        health = {
+            "hnsw_index_exists": False,
+            "hnsw_index_valid": False,
+            "hnsw_index_size_mb": 0.0,
+            "search_vector_index_exists": False,
+            "total_embeddings": 0,
+            "pgvector_version": None,
+        }
+
+        try:
+            pool = self._get_pool()
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    # Check HNSW index
+                    cur.execute("""
+                        SELECT
+                            pg_index.indisvalid,
+                            pg_relation_size(c.oid) as size_bytes
+                        FROM pg_indexes i
+                        JOIN pg_class c ON c.relname = i.indexname
+                        JOIN pg_index ON pg_index.indexrelid = c.oid
+                        WHERE i.tablename = 'document_embeddings'
+                        AND i.indexname = 'idx_document_embeddings_hnsw'
+                    """)
+                    hnsw_result = cur.fetchone()
+                    if hnsw_result:
+                        health["hnsw_index_exists"] = True
+                        health["hnsw_index_valid"] = hnsw_result[0]
+                        health["hnsw_index_size_mb"] = round(hnsw_result[1] / (1024 * 1024), 2)
+
+                    # Check search_vector GIN index
+                    cur.execute("""
+                        SELECT indexname
+                        FROM pg_indexes
+                        WHERE tablename = 'document_embeddings'
+                        AND indexname = 'idx_document_embeddings_search_vector'
+                    """)
+                    health["search_vector_index_exists"] = cur.fetchone() is not None
+
+                    # Total embeddings count
+                    cur.execute("SELECT COUNT(*) FROM document_embeddings")
+                    health["total_embeddings"] = cur.fetchone()[0]
+
+                    # pgvector version
+                    cur.execute("""
+                        SELECT extversion
+                        FROM pg_extension
+                        WHERE extname = 'vector'
+                    """)
+                    version_result = cur.fetchone()
+                    if version_result:
+                        health["pgvector_version"] = version_result[0]
+
+        except Exception as e:
+            logger.error(f"Failed to get index health: {e}")
+
+        return health
 
     def close(self):
         """Close the connection pool."""

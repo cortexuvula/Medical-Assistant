@@ -127,6 +127,7 @@ class HybridSearchResult(BaseModel):
     bm25_score: float = 0.0  # BM25 keyword search score
     combined_score: float = 0.0
     mmr_score: float = 0.0  # MMR diversity-adjusted score
+    feedback_boost: float = 0.0  # User feedback relevance boost
     related_entities: list[str] = Field(default_factory=list)
     metadata: Optional[dict[str, Any]] = None
     embedding: Optional[list[float]] = None  # For MMR computation
@@ -162,6 +163,18 @@ class RAGQueryRequest(BaseModel):
     enable_adaptive_threshold: bool = True
     enable_bm25: bool = True
     enable_mmr: bool = True
+    enable_feedback_boost: bool = True  # Apply user feedback relevance boosts
+    enable_temporal_reasoning: bool = True  # Apply temporal decay and filtering
+
+
+class TemporalInfo(BaseModel):
+    """Temporal query information for response."""
+    has_temporal_reference: bool = False
+    time_frame: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    temporal_keywords: list[str] = Field(default_factory=list)
+    decay_applied: bool = False
 
 
 class RAGQueryResponse(BaseModel):
@@ -175,6 +188,9 @@ class RAGQueryResponse(BaseModel):
     adaptive_threshold_used: Optional[float] = None  # Actual threshold used
     bm25_enabled: bool = False
     mmr_applied: bool = False
+    feedback_boosts_applied: bool = False  # Whether user feedback boosts were applied
+    temporal_info: Optional[TemporalInfo] = None  # Temporal reasoning info
+    temporal_filtering_applied: bool = False  # Whether results were time-filtered
 
 
 class DocumentUploadRequest(BaseModel):
@@ -244,6 +260,14 @@ class RAGSettings(BaseModel):
     graph_weight: float = 0.2
     enable_mmr: bool = True
     mmr_lambda: float = 0.7
+
+    # HNSW index settings (pgvector approximate nearest neighbor)
+    # m: Number of bi-directional links per node (higher = better recall, more memory)
+    # ef_construction: Size of dynamic candidate list during build (higher = better quality)
+    # ef_search: Size of dynamic candidate list during search (higher = better recall, slower)
+    hnsw_m: int = 16  # Default for 10K-100K documents
+    hnsw_ef_construction: int = 64  # Balance between build time and quality
+    hnsw_ef_search: int = 40  # Fast default, increase for better recall
 
     # Graphiti settings
     graphiti_neo4j_uri: Optional[str] = None

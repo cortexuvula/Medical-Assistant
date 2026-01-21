@@ -12,13 +12,28 @@ Features:
 """
 
 import logging
+import os
+import pathlib
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional
 
+from dotenv import load_dotenv
+
 from src.utils.timeout_config import get_timeout
+
+# Load environment variables from .env file
+_root_env = pathlib.Path(__file__).parent.parent.parent / '.env'
+if _root_env.exists():
+    load_dotenv(dotenv_path=str(_root_env))
+else:
+    try:
+        from managers.data_folder_manager import data_folder_manager
+        load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 

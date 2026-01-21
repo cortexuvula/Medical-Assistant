@@ -41,7 +41,13 @@ else:
 
 
 class RagProcessor:
-    """Processes RAG queries via N8N webhook with security validation"""
+    """Processes RAG queries via N8N webhook with security validation.
+
+    Supports three modes:
+    1. Local RAG with streaming - Progressive result display with cancellation
+    2. Local RAG (legacy) - Blocking search
+    3. N8N webhook mode - External RAG system
+    """
 
     # Allowed URL schemes for webhook
     ALLOWED_SCHEMES = {'https', 'http'}
@@ -96,6 +102,11 @@ class RagProcessor:
         self.neon_database_url = os.getenv("NEON_DATABASE_URL")
         self.use_local_rag = bool(self.neon_database_url)
         self._hybrid_retriever = None
+        self._streaming_retriever = None
+
+        # Streaming and cancellation support
+        self._current_cancellation_token = None
+        self._use_streaming = True  # Enable streaming by default for local RAG
 
         if self.use_local_rag:
             logger.info("Local RAG mode enabled (Neon database configured)")
@@ -127,6 +138,19 @@ class RagProcessor:
         self._max_history_length = 5  # Keep last 5 exchanges
         self._last_query_topics = []  # Key topics from last successful query
 
+        # New conversation management components
+        self._conversation_manager = None
+        self._feedback_manager = None
+        self._use_semantic_followup = True  # Use new semantic detection
+
+        # Store last search results for feedback association
+        self._last_search_results = []  # List of HybridSearchResult objects
+        self._last_query_text = ""  # Query that produced the results
+
+        # Store conversation exchanges for export functionality
+        self._conversation_exchanges = []  # List of exchange dicts with query, response, sources
+        self._max_exchanges = 100  # Maximum exchanges to store
+
         # Get N8N webhook configuration from environment
         raw_url = os.getenv("N8N_URL")
         self.n8n_auth_header = os.getenv("N8N_AUTHORIZATION_SECRET")
@@ -156,6 +180,79 @@ class RagProcessor:
                 logger.error(f"Failed to initialize hybrid retriever: {e}")
                 return None
         return self._hybrid_retriever
+
+    def _get_streaming_retriever(self):
+        """Get or create streaming retriever for local RAG mode."""
+        if self._streaming_retriever is None:
+            try:
+                from src.rag.streaming_retriever import get_streaming_retriever
+                self._streaming_retriever = get_streaming_retriever()
+            except Exception as e:
+                logger.error(f"Failed to initialize streaming retriever: {e}")
+                return None
+        return self._streaming_retriever
+
+    def _get_conversation_manager(self):
+        """Get or create conversation manager for semantic context handling."""
+        if self._conversation_manager is None:
+            try:
+                from src.rag.conversation_manager import get_conversation_manager
+                from src.rag.followup_detector import get_followup_detector
+                from src.rag.conversation_summarizer import get_conversation_summarizer
+                from src.rag.medical_ner import get_ner_extractor
+
+                # Initialize components
+                detector = get_followup_detector()
+                summarizer = get_conversation_summarizer()
+                ner = get_ner_extractor()
+
+                self._conversation_manager = get_conversation_manager(
+                    followup_detector=detector,
+                    summarizer=summarizer,
+                    entity_extractor=ner,
+                )
+                logger.info("Conversation manager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize conversation manager: {e}")
+                return None
+        return self._conversation_manager
+
+    def _get_feedback_manager(self):
+        """Get or create feedback manager for user feedback handling."""
+        if self._feedback_manager is None:
+            try:
+                from src.rag.feedback_manager import get_feedback_manager
+                self._feedback_manager = get_feedback_manager()
+                logger.info("Feedback manager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize feedback manager: {e}")
+                return None
+        return self._feedback_manager
+
+    def cancel_current_query(self) -> bool:
+        """Cancel the currently running query if any.
+
+        Returns:
+            True if a query was cancelled, False if nothing to cancel
+        """
+        if self._current_cancellation_token:
+            self._current_cancellation_token.cancel("User cancelled query")
+            logger.info("Query cancellation requested")
+            return True
+        return False
+
+    @property
+    def can_cancel(self) -> bool:
+        """Check if there's a cancellable query in progress.
+
+        Returns:
+            True if a query can be cancelled
+        """
+        return (
+            self.is_processing and
+            self._current_cancellation_token is not None and
+            not self._current_cancellation_token.is_cancelled
+        )
 
     def _show_typing_indicator(self, indicator_type: str = 'search'):
         """Show animated typing indicator in RAG text widget.
@@ -429,18 +526,91 @@ class RagProcessor:
         if len(self._conversation_history) > self._max_history_length:
             self._conversation_history = self._conversation_history[-self._max_history_length:]
 
-    def _process_query_with_context(self, user_message: str) -> str:
+    def _update_conversation_after_search(
+        self,
+        query: str,
+        response,
+        is_followup: bool = False,
+        confidence: float = 0.0,
+        intent_type: str = "new_topic"
+    ):
+        """Update conversation context after a successful search.
+
+        Uses the new conversation manager if available, otherwise falls back
+        to legacy history management.
+
+        Args:
+            query: The original user query
+            response: RAGQueryResponse from the search
+            is_followup: Whether this was detected as a follow-up
+            confidence: Confidence score of follow-up detection
+            intent_type: Intent classification
+        """
+        # Get response summary for context
+        response_summary = ""
+        if response.results:
+            # Create brief summary from top results
+            summaries = []
+            for r in response.results[:3]:
+                preview = r.chunk_text[:100] if r.chunk_text else ""
+                summaries.append(f"{r.document_filename}: {preview}...")
+            response_summary = " ".join(summaries)
+
+        # Try to use new conversation manager
+        if self._use_semantic_followup:
+            manager = self._get_conversation_manager()
+            if manager:
+                try:
+                    session_id = getattr(self, 'session_id', 'default')
+                    manager.update_after_response(
+                        session_id=session_id,
+                        query=query,
+                        response=response_summary,
+                        is_followup=is_followup,
+                        followup_confidence=confidence,
+                        intent_type=intent_type,
+                    )
+                    return
+                except Exception as e:
+                    logger.warning(f"Conversation manager update failed: {e}")
+
+        # Fallback to legacy history
+        self._update_conversation_history(query, response_summary)
+
+    def _process_query_with_context(self, user_message: str, query_embedding: list[float] = None) -> tuple[str, bool, float, str]:
         """Process a query, enhancing with context if it's a follow-up.
+
+        Uses semantic follow-up detection when available, falls back to
+        pattern-based detection otherwise.
 
         Args:
             user_message: The user's original message
+            query_embedding: Optional query embedding for semantic similarity
 
         Returns:
-            The query to use for search (possibly enhanced)
+            Tuple of (enhanced_query, is_followup, confidence, intent_type)
         """
-        if self._is_followup_question(user_message):
-            return self._enhance_query_with_context(user_message)
-        return user_message
+        # Try to use new semantic conversation manager
+        if self._use_semantic_followup:
+            manager = self._get_conversation_manager()
+            if manager:
+                try:
+                    session_id = getattr(self, 'session_id', 'default')
+                    enhanced_query, is_followup, confidence, intent_type = manager.process_query(
+                        session_id=session_id,
+                        query=user_message,
+                        query_embedding=query_embedding,
+                    )
+                    return enhanced_query, is_followup, confidence, intent_type
+                except Exception as e:
+                    logger.warning(f"Semantic follow-up detection failed: {e}")
+
+        # Fallback to legacy pattern-based detection
+        is_followup = self._is_followup_question(user_message)
+        if is_followup:
+            enhanced_query = self._enhance_query_with_context(user_message)
+            return enhanced_query, True, 0.7, "followup"
+        return user_message, False, 0.0, "new_topic"
 
     def is_local_rag_available(self) -> bool:
         """Check if local RAG mode is available and configured.
@@ -596,11 +766,19 @@ class RagProcessor:
 
         # Run processing in a separate thread to avoid blocking UI
         if rag_mode == "local":
-            thread = threading.Thread(
-                target=self._process_message_local,
-                args=(user_message, callback),
-                daemon=True
-            )
+            # Use streaming for local RAG mode
+            if self._use_streaming:
+                thread = threading.Thread(
+                    target=self._process_message_streaming,
+                    args=(user_message, callback),
+                    daemon=True
+                )
+            else:
+                thread = threading.Thread(
+                    target=self._process_message_local,
+                    args=(user_message, callback),
+                    daemon=True
+                )
         else:
             thread = threading.Thread(
                 target=self._process_message_async,
@@ -633,8 +811,8 @@ class RagProcessor:
                 return
 
             # Enhance query with context if it's a follow-up question
-            search_query = self._process_query_with_context(user_message)
-            logger.info(f"Processing local RAG query: {search_query[:100]}...")
+            search_query, is_followup, confidence, intent_type = self._process_query_with_context(user_message)
+            logger.info(f"Processing local RAG query: {search_query[:100]}... (followup={is_followup}, intent={intent_type})")
 
             # Perform hybrid search
             from src.rag.models import RAGQueryRequest
@@ -655,8 +833,8 @@ class RagProcessor:
                     "for your query. Try uploading more documents or rephrasing your question."
                 )
             else:
-                # Update conversation history with original query and successful search
-                self._update_conversation_history(user_message, "")
+                # Update conversation context with original query
+                self._update_conversation_after_search(user_message, response, is_followup, confidence, intent_type)
 
                 # Update indicator to show we're generating the response
                 self._show_typing_indicator('generate')
@@ -683,6 +861,135 @@ class RagProcessor:
             if callback:
                 self.app.after(0, callback)
 
+    def _process_message_streaming(self, user_message: str, callback: Optional[Callable]):
+        """Process RAG query with streaming results and cancellation support.
+
+        Uses parallel search execution for faster response times and
+        progressive result display.
+
+        Args:
+            user_message: The user's query
+            callback: Optional callback when processing is complete
+        """
+        from src.rag.streaming_models import (
+            CancellationError,
+            CancellationToken,
+            StreamEvent,
+            StreamEventType,
+            StreamingSearchRequest,
+        )
+
+        try:
+            self.is_processing = True
+
+            # Create cancellation token for this query
+            self._current_cancellation_token = CancellationToken()
+
+            # Add user message to RAG tab
+            self._add_message_to_rag_tab("User", user_message)
+
+            # Show search progress indicator
+            self._show_typing_indicator('search')
+
+            # Get streaming retriever
+            retriever = self._get_streaming_retriever()
+            if not retriever:
+                self._hide_typing_indicator()
+                self._display_error("Failed to initialize streaming RAG retriever.")
+                return
+
+            # Enhance query with context if it's a follow-up question
+            search_query, is_followup, confidence, intent_type = self._process_query_with_context(user_message)
+            logger.info(f"Processing streaming RAG query: {search_query[:100]}... (followup={is_followup}, intent={intent_type})")
+
+            # Create streaming search request
+            request = StreamingSearchRequest(
+                query=search_query,
+                top_k=5,
+                use_graph_search=True,
+                similarity_threshold=0.3,
+            )
+
+            # Define thread-safe callback for stream events
+            def handle_stream_event(event: StreamEvent):
+                """Handle streaming events (called from worker thread)."""
+                try:
+                    # Update UI from main thread using app.after()
+                    if event.event_type == StreamEventType.PROGRESS:
+                        self.app.after(0, lambda: self._update_progress_message(event.message))
+                    elif event.event_type == StreamEventType.VECTOR_RESULTS:
+                        self.app.after(0, lambda: self._show_typing_indicator('search'))
+                    elif event.event_type == StreamEventType.SEARCH_COMPLETE:
+                        self.app.after(0, lambda: self._show_typing_indicator('generate'))
+                    elif event.event_type == StreamEventType.ERROR:
+                        logger.error(f"Stream error: {event.message}")
+                    elif event.event_type == StreamEventType.CANCELLED:
+                        logger.info(f"Stream cancelled: {event.message}")
+                except Exception as e:
+                    logger.debug(f"Error handling stream event: {e}")
+
+            # Perform streaming hybrid search
+            response = retriever.search_streaming(
+                request,
+                handle_stream_event,
+                self._current_cancellation_token,
+            )
+
+            if not response.results:
+                self._hide_typing_indicator()
+                output = (
+                    "I couldn't find any relevant information in the document database "
+                    "for your query. Try uploading more documents or rephrasing your question."
+                )
+            else:
+                # Update conversation context with original query
+                self._update_conversation_after_search(user_message, response, is_followup, confidence, intent_type)
+
+                # Generate AI response using retrieved context
+                output = self._generate_rag_response(user_message, response)
+
+            # Hide indicator and add response
+            self._hide_typing_indicator()
+            self._add_message_to_rag_tab("RAG Assistant", output)
+
+            logger.info(
+                f"Streaming RAG query completed: {response.total_results} results "
+                f"in {response.processing_time_ms:.0f}ms"
+            )
+
+        except CancellationError as e:
+            logger.info(f"RAG query cancelled: {e}")
+            self._hide_typing_indicator()
+            self._add_message_to_rag_tab("System", "Search cancelled.")
+
+        except Exception as e:
+            error_msg = f"Error processing streaming RAG query: {str(e)}"
+            logger.error(error_msg)
+            self._hide_typing_indicator()
+            self._display_error(error_msg)
+
+        finally:
+            self._hide_typing_indicator()
+            self.is_processing = False
+            self._current_cancellation_token = None
+            if callback:
+                self.app.after(0, callback)
+
+    def _update_progress_message(self, message: str):
+        """Update progress message in the typing indicator.
+
+        Args:
+            message: Progress message to display
+        """
+        # This is called from the main thread
+        try:
+            if hasattr(self.app, 'rag_text') and self._typing_indicator_mark:
+                # The typing indicator animation already handles the display
+                # Just log the progress for now
+                logger.debug(f"RAG progress: {message}")
+        except Exception as e:
+            logger.debug(f"Error updating progress message: {e}")
+
     def _generate_rag_response(self, query: str, response) -> str:
         """Generate AI response using retrieved document context.
 
@@ -695,6 +1002,10 @@ class RagProcessor:
         """
         from ai.ai import call_openai
         from settings.settings_manager import settings_manager
+
+        # Store results for feedback association
+        self._last_search_results = response.results if response else []
+        self._last_query_text = query
 
         # Build context from retrieved documents
         context_parts = []
@@ -758,6 +1069,24 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             sources_list = "\n".join(f"- {s}" for s in sources)
             response_text += f"\n\n---\n**Sources:**\n{sources_list}\n\n*Search completed in {response.processing_time_ms:.0f}ms*"
 
+            # Store exchange for export functionality
+            source_data = []
+            for result in response.results:
+                source_data.append({
+                    "document": result.document_filename,
+                    "chunk_text": result.chunk_text[:200] + "..." if len(result.chunk_text) > 200 else result.chunk_text,
+                    "score": result.combined_score,
+                    "document_id": result.document_id,
+                    "chunk_index": result.chunk_index
+                })
+
+            self._store_exchange(
+                query=query,
+                response=response_text,
+                sources=source_data,
+                processing_time_ms=response.processing_time_ms
+            )
+
             return response_text
 
         except Exception as e:
@@ -815,7 +1144,8 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             self._show_typing_indicator('search')
 
             # Enhance query with context if it's a follow-up question
-            search_query = self._process_query_with_context(user_message)
+            search_query, is_followup, confidence, intent_type = self._process_query_with_context(user_message)
+            logger.info(f"Processing N8N RAG query: followup={is_followup}, intent={intent_type}")
 
             # Make request to N8N webhook
             try:
@@ -943,13 +1273,17 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                 response_start = self.app.rag_text.index("end-1c")
                 self._render_markdown(message)
                 response_end = self.app.rag_text.index("end-1c")
-                
+
                 # Add copy button
                 self._add_copy_button(message)
+
+                # Add feedback buttons for each source (if results available)
+                if self._last_search_results:
+                    self._add_feedback_buttons()
             else:
                 # Insert plain message for user messages
                 self.app.rag_text.insert("end", f"{message}\n\n", "message")
-            
+
             # Add separator
             self.app.rag_text.insert("end", "-" * 50 + "\n\n")
             
@@ -1120,7 +1454,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             self.app.clipboard_clear()
             self.app.clipboard_append(text)
             self.app.update()  # Required to finalize clipboard operation
-            
+
             # Show brief success message
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.success("Response copied to clipboard")
@@ -1129,16 +1463,194 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             logger.error(f"Failed to copy to clipboard: {e}")
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.error("Failed to copy response")
+
+    def _add_feedback_buttons(self):
+        """Add feedback buttons for each source in the search results."""
+        import tkinter as tk
+        import ttkbootstrap as ttk
+
+        if not self._last_search_results:
+            return
+
+        try:
+            from src.ui.components.rag_feedback_buttons import RAGFeedbackButtons
+
+            # Add a label for the feedback section
+            self.app.rag_text.insert("end", "\n**Rate these sources:**\n", "feedback_header")
+            self.app.rag_text.tag_config("feedback_header", font=("Arial", 9, "bold"))
+
+            # Create feedback buttons for each result (up to 5)
+            for i, result in enumerate(self._last_search_results[:5]):
+                doc_id = result.document_id
+                chunk_idx = result.chunk_index
+                filename = result.document_filename
+
+                # Create container frame
+                feedback_frame = ttk.Frame(self.app.rag_text)
+
+                # Source label
+                source_label = ttk.Label(
+                    feedback_frame,
+                    text=f"Source {i+1}: {filename[:30]}{'...' if len(filename) > 30 else ''}",
+                    font=("Arial", 9)
+                )
+                source_label.pack(side=tk.LEFT, padx=(0, 10))
+
+                # Create feedback button component
+                feedback_buttons = RAGFeedbackButtons(
+                    on_feedback=self._handle_result_feedback,
+                    show_flag=True,
+                    compact=True
+                )
+
+                # Create buttons for this result
+                buttons_frame = feedback_buttons.create_buttons(
+                    feedback_frame,
+                    doc_id,
+                    chunk_idx
+                )
+                buttons_frame.pack(side=tk.LEFT)
+
+                # Insert into text widget
+                self.app.rag_text.window_create("end", window=feedback_frame)
+                self.app.rag_text.insert("end", "\n")
+
+            self.app.rag_text.insert("end", "\n")
+
+        except ImportError as e:
+            logger.debug(f"Feedback buttons not available: {e}")
+        except Exception as e:
+            logger.error(f"Error adding feedback buttons: {e}")
+
+    def _handle_result_feedback(self, document_id: str, chunk_index: int, feedback_type: str):
+        """Handle feedback button click for a search result.
+
+        Args:
+            document_id: Document identifier
+            chunk_index: Chunk index within document
+            feedback_type: Type of feedback ('upvote', 'downvote', 'flag', or 'remove')
+        """
+        try:
+            if feedback_type == "remove":
+                # Remove feedback
+                feedback_manager = self._get_feedback_manager()
+                if feedback_manager:
+                    # Get session ID for removal
+                    session_id = getattr(self.app, 'session_id', 'default_session')
+                    feedback_manager.remove_feedback(document_id, chunk_index, session_id)
+                    logger.info(f"Removed feedback for {document_id}:{chunk_index}")
+            else:
+                # Record new feedback
+                result = self.record_result_feedback(
+                    document_id=document_id,
+                    chunk_index=chunk_index,
+                    feedback_type=feedback_type,
+                    query_text=self._last_query_text,
+                    original_score=self._get_result_score(document_id, chunk_index)
+                )
+                if result:
+                    logger.info(f"Recorded {feedback_type} for {document_id}:{chunk_index}")
+
+                    # Show brief status message
+                    if hasattr(self.app, 'status_manager'):
+                        feedback_labels = {
+                            'upvote': 'Marked as helpful',
+                            'downvote': 'Marked as not helpful',
+                            'flag': 'Flagged for review'
+                        }
+                        self.app.status_manager.info(feedback_labels.get(feedback_type, 'Feedback recorded'))
+
+        except Exception as e:
+            logger.error(f"Error handling feedback: {e}")
+
+    def _get_result_score(self, document_id: str, chunk_index: int) -> float:
+        """Get the original score for a result.
+
+        Args:
+            document_id: Document identifier
+            chunk_index: Chunk index
+
+        Returns:
+            Combined score from the search result, or 0.0 if not found
+        """
+        for result in self._last_search_results:
+            if result.document_id == document_id and result.chunk_index == chunk_index:
+                return result.combined_score
+        return 0.0
         
     def _display_error(self, error_message: str):
         """Display an error message in the RAG tab."""
         self._add_message_to_rag_tab("System Error", error_message)
         
+    def record_result_feedback(
+        self,
+        document_id: str,
+        chunk_index: int,
+        feedback_type: str,
+        query_text: str = "",
+        original_score: float = 0.0
+    ) -> bool:
+        """Record user feedback on a search result.
+
+        Args:
+            document_id: Document identifier
+            chunk_index: Chunk index within document
+            feedback_type: Type of feedback ('upvote', 'downvote', 'flag', 'remove')
+            query_text: The query that produced this result
+            original_score: Original relevance score
+
+        Returns:
+            True if feedback was recorded successfully
+        """
+        manager = self._get_feedback_manager()
+        if not manager:
+            logger.warning("Feedback manager not available")
+            return False
+
+        try:
+            session_id = getattr(self, 'session_id', 'default')
+
+            if feedback_type == "remove":
+                # Remove previous feedback
+                return manager.remove_feedback(document_id, chunk_index, session_id)
+            else:
+                # Record new feedback
+                from src.rag.feedback_manager import FeedbackType
+                fb_type = FeedbackType(feedback_type)
+                return manager.record_feedback(
+                    document_id=document_id,
+                    chunk_index=chunk_index,
+                    feedback_type=fb_type,
+                    query_text=query_text,
+                    session_id=session_id,
+                    original_score=original_score,
+                )
+        except Exception as e:
+            logger.error(f"Failed to record feedback: {e}")
+            return False
+
     def clear_history(self):
         """Clear the RAG conversation history."""
         # Clear conversation context for follow-up queries
         self._conversation_history = []
         self._last_query_topics = []
+
+        # Clear conversation exchanges for export
+        self._conversation_exchanges = []
+
+        # Clear last search results
+        self._last_search_results = []
+        self._last_query_text = ""
+
+        # Also clear conversation manager session if available
+        if self._use_semantic_followup:
+            manager = self._get_conversation_manager()
+            if manager:
+                try:
+                    session_id = getattr(self, 'session_id', 'default')
+                    manager.clear_session(session_id)
+                except Exception as e:
+                    logger.warning(f"Failed to clear conversation manager session: {e}")
 
         if hasattr(self.app, 'rag_text'):
             def clear_ui():
@@ -1155,5 +1667,136 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                 # Configure initial styling
                 self.app.rag_text.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
                 self.app.rag_text.tag_add("welcome", "1.0", "9.end")
-                
+
             self.app.after(0, clear_ui)
+
+    # -------------------------------------------------------------------------
+    # Export and Attribution Methods
+    # -------------------------------------------------------------------------
+
+    def _store_exchange(
+        self,
+        query: str,
+        response: str,
+        sources: list = None,
+        query_expansion: dict = None,
+        processing_time_ms: float = 0.0
+    ):
+        """Store a conversation exchange for export functionality.
+
+        Args:
+            query: The user's query
+            response: The AI-generated response
+            sources: List of source dictionaries with document info
+            query_expansion: Query expansion details if any
+            processing_time_ms: Processing time in milliseconds
+        """
+        exchange = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "response": response,
+            "sources": sources or [],
+            "query_expansion": query_expansion,
+            "processing_time_ms": processing_time_ms
+        }
+
+        self._conversation_exchanges.append(exchange)
+
+        # Trim if too long
+        if len(self._conversation_exchanges) > self._max_exchanges:
+            self._conversation_exchanges = self._conversation_exchanges[-self._max_exchanges:]
+
+    def get_conversation_export_data(self) -> dict:
+        """Get conversation data formatted for export.
+
+        Returns:
+            Dictionary with session info and exchanges ready for export
+        """
+        session_id = getattr(self, 'session_id', str(uuid.uuid4()))
+
+        # Calculate metadata
+        total_queries = len(self._conversation_exchanges)
+        documents_searched = set()
+        for exchange in self._conversation_exchanges:
+            for source in exchange.get("sources", []):
+                doc_name = source.get("document", source.get("document_filename", ""))
+                if doc_name:
+                    documents_searched.add(doc_name)
+
+        return {
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+            "exchanges": self._conversation_exchanges,
+            "metadata": {
+                "total_queries": total_queries,
+                "documents_searched": len(documents_searched),
+                "rag_mode": self.get_rag_mode(),
+                "export_timestamp": datetime.now().isoformat()
+            }
+        }
+
+    def get_recent_queries(self, limit: int = 10) -> list[str]:
+        """Get recent queries for autocomplete suggestions.
+
+        Args:
+            limit: Maximum number of queries to return
+
+        Returns:
+            List of recent query strings (most recent first)
+        """
+        queries = []
+        for exchange in reversed(self._conversation_exchanges):
+            query = exchange.get("query", "")
+            if query and query not in queries:
+                queries.append(query)
+                if len(queries) >= limit:
+                    break
+
+        # Also add from conversation history if not enough
+        for query, _ in reversed(self._conversation_history):
+            if query and query not in queries:
+                queries.append(query)
+                if len(queries) >= limit:
+                    break
+
+        return queries[:limit]
+
+    def get_source_attributions(self) -> list:
+        """Get source attributions from the last search for highlighting.
+
+        Returns:
+            List of SourceAttribution-compatible dictionaries
+        """
+        if not self._last_search_results:
+            return []
+
+        attributions = []
+        for i, result in enumerate(self._last_search_results):
+            attribution = {
+                "source_index": i,
+                "document_id": getattr(result, 'document_id', ''),
+                "document_name": getattr(result, 'document_filename', 'Unknown'),
+                "chunk_index": getattr(result, 'chunk_index', 0),
+                "chunk_text": getattr(result, 'chunk_text', ''),
+                "page_number": result.metadata.get('page_number') if getattr(result, 'metadata', None) else None,
+                "score": getattr(result, 'combined_score', 0.0)
+            }
+            attributions.append(attribution)
+
+        return attributions
+
+    def get_last_search_results(self) -> list:
+        """Get the last search results for UI display.
+
+        Returns:
+            List of HybridSearchResult objects from the last query
+        """
+        return self._last_search_results
+
+    def get_last_query(self) -> str:
+        """Get the last query text.
+
+        Returns:
+            The last query string or empty string
+        """
+        return self._last_query_text

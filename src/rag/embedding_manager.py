@@ -15,10 +15,26 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
+import pathlib
 import time
 from typing import Optional
 
+from dotenv import load_dotenv
+
 from src.rag.models import EmbeddingRequest, EmbeddingResponse
+
+# Load environment variables from .env file
+# Try loading from root .env first, then fall back to AppData .env
+_root_env = pathlib.Path(__file__).parent.parent.parent / '.env'
+if _root_env.exists():
+    load_dotenv(dotenv_path=str(_root_env))
+else:
+    try:
+        from managers.data_folder_manager import data_folder_manager
+        load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
+    except Exception:
+        pass  # data_folder_manager not available yet
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +81,6 @@ class EmbeddingManager:
                 self._client = OpenAI(api_key=self._api_key)
             else:
                 # Try to get from environment or settings
-                import os
                 api_key = os.environ.get("OPENAI_API_KEY")
 
                 if not api_key:
