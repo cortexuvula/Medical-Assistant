@@ -109,6 +109,25 @@ a = Analysis(
         'PIL._tkinter_finder',
         'PIL._imagingtk',
         'PIL.ImageTk',
+        # PostgreSQL driver for Neon RAG
+        'psycopg',
+        'psycopg.adapt',
+        'psycopg.copy',
+        'psycopg.cursor',
+        'psycopg.errors',
+        'psycopg.pq',
+        'psycopg.rows',
+        'psycopg.sql',
+        'psycopg.types',
+        'psycopg.types.json',
+        'psycopg.types.numeric',
+        'psycopg._dns',
+        'psycopg._compat',
+        'psycopg_pool',
+        'psycopg_binary',
+        # pgvector for PostgreSQL vector operations
+        'pgvector',
+        'pgvector.psycopg',
     ] + internal_hiddenimports,  # Add all internal modules collected above
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
