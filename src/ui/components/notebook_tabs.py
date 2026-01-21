@@ -143,6 +143,16 @@ class NotebookTabs:
                 library_btn.pack(side=tk.LEFT, padx=(0, 5))
                 self.components['rag_library_button'] = library_btn
 
+                # Knowledge Graph button
+                graph_btn = ttk.Button(
+                    left_buttons,
+                    text="Knowledge Graph",
+                    command=lambda: self._show_knowledge_graph_dialog(),
+                    bootstyle="warning"
+                )
+                graph_btn.pack(side=tk.LEFT, padx=(0, 5))
+                self.components['rag_graph_button'] = graph_btn
+
                 # Document count label
                 self.rag_doc_count_label = ttk.Label(
                     left_buttons,
@@ -735,6 +745,21 @@ class NotebookTabs:
             logger.error(f"Error showing RAG library dialog: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open document library: {e}")
+
+    def _show_knowledge_graph_dialog(self):
+        """Show the knowledge graph visualization dialog."""
+        try:
+            from src.ui.dialogs.knowledge_graph_dialog import KnowledgeGraphDialog
+            from src.rag.graphiti_client import get_graphiti_client
+
+            graphiti = get_graphiti_client()
+            dialog = KnowledgeGraphDialog(self.parent, graphiti_client=graphiti)
+            dialog.wait_window()
+
+        except Exception as e:
+            logger.error(f"Error showing knowledge graph dialog: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error(f"Failed to open knowledge graph: {e}")
 
     def _update_rag_document_count(self):
         """Update the RAG document count label."""

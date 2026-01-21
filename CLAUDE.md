@@ -121,6 +121,78 @@ The RAG tab provides document search capabilities through N8N webhook integratio
 - Copy buttons for each assistant response
 - Welcome message with usage instructions
 
+## Knowledge Graph Visualization Implementation Summary
+
+The Knowledge Graph feature provides an interactive visualization of entities and relationships extracted from documents in the Neo4j knowledge graph:
+
+### Architecture
+- **GraphDataProvider**: Data models and Neo4j query layer in `src/rag/graph_data_provider.py`
+- **GraphCanvas**: Custom Tkinter Canvas widget in `src/ui/components/graph_canvas.py`
+- **KnowledgeGraphDialog**: Main dialog in `src/ui/dialogs/knowledge_graph_dialog.py`
+- **Integration**: Accessible via "Knowledge Graph" button in RAG tab
+
+### Key Features
+- **Interactive Visualization**: Pan, zoom, drag nodes, click to select
+- **Entity Type Coloring**: Color-coded nodes by type (Medication=blue, Condition=red, etc.)
+- **NetworkX Layout**: Spring layout for node positioning
+- **Search & Filter**: Search nodes by name, filter by entity type
+- **Node Details Panel**: Shows selected node's properties and related facts
+- **Legend**: Visual legend showing entity type colors
+
+### Data Models
+```python
+class EntityType(str, Enum):
+    MEDICATION = "medication"
+    CONDITION = "condition"
+    SYMPTOM = "symptom"
+    PROCEDURE = "procedure"
+    LAB_TEST = "lab_test"
+    ANATOMY = "anatomy"
+    DOCUMENT = "document"
+    EPISODE = "episode"
+    ENTITY = "entity"
+    UNKNOWN = "unknown"
+
+@dataclass
+class GraphNode:
+    id: str
+    name: str
+    entity_type: EntityType
+    properties: dict
+    x: float  # Canvas position
+    y: float
+
+@dataclass
+class GraphEdge:
+    id: str
+    source_id: str
+    target_id: str
+    relationship_type: str
+    fact: str
+```
+
+### UI Components
+- **Toolbar**: Search, filter dropdown, zoom controls (+/-/Fit), refresh button
+- **Canvas**: Interactive graph visualization with nodes and edges
+- **Details Panel**: Node name, type, connection count, related facts
+- **Status Bar**: Legend and node/edge counts
+
+### Implementation Details
+- **Neo4j Queries**: Fetches EntityNode and EpisodicNode nodes with relationships
+- **Layout Calculation**: Uses NetworkX spring_layout with fallback to circular layout
+- **Performance**: Default limit of 500 nodes for responsive visualization
+- **Threading**: Loads data in background thread to prevent UI blocking
+- **Error Handling**: Graceful handling of missing Neo4j connection
+
+### Keyboard/Mouse Controls
+| Action | Control |
+|--------|---------|
+| Select node | Click on node |
+| Drag node | Click and drag node |
+| Pan view | Click and drag empty space |
+| Zoom | Mousewheel |
+| Fit to view | Click "Fit" button |
+
 ## Bidirectional Translation Implementation Summary
 
 The bidirectional translation assistant enables real-time medical translation for multilingual consultations:
@@ -518,6 +590,9 @@ pip install -r requirements-dev.txt  # For development/testing
 14. **src/ai/rag_processor.py**: RAG tab N8N webhook integration
 15. **src/ui/dialogs/unified_settings_dialog.py**: Unified Preferences dialog with 6 tabs
 16. **src/ui/menu_manager.py**: Settings menu organization and creation
+17. **src/rag/graph_data_provider.py**: Knowledge graph data models and Neo4j queries
+18. **src/ui/components/graph_canvas.py**: Interactive graph canvas widget
+19. **src/ui/dialogs/knowledge_graph_dialog.py**: Knowledge graph visualization dialog
 
 ## Common Development Tasks
 
@@ -600,8 +675,15 @@ All source code is now organized under the `src/` directory:
   - `document_generators.py` - Handles all document generation including agent tasks
 - `src/settings/` - Settings management
 - `src/stt_providers/` - Speech-to-text providers
+- `src/rag/` - RAG document management and knowledge graph
+  - `models.py` - Pydantic models for RAG documents
+  - `graphiti_client.py` - Neo4j/Graphiti integration
+  - `graph_data_provider.py` - Knowledge graph data models and queries
 - `src/ui/` - User interface components
   - `menu_manager.py` - Application menu bar with organized submenus
+  - `components/` - Reusable UI components
+    - `notebook_tabs.py` - Main notebook tabs (Transcript, SOAP, Referral, etc.)
+    - `graph_canvas.py` - Interactive knowledge graph canvas widget
   - `dialogs/` - All dialog windows
     - `unified_settings_dialog.py` - Tabbed Preferences dialog (Ctrl+,)
     - `medication_analysis_dialog.py` - Medication analysis options
@@ -610,6 +692,7 @@ All source code is now organized under the `src/` directory:
     - `canned_responses_dialog.py` - Manage translation quick responses
     - `workflow_dialog.py` - Clinical workflow selection
     - `workflow_results_dialog.py` - Interactive workflow tracking
+    - `knowledge_graph_dialog.py` - Knowledge graph visualization
 - `src/utils/` - Utility functions and helpers
 - `src/translation/` - Translation providers
   - `base.py` - Base translation provider class
