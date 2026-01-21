@@ -41,6 +41,15 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     "groq": 60.0,             # Groq Whisper STT (fast)
     "elevenlabs": 90.0,       # ElevenLabs STT
 
+    # Neo4j/Knowledge Graph timeouts
+    "neo4j": 30.0,            # Neo4j operations (reduced from 300s)
+    "neo4j_connect": 5.0,     # Neo4j connection timeout
+    "graphiti": 30.0,         # Graphiti knowledge graph operations
+
+    # Embedding API timeouts
+    "embedding": 60.0,        # Embedding generation
+    "embedding_batch": 120.0, # Large batch embedding
+
     # Other service timeouts
     "rag": 30.0,              # RAG/N8N webhook calls
     "stt": 120.0,             # Generic speech-to-text transcription

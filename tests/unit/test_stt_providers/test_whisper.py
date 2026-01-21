@@ -61,7 +61,8 @@ class TestWhisperProvider:
             assert provider.api_key == ""  # Whisper doesn't use API key
             assert provider.language == "es-ES"
             assert provider.is_available is True
-            assert isinstance(provider.logger, logging.Logger)
+            # Logger might be a StructuredLogger or standard Logger
+            assert hasattr(provider.logger, 'info') and hasattr(provider.logger, 'error')
     
     def test_initialization_without_whisper_available(self):
         """Test provider initialization when Whisper is not available."""

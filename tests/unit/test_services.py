@@ -142,21 +142,19 @@ class TestAudioStateManager:
 
 
 class TestDocumentGenerators:
-    """Test document generator functions."""
+    """Test document generator class."""
 
     @pytest.mark.requires_audio
     def test_document_generators_import(self):
-        """Test document generators can be imported."""
+        """Test DocumentGenerators class can be imported."""
         pytest.importorskip("pydub")
         pytest.importorskip("numpy")
-        from processing.document_generators import (
-            create_soap_note_with_openai,
-            create_referral_with_openai,
-            create_letter_with_ai,
-        )
-        assert callable(create_soap_note_with_openai)
-        assert callable(create_referral_with_openai)
-        assert callable(create_letter_with_ai)
+        from processing.document_generators import DocumentGenerators
+
+        # Check that the class has the expected methods
+        assert hasattr(DocumentGenerators, 'create_soap_note')
+        assert hasattr(DocumentGenerators, 'create_referral')
+        assert hasattr(DocumentGenerators, 'create_letter')
 
 
 class TestAgentModels:

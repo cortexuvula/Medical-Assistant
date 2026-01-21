@@ -45,7 +45,8 @@ class TestGroqProvider:
 
         assert provider.api_key == "test-key"
         assert provider.language == "es-ES"
-        assert isinstance(provider.logger, logging.Logger)
+        # Logger might be a StructuredLogger or standard Logger
+        assert hasattr(provider.logger, 'info') and hasattr(provider.logger, 'error')
 
     def test_initialization_without_api_key(self):
         """Test provider initialization without API key."""

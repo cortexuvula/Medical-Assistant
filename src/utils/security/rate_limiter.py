@@ -82,6 +82,9 @@ class RateLimiter:
             STT_ELEVENLABS: (50, 60),        # 50 calls per minute
             PROVIDER_ANTHROPIC: (60, 60),    # 60 calls per minute
             PROVIDER_OLLAMA: (1000, 60),     # Local, so higher limit
+            # Embedding API rate limits (OpenAI Tier 1)
+            "openai_embeddings": (3000, 60),      # 3000 requests per minute
+            "openai_embeddings_tokens": (1000000, 60),  # 1M tokens per minute
         }
 
         # Load persisted data on startup

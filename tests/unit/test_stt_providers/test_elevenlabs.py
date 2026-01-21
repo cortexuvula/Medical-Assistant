@@ -16,6 +16,18 @@ from stt_providers.elevenlabs import ElevenLabsProvider
 class TestElevenLabsProvider:
     """Test ElevenLabs STT provider functionality."""
 
+    @pytest.fixture(autouse=True)
+    def mock_security(self):
+        """Mock security manager for all tests."""
+        with patch('utils.security_decorators.get_security_manager') as mock_security:
+            mock_sec_mgr = MagicMock()
+            mock_sec_mgr.get_api_key.return_value = "test-elevenlabs-key"
+            mock_sec_mgr.validate_api_key.return_value = (True, None)
+            mock_sec_mgr.check_rate_limit.return_value = (True, None)
+            mock_sec_mgr.generate_secure_token.return_value = "mock-token"
+            mock_security.return_value = mock_sec_mgr
+            yield mock_security
+
     @pytest.fixture
     def provider(self):
         """Create an ElevenLabs provider instance."""
@@ -64,7 +76,8 @@ class TestElevenLabsProvider:
 
         assert provider.api_key == "test-key"
         assert provider.language == "es-ES"
-        assert isinstance(provider.logger, logging.Logger)
+        # Logger can be either standard Logger or StructuredLogger
+        assert hasattr(provider.logger, 'info') and hasattr(provider.logger, 'error')
 
     def test_initialization_without_api_key(self):
         """Test provider initialization without API key."""
@@ -81,7 +94,7 @@ class TestElevenLabsProvider:
         """Test diarization support property."""
         assert provider.supports_diarization is True
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_success(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment, mock_elevenlabs_response):
         """Test successful transcription."""
@@ -114,7 +127,7 @@ class TestElevenLabsProvider:
         assert call_args[0][0] == "https://api.elevenlabs.io/v1/speech-to-text"
         assert call_args[1]["headers"]["xi-api-key"] == "test-elevenlabs-key"
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_with_diarization(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test transcription with diarization enabled."""
@@ -174,7 +187,7 @@ class TestElevenLabsProvider:
 
         assert result == ""
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_api_error(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test handling of API errors."""
@@ -197,7 +210,7 @@ class TestElevenLabsProvider:
         # Should return empty string on API error
         assert result == ""
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_network_error(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test handling of network errors."""
@@ -217,7 +230,7 @@ class TestElevenLabsProvider:
         # Should return empty string on network error
         assert result == ""
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_timeout_calculation(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test timeout calculation based on audio buffer size."""
@@ -340,7 +353,7 @@ class TestElevenLabsProvider:
         assert details['frame_rate'] == 44100
         assert details['channels'] == 1
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_with_entity_detection(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test transcription with entity detection enabled (scribe_v2 feature)."""
@@ -380,7 +393,7 @@ class TestElevenLabsProvider:
         assert call_args[1]["data"]["entity_detection"] == ["phi", "pii"]
         assert result == "Patient John Smith has diabetes"
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_with_keyterms(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test transcription with keyterms enabled (scribe_v2 feature)."""
@@ -415,7 +428,7 @@ class TestElevenLabsProvider:
         assert call_args[1]["data"]["keyterms"] == ["hypertension", "metformin", "COPD"]
         assert result == "Patient has hypertension and takes metformin"
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_transcribe_with_scribe_v2_model(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test transcription with scribe_v2 model (new default)."""
@@ -451,7 +464,7 @@ class TestElevenLabsProvider:
         assert call_args[1]["data"]["model_id"] == "scribe_v2"
         assert result == "Test with scribe v2 model"
 
-    @patch('stt_providers.elevenlabs.SETTINGS')
+    @patch('stt_providers.elevenlabs.settings_manager')
     @patch('stt_providers.elevenlabs.get_http_client_manager')
     def test_default_model_is_scribe_v2(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
         """Test that the default model is scribe_v2."""

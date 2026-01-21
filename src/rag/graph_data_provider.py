@@ -3,12 +3,21 @@ Graph data models and provider for Knowledge Graph visualization.
 
 Provides data structures and Neo4j query layer for extracting
 nodes and relationships from the Graphiti knowledge graph.
+
+Enhanced with:
+- Relationship confidence scoring
+- Evidence-based reliability metrics
+- Circuit breaker for graceful degradation
+- Driver reuse for efficiency
 """
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Optional
+
+from src.utils.timeout_config import get_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +114,11 @@ class GraphNode:
 
 @dataclass
 class GraphEdge:
-    """An edge (relationship) in the knowledge graph visualization."""
+    """An edge (relationship) in the knowledge graph visualization.
+
+    Enhanced with confidence scoring and evidence tracking for
+    weighted relationship queries.
+    """
     id: str
     source_id: str
     target_id: str
@@ -113,11 +126,217 @@ class GraphEdge:
     fact: str = ""
     properties: dict = field(default_factory=dict)
 
+    # Confidence scoring fields
+    confidence: float = 1.0  # 0.0-1.0 confidence score
+    evidence_count: int = 1  # Number of supporting documents
+    source_documents: list[str] = field(default_factory=list)
+    evidence_type: str = "inferred"  # "explicit", "inferred", "aggregated"
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+
     @property
     def display_type(self) -> str:
         """Get a display-friendly relationship type."""
         # Convert SCREAMING_SNAKE_CASE to Title Case
         return self.relationship_type.replace("_", " ").title()
+
+    @property
+    def reliability_score(self) -> float:
+        """Calculate combined reliability considering confidence and evidence.
+
+        Returns:
+            Reliability score (0.0-1.0) factoring in:
+            - Base confidence
+            - Evidence count (more sources = more reliable)
+            - Recency (newer = more reliable)
+        """
+        # More evidence = higher reliability (capped at 3 sources)
+        evidence_factor = min(1.0, self.evidence_count / 3)
+
+        # Recency boost (within last year is most relevant)
+        recency_factor = 0.5  # Default if no timestamp
+        if self.last_seen:
+            days_old = (datetime.now() - self.last_seen).days
+            recency_factor = max(0.5, 1.0 - (days_old / 365))
+
+        return self.confidence * (0.5 + 0.3 * evidence_factor + 0.2 * recency_factor)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "id": self.id,
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "relationship_type": self.relationship_type,
+            "fact": self.fact,
+            "confidence": self.confidence,
+            "evidence_count": self.evidence_count,
+            "reliability_score": self.reliability_score,
+            "evidence_type": self.evidence_type,
+            "first_seen": self.first_seen.isoformat() if self.first_seen else None,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+        }
+
+
+class RelationshipConfidenceCalculator:
+    """Calculates and updates relationship confidence scores.
+
+    Provides methods for:
+    - Initial confidence calculation based on extraction method
+    - Confidence merging when same relationship is found again
+    - Confidence boosting for multiple evidence sources
+    """
+
+    # Base confidence by extraction method
+    BASE_CONFIDENCE = {
+        "explicit": 0.95,    # Explicitly stated in text
+        "inferred": 0.70,    # Inferred from context
+        "aggregated": 0.85,  # Multiple sources agree
+        "user_validated": 0.99,  # User confirmed
+    }
+
+    # Relationship types that require higher evidence threshold
+    HIGH_EVIDENCE_TYPES = {
+        "treats", "causes", "contraindicated", "interacts_with",
+        "increases_risk", "decreases_risk"
+    }
+
+    def calculate_confidence(
+        self,
+        relationship_type: str,
+        evidence_text: str,
+        extraction_method: str,
+        existing_evidence_count: int = 0
+    ) -> float:
+        """Calculate confidence score for a relationship.
+
+        Args:
+            relationship_type: Type of relationship
+            evidence_text: Text supporting the relationship
+            extraction_method: How the relationship was extracted
+            existing_evidence_count: Number of existing supporting documents
+
+        Returns:
+            Confidence score (0.0-1.0)
+        """
+        # Start with base confidence for extraction method
+        base = self.BASE_CONFIDENCE.get(extraction_method, 0.5)
+
+        # Boost for more evidence
+        evidence_boost = min(0.2, existing_evidence_count * 0.05)
+
+        # Boost for certain relationship types if well-evidenced
+        type_boost = 0.0
+        if relationship_type in self.HIGH_EVIDENCE_TYPES:
+            # Clinical relationships need higher evidence
+            if existing_evidence_count >= 2:
+                type_boost = 0.1
+            elif existing_evidence_count == 0:
+                # Penalize single-source clinical claims
+                base *= 0.9
+
+        # Check evidence quality (longer text generally means more context)
+        if evidence_text:
+            text_quality = min(0.1, len(evidence_text) / 1000)
+        else:
+            text_quality = 0.0
+
+        return min(1.0, base + evidence_boost + type_boost + text_quality)
+
+    def merge_confidence(
+        self,
+        existing_confidence: float,
+        new_confidence: float,
+        existing_count: int
+    ) -> float:
+        """Merge confidence when same relationship found again.
+
+        Uses weighted average with corroboration boost.
+
+        Args:
+            existing_confidence: Current confidence score
+            new_confidence: New evidence confidence
+            existing_count: Number of existing evidence sources
+
+        Returns:
+            Merged confidence score
+        """
+        # Weighted average favoring more evidence
+        total_count = existing_count + 1
+        weighted = (
+            existing_confidence * existing_count + new_confidence
+        ) / total_count
+
+        # Boost for corroboration (agreement between sources)
+        corroboration_boost = min(0.15, 0.05 * existing_count)
+
+        return min(1.0, weighted + corroboration_boost)
+
+    def should_merge_relationships(
+        self,
+        edge1: GraphEdge,
+        edge2: GraphEdge
+    ) -> bool:
+        """Determine if two edges should be merged as same relationship.
+
+        Args:
+            edge1: First edge
+            edge2: Second edge
+
+        Returns:
+            True if edges represent same relationship
+        """
+        return (
+            edge1.source_id == edge2.source_id and
+            edge1.target_id == edge2.target_id and
+            edge1.relationship_type == edge2.relationship_type
+        )
+
+    def merge_edges(self, edge1: GraphEdge, edge2: GraphEdge) -> GraphEdge:
+        """Merge two edges representing the same relationship.
+
+        Args:
+            edge1: Primary edge (will be modified)
+            edge2: Secondary edge (source of new evidence)
+
+        Returns:
+            Merged edge
+        """
+        # Merge confidence
+        edge1.confidence = self.merge_confidence(
+            edge1.confidence,
+            edge2.confidence,
+            edge1.evidence_count
+        )
+
+        # Increment evidence count
+        edge1.evidence_count += edge2.evidence_count
+
+        # Merge source documents
+        for doc_id in edge2.source_documents:
+            if doc_id not in edge1.source_documents:
+                edge1.source_documents.append(doc_id)
+
+        # Update timestamps
+        if edge2.first_seen:
+            if not edge1.first_seen or edge2.first_seen < edge1.first_seen:
+                edge1.first_seen = edge2.first_seen
+
+        if edge2.last_seen:
+            if not edge1.last_seen or edge2.last_seen > edge1.last_seen:
+                edge1.last_seen = edge2.last_seen
+
+        # Merge facts if different
+        if edge2.fact and edge2.fact != edge1.fact:
+            if edge1.fact:
+                edge1.fact = f"{edge1.fact}; {edge2.fact}"
+            else:
+                edge1.fact = edge2.fact
+
+        # Update evidence type to aggregated
+        edge1.evidence_type = "aggregated"
+
+        return edge1
 
 
 @dataclass
@@ -180,7 +399,10 @@ class GraphData:
 
 
 class GraphDataProvider:
-    """Provides graph data from Neo4j for visualization."""
+    """Provides graph data from Neo4j for visualization.
+
+    Enhanced with circuit breaker for resilience.
+    """
 
     def __init__(self, graphiti_client=None):
         """Initialize the provider.
@@ -192,7 +414,7 @@ class GraphDataProvider:
         self._driver = None
 
     def _get_neo4j_driver(self):
-        """Get or create Neo4j driver."""
+        """Get or create Neo4j driver with connection timeout."""
         if self._driver is not None:
             return self._driver
 
@@ -224,8 +446,32 @@ class GraphDataProvider:
                 "Set NEO4J_URI and NEO4J_PASSWORD environment variables."
             )
 
-        self._driver = GraphDatabase.driver(uri, auth=(user, password))
+        # Use short connection timeout from config
+        connect_timeout = get_timeout("neo4j_connect", default=5.0)
+        self._driver = GraphDatabase.driver(
+            uri,
+            auth=(user, password),
+            connection_timeout=connect_timeout,
+        )
         return self._driver
+
+    def _record_success(self):
+        """Record successful operation for circuit breaker."""
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            cb = get_neo4j_circuit_breaker()
+            cb._on_success()
+        except Exception:
+            pass
+
+    def _record_failure(self):
+        """Record failed operation for circuit breaker."""
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            cb = get_neo4j_circuit_breaker()
+            cb._on_failure()
+        except Exception:
+            pass
 
     def get_full_graph_data(
         self,
@@ -234,14 +480,33 @@ class GraphDataProvider:
     ) -> GraphData:
         """Get all nodes and relationships from the knowledge graph.
 
+        Uses circuit breaker to fail fast when Neo4j is unavailable.
+
         Args:
             limit: Maximum number of nodes to return
             entity_types: Optional list of entity types to filter by
 
         Returns:
-            GraphData containing nodes and edges
+            GraphData containing nodes and edges (empty if circuit breaker open)
         """
-        driver = self._get_neo4j_driver()
+        # Check circuit breaker first for fast fail
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from src.utils.resilience import CircuitState
+
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.warning("Neo4j circuit breaker open, returning empty graph data")
+                return GraphData(nodes=[], edges=[])
+        except ImportError:
+            pass  # Resilience module not available
+
+        try:
+            driver = self._get_neo4j_driver()
+        except Exception as e:
+            logger.error(f"Failed to get Neo4j driver: {e}")
+            self._record_failure()
+            return GraphData(nodes=[], edges=[])
 
         nodes = []
         edges = []
@@ -363,21 +628,42 @@ class GraphDataProvider:
                     edges.append(edge)
 
                 logger.info(f"Retrieved {len(nodes)} nodes and {len(edges)} edges")
+                self._record_success()
                 return GraphData(nodes=nodes, edges=edges)
 
         except Exception as e:
             logger.error(f"Failed to retrieve graph data: {e}")
+            self._record_failure()
             raise
 
     def health_check(self) -> bool:
-        """Check if Neo4j connection is available."""
+        """Check if Neo4j connection is available.
+
+        Uses circuit breaker state for fast-fail.
+        """
+        # Fast-fail if circuit breaker is open
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from src.utils.resilience import CircuitState
+
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.debug("Neo4j circuit breaker open, health check returns False")
+                return False
+        except ImportError:
+            pass
+
         try:
             driver = self._get_neo4j_driver()
             with driver.session() as session:
                 result = session.run("RETURN 1 as n")
-                return result.single()["n"] == 1
+                success = result.single()["n"] == 1
+                if success:
+                    self._record_success()
+                return success
         except Exception as e:
             logger.debug(f"Graph health check failed: {e}")
+            self._record_failure()
             return False
 
     def close(self):

@@ -3,6 +3,11 @@ Graphiti client for knowledge graph integration.
 
 Uses Zep AI's Graphiti SDK for building and querying
 temporal knowledge graphs from documents.
+
+Enhanced with:
+- Circuit breaker for graceful degradation when Neo4j unavailable
+- Reduced async timeout (30s instead of 300s) to prevent UI freeze
+- Driver reuse in health_check() for efficiency
 """
 
 import asyncio
@@ -15,6 +20,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from src.rag.models import GraphSearchResult
+from src.utils.timeout_config import get_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +80,12 @@ class _AsyncWorker:
         finally:
             self._loop.close()
 
-    def run_coroutine(self, coro) -> Any:
+    def run_coroutine(self, coro, timeout: Optional[float] = None) -> Any:
         """Run a coroutine in the worker's event loop.
 
         Args:
             coro: Coroutine to run
+            timeout: Optional timeout in seconds (default: 30s from config)
 
         Returns:
             Result of the coroutine
@@ -86,8 +93,12 @@ class _AsyncWorker:
         if self._loop is None or self._stopped:
             raise RuntimeError("Async worker not running")
 
+        # Use configured timeout, defaulting to 30s to prevent UI freeze
+        if timeout is None:
+            timeout = get_timeout("neo4j", default=30.0)
+
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=300)  # 5 minute timeout for long operations
+        return future.result(timeout=timeout)
 
     def stop(self):
         """Stop the worker thread."""
@@ -125,7 +136,10 @@ def _cleanup_async_worker():
 
 
 class GraphitiClient:
-    """Client for Graphiti knowledge graph operations."""
+    """Client for Graphiti knowledge graph operations.
+
+    Enhanced with circuit breaker pattern for resilience.
+    """
 
     def __init__(
         self,
@@ -147,6 +161,7 @@ class GraphitiClient:
         self._neo4j_password = neo4j_password
         self._openai_api_key = openai_api_key
         self._client = None
+        self._neo4j_driver = None  # Cached driver for health checks
         self._initialized = False
         self._init_lock = threading.Lock()
 
@@ -324,18 +339,65 @@ class GraphitiClient:
     def search(self, query: str, num_results: int = 10) -> list[GraphSearchResult]:
         """Search the knowledge graph (sync).
 
+        Uses circuit breaker to fail fast when Neo4j is unavailable.
+
         Args:
             query: Search query
             num_results: Number of results
 
         Returns:
-            List of GraphSearchResult
+            List of GraphSearchResult (empty if circuit breaker open)
         """
-        if not self._initialized:
-            self.initialize()
+        # Check circuit breaker first for fast fail
+        try:
+            from src.rag.rag_resilience import (
+                get_neo4j_circuit_breaker,
+                CircuitOpenError,
+            )
+            from src.utils.resilience import CircuitState
 
-        worker = _get_async_worker()
-        return worker.run_coroutine(self._search_async(query, num_results))
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.warning("Neo4j circuit breaker open, skipping graph search")
+                return []
+        except ImportError:
+            pass  # Resilience module not available, continue without CB
+
+        if not self._initialized:
+            try:
+                self.initialize()
+            except Exception as e:
+                logger.warning(f"Failed to initialize Graphiti: {e}")
+                self._record_failure()
+                return []
+
+        try:
+            worker = _get_async_worker()
+            result = worker.run_coroutine(self._search_async(query, num_results))
+            self._record_success()
+            return result
+        except Exception as e:
+            logger.warning(f"Graph search failed: {e}")
+            self._record_failure()
+            return []
+
+    def _record_success(self):
+        """Record successful operation for circuit breaker."""
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            cb = get_neo4j_circuit_breaker()
+            cb._on_success()
+        except Exception:
+            pass
+
+    def _record_failure(self):
+        """Record failed operation for circuit breaker."""
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            cb = get_neo4j_circuit_breaker()
+            cb._on_failure()
+        except Exception:
+            pass
 
     async def _get_entity_context_async(
         self,
@@ -379,24 +441,66 @@ class GraphitiClient:
         worker = _get_async_worker()
         worker.run_coroutine(self._delete_document_episodes_async(document_id))
 
-    def health_check(self) -> bool:
-        """Check if the knowledge graph is accessible."""
+    def _get_neo4j_driver(self):
+        """Get or create cached Neo4j driver."""
+        if self._neo4j_driver is not None:
+            return self._neo4j_driver
+
         try:
-            uri, user, password, _ = self._get_config()
-            if not uri or not password:
+            from neo4j import GraphDatabase
+        except ImportError:
+            raise ImportError(
+                "neo4j package is required. Install with: pip install neo4j"
+            )
+
+        uri, user, password, _ = self._get_config()
+        if not uri or not password:
+            return None
+
+        # Use short connection timeout from config
+        connect_timeout = get_timeout("neo4j_connect", default=5.0)
+        self._neo4j_driver = GraphDatabase.driver(
+            uri,
+            auth=(user, password),
+            connection_timeout=connect_timeout,
+        )
+        return self._neo4j_driver
+
+    def health_check(self) -> bool:
+        """Check if the knowledge graph is accessible.
+
+        Uses circuit breaker state for fast-fail and reuses cached driver.
+        """
+        # Fast-fail if circuit breaker is open
+        try:
+            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from src.utils.resilience import CircuitState
+
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.debug("Neo4j circuit breaker open, health check returns False")
+                return False
+        except ImportError:
+            pass  # Resilience module not available
+
+        try:
+            driver = self._get_neo4j_driver()
+            if driver is None:
                 return False
 
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(uri, auth=(user, password))
             with driver.session() as session:
                 result = session.run("RETURN 1 as n")
-                return result.single()["n"] == 1
+                success = result.single()["n"] == 1
+                if success:
+                    self._record_success()
+                return success
         except Exception as e:
             logger.debug(f"Graphiti health check failed: {e}")
+            self._record_failure()
             return False
 
     def close(self):
-        """Close the client connection."""
+        """Close the client connection and cached driver."""
         if self._client:
             try:
                 worker = _get_async_worker()
@@ -405,6 +509,14 @@ class GraphitiClient:
                 pass
             self._client = None
             self._initialized = False
+
+        # Also close cached driver
+        if self._neo4j_driver:
+            try:
+                self._neo4j_driver.close()
+            except Exception:
+                pass
+            self._neo4j_driver = None
 
 
 # Singleton instance
