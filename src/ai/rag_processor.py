@@ -122,6 +122,11 @@ class RagProcessor:
             "⏳ Generating response..."
         ]
 
+        # Conversation context for follow-up queries
+        self._conversation_history = []  # List of (query, key_topics) tuples
+        self._max_history_length = 5  # Keep last 5 exchanges
+        self._last_query_topics = []  # Key topics from last successful query
+
         # Get N8N webhook configuration from environment
         raw_url = os.getenv("N8N_URL")
         self.n8n_auth_header = os.getenv("N8N_AUTHORIZATION_SECRET")
@@ -265,6 +270,177 @@ class RagProcessor:
 
         # Execute on main thread
         self.app.after(0, hide)
+
+    # -------------------------------------------------------------------------
+    # Conversation Context Methods
+    # -------------------------------------------------------------------------
+
+    # Patterns that indicate a follow-up question
+    _FOLLOWUP_PATTERNS = [
+        r'^what about\b',
+        r'^how about\b',
+        r'^and\b',
+        r'^also\b',
+        r'^what else\b',
+        r'^tell me more\b',
+        r'^more on\b',
+        r'^explain\b',
+        r'^why\b',
+        r'^how\b',
+        r'^can you\b',
+        r'^what are the\b',
+        r'^what is the\b',
+    ]
+
+    # Pronouns and references that suggest context dependency
+    _CONTEXT_REFS = ['it', 'this', 'that', 'these', 'those', 'they', 'them', 'its', 'their']
+
+    def _is_followup_question(self, query: str) -> bool:
+        """Detect if a query is likely a follow-up question.
+
+        Args:
+            query: The user's query
+
+        Returns:
+            True if the query appears to be a follow-up
+        """
+        if not self._conversation_history:
+            return False
+
+        query_lower = query.lower().strip()
+        words = query_lower.split()
+
+        # Short queries are often follow-ups
+        if len(words) <= 4:
+            return True
+
+        # Check for follow-up patterns
+        for pattern in self._FOLLOWUP_PATTERNS:
+            if re.match(pattern, query_lower):
+                return True
+
+        # Check for context-dependent pronouns/references
+        for ref in self._CONTEXT_REFS:
+            if ref in words:
+                return True
+
+        # Questions without clear subjects are often follow-ups
+        # e.g., "What are the side effects?" without mentioning the medication
+        if query_lower.startswith(('what', 'how', 'why', 'when', 'where')):
+            # Check if any key topics from last query are mentioned
+            if self._last_query_topics:
+                topic_mentioned = any(
+                    topic.lower() in query_lower
+                    for topic in self._last_query_topics
+                )
+                if not topic_mentioned:
+                    return True
+
+        return False
+
+    def _extract_key_topics(self, query: str, response_text: str = "") -> list[str]:
+        """Extract key topics from a query and response.
+
+        Args:
+            query: The user's query
+            response_text: Optional response text for additional context
+
+        Returns:
+            List of key topic strings
+        """
+        # Common medical/document-related stopwords to exclude
+        stopwords = {
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+            'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by',
+            'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above',
+            'below', 'between', 'under', 'again', 'further', 'then', 'once',
+            'what', 'how', 'why', 'when', 'where', 'who', 'which', 'whom',
+            'this', 'that', 'these', 'those', 'am', 'and', 'but', 'if', 'or',
+            'because', 'until', 'while', 'about', 'against', 'each', 'few',
+            'more', 'most', 'other', 'some', 'such', 'only', 'own', 'same',
+            'than', 'too', 'very', 'just', 'also', 'now', 'tell', 'me', 'please',
+            'explain', 'describe', 'information', 'details', 'give', 'show',
+        }
+
+        # Extract words from query
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', query.lower())
+
+        # Filter out stopwords and keep meaningful terms
+        topics = [w for w in words if w not in stopwords]
+
+        # Also look for multi-word medical terms (simplified approach)
+        # Keep capitalized words from original query as they might be proper nouns
+        capitalized = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', query)
+        topics.extend([c.lower() for c in capitalized if c.lower() not in stopwords])
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_topics = []
+        for topic in topics:
+            if topic not in seen:
+                seen.add(topic)
+                unique_topics.append(topic)
+
+        return unique_topics[:10]  # Keep top 10 topics
+
+    def _enhance_query_with_context(self, query: str) -> str:
+        """Enhance a follow-up query with conversation context.
+
+        Args:
+            query: The user's follow-up query
+
+        Returns:
+            Enhanced query with context prepended
+        """
+        if not self._conversation_history:
+            return query
+
+        # Get the last query and its topics
+        last_query, last_topics = self._conversation_history[-1]
+
+        # Build context from recent topics
+        if last_topics:
+            # Create a context prefix
+            topic_str = ", ".join(last_topics[:5])  # Use top 5 topics
+            enhanced = f"Regarding {topic_str}: {query}"
+            logger.info(f"Enhanced follow-up query: '{query}' -> '{enhanced}'")
+            return enhanced
+
+        # Fallback: just prepend the last query context
+        enhanced = f"Following up on '{last_query[:100]}': {query}"
+        logger.info(f"Enhanced follow-up with last query context")
+        return enhanced
+
+    def _update_conversation_history(self, query: str, response_text: str = ""):
+        """Update conversation history with the latest exchange.
+
+        Args:
+            query: The user's query
+            response_text: The response text (for topic extraction)
+        """
+        topics = self._extract_key_topics(query, response_text)
+        self._last_query_topics = topics
+
+        self._conversation_history.append((query, topics))
+
+        # Trim history if too long
+        if len(self._conversation_history) > self._max_history_length:
+            self._conversation_history = self._conversation_history[-self._max_history_length:]
+
+    def _process_query_with_context(self, user_message: str) -> str:
+        """Process a query, enhancing with context if it's a follow-up.
+
+        Args:
+            user_message: The user's original message
+
+        Returns:
+            The query to use for search (possibly enhanced)
+        """
+        if self._is_followup_question(user_message):
+            return self._enhance_query_with_context(user_message)
+        return user_message
 
     def is_local_rag_available(self) -> bool:
         """Check if local RAG mode is available and configured.
@@ -456,12 +632,14 @@ class RagProcessor:
                 self._display_error("Failed to initialize RAG retriever.")
                 return
 
-            logger.info(f"Processing local RAG query: {user_message[:100]}...")
+            # Enhance query with context if it's a follow-up question
+            search_query = self._process_query_with_context(user_message)
+            logger.info(f"Processing local RAG query: {search_query[:100]}...")
 
             # Perform hybrid search
             from src.rag.models import RAGQueryRequest
             request = RAGQueryRequest(
-                query=user_message,
+                query=search_query,  # Use enhanced query for search
                 top_k=5,
                 use_graph_search=True,
                 similarity_threshold=0.3,  # Lower threshold - scores typically 0.3-0.6
@@ -477,6 +655,9 @@ class RagProcessor:
                     "for your query. Try uploading more documents or rephrasing your question."
                 )
             else:
+                # Update conversation history with original query and successful search
+                self._update_conversation_history(user_message, "")
+
                 # Update indicator to show we're generating the response
                 self._show_typing_indicator('generate')
                 # Generate AI response using retrieved context
@@ -633,6 +814,9 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             # Show search progress indicator
             self._show_typing_indicator('search')
 
+            # Enhance query with context if it's a follow-up question
+            search_query = self._process_query_with_context(user_message)
+
             # Make request to N8N webhook
             try:
                 headers = {
@@ -653,7 +837,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                     session_id = self.session_id
 
                 payload = {
-                    "chatInput": user_message,
+                    "chatInput": search_query,  # Use enhanced query
                     "sessionId": session_id
                 }
 
@@ -698,6 +882,9 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                     except json.JSONDecodeError:
                         # If it's not JSON, just use the text response
                         output = f"RAG Response: {response_text}"
+
+                # Update conversation history with original query
+                self._update_conversation_history(user_message, output)
 
                 # Hide indicator before adding response
                 self._hide_typing_indicator()
@@ -949,6 +1136,10 @@ Please provide a comprehensive answer based on the above context. If you cite sp
         
     def clear_history(self):
         """Clear the RAG conversation history."""
+        # Clear conversation context for follow-up queries
+        self._conversation_history = []
+        self._last_query_topics = []
+
         if hasattr(self.app, 'rag_text'):
             def clear_ui():
                 self.app.rag_text.delete("1.0", "end")
