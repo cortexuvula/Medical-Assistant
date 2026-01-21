@@ -24,16 +24,29 @@ from dotenv import load_dotenv
 
 from src.utils.timeout_config import get_timeout
 
-# Load environment variables from .env file
-_root_env = pathlib.Path(__file__).parent.parent.parent / '.env'
-if _root_env.exists():
-    load_dotenv(dotenv_path=str(_root_env))
-else:
+# Load environment variables from multiple possible locations
+def _load_env():
+    """Load .env from multiple possible locations."""
+    paths = [
+        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+        pathlib.Path.cwd() / '.env',  # Current working directory
+    ]
     try:
         from managers.data_folder_manager import data_folder_manager
-        load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
+        paths.append(data_folder_manager.env_file_path)  # AppData
     except Exception:
         pass
+
+    for p in paths:
+        try:
+            if p.exists():
+                load_dotenv(dotenv_path=str(p))
+                return
+        except Exception:
+            pass
+    load_dotenv()  # Try default search
+
+_load_env()
 
 logger = logging.getLogger(__name__)
 
