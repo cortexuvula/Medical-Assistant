@@ -433,6 +433,106 @@ class NeonVectorStore:
             logger.error(f"Neon health check failed: {e}")
             return False
 
+    def search_bm25(
+        self,
+        query: str,
+        top_k: int = 10,
+        filter_document_ids: Optional[list[str]] = None,
+    ) -> list[VectorSearchResult]:
+        """Perform BM25 full-text search using PostgreSQL tsvector.
+
+        Args:
+            query: Search query text
+            top_k: Number of results to return
+            filter_document_ids: Optional list of document IDs to filter
+
+        Returns:
+            List of VectorSearchResult objects with BM25 scores
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Check if search_vector column exists
+                cur.execute("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'document_embeddings'
+                    AND column_name = 'search_vector'
+                """)
+                if not cur.fetchone():
+                    logger.warning("search_vector column not found, BM25 search unavailable")
+                    return []
+
+                # Build query
+                sql = """
+                    SELECT
+                        document_id,
+                        chunk_index,
+                        chunk_text,
+                        ts_rank_cd(search_vector, plainto_tsquery('english', %s)) as rank,
+                        metadata
+                    FROM document_embeddings
+                    WHERE search_vector @@ plainto_tsquery('english', %s)
+                """
+                params = [query, query]
+
+                if filter_document_ids:
+                    placeholders = ",".join(["%s::uuid"] * len(filter_document_ids))
+                    sql += f" AND document_id IN ({placeholders})"
+                    params.extend(filter_document_ids)
+
+                sql += " ORDER BY rank DESC LIMIT %s"
+                params.append(top_k)
+
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            doc_id, chunk_idx, chunk_text, rank, metadata_val = row
+
+            if metadata_val is None:
+                metadata = None
+            elif isinstance(metadata_val, dict):
+                metadata = metadata_val
+            else:
+                metadata = json.loads(metadata_val)
+
+            # Normalize rank to 0-1 range (ts_rank_cd typically < 1)
+            normalized_score = min(1.0, float(rank) * 10)
+
+            results.append(VectorSearchResult(
+                document_id=str(doc_id),
+                chunk_index=chunk_idx,
+                chunk_text=chunk_text,
+                similarity_score=normalized_score,  # Used as BM25 score
+                metadata=metadata,
+            ))
+
+        return results
+
+    def has_search_vector_column(self) -> bool:
+        """Check if search_vector column exists for BM25 search.
+
+        Returns:
+            True if column exists, False otherwise
+        """
+        try:
+            pool = self._get_pool()
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'document_embeddings'
+                        AND column_name = 'search_vector'
+                    """)
+                    return cur.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Failed to check search_vector column: {e}")
+            return False
+
     def close(self):
         """Close the connection pool."""
         if self._pool:

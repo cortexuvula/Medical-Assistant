@@ -124,9 +124,31 @@ class HybridSearchResult(BaseModel):
     chunk_index: int
     vector_score: float = 0.0
     graph_score: float = 0.0
+    bm25_score: float = 0.0  # BM25 keyword search score
     combined_score: float = 0.0
+    mmr_score: float = 0.0  # MMR diversity-adjusted score
     related_entities: list[str] = Field(default_factory=list)
     metadata: Optional[dict[str, Any]] = None
+    embedding: Optional[list[float]] = None  # For MMR computation
+
+
+class QueryExpansion(BaseModel):
+    """Tracks query expansion for medical terminology."""
+    original_query: str
+    expanded_terms: list[str] = Field(default_factory=list)
+    abbreviation_expansions: dict[str, list[str]] = Field(default_factory=dict)
+    synonym_expansions: dict[str, list[str]] = Field(default_factory=dict)
+    expanded_query: str = ""
+
+    def get_all_search_terms(self) -> list[str]:
+        """Get all terms to search for (original + expanded)."""
+        terms = [self.original_query]
+        terms.extend(self.expanded_terms)
+        for expansions in self.abbreviation_expansions.values():
+            terms.extend(expansions)
+        for expansions in self.synonym_expansions.values():
+            terms.extend(expansions)
+        return list(set(terms))
 
 
 class RAGQueryRequest(BaseModel):
@@ -136,6 +158,10 @@ class RAGQueryRequest(BaseModel):
     use_graph_search: bool = True
     similarity_threshold: float = 0.7
     include_metadata: bool = True
+    enable_query_expansion: bool = True
+    enable_adaptive_threshold: bool = True
+    enable_bm25: bool = True
+    enable_mmr: bool = True
 
 
 class RAGQueryResponse(BaseModel):
@@ -145,6 +171,10 @@ class RAGQueryResponse(BaseModel):
     total_results: int
     processing_time_ms: float
     context_text: str  # Formatted context for LLM
+    query_expansion: Optional[QueryExpansion] = None  # Expansion info if enabled
+    adaptive_threshold_used: Optional[float] = None  # Actual threshold used
+    bm25_enabled: bool = False
+    mmr_applied: bool = False
 
 
 class DocumentUploadRequest(BaseModel):
@@ -202,6 +232,18 @@ class RAGSettings(BaseModel):
     default_top_k: int = 5
     default_similarity_threshold: float = 0.7
     enable_graph_search: bool = True
+
+    # Search quality settings
+    enable_adaptive_threshold: bool = True
+    adaptive_min_threshold: float = 0.2
+    adaptive_max_threshold: float = 0.8
+    enable_query_expansion: bool = True
+    enable_bm25: bool = True
+    vector_weight: float = 0.5
+    bm25_weight: float = 0.3
+    graph_weight: float = 0.2
+    enable_mmr: bool = True
+    mmr_lambda: float = 0.7
 
     # Graphiti settings
     graphiti_neo4j_uri: Optional[str] = None

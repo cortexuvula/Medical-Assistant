@@ -484,6 +484,26 @@ _DEFAULTS_RSVP = {
     }
 }
 
+# RAG search quality defaults
+_DEFAULTS_RAG_SEARCH_QUALITY = {
+    "rag_search_quality": {
+        "enable_adaptive_threshold": True,
+        "min_threshold": 0.2,
+        "max_threshold": 0.8,
+        "target_result_count": 5,
+        "enable_query_expansion": True,
+        "expand_abbreviations": True,
+        "expand_synonyms": True,
+        "max_expansion_terms": 3,
+        "enable_bm25": True,
+        "vector_weight": 0.5,
+        "bm25_weight": 0.3,
+        "graph_weight": 0.2,
+        "enable_mmr": True,
+        "mmr_lambda": 0.7
+    }
+}
+
 
 # =============================================================================
 # COMBINED DEFAULT SETTINGS
@@ -502,6 +522,7 @@ _DEFAULT_SETTINGS: Dict[str, Any] = {
     **_DEFAULTS_TRANSLATION_TTS,
     **_DEFAULTS_VOCABULARY,
     **_DEFAULTS_RSVP,
+    **_DEFAULTS_RAG_SEARCH_QUALITY,
 }
 
 

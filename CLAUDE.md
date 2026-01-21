@@ -193,6 +193,116 @@ class GraphEdge:
 | Zoom | Mousewheel |
 | Fit to view | Click "Fit" button |
 
+## RAG Search Quality Improvements
+
+The RAG system has been enhanced with four search quality improvements:
+
+### Architecture
+- **SearchQualityConfig**: Configuration dataclass in `src/rag/search_config.py`
+- **MedicalQueryExpander**: Medical term expansion in `src/rag/query_expander.py`
+- **AdaptiveThresholdCalculator**: Dynamic threshold in `src/rag/adaptive_threshold.py`
+- **BM25Searcher**: Full-text search in `src/rag/bm25_search.py`
+- **MMRReranker**: Result diversity in `src/rag/mmr_reranker.py`
+- **NeonMigrationManager**: Database migrations in `src/rag/neon_migrations.py`
+
+### Key Features
+
+#### 1. Adaptive Similarity Threshold
+- Dynamically adjusts threshold based on score distribution
+- Considers query length (longer = higher threshold)
+- Detects natural score gaps for cutoff
+- Ensures target result count is met
+
+#### 2. Medical Query Expansion
+- Bidirectional abbreviation expansion (HTN ↔ hypertension)
+- Medical synonym mapping (heart attack ↔ myocardial infarction)
+- Lay term to medical term conversion
+- Configurable expansion limits
+
+#### 3. BM25 Hybrid Search
+- PostgreSQL ts_vector/ts_query for keyword search
+- Combined with vector similarity for hybrid scoring
+- Requires `search_vector` column and GIN index
+- Auto-migration via `NeonMigrationManager`
+
+#### 4. MMR Result Diversity
+- Maximal Marginal Relevance reranking
+- Balances relevance vs diversity (configurable lambda)
+- Supports embedding-based or text-based similarity
+- Iterative selection for diverse results
+
+### Configuration
+```python
+@dataclass
+class SearchQualityConfig:
+    # Adaptive threshold
+    enable_adaptive_threshold: bool = True
+    min_threshold: float = 0.2
+    max_threshold: float = 0.8
+    target_result_count: int = 5
+
+    # Query expansion
+    enable_query_expansion: bool = True
+    expand_abbreviations: bool = True
+    expand_synonyms: bool = True
+    max_expansion_terms: int = 3
+
+    # BM25 hybrid
+    enable_bm25: bool = True
+    vector_weight: float = 0.5
+    bm25_weight: float = 0.3
+    graph_weight: float = 0.2
+
+    # MMR diversity
+    enable_mmr: bool = True
+    mmr_lambda: float = 0.7  # Higher = more relevance
+```
+
+### Settings Integration
+Settings stored in `settings.json` under `rag_search_quality` key:
+```json
+{
+  "rag_search_quality": {
+    "enable_adaptive_threshold": true,
+    "enable_query_expansion": true,
+    "enable_bm25": true,
+    "enable_mmr": true,
+    "vector_weight": 0.5,
+    "bm25_weight": 0.3,
+    "graph_weight": 0.2,
+    "mmr_lambda": 0.7
+  }
+}
+```
+
+### Database Migration for BM25
+Run migrations to add search_vector column:
+```python
+from src.rag.neon_migrations import run_neon_migrations
+run_neon_migrations()
+```
+
+### Implementation Files
+| File | Purpose |
+|------|---------|
+| `src/rag/search_config.py` | Configuration dataclass and loading |
+| `src/rag/query_expander.py` | Medical abbreviation and synonym expansion |
+| `src/rag/adaptive_threshold.py` | Dynamic threshold calculation |
+| `src/rag/bm25_search.py` | PostgreSQL full-text search |
+| `src/rag/mmr_reranker.py` | Maximal Marginal Relevance reranking |
+| `src/rag/neon_migrations.py` | Neon PostgreSQL schema migrations |
+| `src/rag/hybrid_retriever.py` | Integration of all components |
+| `src/rag/models.py` | QueryExpansion, updated HybridSearchResult |
+
+### Medical Terminology Coverage
+The query expander includes extensive medical terminology:
+- **Cardiovascular**: MI, CAD, CHF, HTN, AFib, DVT, PE
+- **Respiratory**: COPD, SOB, ARDS, URI, TB, PNA
+- **Endocrine**: DM, T2DM, DKA, TSH, HbA1c
+- **Neurological**: CVA, TIA, MS, ALS, LOC
+- **Gastrointestinal**: GI, GERD, IBS, IBD
+- **And many more...**
+
 ## Bidirectional Translation Implementation Summary
 
 The bidirectional translation assistant enables real-time medical translation for multilingual consultations:
