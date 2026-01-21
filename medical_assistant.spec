@@ -2,6 +2,21 @@
 
 import os
 import platform
+import sys
+
+# Add src to path for collecting submodules
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'src'))
+
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
+# Collect all submodules from internal packages
+internal_hiddenimports = []
+for pkg in ['managers', 'utils', 'core', 'settings', 'database', 'ai', 'audio',
+            'processing', 'rag', 'stt_providers', 'tts_providers', 'translation', 'ui']:
+    try:
+        internal_hiddenimports += collect_submodules(pkg)
+    except Exception as e:
+        print(f"Warning: Could not collect submodules for {pkg}: {e}")
 
 # Determine FFmpeg files based on platform
 ffmpeg_files = []
@@ -80,82 +95,10 @@ a = Analysis(
         'soundcard',
         'sounddevice',
         'groq',
-        # Internal modules (src/ directory)
-        'managers',
-        'managers.data_folder_manager',
-        'managers.api_key_manager',
-        'managers.agent_manager',
-        'managers.translation_manager',
-        'utils',
-        'utils.structured_logging',
-        'utils.exceptions',
-        'utils.validation',
-        'utils.security',
-        'utils.security_decorators',
-        'utils.http_client_manager',
-        'core',
-        'core.main',
-        'core.app',
-        'core.config',
-        'settings',
-        'settings.settings',
-        'database',
-        'database.database',
-        'database.db_migrations',
-        'database.db_pool',
-        'ai',
-        'ai.ai_processor',
-        'ai.chat_processor',
-        'ai.soap_processor',
-        'ai.prompts',
-        'ai.rag_processor',
-        'ai.agents',
-        'ai.agents.base',
-        'ai.agents.medication',
-        'ai.agents.workflow',
-        'ai.agents.models',
-        'audio',
-        'audio.audio',
-        'audio.recording_manager',
-        'audio.periodic_analysis',
-        'processing',
-        'processing.processing_queue',
-        'processing.document_generators',
-        'rag',
-        'rag.models',
-        'rag.search_config',
-        'rag.query_expander',
-        'rag.adaptive_threshold',
-        'rag.bm25_search',
-        'rag.mmr_reranker',
-        'rag.hybrid_retriever',
-        'rag.neon_vector_store',
-        'rag.neon_migrations',
-        'rag.embedding_manager',
-        'rag.graphiti_client',
-        'rag.document_processor',
-        'rag.graph_data_provider',
-        'stt_providers',
-        'stt_providers.base',
-        'stt_providers.deepgram',
-        'stt_providers.elevenlabs',
-        'stt_providers.groq',
-        'stt_providers.whisper',
-        'tts_providers',
-        'tts_providers.base',
-        'tts_providers.elevenlabs_tts',
-        'translation',
-        'translation.base',
-        'translation.deep_translator_provider',
-        'ui',
-        'ui.workflow_ui',
-        'ui.chat_ui',
-        'ui.menu_manager',
-        'ui.theme_manager',
         'PIL._tkinter_finder',
         'PIL._imagingtk',
         'PIL.ImageTk',
-    ],
+    ] + internal_hiddenimports,  # Add all internal modules collected above
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
     runtime_hooks=['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux' else (['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
