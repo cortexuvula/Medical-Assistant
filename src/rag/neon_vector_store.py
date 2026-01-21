@@ -1,0 +1,464 @@
+"""
+Neon PostgreSQL vector store for RAG system.
+
+Handles pgvector operations for document embeddings:
+- Upsert embeddings
+- Vector similarity search
+- Document management
+"""
+
+import json
+import logging
+import os
+from typing import Any, Optional
+from uuid import UUID
+
+from src.rag.models import VectorSearchQuery, VectorSearchResult
+
+logger = logging.getLogger(__name__)
+
+
+class NeonVectorStore:
+    """Vector store using Neon PostgreSQL with pgvector."""
+
+    def __init__(
+        self,
+        connection_string: Optional[str] = None,
+        pool_size: int = 5,
+    ):
+        """Initialize Neon vector store.
+
+        Args:
+            connection_string: PostgreSQL connection string
+            pool_size: Connection pool size
+        """
+        self._connection_string = connection_string
+        self._pool_size = pool_size
+        self._pool = None
+
+    def _get_connection_string(self) -> str:
+        """Get connection string from config or environment."""
+        if self._connection_string:
+            return self._connection_string
+
+        # Try environment variable
+        conn_str = os.environ.get("NEON_DATABASE_URL")
+        if conn_str:
+            return conn_str
+
+        # Try settings
+        try:
+            from src.settings.settings import SETTINGS
+            conn_str = SETTINGS.get("neon_database_url")
+            if conn_str:
+                return conn_str
+        except Exception:
+            pass
+
+        raise ValueError(
+            "Neon connection string not found. "
+            "Set NEON_DATABASE_URL environment variable or configure in settings."
+        )
+
+    def _get_pool(self):
+        """Get or create connection pool."""
+        if self._pool is None:
+            try:
+                import psycopg_pool
+            except ImportError:
+                raise ImportError(
+                    "psycopg is required for Neon vector store. "
+                    "Install with: pip install 'psycopg[binary]'"
+                )
+
+            conn_str = self._get_connection_string()
+            self._pool = psycopg_pool.ConnectionPool(
+                conn_str,
+                min_size=1,
+                max_size=self._pool_size,
+                open=True,
+            )
+
+        return self._pool
+
+    def _ensure_pgvector(self, conn):
+        """Ensure pgvector extension and register types."""
+        try:
+            from pgvector.psycopg import register_vector
+            register_vector(conn)
+        except ImportError:
+            logger.warning("pgvector package not installed, vector operations may fail")
+
+    def upsert_embedding(
+        self,
+        document_id: str,
+        chunk_index: int,
+        chunk_text: str,
+        embedding: list[float],
+        metadata: Optional[dict] = None,
+    ) -> int:
+        """Upsert a single embedding.
+
+        Args:
+            document_id: UUID of the document
+            chunk_index: Index of the chunk within the document
+            chunk_text: Text content of the chunk
+            embedding: Embedding vector
+            metadata: Optional metadata dict
+
+        Returns:
+            ID of the inserted/updated row
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            self._ensure_pgvector(conn)
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO document_embeddings
+                    (document_id, chunk_index, chunk_text, embedding, metadata)
+                    VALUES (%s::uuid, %s, %s, %s, %s)
+                    ON CONFLICT (document_id, chunk_index)
+                    DO UPDATE SET
+                        chunk_text = EXCLUDED.chunk_text,
+                        embedding = EXCLUDED.embedding,
+                        metadata = EXCLUDED.metadata,
+                        created_at = NOW()
+                    RETURNING id
+                    """,
+                    (
+                        document_id,
+                        chunk_index,
+                        chunk_text,
+                        embedding,
+                        json.dumps(metadata) if metadata else None,
+                    )
+                )
+                result = cur.fetchone()
+                conn.commit()
+                return result[0] if result else None
+
+    def upsert_embeddings_batch(
+        self,
+        document_id: str,
+        chunks: list[tuple[int, str, list[float], Optional[dict]]],
+    ) -> list[int]:
+        """Upsert multiple embeddings for a document.
+
+        Args:
+            document_id: UUID of the document
+            chunks: List of (chunk_index, chunk_text, embedding, metadata) tuples
+
+        Returns:
+            List of inserted/updated row IDs
+        """
+        if not chunks:
+            return []
+
+        pool = self._get_pool()
+        ids = []
+
+        with pool.connection() as conn:
+            self._ensure_pgvector(conn)
+
+            with conn.cursor() as cur:
+                # Use executemany for batch insert
+                for chunk_index, chunk_text, embedding, metadata in chunks:
+                    cur.execute(
+                        """
+                        INSERT INTO document_embeddings
+                        (document_id, chunk_index, chunk_text, embedding, metadata)
+                        VALUES (%s::uuid, %s, %s, %s, %s)
+                        ON CONFLICT (document_id, chunk_index)
+                        DO UPDATE SET
+                            chunk_text = EXCLUDED.chunk_text,
+                            embedding = EXCLUDED.embedding,
+                            metadata = EXCLUDED.metadata,
+                            created_at = NOW()
+                        RETURNING id
+                        """,
+                        (
+                            document_id,
+                            chunk_index,
+                            chunk_text,
+                            embedding,
+                            json.dumps(metadata) if metadata else None,
+                        )
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        ids.append(result[0])
+
+                conn.commit()
+
+        return ids
+
+    def search(
+        self,
+        query_embedding: list[float],
+        top_k: int = 10,
+        similarity_threshold: float = 0.0,
+        filter_document_ids: Optional[list[str]] = None,
+    ) -> list[VectorSearchResult]:
+        """Search for similar embeddings.
+
+        Args:
+            query_embedding: Query embedding vector
+            top_k: Number of results to return
+            similarity_threshold: Minimum similarity score
+            filter_document_ids: Optional list of document IDs to filter
+
+        Returns:
+            List of VectorSearchResult objects
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            self._ensure_pgvector(conn)
+
+            with conn.cursor() as cur:
+                # Convert embedding to string format for vector cast
+                embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+
+                # Build query with optional filters
+                # Note: Must cast embedding string to vector type explicitly
+                query = """
+                    SELECT
+                        document_id,
+                        chunk_index,
+                        chunk_text,
+                        1 - (embedding <=> %s::vector) as similarity,
+                        metadata
+                    FROM document_embeddings
+                    WHERE 1=1
+                """
+                params = [embedding_str]
+
+                if filter_document_ids:
+                    placeholders = ",".join(["%s::uuid"] * len(filter_document_ids))
+                    query += f" AND document_id IN ({placeholders})"
+                    params.extend(filter_document_ids)
+
+                if similarity_threshold > 0:
+                    query += " AND 1 - (embedding <=> %s::vector) >= %s"
+                    params.extend([embedding_str, similarity_threshold])
+
+                query += " ORDER BY embedding <=> %s::vector LIMIT %s"
+                params.extend([embedding_str, top_k])
+
+                cur.execute(query, params)
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            doc_id, chunk_idx, chunk_text, similarity, metadata_val = row
+            # Handle metadata - psycopg may return dict directly for JSONB
+            if metadata_val is None:
+                metadata = None
+            elif isinstance(metadata_val, dict):
+                metadata = metadata_val
+            else:
+                metadata = json.loads(metadata_val)
+
+            results.append(VectorSearchResult(
+                document_id=str(doc_id),
+                chunk_index=chunk_idx,
+                chunk_text=chunk_text,
+                similarity_score=float(similarity),
+                metadata=metadata,
+            ))
+
+        return results
+
+    def search_with_query(self, query: VectorSearchQuery) -> list[VectorSearchResult]:
+        """Search using a VectorSearchQuery object.
+
+        Args:
+            query: VectorSearchQuery with search parameters
+
+        Returns:
+            List of VectorSearchResult objects
+        """
+        if not query.query_embedding:
+            raise ValueError("query_embedding is required for search")
+
+        return self.search(
+            query_embedding=query.query_embedding,
+            top_k=query.top_k,
+            similarity_threshold=query.similarity_threshold,
+            filter_document_ids=query.filter_document_ids,
+        )
+
+    def delete_document(self, document_id: str) -> int:
+        """Delete all embeddings for a document.
+
+        Args:
+            document_id: UUID of the document
+
+        Returns:
+            Number of rows deleted
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM document_embeddings WHERE document_id = %s::uuid",
+                    (document_id,)
+                )
+                deleted = cur.rowcount
+                conn.commit()
+
+        logger.info(f"Deleted {deleted} embeddings for document {document_id}")
+        return deleted
+
+    def delete_chunk(self, document_id: str, chunk_index: int) -> bool:
+        """Delete a specific chunk.
+
+        Args:
+            document_id: UUID of the document
+            chunk_index: Index of the chunk
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM document_embeddings
+                    WHERE document_id = %s::uuid AND chunk_index = %s
+                    """,
+                    (document_id, chunk_index)
+                )
+                deleted = cur.rowcount > 0
+                conn.commit()
+
+        return deleted
+
+    def get_document_chunks(self, document_id: str) -> list[dict]:
+        """Get all chunks for a document.
+
+        Args:
+            document_id: UUID of the document
+
+        Returns:
+            List of chunk info dicts
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, chunk_index, chunk_text, metadata, created_at
+                    FROM document_embeddings
+                    WHERE document_id = %s::uuid
+                    ORDER BY chunk_index
+                    """,
+                    (document_id,)
+                )
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            metadata_val = row[3]
+            if metadata_val is None:
+                metadata = None
+            elif isinstance(metadata_val, dict):
+                metadata = metadata_val
+            else:
+                metadata = json.loads(metadata_val)
+
+            results.append({
+                "id": row[0],
+                "chunk_index": row[1],
+                "chunk_text": row[2],
+                "metadata": metadata,
+                "created_at": row[4],
+            })
+        return results
+
+    def get_stats(self) -> dict:
+        """Get vector store statistics.
+
+        Returns:
+            Dict with stats
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Total embeddings
+                cur.execute("SELECT COUNT(*) FROM document_embeddings")
+                total_embeddings = cur.fetchone()[0]
+
+                # Unique documents
+                cur.execute("SELECT COUNT(DISTINCT document_id) FROM document_embeddings")
+                total_documents = cur.fetchone()[0]
+
+                # Average chunks per document
+                cur.execute("""
+                    SELECT AVG(chunk_count) FROM (
+                        SELECT COUNT(*) as chunk_count
+                        FROM document_embeddings
+                        GROUP BY document_id
+                    ) subq
+                """)
+                avg_chunks = cur.fetchone()[0] or 0
+
+        return {
+            "total_embeddings": total_embeddings,
+            "total_documents": total_documents,
+            "avg_chunks_per_document": round(float(avg_chunks), 1),
+        }
+
+    def health_check(self) -> bool:
+        """Check if the vector store is accessible.
+
+        Returns:
+            True if healthy, False otherwise
+        """
+        try:
+            pool = self._get_pool()
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                    return cur.fetchone()[0] == 1
+        except Exception as e:
+            logger.error(f"Neon health check failed: {e}")
+            return False
+
+    def close(self):
+        """Close the connection pool."""
+        if self._pool:
+            self._pool.close()
+            self._pool = None
+
+
+# Singleton instance
+_vector_store: Optional[NeonVectorStore] = None
+
+
+def get_vector_store() -> NeonVectorStore:
+    """Get the global vector store instance.
+
+    Returns:
+        NeonVectorStore instance
+    """
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = NeonVectorStore()
+    return _vector_store
+
+
+def reset_vector_store():
+    """Reset the global vector store instance."""
+    global _vector_store
+    if _vector_store:
+        _vector_store.close()
+        _vector_store = None

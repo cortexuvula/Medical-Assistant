@@ -26,6 +26,7 @@ from ui.workflow_ui import WorkflowUI
 from ui.chat_ui import ChatUI
 from ai.chat_processor import ChatProcessor
 from ai.rag_processor import RagProcessor
+from managers.rag_document_manager import get_rag_document_manager
 from ui.status_manager import StatusManager
 from audio.recording_manager import RecordingManager
 from audio.audio_state_manager import AudioStateManager
@@ -355,6 +356,9 @@ class AppInitializer:
         self.app.chat_processor = ChatProcessor(self.app)
         self.app.rag_processor = RagProcessor(self.app)
 
+        # Initialize RAG document manager (lazy initialization)
+        self._initialize_rag_system()
+
         # Initialize processing queue
         self.app.processing_queue = ProcessingQueue(self.app)
         self.app.processing_queue.status_callback = self._on_queue_status_update
@@ -366,7 +370,37 @@ class AppInitializer:
 
         # Initialize periodic analyzer
         self.app.periodic_analyzer = None  # Will be created when needed
-        
+
+    def _initialize_rag_system(self):
+        """Initialize the RAG document management system.
+
+        This sets up the RAG document manager and logs system status.
+        The actual connections (Neon, embeddings) are lazily initialized
+        when first needed to avoid slowing down app startup.
+        """
+        try:
+            # Get the RAG document manager singleton
+            self.app.rag_document_manager = get_rag_document_manager()
+
+            # Check RAG mode (local vs N8N webhook)
+            rag_mode = self.app.rag_processor.get_rag_mode()
+            if rag_mode == "local":
+                logger.info("RAG system initialized in local mode (Neon pgvector)")
+                # Get document count for status
+                try:
+                    doc_count = self.app.rag_document_manager.get_document_count()
+                    logger.info(f"RAG document library contains {doc_count} documents")
+                except Exception as e:
+                    logger.debug(f"Could not get document count: {e}")
+            elif rag_mode == "n8n":
+                logger.info("RAG system initialized in N8N webhook mode")
+            else:
+                logger.info("RAG system not configured (no Neon or N8N connection)")
+
+        except Exception as e:
+            logger.warning(f"RAG system initialization warning: {e}")
+            self.app.rag_document_manager = None
+
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""
         # Check if any LLM provider is configured

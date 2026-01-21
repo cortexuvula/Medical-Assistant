@@ -76,6 +76,117 @@ class NotebookTabs:
             # Special handling for SOAP tab - split into paned layout
             if widget_key == "soap":
                 text_widget = self._create_soap_split_layout(frame, text_widgets)
+            elif widget_key == "chat":
+                # Chat tab: buttons first, then text widget
+                button_frame = ttk.Frame(frame)
+                button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+                clear_chat_btn = ttk.Button(
+                    button_frame,
+                    text="Clear Chat History",
+                    command=lambda: self._clear_chat_history(),
+                    bootstyle="secondary"
+                )
+                clear_chat_btn.pack(side=tk.RIGHT, padx=5)
+                self.components['clear_chat_button'] = clear_chat_btn
+
+                # Now create text widget
+                text_scroll = ttk.Scrollbar(frame)
+                text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+                text_widget = tk.Text(
+                    frame,
+                    wrap=tk.WORD,
+                    yscrollcommand=text_scroll.set,
+                    undo=True,
+                    autoseparators=True
+                )
+                text_widget.pack(fill=tk.BOTH, expand=True)
+                text_scroll.config(command=text_widget.yview)
+
+                text_widget.insert("1.0", "Welcome to the Medical Assistant Chat!\n\n")
+                text_widget.insert("end", "This is your ChatGPT-style interface where you can:\n")
+                text_widget.insert("end", "• Ask medical questions\n")
+                text_widget.insert("end", "• Get explanations about medical terms\n")
+                text_widget.insert("end", "• Have conversations about healthcare topics\n")
+                text_widget.insert("end", "• Clear the chat with 'clear chat' command\n\n")
+                text_widget.insert("end", "Type your message in the AI Assistant chat box below to start chatting with the AI!\n")
+                text_widget.insert("end", "="*50 + "\n\n")
+
+                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
+                text_widget.tag_add("welcome", "1.0", "end")
+                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
+
+            elif widget_key == "rag":
+                # RAG tab: buttons first, then text widget
+                button_frame = ttk.Frame(frame)
+                button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+                # Left side buttons: Upload and Document Library
+                left_buttons = ttk.Frame(button_frame)
+                left_buttons.pack(side=tk.LEFT)
+
+                upload_btn = ttk.Button(
+                    left_buttons,
+                    text="Upload Documents",
+                    command=lambda: self._show_rag_upload_dialog(),
+                    bootstyle="success"
+                )
+                upload_btn.pack(side=tk.LEFT, padx=(0, 5))
+                self.components['rag_upload_button'] = upload_btn
+
+                library_btn = ttk.Button(
+                    left_buttons,
+                    text="Document Library",
+                    command=lambda: self._show_rag_library_dialog(),
+                    bootstyle="info"
+                )
+                library_btn.pack(side=tk.LEFT, padx=(0, 5))
+                self.components['rag_library_button'] = library_btn
+
+                # Document count label
+                self.rag_doc_count_label = ttk.Label(
+                    left_buttons,
+                    text="",
+                    foreground="gray"
+                )
+                self.rag_doc_count_label.pack(side=tk.LEFT, padx=(10, 0))
+                self._update_rag_document_count()
+
+                # Right side: Clear history button
+                clear_rag_btn = ttk.Button(
+                    button_frame,
+                    text="Clear RAG History",
+                    command=lambda: self._clear_rag_history(),
+                    bootstyle="secondary"
+                )
+                clear_rag_btn.pack(side=tk.RIGHT, padx=5)
+                self.components['clear_rag_button'] = clear_rag_btn
+
+                # Now create text widget
+                text_scroll = ttk.Scrollbar(frame)
+                text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+                text_widget = tk.Text(
+                    frame,
+                    wrap=tk.WORD,
+                    yscrollcommand=text_scroll.set,
+                    undo=True,
+                    autoseparators=True
+                )
+                text_widget.pack(fill=tk.BOTH, expand=True)
+                text_scroll.config(command=text_widget.yview)
+
+                text_widget.insert("1.0", "Welcome to the RAG Document Search!\n\n")
+                text_widget.insert("end", "This interface allows you to search your document database:\n")
+                text_widget.insert("end", "• Upload documents using the 'Upload Documents' button above\n")
+                text_widget.insert("end", "• View and manage documents in the 'Document Library'\n")
+                text_widget.insert("end", "• Query your documents by typing questions below\n")
+                text_widget.insert("end", "• Get relevant information from your knowledge base\n\n")
+                text_widget.insert("end", "Type your question in the AI Assistant chat box below to search your documents!\n")
+                text_widget.insert("end", "="*50 + "\n\n")
+
+                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
+                text_widget.tag_add("welcome", "1.0", "end")
+                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
             else:
                 # Standard layout for other tabs
                 text_scroll = ttk.Scrollbar(frame)
@@ -94,71 +205,6 @@ class NotebookTabs:
             # Store reference
             text_widgets[widget_key] = text_widget
             self.components[f'{widget_key}_text'] = text_widget
-
-            # Add welcome message to chat tab
-            if widget_key == "chat":
-                # Add clear history button at the top
-                button_frame = ttk.Frame(frame)
-                button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-                
-                clear_chat_btn = ttk.Button(
-                    button_frame,
-                    text="Clear Chat History",
-                    command=lambda: self._clear_chat_history(),
-                    bootstyle="secondary"
-                )
-                clear_chat_btn.pack(side=tk.RIGHT, padx=5)
-                
-                # Store reference to button
-                self.components['clear_chat_button'] = clear_chat_btn
-                
-                text_widget.insert("1.0", "Welcome to the Medical Assistant Chat!\n\n")
-                text_widget.insert("end", "This is your ChatGPT-style interface where you can:\n")
-                text_widget.insert("end", "• Ask medical questions\n")
-                text_widget.insert("end", "• Get explanations about medical terms\n")
-                text_widget.insert("end", "• Have conversations about healthcare topics\n")
-                text_widget.insert("end", "• Clear the chat with 'clear chat' command\n\n")
-                text_widget.insert("end", "Type your message in the AI Assistant chat box below to start chatting with the AI!\n")
-                text_widget.insert("end", "="*50 + "\n\n")
-                
-                # Configure initial styling
-                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
-                text_widget.tag_add("welcome", "1.0", "end")
-                
-                # Make text widget read-only but still selectable
-                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
-            
-            # Add welcome message to RAG tab
-            elif widget_key == "rag":
-                # Add clear history button at the top
-                button_frame = ttk.Frame(frame)
-                button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-                
-                clear_rag_btn = ttk.Button(
-                    button_frame,
-                    text="Clear RAG History",
-                    command=lambda: self._clear_rag_history(),
-                    bootstyle="secondary"
-                )
-                clear_rag_btn.pack(side=tk.RIGHT, padx=5)
-                
-                # Store reference to button
-                self.components['clear_rag_button'] = clear_rag_btn
-                
-                text_widget.insert("1.0", "Welcome to the RAG Document Search!\n\n")
-                text_widget.insert("end", "This interface allows you to search your document database:\n")
-                text_widget.insert("end", "• Query documents stored in your RAG database\n")
-                text_widget.insert("end", "• Get relevant information from your knowledge base\n")
-                text_widget.insert("end", "• Search through previously uploaded documents\n\n")
-                text_widget.insert("end", "Type your question in the AI Assistant chat box below to search your documents!\n")
-                text_widget.insert("end", "="*50 + "\n\n")
-                
-                # Configure initial styling
-                text_widget.tag_config("welcome", foreground="gray", font=("Arial", 10, "italic"))
-                text_widget.tag_add("welcome", "1.0", "end")
-                
-                # Make text widget read-only but still selectable
-                text_widget.bind("<Key>", lambda e: "break" if e.keysym not in ["Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End"] else None)
         
         # Return in expected order
         return (
@@ -550,6 +596,169 @@ class NotebookTabs:
             logger.error(f"Error clearing RAG history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear RAG history")
+
+    def _show_rag_upload_dialog(self):
+        """Show the RAG document upload dialog."""
+        try:
+            from src.ui.dialogs.rag_upload_dialog import RAGUploadDialog
+
+            def on_upload(files: list, options: dict):
+                """Handle upload start."""
+                self._process_rag_uploads(files, options)
+
+            dialog = RAGUploadDialog(self.parent, on_upload=on_upload)
+            dialog.wait_window()
+            self._update_rag_document_count()
+
+        except Exception as e:
+            logger.error(f"Error showing RAG upload dialog: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error(f"Failed to open upload dialog: {e}")
+
+    def _process_rag_uploads(self, files: list, options: dict):
+        """Process uploaded files in background thread.
+
+        Args:
+            files: List of file paths to upload
+            options: Upload options (category, tags, enable_ocr, enable_graph)
+        """
+        import threading
+
+        def upload_thread():
+            try:
+                from src.managers.rag_document_manager import get_rag_document_manager
+                from src.ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
+
+                manager = get_rag_document_manager()
+
+                # Show progress dialog
+                self.parent.after(0, lambda: self._show_upload_progress(files, options, manager))
+
+            except Exception as e:
+                logger.error(f"Error processing RAG uploads: {e}")
+                self.parent.after(0, lambda: self._show_upload_error(str(e)))
+
+        thread = threading.Thread(target=upload_thread, daemon=True)
+        thread.start()
+
+    def _show_upload_progress(self, files: list, options: dict, manager):
+        """Show upload progress dialog and process files.
+
+        Args:
+            files: List of file paths
+            options: Upload options
+            manager: RAGDocumentManager instance
+        """
+        from src.ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
+
+        progress_dialog = RAGUploadProgressDialog(self.parent, len(files))
+
+        def process_files():
+            success_count = 0
+            fail_count = 0
+
+            for i, file_path in enumerate(files):
+                if progress_dialog.cancelled:
+                    break
+
+                import os
+                filename = os.path.basename(file_path)
+                self.parent.after(0, lambda f=filename, idx=i: progress_dialog.update_file_start(f, idx))
+
+                try:
+                    def progress_callback(progress):
+                        self.parent.after(0, lambda p=progress: progress_dialog.update_file_progress(p))
+
+                    manager.upload_document(
+                        file_path=file_path,
+                        category=options.get("category"),
+                        tags=options.get("tags", []),
+                        enable_ocr=options.get("enable_ocr", True),
+                        enable_graph=options.get("enable_graph", True),
+                        progress_callback=progress_callback,
+                    )
+                    success_count += 1
+                    self.parent.after(0, lambda: progress_dialog.update_file_complete(True))
+
+                except Exception as e:
+                    logger.error(f"Failed to upload {filename}: {e}")
+                    fail_count += 1
+                    self.parent.after(0, lambda: progress_dialog.update_file_complete(False))
+
+            self.parent.after(0, progress_dialog.complete)
+            self.parent.after(0, self._update_rag_document_count)
+
+            if success_count > 0 and hasattr(self.parent, 'status_manager'):
+                self.parent.after(0, lambda: self.parent.status_manager.success(
+                    f"Uploaded {success_count} document(s)"
+                ))
+
+        import threading
+        thread = threading.Thread(target=process_files, daemon=True)
+        thread.start()
+
+    def _show_upload_error(self, error_msg: str):
+        """Show upload error message."""
+        from tkinter import messagebox
+        messagebox.showerror("Upload Error", f"Failed to start upload:\n{error_msg}", parent=self.parent)
+
+    def _show_rag_library_dialog(self):
+        """Show the RAG document library dialog."""
+        try:
+            from src.ui.dialogs.rag_document_library_dialog import RAGDocumentLibraryDialog
+            from src.managers.rag_document_manager import get_rag_document_manager
+
+            manager = get_rag_document_manager()
+            documents = manager.get_documents()
+
+            def on_delete(doc_id: str) -> bool:
+                return manager.delete_document(doc_id)
+
+            def on_refresh():
+                return manager.get_documents()
+
+            def on_reprocess(doc_id: str):
+                # Reprocess document - would need implementation
+                logger.info(f"Reprocess requested for document {doc_id}")
+
+            dialog = RAGDocumentLibraryDialog(
+                self.parent,
+                documents=documents,
+                on_delete=on_delete,
+                on_refresh=on_refresh,
+                on_reprocess=on_reprocess,
+            )
+            dialog.wait_window()
+            self._update_rag_document_count()
+
+        except Exception as e:
+            logger.error(f"Error showing RAG library dialog: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error(f"Failed to open document library: {e}")
+
+    def _update_rag_document_count(self):
+        """Update the RAG document count label."""
+        try:
+            if not hasattr(self, 'rag_doc_count_label'):
+                return
+
+            from src.managers.rag_document_manager import get_rag_document_manager
+            manager = get_rag_document_manager()
+            count = manager.get_document_count()
+
+            if count == 0:
+                text = "No documents"
+            elif count == 1:
+                text = "1 document"
+            else:
+                text = f"{count} documents"
+
+            self.rag_doc_count_label.config(text=text)
+
+        except Exception as e:
+            logger.debug(f"Could not update RAG document count: {e}")
+            if hasattr(self, 'rag_doc_count_label'):
+                self.rag_doc_count_label.config(text="")
 
     def _open_medication_details(self) -> None:
         """Open full medication results dialog with current analysis."""

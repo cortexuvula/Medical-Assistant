@@ -1031,6 +1031,150 @@ def get_migrations() -> List[Migration]:
         """
     ))
 
+    # Migration 15: RAG Document Management System
+    migrations.append(Migration(
+        version=15,
+        name="RAG Document Management System",
+        up_sql="""
+        -- Table for tracking uploaded documents
+        CREATE TABLE IF NOT EXISTS rag_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT UNIQUE NOT NULL,           -- UUID for the document
+            filename TEXT NOT NULL,                      -- Original filename
+            file_type TEXT NOT NULL,                     -- pdf, docx, txt, image
+            file_path TEXT,                              -- Local storage path
+            file_size_bytes INTEGER DEFAULT 0,
+            page_count INTEGER DEFAULT 0,
+            ocr_required BOOLEAN DEFAULT FALSE,
+            upload_status TEXT DEFAULT 'pending',        -- pending, extracting, chunking, embedding, syncing, completed, failed
+            chunk_count INTEGER DEFAULT 0,
+            neon_synced BOOLEAN DEFAULT FALSE,           -- Whether embeddings are in Neon
+            graphiti_synced BOOLEAN DEFAULT FALSE,       -- Whether added to knowledge graph
+            error_message TEXT,
+            metadata_json TEXT,                          -- JSON: title, author, keywords, etc.
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Table for document chunks with local text storage
+        CREATE TABLE IF NOT EXISTS rag_document_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL,                   -- References rag_documents.document_id
+            chunk_index INTEGER NOT NULL,
+            chunk_text TEXT NOT NULL,
+            token_count INTEGER DEFAULT 0,
+            start_page INTEGER,                          -- For PDFs
+            end_page INTEGER,
+            neon_id TEXT,                                -- ID in Neon database
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES rag_documents(document_id) ON DELETE CASCADE,
+            UNIQUE(document_id, chunk_index)
+        );
+
+        -- Table for tracking RAG search history
+        CREATE TABLE IF NOT EXISTS rag_search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query_text TEXT NOT NULL,
+            result_count INTEGER DEFAULT 0,
+            processing_time_ms REAL,
+            used_graph_search BOOLEAN DEFAULT FALSE,
+            top_k INTEGER DEFAULT 5,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Table for caching frequently used embeddings
+        CREATE TABLE IF NOT EXISTS rag_embedding_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text_hash TEXT UNIQUE NOT NULL,              -- SHA256 of the text
+            embedding_json TEXT NOT NULL,                -- JSON array of floats
+            model TEXT NOT NULL,                         -- Embedding model used
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            use_count INTEGER DEFAULT 1
+        );
+
+        -- Indexes for efficient queries
+        CREATE INDEX IF NOT EXISTS idx_rag_documents_status ON rag_documents(upload_status);
+        CREATE INDEX IF NOT EXISTS idx_rag_documents_type ON rag_documents(file_type);
+        CREATE INDEX IF NOT EXISTS idx_rag_documents_created ON rag_documents(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rag_documents_neon_sync ON rag_documents(neon_synced);
+        CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_document_chunks(document_id);
+        CREATE INDEX IF NOT EXISTS idx_rag_search_created ON rag_search_history(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rag_cache_hash ON rag_embedding_cache(text_hash);
+        CREATE INDEX IF NOT EXISTS idx_rag_cache_used ON rag_embedding_cache(last_used_at DESC);
+
+        -- Full-text search for document chunks
+        CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunks_fts USING fts5(
+            chunk_text,
+            content=rag_document_chunks,
+            content_rowid=id
+        );
+
+        -- Triggers to keep FTS in sync
+        CREATE TRIGGER IF NOT EXISTS rag_chunks_ai AFTER INSERT ON rag_document_chunks BEGIN
+            INSERT INTO rag_chunks_fts(rowid, chunk_text)
+            VALUES (new.id, new.chunk_text);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS rag_chunks_ad AFTER DELETE ON rag_document_chunks BEGIN
+            DELETE FROM rag_chunks_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS rag_chunks_au AFTER UPDATE ON rag_document_chunks BEGIN
+            UPDATE rag_chunks_fts
+            SET chunk_text = new.chunk_text
+            WHERE rowid = new.id;
+        END;
+
+        -- Full-text search for document metadata
+        CREATE VIRTUAL TABLE IF NOT EXISTS rag_documents_fts USING fts5(
+            filename,
+            metadata_json,
+            content=rag_documents,
+            content_rowid=id
+        );
+
+        -- Triggers for document FTS
+        CREATE TRIGGER IF NOT EXISTS rag_documents_ai AFTER INSERT ON rag_documents BEGIN
+            INSERT INTO rag_documents_fts(rowid, filename, metadata_json)
+            VALUES (new.id, new.filename, new.metadata_json);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS rag_documents_ad AFTER DELETE ON rag_documents BEGIN
+            DELETE FROM rag_documents_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS rag_documents_au AFTER UPDATE ON rag_documents BEGIN
+            UPDATE rag_documents_fts
+            SET filename = new.filename,
+                metadata_json = new.metadata_json
+            WHERE rowid = new.id;
+        END;
+        """,
+        down_sql="""
+        DROP TRIGGER IF EXISTS rag_documents_au;
+        DROP TRIGGER IF EXISTS rag_documents_ad;
+        DROP TRIGGER IF EXISTS rag_documents_ai;
+        DROP TABLE IF EXISTS rag_documents_fts;
+        DROP TRIGGER IF EXISTS rag_chunks_au;
+        DROP TRIGGER IF EXISTS rag_chunks_ad;
+        DROP TRIGGER IF EXISTS rag_chunks_ai;
+        DROP TABLE IF EXISTS rag_chunks_fts;
+        DROP INDEX IF EXISTS idx_rag_cache_used;
+        DROP INDEX IF EXISTS idx_rag_cache_hash;
+        DROP INDEX IF EXISTS idx_rag_search_created;
+        DROP INDEX IF EXISTS idx_rag_chunks_document;
+        DROP INDEX IF EXISTS idx_rag_documents_neon_sync;
+        DROP INDEX IF EXISTS idx_rag_documents_created;
+        DROP INDEX IF EXISTS idx_rag_documents_type;
+        DROP INDEX IF EXISTS idx_rag_documents_status;
+        DROP TABLE IF EXISTS rag_embedding_cache;
+        DROP TABLE IF EXISTS rag_search_history;
+        DROP TABLE IF EXISTS rag_document_chunks;
+        DROP TABLE IF EXISTS rag_documents;
+        """
+    ))
+
     return migrations
 
 
