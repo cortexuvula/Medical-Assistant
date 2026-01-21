@@ -30,14 +30,35 @@ from utils.exceptions import APIError
 
 logger = get_logger(__name__)
 
-# Load environment variables
-# Try loading from root .env first, then fall back to AppData .env
+# Load environment variables from multiple possible locations
 import pathlib
-root_env = pathlib.Path(__file__).parent.parent.parent / '.env'
-if root_env.exists():
-    load_dotenv(dotenv_path=str(root_env))
-else:
-    load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
+
+def _load_env_file():
+    """Try to load .env from multiple locations."""
+    # Possible .env locations in order of priority
+    possible_paths = [
+        # 1. Project root (relative to this file)
+        pathlib.Path(__file__).parent.parent.parent / '.env',
+        # 2. Current working directory
+        pathlib.Path.cwd() / '.env',
+        # 3. AppData folder (for packaged apps)
+        data_folder_manager.env_file_path,
+    ]
+
+    for env_path in possible_paths:
+        try:
+            if env_path.exists():
+                load_dotenv(dotenv_path=str(env_path))
+                logger.debug(f"Loaded .env from: {env_path}")
+                return True
+        except Exception as e:
+            logger.debug(f"Failed to load .env from {env_path}: {e}")
+
+    # Also try without specifying path (uses python-dotenv's default search)
+    load_dotenv()
+    return False
+
+_load_env_file()
 
 
 class RagProcessor:
@@ -108,10 +129,17 @@ class RagProcessor:
         self._current_cancellation_token = None
         self._use_streaming = True  # Enable streaming by default for local RAG
 
+        # Log RAG mode configuration for debugging
         if self.use_local_rag:
-            logger.info("Local RAG mode enabled (Neon database configured)")
+            # Mask the URL for security (show only first 30 chars)
+            masked_url = self.neon_database_url[:30] + "..." if len(self.neon_database_url) > 30 else self.neon_database_url
+            logger.info(f"Local RAG mode enabled (Neon URL: {masked_url})")
         else:
-            logger.info("N8N webhook mode (local RAG not configured)")
+            # Log env var status to help debug
+            logger.warning(
+                "Local RAG not configured - NEON_DATABASE_URL not found in environment. "
+                "Checked locations: project root .env, cwd .env, AppData .env"
+            )
 
         # Typing indicator state for progress feedback
         self._typing_indicator_mark = None
@@ -637,7 +665,9 @@ class RagProcessor:
         Returns:
             'local' for local RAG, 'n8n' for webhook, 'none' if unconfigured
         """
-        if self.use_local_rag and self.is_local_rag_available():
+        # Trust the configuration - if NEON_DATABASE_URL is set, use local RAG
+        # Actual connectivity issues will be reported when operations are attempted
+        if self.use_local_rag:
             return "local"
         elif self.n8n_webhook_url:
             return "n8n"
