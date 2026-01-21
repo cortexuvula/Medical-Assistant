@@ -5,18 +5,28 @@ import platform
 import sys
 
 # Add src to path for collecting submodules
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'src'))
+src_path = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'src')
+sys.path.insert(0, src_path)
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_all
 
 # Collect all submodules from internal packages
 internal_hiddenimports = []
+internal_datas = []
 for pkg in ['managers', 'utils', 'core', 'settings', 'database', 'ai', 'audio',
             'processing', 'rag', 'stt_providers', 'tts_providers', 'translation', 'ui']:
     try:
-        internal_hiddenimports += collect_submodules(pkg)
+        datas, binaries, hiddenimports = collect_all(pkg)
+        internal_hiddenimports += hiddenimports
+        internal_datas += datas
+        print(f"Collected {len(hiddenimports)} modules from {pkg}")
     except Exception as e:
-        print(f"Warning: Could not collect submodules for {pkg}: {e}")
+        print(f"Warning: Could not collect from {pkg}: {e}")
+        # Fallback: try collect_submodules only
+        try:
+            internal_hiddenimports += collect_submodules(pkg)
+        except:
+            pass
 
 # Determine FFmpeg files based on platform
 ffmpeg_files = []
@@ -72,7 +82,8 @@ a = Analysis(
         ('icon.ico', '.'),
         ('icon256x256.ico', '.'),  # Include as backup
         ('config', 'config'),  # Include config folder and its contents
-    ] + soundcard_datas,
+        ('src', 'src'),  # Include entire src directory
+    ] + soundcard_datas + internal_datas,
     hiddenimports=[
         'tkinter',
         'ttkbootstrap',

@@ -4,6 +4,13 @@ Runtime hook for Windows to fix asyncio issues with PyInstaller
 import sys
 import os
 
+# Add src directory to path for internal module imports
+# This is needed because the internal modules (managers, utils, etc.) are in src/
+if hasattr(sys, '_MEIPASS'):
+    src_path = os.path.join(sys._MEIPASS, 'src')
+    if os.path.exists(src_path) and src_path not in sys.path:
+        sys.path.insert(0, src_path)
+
 # Fix for asyncio TypeError in Python 3.11+ on Windows
 if sys.platform == 'win32':
     # Patch asyncio to handle the issue with function() argument 'code' must be code, not str
