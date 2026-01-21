@@ -1156,3 +1156,6 @@ def extract_medical_entities_ml(
     return extractor.extract_with_ml_classification(
         text, context, use_deduplication, document_id
     )
+
+# Alias for backwards compatibility
+get_ner_extractor = get_medical_ner_extractor
