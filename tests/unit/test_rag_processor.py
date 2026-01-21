@@ -291,14 +291,16 @@ class TestMessageProcessing:
         callback.assert_not_called()
 
     def test_process_message_shows_error_without_url(self):
-        """Test error is shown when webhook URL is not configured."""
+        """Test error is shown when RAG system is not configured."""
         self.processor.n8n_webhook_url = None
         callback = Mock()
 
         with patch.object(self.processor, '_display_error') as mock_error:
             self.processor.process_message("test query", callback)
             mock_error.assert_called_once()
-            assert "not configured" in mock_error.call_args[0][0].lower()
+            error_msg = mock_error.call_args[0][0].lower()
+            # Check for either old or new error message format
+            assert "not configured" in error_msg or "no rag system configured" in error_msg
 
     @patch('src.ai.rag_processor.threading.Thread')
     def test_process_message_starts_thread(self, mock_thread_class):
