@@ -13,12 +13,14 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 # Collect all submodules from internal packages
 internal_hiddenimports = []
 internal_datas = []
+internal_binaries = []
 for pkg in ['managers', 'utils', 'core', 'settings', 'database', 'ai', 'audio',
             'processing', 'rag', 'stt_providers', 'tts_providers', 'translation', 'ui']:
     try:
         datas, binaries, hiddenimports = collect_all(pkg)
         internal_hiddenimports += hiddenimports
         internal_datas += datas
+        internal_binaries += binaries
         print(f"Collected {len(hiddenimports)} modules from {pkg}")
     except Exception as e:
         print(f"Warning: Could not collect from {pkg}: {e}")
@@ -27,6 +29,20 @@ for pkg in ['managers', 'utils', 'core', 'settings', 'database', 'ai', 'audio',
             internal_hiddenimports += collect_submodules(pkg)
         except:
             pass
+
+# Collect PostgreSQL driver packages (psycopg with binary extensions)
+psycopg_binaries = []
+psycopg_datas = []
+psycopg_hiddenimports = []
+for pkg in ['psycopg', 'psycopg_binary', 'psycopg_pool', 'pgvector']:
+    try:
+        datas, binaries, hiddenimports = collect_all(pkg)
+        psycopg_datas += datas
+        psycopg_binaries += binaries
+        psycopg_hiddenimports += hiddenimports
+        print(f"Collected psycopg package: {pkg} ({len(binaries)} binaries, {len(hiddenimports)} imports)")
+    except Exception as e:
+        print(f"Warning: Could not collect {pkg}: {e}")
 
 # Determine FFmpeg files based on platform
 ffmpeg_files = []
@@ -75,7 +91,7 @@ linux_excludes = [
 a = Analysis(
     ['main.py'],
     pathex=['src'],  # Add src to path
-    binaries=ffmpeg_files,
+    binaries=ffmpeg_files + internal_binaries + psycopg_binaries,
     datas=[
         ('env.example', '.'),
         ('hooks/suppress_console.py', '.'),
@@ -83,7 +99,7 @@ a = Analysis(
         ('icon256x256.ico', '.'),  # Include as backup
         ('config', 'config'),  # Include config folder and its contents
         ('src', 'src'),  # Include entire src directory
-    ] + soundcard_datas + internal_datas,
+    ] + soundcard_datas + internal_datas + psycopg_datas,
     hiddenimports=[
         'tkinter',
         'ttkbootstrap',
@@ -128,7 +144,7 @@ a = Analysis(
         # pgvector for PostgreSQL vector operations
         'pgvector',
         'pgvector.psycopg',
-    ] + internal_hiddenimports,  # Add all internal modules collected above
+    ] + internal_hiddenimports + psycopg_hiddenimports,  # Add all internal modules collected above
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
     runtime_hooks=['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux' else (['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
