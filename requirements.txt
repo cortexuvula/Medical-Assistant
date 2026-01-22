@@ -38,6 +38,7 @@ pdfplumber>=0.10.0  # Text-based PDF extraction for RSVP Reader
 pytesseract>=0.3.10  # OCR for scanned PDFs in RSVP Reader
 pdf2image>=1.16.0  # Convert PDF pages to images for OCR
 psycopg[binary]>=3.1.0  # PostgreSQL async driver for Neon RAG
+psycopg-pool>=3.1.0  # Connection pooling for Neon RAG
 pgvector>=0.2.0  # pgvector Python bindings for vector search
 tiktoken>=0.5.0  # Token counting for semantic chunking
 graphiti-core>=0.3.0  # Zep AI Graphiti for knowledge graphs
