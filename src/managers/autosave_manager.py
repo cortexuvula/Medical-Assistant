@@ -213,7 +213,7 @@ class AutoSaveManager:
 
             # Calculate hash to detect changes
             data_str = json.dumps(save_data["data"], sort_keys=True, default=str)
-            current_hash = hashlib.md5(data_str.encode()).hexdigest()
+            current_hash = hashlib.md5(data_str.encode(), usedforsecurity=False).hexdigest()
 
             # Check last hash (thread-safe)
             with self._state_lock:

@@ -197,7 +197,7 @@ class MCPToolWrapper(BaseTool):
         except (TypeError, ValueError):
             args_str = str(kwargs)
         key_content = f"{self.name}:{args_str}"
-        return hashlib.md5(key_content.encode()).hexdigest()
+        return hashlib.md5(key_content.encode(), usedforsecurity=False).hexdigest()
 
     def execute(self, **kwargs) -> ToolResult:
         """Execute the MCP tool
