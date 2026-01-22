@@ -196,7 +196,8 @@ jobs:
     # Code analysis - bandit
     - name: Run bandit security scan
       run: |
-        bandit -r src/ -c .bandit.yml -f json -o bandit-report.json
+        # Run bandit, ignoring its exit code (it exits 1 when any issues found)
+        bandit -r src/ -c .bandit.yml -f json -o bandit-report.json || true
         # Fail only on HIGH severity issues - check with jq
         HIGH_COUNT=$(jq '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-report.json)
         TOTAL_COUNT=$(jq '.results | length' bandit-report.json)
