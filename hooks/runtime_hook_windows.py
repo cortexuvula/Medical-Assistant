@@ -7,9 +7,21 @@ import os
 # Add src directory to path for internal module imports
 # This is needed because the internal modules (managers, utils, etc.) are in src/
 if hasattr(sys, '_MEIPASS'):
+    # Add the _MEIPASS directory itself first
+    if sys._MEIPASS not in sys.path:
+        sys.path.insert(0, sys._MEIPASS)
+
+    # Add src directory for internal package imports (managers, rag, utils, etc.)
     src_path = os.path.join(sys._MEIPASS, 'src')
     if os.path.exists(src_path) and src_path not in sys.path:
         sys.path.insert(0, src_path)
+
+    # Try to pre-import psycopg to ensure binary extensions are loaded early
+    try:
+        import psycopg
+    except ImportError as e:
+        # Log import failure but don't crash - RAG will handle gracefully
+        print(f"Runtime hook: psycopg import failed: {e}", file=sys.stderr)
 
 # Fix for asyncio TypeError in Python 3.11+ on Windows
 if sys.platform == 'win32':
