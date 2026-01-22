@@ -66,7 +66,14 @@ def clear_all_content(app_instance: "MedicalDictationApp") -> None:
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
         logger.info("Reset current recording ID")
-    
+
+    # Clear pending analyses (deferred save pattern)
+    if hasattr(app_instance, '_pending_medication_analysis'):
+        app_instance._pending_medication_analysis = None
+    if hasattr(app_instance, '_pending_differential_analysis'):
+        app_instance._pending_differential_analysis = None
+    logger.debug("Cleared pending analyses")
+
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
         app_instance.update_status("All content cleared", "info")
@@ -160,7 +167,14 @@ def clear_content_except_context(app_instance: "MedicalDictationApp") -> None:
     if hasattr(app_instance, "current_recording_id"):
         app_instance.current_recording_id = None
         logger.info("Reset current recording ID")
-    
+
+    # Clear pending analyses (deferred save pattern)
+    if hasattr(app_instance, '_pending_medication_analysis'):
+        app_instance._pending_medication_analysis = None
+    if hasattr(app_instance, '_pending_differential_analysis'):
+        app_instance._pending_differential_analysis = None
+    logger.debug("Cleared pending analyses")
+
     # Update status to inform the user
     if hasattr(app_instance, "update_status"):
         app_instance.update_status("Content cleared (context preserved)", "info")

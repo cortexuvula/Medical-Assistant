@@ -971,12 +971,41 @@ class MedicalDictationApp(
                 "filename": filename
             }
         }
-        
-        recording_id = self.db_manager.save_soap_recording(recording_data)
+
+        # Pass self as app to save any pending analyses (deferred save pattern)
+        recording_id = self.db_manager.save_soap_recording(recording_data, app=self)
         if recording_id:
             self.current_recording_id = recording_id
+            # Also update selected_recording_id so analyses can reference this recording
+            self.selected_recording_id = recording_id
+            # Update sidebar indicators if pending analyses were saved
+            self._update_soap_indicators_after_save(recording_id)
         else:
             self.status_manager.error("Failed to save recording to database")
+
+    def _update_soap_indicators_after_save(self, recording_id: int) -> None:
+        """Update sidebar SOAP sub-item indicators after saving a recording.
+
+        Args:
+            recording_id: The ID of the saved recording
+        """
+        try:
+            from processing.analysis_storage import get_analysis_storage
+
+            storage = get_analysis_storage()
+            has_medication = storage.has_medication_analysis(recording_id)
+            has_differential = storage.has_differential_diagnosis(recording_id)
+
+            # Update sidebar indicators
+            if hasattr(self, 'ui') and hasattr(self.ui, 'components'):
+                sidebar_nav = self.ui.components.get('sidebar_navigation')
+                if sidebar_nav and hasattr(sidebar_nav, 'update_soap_indicators'):
+                    sidebar_nav.update_soap_indicators(
+                        has_medication=has_medication,
+                        has_differential=has_differential
+                    )
+        except Exception as e:
+            logger.debug(f"Could not update SOAP indicators after save: {e}")
 
     def _on_provider_change(self, event=None):
         """Handle AI provider change. Delegates to ProviderConfigController."""

@@ -350,6 +350,9 @@ class MedicationGeneratorMixin:
     def _save_medication_analysis_to_db(self, result: str, metadata: dict) -> None:
         """Save medication analysis to database if recording_id is available.
 
+        If no recording_id is available, stores the analysis as pending to be
+        saved when a recording is created/saved (deferred save pattern).
+
         Args:
             result: The analysis result text
             metadata: Analysis metadata
@@ -359,14 +362,22 @@ class MedicationGeneratorMixin:
 
             # Get recording_id from current selection
             recording_id = getattr(self.app, 'selected_recording_id', None)
-            if not recording_id:
-                logger.debug("No recording_id available, skipping medication analysis save")
-                return
 
             # Get SOAP note as source text
             source_text = ""
             if hasattr(self.app, 'soap_text'):
                 source_text = self.app.soap_text.get("1.0", "end").strip()
+
+            if not recording_id:
+                # Store as pending - will be saved when recording is saved
+                self.app._pending_medication_analysis = {
+                    'result_text': result,
+                    'metadata': metadata,
+                    'source_text': source_text[:5000] if source_text else None,
+                    'analysis_subtype': 'comprehensive'
+                }
+                logger.info("Medication analysis stored as pending - will save with recording")
+                return
 
             storage = get_analysis_storage()
             analysis_id = storage.save_medication_analysis(

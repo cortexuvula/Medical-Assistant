@@ -230,10 +230,15 @@ class AppInitializer:
         self.app.soap_stop_listening_function = None
         self.app.listening = False  # Initialize listening flag for recording state
         self.app.current_recording_id = None  # Track the ID of the currently loaded recording
-        
+
         # Initialize auto-save state
         self.app.has_available_autosave = False
         self.app.last_autosave_timestamp = None
+
+        # Initialize pending analysis storage for deferred save pattern
+        # These store analyses when no recording_id is available, to be saved when recording is saved
+        self.app._pending_medication_analysis = None
+        self.app._pending_differential_analysis = None
         
         # Quick continue mode variable for menu checkbox
         self.app.quick_continue_var = tk.BooleanVar()

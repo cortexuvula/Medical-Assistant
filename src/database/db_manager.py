@@ -39,7 +39,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
 
-    def save_soap_recording(self, recording_data: Dict[str, Any]) -> Optional[int]:
+    def save_soap_recording(self, recording_data: Dict[str, Any], app=None) -> Optional[int]:
         """Save SOAP recording to database.
 
         Args:
@@ -49,6 +49,7 @@ class DatabaseManager:
                 - duration: Recording duration in seconds
                 - soap_note: Generated SOAP note (optional)
                 - metadata: Additional metadata (optional)
+            app: Optional app instance for saving pending analyses
 
         Returns:
             Optional[int]: Recording ID or None if failed
@@ -72,11 +73,63 @@ class DatabaseManager:
             )
 
             logger.info(f"SOAP recording saved to database with ID: {recording_id}")
+
+            # Save any pending analyses that were deferred
+            if recording_id and app:
+                self._save_pending_analyses(recording_id, app)
+
             return recording_id
 
         except Exception as e:
             logger.error(f"Failed to save SOAP recording: {e}")
             return None
+
+    def _save_pending_analyses(self, recording_id: int, app) -> None:
+        """Save any pending analyses after a recording is saved.
+
+        This implements the deferred save pattern - analyses that were run
+        when no recording_id was available are saved once a recording is created.
+
+        Args:
+            recording_id: The ID of the newly saved recording
+            app: The app instance containing pending analyses
+        """
+        try:
+            from processing.analysis_storage import get_analysis_storage
+            storage = get_analysis_storage()
+
+            # Save pending medication analysis
+            if hasattr(app, '_pending_medication_analysis') and app._pending_medication_analysis:
+                pending = app._pending_medication_analysis
+                analysis_id = storage.save_medication_analysis(
+                    result_text=pending['result_text'],
+                    recording_id=recording_id,
+                    metadata=pending.get('metadata'),
+                    source_type='soap',
+                    source_text=pending.get('source_text'),
+                    analysis_subtype=pending.get('analysis_subtype', 'comprehensive')
+                )
+                app._pending_medication_analysis = None
+                if analysis_id:
+                    logger.info(f"Saved pending medication analysis (id={analysis_id}) for recording {recording_id}")
+
+            # Save pending differential analysis
+            if hasattr(app, '_pending_differential_analysis') and app._pending_differential_analysis:
+                pending = app._pending_differential_analysis
+                analysis_id = storage.save_differential_diagnosis(
+                    result_text=pending['result_text'],
+                    recording_id=recording_id,
+                    metadata=pending.get('metadata'),
+                    source_type='soap',
+                    source_text=pending.get('source_text'),
+                    analysis_subtype=pending.get('analysis_subtype', 'comprehensive')
+                )
+                app._pending_differential_analysis = None
+                if analysis_id:
+                    logger.info(f"Saved pending differential diagnosis (id={analysis_id}) for recording {recording_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to save pending analyses: {e}")
 
     def save_letter(self, letter_data: Dict[str, Any]) -> Optional[int]:
         """Save letter to database.
