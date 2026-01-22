@@ -197,20 +197,16 @@ jobs:
     - name: Run bandit security scan
       run: |
         bandit -r src/ -c .bandit.yml -f json -o bandit-report.json
-        # Fail only on HIGH severity issues
-        python3 << 'BANDIT_CHECK'
-        import json, sys
-        with open('bandit-report.json') as f:
-            data = json.load(f)
-        results = data.get('results', [])
-        high_issues = [r for r in results if r['issue_severity'] == 'HIGH']
-        if high_issues:
-            print('HIGH severity issues found:')
-            for r in high_issues:
-                print(f"  {r['filename']}:{r['line_number']}: {r['issue_text']}")
-            sys.exit(1)
-        print(f'No HIGH severity issues. {len(results)} lower severity findings.')
-        BANDIT_CHECK
+        # Fail only on HIGH severity issues - check with jq
+        HIGH_COUNT=$(jq '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-report.json)
+        TOTAL_COUNT=$(jq '.results | length' bandit-report.json)
+        echo "Found $TOTAL_COUNT total issues, $HIGH_COUNT HIGH severity"
+        if [ "$HIGH_COUNT" -gt 0 ]; then
+          echo "HIGH severity issues found:"
+          jq -r '.results[] | select(.issue_severity == "HIGH") | "  \(.filename):\(.line_number): \(.issue_text)"' bandit-report.json
+          exit 1
+        fi
+        echo "No HIGH severity issues."
 
     - name: Upload security reports
       uses: actions/upload-artifact@v4
