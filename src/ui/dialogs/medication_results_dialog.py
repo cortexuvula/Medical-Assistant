@@ -315,6 +315,58 @@ class MedicationResultsDialog:
         self.result_text.tag_configure("medication", font=("Segoe UI", 11, "bold"))
         self.result_text.tag_configure("detail", foreground="gray", font=("Segoe UI", 10))
 
+        # Priority indicator tags (🔴🟡🟢)
+        self.result_text.tag_configure(
+            "priority_high",
+            foreground="white",
+            background="#dc3545",  # Red
+            font=("Segoe UI", 12, "bold")
+        )
+        self.result_text.tag_configure(
+            "priority_moderate",
+            foreground="black",
+            background="#ffc107",  # Yellow/Amber
+            font=("Segoe UI", 12, "bold")
+        )
+        self.result_text.tag_configure(
+            "priority_low",
+            foreground="white",
+            background="#28a745",  # Green
+            font=("Segoe UI", 12, "bold")
+        )
+
+        # Action checkbox tag (□)
+        self.result_text.tag_configure(
+            "action_checkbox",
+            font=("Consolas", 11),
+            foreground="#0066cc",
+            lmargin1=20,
+            lmargin2=35
+        )
+
+        # Patient counseling tag
+        self.result_text.tag_configure(
+            "counseling",
+            font=("Segoe UI", 10),
+            foreground="#2d6a4f",
+            lmargin1=15,
+            lmargin2=30
+        )
+
+        # Table header tag
+        self.result_text.tag_configure(
+            "table_header",
+            font=("Consolas", 10, "bold"),
+            background="#e9ecef"
+        )
+
+        # Table row tag
+        self.result_text.tag_configure(
+            "table_row",
+            font=("Consolas", 10),
+            background="#f8f9fa"
+        )
+
         # Severity color tags for drug interactions
         self.result_text.tag_configure(
             "severity_contraindicated",
@@ -359,16 +411,139 @@ class MedicationResultsDialog:
             font=("Segoe UI", 11, "bold")
         )
 
+        # TDM (Therapeutic Drug Monitoring) section tag
+        self.result_text.tag_configure(
+            "tdm_section",
+            font=("Segoe UI", 11),
+            foreground="#6f42c1",  # Purple
+            lmargin1=10
+        )
+        self.result_text.tag_configure(
+            "tdm_header",
+            font=("Segoe UI", 12, "bold"),
+            foreground="#6f42c1",  # Purple
+            background="#f3e8ff"  # Light purple background
+        )
+
+        # De-prescribing warning/section tags
+        self.result_text.tag_configure(
+            "deprescribe_warning",
+            font=("Segoe UI", 11, "bold"),
+            foreground="#e83e8c",  # Pink/magenta
+            background="#fff5f8"
+        )
+        self.result_text.tag_configure(
+            "deprescribe_header",
+            font=("Segoe UI", 12, "bold"),
+            foreground="#e83e8c",  # Pink/magenta
+            background="#fff0f5"  # Light pink background
+        )
+        self.result_text.tag_configure(
+            "beers_criteria",
+            font=("Segoe UI", 10, "italic"),
+            foreground="#e83e8c",  # Pink/magenta
+            lmargin1=15
+        )
+
+        # Cost indicator tags
+        self.result_text.tag_configure(
+            "cost_generic",
+            foreground="#28a745",  # Green - affordable
+            font=("Segoe UI", 10)
+        )
+        self.result_text.tag_configure(
+            "cost_brand",
+            foreground="#fd7e14",  # Orange - moderate cost
+            font=("Segoe UI", 10)
+        )
+        self.result_text.tag_configure(
+            "cost_expensive",
+            foreground="#dc3545",  # Red - expensive
+            font=("Segoe UI", 10, "bold")
+        )
+        self.result_text.tag_configure(
+            "cost_specialty",
+            foreground="#dc3545",  # Red
+            background="#fff5f5",  # Light red background
+            font=("Segoe UI", 10, "bold")
+        )
+
+        # Reference/citation tag
+        self.result_text.tag_configure(
+            "reference",
+            font=("Segoe UI", 9, "italic"),
+            foreground="#6c757d"  # Gray
+        )
+        self.result_text.tag_configure(
+            "guideline_citation",
+            font=("Segoe UI", 10, "italic"),
+            foreground="#17a2b8",  # Teal/Info
+            lmargin1=10
+        )
+        self.result_text.tag_configure(
+            "pmid_citation",
+            font=("Consolas", 9),
+            foreground="#6c757d",
+            background="#f8f9fa"
+        )
+
+        # Evidence references section header
+        self.result_text.tag_configure(
+            "evidence_header",
+            font=("Segoe UI", 12, "bold"),
+            foreground="#17a2b8",  # Teal
+            background="#e8f6f8"  # Light teal background
+        )
+
         # Parse and format the text
         lines = text.split('\n')
+        in_counseling_section = False
+        in_table = False
+
         for line in lines:
             line_lower = line.lower()
+            stripped_line = line.strip()
+
+            # Track section context
+            if "patient counseling" in line_lower:
+                in_counseling_section = True
+            elif line.startswith("##") or (line.upper() == line and line.endswith(':') and stripped_line):
+                in_counseling_section = False
+
+            # Check for priority emoji indicators first (highest precedence)
+            priority_tag = self._detect_priority_tag(line)
+            if priority_tag:
+                self.result_text.insert(tk.END, line + '\n', priority_tag)
+                continue
+
+            # Check for table rows (markdown tables)
+            if stripped_line.startswith('|') and stripped_line.endswith('|'):
+                in_table = True
+                if '---' in line or '|---|' in line:
+                    # Table separator row - skip or show minimal
+                    self.result_text.insert(tk.END, line + '\n', "detail")
+                elif line_lower.count('|') > 2 and any(
+                    header in line_lower for header in ['medication', 'dose', 'parameter', 'value']
+                ):
+                    # Table header row
+                    self.result_text.insert(tk.END, line + '\n', "table_header")
+                else:
+                    # Table data row
+                    self.result_text.insert(tk.END, line + '\n', "table_row")
+                continue
+            else:
+                in_table = False
+
+            # Check for action checkbox items (□)
+            if stripped_line.startswith('□') or stripped_line.startswith('☐'):
+                self.result_text.insert(tk.END, line + '\n', "action_checkbox")
+                continue
 
             # Check for severity indicators in the line
             severity_tag = self._detect_severity_tag(line_lower)
 
-            if line.upper() == line and line.endswith(':') and line.strip():
-                # Heading
+            if line.startswith('##') or (line.upper() == line and line.endswith(':') and stripped_line):
+                # Heading (including markdown ## headers)
                 self.result_text.insert(tk.END, line + '\n', "heading")
             elif severity_tag:
                 # Line contains severity indicator - apply colored tag
@@ -388,6 +563,63 @@ class MedicationResultsDialog:
             elif "hepatic" in line_lower or "liver" in line_lower or "child-pugh" in line_lower:
                 # Hepatic-related
                 self.result_text.insert(tk.END, line + '\n', "hepatic_warning")
+            # TDM (Therapeutic Drug Monitoring) section detection
+            elif "therapeutic drug monitoring" in line_lower or "tdm" in line_lower:
+                if line.startswith('##') or 'THERAPEUTIC DRUG MONITORING' in line:
+                    self.result_text.insert(tk.END, line + '\n', "tdm_header")
+                else:
+                    self.result_text.insert(tk.END, line + '\n', "tdm_section")
+                continue
+            elif any(drug in line_lower for drug in ["vancomycin", "digoxin", "lithium", "phenytoin",
+                     "carbamazepine", "valproic", "theophylline", "cyclosporine", "tacrolimus", "sirolimus"]):
+                # TDM drug mentioned - apply TDM styling if in context
+                if "target" in line_lower or "level" in line_lower or "trough" in line_lower or "auc" in line_lower:
+                    self.result_text.insert(tk.END, line + '\n', "tdm_section")
+                    continue
+            # De-prescribing and Beers Criteria detection
+            elif "de-prescribing" in line_lower or "deprescribing" in line_lower:
+                if line.startswith('##') or 'DE-PRESCRIBING' in line:
+                    self.result_text.insert(tk.END, line + '\n', "deprescribe_header")
+                else:
+                    self.result_text.insert(tk.END, line + '\n', "deprescribe_warning")
+                continue
+            elif "beers criteria" in line_lower or "beers 2023" in line_lower or "ags beers" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "beers_criteria")
+                continue
+            elif "potentially inappropriate" in line_lower or "pim" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "deprescribe_warning")
+                continue
+            # Cost indicator detection
+            elif "$$$$" in line or "specialty" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "cost_specialty")
+                continue
+            elif "$$$" in line and "$$$$" not in line:
+                self.result_text.insert(tk.END, line + '\n', "cost_expensive")
+                continue
+            elif "$$" in line and "$$$" not in line:
+                self.result_text.insert(tk.END, line + '\n', "cost_brand")
+                continue
+            elif ("generic available" in line_lower and "yes" in line_lower) or \
+                 (line.strip().startswith("$") and line.strip()[1:2] != "$"):
+                self.result_text.insert(tk.END, line + '\n', "cost_generic")
+                continue
+            # Evidence references detection
+            elif "evidence references" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "evidence_header")
+                continue
+            elif line_lower.startswith("per ") or "per acc" in line_lower or "per idsa" in line_lower or \
+                 "per ags" in line_lower or "per chest" in line_lower or "per aan" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "guideline_citation")
+                continue
+            elif "pmid" in line_lower or "pmid:" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "pmid_citation")
+                continue
+            elif "source:" in line_lower or "guideline:" in line_lower:
+                self.result_text.insert(tk.END, line + '\n', "reference")
+                continue
+            elif in_counseling_section and (line.startswith('•') or line.startswith('  •')):
+                # Patient counseling bullet points
+                self.result_text.insert(tk.END, line + '\n', "counseling")
             elif line.startswith('•'):
                 # Medication or bullet point
                 parts = line.split(' ', 1)
@@ -398,11 +630,51 @@ class MedicationResultsDialog:
             elif line.startswith('  -') or line.startswith('  '):
                 # Detail
                 self.result_text.insert(tk.END, line + '\n', "detail")
+            elif line.startswith('**') and line.endswith('**'):
+                # Bold text (medication names in counseling)
+                self.result_text.insert(tk.END, line + '\n', "medication")
             else:
                 # Normal text
                 self.result_text.insert(tk.END, line + '\n')
 
         self.result_text.config(state=tk.DISABLED)
+
+    def _detect_priority_tag(self, line: str) -> str:
+        """
+        Detect priority emoji indicators in a line and return appropriate tag.
+
+        Args:
+            line: Original line text (not lowercase)
+
+        Returns:
+            Tag name for priority coloring, or empty string if none detected
+        """
+        # Check for priority emoji indicators
+        if '🔴' in line:
+            # High priority - red circle emoji
+            if 'high priority' in line.lower() or 'immediate' in line.lower():
+                return "priority_high"
+            return "priority_high"
+        elif '🟡' in line:
+            # Moderate priority - yellow circle emoji
+            if 'moderate priority' in line.lower() or 'address this visit' in line.lower():
+                return "priority_moderate"
+            return "priority_moderate"
+        elif '🟢' in line:
+            # Low priority - green circle emoji
+            if 'low priority' in line.lower() or 'monitoring' in line.lower():
+                return "priority_low"
+            return "priority_low"
+        # Also check for text-based priority indicators without emojis
+        line_lower = line.lower()
+        if line.startswith('##') or line.startswith('#'):
+            if 'high priority' in line_lower:
+                return "priority_high"
+            elif 'moderate priority' in line_lower:
+                return "priority_moderate"
+            elif 'low priority' in line_lower:
+                return "priority_low"
+        return ""
 
     def _detect_severity_tag(self, line: str) -> str:
         """
@@ -435,6 +707,13 @@ class MedicationResultsDialog:
                 return "severity_moderate"
             elif "minor" in line or "minimal" in line:
                 return "severity_minor"
+        # Check for dosing assessment indicators
+        elif "inappropriate" in line and "assessment" in line:
+            return "severity_contraindicated"
+        elif "needs adjustment" in line and "assessment" in line:
+            return "severity_moderate"
+        elif "appropriate" in line and "assessment" in line:
+            return "severity_minor"
         return ""
     
     def _copy_to_clipboard(self):
