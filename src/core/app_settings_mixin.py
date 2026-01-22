@@ -135,7 +135,8 @@ class AppSettingsMixin:
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["advanced_analysis"].get("anthropic_model", "claude-sonnet-4-20250514")),
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash")),
             current_provider=cfg.get("provider", ""),
-            is_advanced_analysis=True
+            is_advanced_analysis=True,
+            current_specialty=cfg.get("specialty", "general")
         )
 
     def show_temperature_settings(self) -> None:
@@ -287,7 +288,7 @@ class AppSettingsMixin:
     def save_advanced_analysis_settings(self, prompt: str, openai_model: str,
                                         ollama_model: str, system_prompt: str,
                                         anthropic_model: str, gemini_model: str = "",
-                                        provider: str = "") -> None:
+                                        provider: str = "", specialty: str = "general") -> None:
         """Save advanced analysis settings.
 
         Args:
@@ -298,6 +299,7 @@ class AppSettingsMixin:
             anthropic_model: Anthropic model to use
             gemini_model: Gemini model to use
             provider: AI provider to use (empty = use global setting)
+            specialty: Clinical specialty focus (e.g., "general", "emergency", "cardiology")
         """
         # Preserve existing temperature settings by using set_nested for each field
         settings_manager.set_nested("advanced_analysis.prompt", prompt, auto_save=False)
@@ -307,5 +309,6 @@ class AppSettingsMixin:
         settings_manager.set_nested("advanced_analysis.anthropic_model", anthropic_model, auto_save=False)
         settings_manager.set_nested("advanced_analysis.gemini_model", gemini_model, auto_save=False)
         settings_manager.set_nested("advanced_analysis.provider", provider, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.specialty", specialty, auto_save=False)
         settings_manager.save()
         self.status_manager.success("Advanced analysis settings saved successfully")

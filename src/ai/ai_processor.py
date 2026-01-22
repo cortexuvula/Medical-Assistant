@@ -415,12 +415,88 @@ class AIProcessor:
             }
         )
     
+    def _get_specialty_instructions(self, specialty: str) -> str:
+        """Get specialty-specific instructions for the diagnostic analysis.
+
+        Args:
+            specialty: The specialty focus (e.g., "general", "emergency", "cardiology")
+
+        Returns:
+            Specialty-specific instruction string to prepend to system message
+        """
+        specialty_map = {
+            "general": "",  # No special instructions for general
+            "emergency": (
+                "SPECIALTY FOCUS: EMERGENCY MEDICINE\n"
+                "PRIORITIZE LIFE-THREATENING CONDITIONS. Focus on red flags and time-sensitive diagnoses. "
+                "Rank conditions by urgency, not just likelihood. Include 'must-not-miss' diagnoses prominently. "
+                "Consider presentations that require immediate intervention or monitoring.\n\n"
+            ),
+            "internal": (
+                "SPECIALTY FOCUS: INTERNAL MEDICINE\n"
+                "Consider multisystem involvement and complex medical conditions. Account for comorbidities "
+                "and their interactions. Consider atypical presentations of common conditions.\n\n"
+            ),
+            "pediatric": (
+                "SPECIALTY FOCUS: PEDIATRICS\n"
+                "Apply age-appropriate differentials. Consider developmental milestones and congenital conditions. "
+                "Account for age-specific vital sign normals and presentations. Consider childhood-specific diseases.\n\n"
+            ),
+            "cardiology": (
+                "SPECIALTY FOCUS: CARDIOLOGY\n"
+                "Focus on cardiovascular causes including structural, electrical, and vascular conditions. "
+                "Consider cardiac risk stratification. Include relevant cardiac biomarkers and ECG findings "
+                "in investigations. Prioritize coronary and structural heart disease.\n\n"
+            ),
+            "pulmonology": (
+                "SPECIALTY FOCUS: PULMONOLOGY\n"
+                "Focus on respiratory and pulmonary conditions. Consider obstructive vs restrictive patterns. "
+                "Include relevant pulmonary function tests and imaging. Consider infectious, inflammatory, "
+                "and neoplastic causes.\n\n"
+            ),
+            "gi": (
+                "SPECIALTY FOCUS: GASTROENTEROLOGY\n"
+                "Focus on gastrointestinal and hepatobiliary conditions. Consider upper vs lower GI localization. "
+                "Include relevant endoscopic and imaging studies. Consider functional vs organic causes.\n\n"
+            ),
+            "neurology": (
+                "SPECIALTY FOCUS: NEUROLOGY\n"
+                "Focus on neurological causes including structural, vascular, demyelinating, and functional. "
+                "Consider localization (central vs peripheral, anatomical level). Include relevant imaging "
+                "and electrophysiology studies.\n\n"
+            ),
+            "psychiatry": (
+                "SPECIALTY FOCUS: PSYCHIATRY\n"
+                "Consider psychiatric and biopsychosocial factors. Rule out organic causes of psychiatric symptoms. "
+                "Include relevant screening tools and assessments. Consider substance use and medication effects.\n\n"
+            ),
+            "orthopedic": (
+                "SPECIALTY FOCUS: ORTHOPEDICS\n"
+                "Focus on musculoskeletal and orthopedic conditions. Consider mechanical vs inflammatory causes. "
+                "Include relevant imaging and orthopedic examinations. Consider trauma, degenerative, and "
+                "infectious etiologies.\n\n"
+            ),
+            "oncology": (
+                "SPECIALTY FOCUS: ONCOLOGY\n"
+                "Consider malignancy in the differential. Look for paraneoplastic syndromes. Include relevant "
+                "tumor markers and imaging for staging. Consider both primary malignancies and metastatic disease.\n\n"
+            ),
+            "geriatric": (
+                "SPECIALTY FOCUS: GERIATRICS\n"
+                "Consider age-related conditions and atypical presentations in elderly patients. Account for "
+                "polypharmacy and drug interactions. Consider functional status and goals of care. "
+                "Be aware of presentations that may be subtle or masked.\n\n"
+            ),
+        }
+        return specialty_map.get(specialty, "")
+
     @handle_errors(ErrorSeverity.ERROR, error_message="Failed to generate differential diagnosis", return_type="result")
-    def generate_differential_diagnosis(self, transcript: str) -> OperationResult[Dict[str, str]]:
+    def generate_differential_diagnosis(self, transcript: str, specialty: str = None) -> OperationResult[Dict[str, str]]:
         """Generate differential diagnosis from transcript.
 
         Args:
             transcript: The medical transcript to analyze
+            specialty: Optional clinical specialty focus (overrides settings if provided)
 
         Returns:
             OperationResult containing analysis on success.
@@ -456,6 +532,15 @@ class AIProcessor:
             "2. Recommended Investigations\n"
             "3. Treatment Plan"
         )
+
+        # Get specialty from parameter or settings (parameter takes precedence)
+        effective_specialty = specialty if specialty else analysis_settings.get("specialty", "general")
+
+        # Inject specialty-specific instructions if applicable
+        specialty_instructions = self._get_specialty_instructions(effective_specialty)
+        if specialty_instructions:
+            system_message = specialty_instructions + system_message
+            logger.info("Applied specialty focus to differential diagnosis", specialty=effective_specialty)
 
         # Get temperature from settings
         temperature = analysis_settings.get("temperature", 0.3)
@@ -495,7 +580,7 @@ class AIProcessor:
         # Generate analysis - pass the provider to override global setting
         analysis = call_ai(model, system_message, prompt, temperature, provider=ai_provider)
 
-        logger.info("Generated differential diagnosis successfully", provider=ai_provider)
+        logger.info("Generated differential diagnosis successfully", provider=ai_provider, specialty=effective_specialty)
         # Extract text from AIResult
         analysis_text = analysis.text if hasattr(analysis, 'text') else str(analysis)
         return OperationResult.success({"text": analysis_text})

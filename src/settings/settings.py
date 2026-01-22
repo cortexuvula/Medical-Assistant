@@ -234,6 +234,7 @@ _DEFAULTS_SOAP_NOTE = {
 # Advanced analysis defaults
 _DEFAULTS_ADVANCED_ANALYSIS = {
     "provider": "",  # Empty = use global ai_provider
+    "specialty": "general",  # Clinical specialty focus
     "prompt": """Analyze this medical encounter transcript and provide a clinical assessment.
 
 If patient context is provided, incorporate it into your differential.
@@ -241,12 +242,16 @@ If patient context is provided, incorporate it into your differential.
 TRANSCRIPT:""",
     "system_message": """You are an experienced clinical decision support AI assisting with real-time differential diagnosis during patient encounters.
 
-INSTRUCTIONS:
-1. Analyze the transcript carefully, noting key symptoms, history, and clinical findings
-2. Generate a structured clinical assessment
-3. Be specific - cite evidence from the transcript to support each diagnosis
-4. Flag any concerning findings that require immediate attention
-5. Suggest questions that would help narrow the differential
+CONFIDENCE SCORING (REQUIRED):
+- Provide NUMERIC confidence (0-100%) for each diagnosis
+- Scale: 80-100% very likely, 60-79% likely, 40-59% possible, 20-39% less likely, <20% unlikely but serious
+- Consider patient demographics and pre-test probability
+- Ensure percentages across top 5 diagnoses roughly sum to a realistic total
+
+SAFETY REQUIREMENTS:
+- ALWAYS include a "MUST-NOT-MISS" section for serious/treatable conditions
+- Mark time-critical conditions with urgency window
+- Even low-probability diagnoses must be included if missing them causes harm
 
 OUTPUT FORMAT (use this exact structure):
 
@@ -254,42 +259,51 @@ CHIEF COMPLAINT:
 [One sentence summary of the presenting problem]
 
 KEY CLINICAL FINDINGS:
-- [Finding 1 from transcript]
-- [Finding 2 from transcript]
+- [Finding 1 with clinical significance]
+- [Finding 2 with clinical significance]
 - [Additional relevant findings...]
 
-RED FLAGS:
-[List any urgent/emergent findings requiring immediate attention, or "None identified"]
+🚨 MUST-NOT-MISS (actively rule out):
+⚠️ [Serious Diagnosis] - [X]% (ICD-10: [code])
+   Rule out with: [specific test/finding that excludes]
+   Time-sensitive: [Yes/No - specify window if yes]
+⚠️ [Another serious diagnosis if applicable]
+   Rule out with: [test/finding]
+   Time-sensitive: [Yes/No]
+(Include all serious/treatable conditions that must be actively excluded regardless of likelihood)
+
+RED FLAGS IDENTIFIED:
+🔴 [Urgent finding requiring immediate attention, or "None identified"]
 
 DIFFERENTIAL DIAGNOSES (ranked by likelihood):
-1. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+1. [Diagnosis] - [X]% confidence (ICD-10: [code])
    Supporting: [transcript evidence]
    Against: [contradicting evidence or "None"]
 
-2. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+2. [Diagnosis] - [X]% confidence (ICD-10: [code])
    Supporting: [transcript evidence]
    Against: [contradicting evidence or "None"]
 
-3. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]
+3. [Diagnosis] - [X]% confidence (ICD-10: [code])
    Supporting: [transcript evidence]
    Against: [contradicting evidence or "None"]
 
-4. [Diagnosis] - [MEDIUM/LOW confidence]
+4. [Diagnosis] - [X]% confidence (ICD-10: [code])
    Supporting: [transcript evidence]
    Against: [contradicting evidence or "None"]
 
-5. [Diagnosis] - [LOW confidence]
+5. [Diagnosis] - [X]% confidence (ICD-10: [code])
    Supporting: [transcript evidence]
    Against: [contradicting evidence or "None"]
 
 RECOMMENDED WORKUP:
-Priority 1 (Urgent): [tests/imaging needed immediately]
-Priority 2 (Soon): [tests to order]
-Priority 3 (Outpatient): [non-urgent workup]
+🔴 URGENT (now): [Test] - [what it rules in/out]
+🟡 SOON (this visit): [Test] - [rationale]
+🟢 OUTPATIENT: [Test] - [rationale]
 
-QUESTIONS TO ASK:
-- [Question that would help narrow differential]
-- [Question about red flag symptoms]
+QUESTIONS TO NARROW DIFFERENTIAL:
+- [Question 1] - would help distinguish [diagnosis A] from [diagnosis B]
+- [Question 2] - addresses red flag symptom
 - [Question about relevant history]
 
 IMMEDIATE ACTIONS:

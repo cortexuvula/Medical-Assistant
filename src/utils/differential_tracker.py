@@ -30,7 +30,8 @@ class Differential:
     """Represents a single differential diagnosis."""
     rank: int
     diagnosis: str
-    confidence: str  # HIGH, MEDIUM, LOW
+    confidence: int  # Numeric confidence 0-100%
+    icd_code: Optional[str] = None
     supporting: str = ""
     against: str = ""
 
@@ -42,6 +43,21 @@ class Differential:
         name = re.sub(r'\s+', ' ', name)  # Normalize whitespace
         return name
 
+    @property
+    def confidence_level(self) -> str:
+        """Return confidence as HIGH/MEDIUM/LOW for backward compatibility."""
+        if self.confidence >= 70:
+            return "HIGH"
+        elif self.confidence >= 40:
+            return "MEDIUM"
+        else:
+            return "LOW"
+
+    @property
+    def confidence_display(self) -> str:
+        """Return formatted confidence for display (e.g., '78% (HIGH)')."""
+        return f"{self.confidence}% ({self.confidence_level})"
+
 
 @dataclass
 class DifferentialEvolution:
@@ -49,7 +65,7 @@ class DifferentialEvolution:
     differential: Differential
     status: DifferentialStatus
     previous_rank: Optional[int] = None
-    previous_confidence: Optional[str] = None
+    previous_confidence: Optional[int] = None  # Now numeric
 
     def get_indicator(self) -> str:
         """Get a visual indicator for the evolution status."""
@@ -74,17 +90,23 @@ class DifferentialEvolution:
         elif self.status == DifferentialStatus.MOVED_DOWN:
             return f"(was #{self.previous_rank})"
         elif self.status == DifferentialStatus.CONFIDENCE_UP:
-            return f"(was {self.previous_confidence})"
+            return f"(was {self.previous_confidence}%)"
         elif self.status == DifferentialStatus.CONFIDENCE_DOWN:
-            return f"(was {self.previous_confidence})"
+            return f"(was {self.previous_confidence}%)"
         return ""
+
+    def get_confidence_delta(self) -> Optional[int]:
+        """Get the change in confidence percentage."""
+        if self.previous_confidence is not None:
+            return self.differential.confidence - self.previous_confidence
+        return None
 
 
 class DifferentialTracker:
     """Tracks differential diagnosis evolution across analyses."""
 
-    # Confidence level ordering for comparison
-    CONFIDENCE_ORDER = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    # Minimum confidence change to trigger CONFIDENCE_UP/DOWN status
+    CONFIDENCE_CHANGE_THRESHOLD = 5  # 5% change needed
 
     def __init__(self):
         """Initialize the tracker."""
@@ -97,8 +119,43 @@ class DifferentialTracker:
         self.removed_differentials = []
         logger.info("Differential tracker cleared")
 
+    def _parse_confidence(self, text: str) -> int:
+        """Parse confidence from various formats.
+
+        Supports:
+        - Numeric: "78%", "78", "78% confidence"
+        - Text: "HIGH", "MEDIUM", "LOW"
+        - Combined: "78% (HIGH)"
+
+        Args:
+            text: The confidence text to parse
+
+        Returns:
+            Numeric confidence 0-100
+        """
+        # Try numeric format first: "78%", "78% confidence", "78"
+        numeric_match = re.search(r'(\d{1,3})%?', text)
+        if numeric_match:
+            value = int(numeric_match.group(1))
+            # Clamp to valid range
+            return max(0, min(100, value))
+
+        # Fall back to text format
+        text_upper = text.upper().strip()
+        if "HIGH" in text_upper:
+            return 80
+        elif "MEDIUM" in text_upper:
+            return 55
+        elif "LOW" in text_upper:
+            return 25
+
+        # Default to medium if unrecognized
+        return 50
+
     def parse_differentials(self, analysis_text: str) -> List[Differential]:
         """Parse differential diagnoses from analysis text.
+
+        Supports both old format (HIGH/MEDIUM/LOW) and new format (X% confidence with ICD-10).
 
         Args:
             analysis_text: The full analysis text containing differentials
@@ -122,16 +179,28 @@ class DifferentialTracker:
 
             diff_section = diff_section_match.group(0)
 
-            # Pattern to match numbered differentials
-            # Format: "1. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]"
-            pattern = r'(\d+)\.\s*([^-\n]+?)\s*-\s*(HIGH|MEDIUM|LOW)\s*(?:confidence)?'
+            # Pattern to match numbered differentials with flexible confidence format
+            # New format: "1. [Diagnosis] - [X]% confidence (ICD-10: [code])"
+            # Old format: "1. [Diagnosis] - [HIGH/MEDIUM/LOW confidence]"
+            # Also handles: "1. [Diagnosis] - [X]% (HIGH)"
+            pattern = r'(\d+)\.\s*([^-\n]+?)\s*-\s*(\d{1,3}%?\s*(?:\([^)]*\))?\s*(?:confidence)?|HIGH|MEDIUM|LOW)\s*(?:confidence)?(?:\s*\(ICD-10:\s*([A-Z]\d{2}(?:\.\d{1,4})?)\))?'
 
             matches = re.finditer(pattern, diff_section, re.IGNORECASE)
 
             for match in matches:
                 rank = int(match.group(1))
                 diagnosis = match.group(2).strip()
-                confidence = match.group(3).upper()
+                confidence_text = match.group(3).strip()
+                icd_code = match.group(4) if match.group(4) else None
+
+                # Parse confidence to numeric value
+                confidence = self._parse_confidence(confidence_text)
+
+                # Try to extract ICD code from diagnosis text if not in pattern match
+                if not icd_code:
+                    icd_match = re.search(r'\(ICD-10:\s*([A-Z]\d{2}(?:\.\d{1,4})?)\)', match.group(0))
+                    if icd_match:
+                        icd_code = icd_match.group(1)
 
                 # Try to extract supporting/against evidence
                 # Look for text after this match until the next numbered item
@@ -158,6 +227,7 @@ class DifferentialTracker:
                     rank=rank,
                     diagnosis=diagnosis,
                     confidence=confidence,
+                    icd_code=icd_code,
                     supporting=supporting,
                     against=against
                 )
@@ -224,20 +294,23 @@ class DifferentialTracker:
         return evolutions, removed
 
     def _determine_status(self, prev: Differential, curr: Differential) -> DifferentialStatus:
-        """Determine the evolution status between previous and current differential."""
-        prev_conf_level = self.CONFIDENCE_ORDER.get(prev.confidence, 0)
-        curr_conf_level = self.CONFIDENCE_ORDER.get(curr.confidence, 0)
+        """Determine the evolution status between previous and current differential.
 
+        Now uses numeric confidence values for comparison.
+        """
         # Check rank change first
         if curr.rank < prev.rank:
             return DifferentialStatus.MOVED_UP
         elif curr.rank > prev.rank:
             return DifferentialStatus.MOVED_DOWN
 
-        # Same rank, check confidence change
-        if curr_conf_level > prev_conf_level:
+        # Same rank, check confidence change (now numeric)
+        confidence_delta = curr.confidence - prev.confidence
+
+        # Only trigger confidence change if above threshold
+        if confidence_delta >= self.CONFIDENCE_CHANGE_THRESHOLD:
             return DifferentialStatus.CONFIDENCE_UP
-        elif curr_conf_level < prev_conf_level:
+        elif confidence_delta <= -self.CONFIDENCE_CHANGE_THRESHOLD:
             return DifferentialStatus.CONFIDENCE_DOWN
 
         return DifferentialStatus.UNCHANGED
@@ -269,6 +342,25 @@ class DifferentialTracker:
 
         lines = ["\n\n--- DIFFERENTIAL EVOLUTION ---"]
 
+        # Summary line
+        new_count = sum(1 for e in evolutions if e.status == DifferentialStatus.NEW)
+        up_count = sum(1 for e in evolutions if e.status == DifferentialStatus.MOVED_UP)
+        down_count = sum(1 for e in evolutions if e.status == DifferentialStatus.MOVED_DOWN)
+        removed_count = len(removed)
+
+        summary_parts = []
+        if new_count:
+            summary_parts.append(f"{new_count} new")
+        if up_count:
+            summary_parts.append(f"{up_count} moved up")
+        if down_count:
+            summary_parts.append(f"{down_count} moved down")
+        if removed_count:
+            summary_parts.append(f"{removed_count} removed")
+
+        if summary_parts:
+            lines.append(f"Summary: {', '.join(summary_parts)} since last analysis")
+
         # Group by status
         new_diffs = [e for e in evolutions if e.status == DifferentialStatus.NEW]
         moved_up = [e for e in evolutions if e.status == DifferentialStatus.MOVED_UP]
@@ -280,32 +372,37 @@ class DifferentialTracker:
         if new_diffs:
             lines.append("\n🆕 NEW:")
             for e in new_diffs:
-                lines.append(f"   • {e.differential.diagnosis} ({e.differential.confidence})")
+                icd_str = f" (ICD-10: {e.differential.icd_code})" if e.differential.icd_code else ""
+                lines.append(f"   • {e.differential.diagnosis} - {e.differential.confidence}%{icd_str}")
 
         if moved_up:
             lines.append("\n⬆️ MOVED UP:")
             for e in moved_up:
-                lines.append(f"   • {e.differential.diagnosis}: #{e.previous_rank} → #{e.differential.rank}")
+                delta = f"+{e.differential.confidence - e.previous_confidence}%" if e.previous_confidence else ""
+                lines.append(f"   • {e.differential.diagnosis}: #{e.previous_rank} → #{e.differential.rank} ({e.previous_confidence}% → {e.differential.confidence}%)")
 
         if moved_down:
             lines.append("\n⬇️ MOVED DOWN:")
             for e in moved_down:
-                lines.append(f"   • {e.differential.diagnosis}: #{e.previous_rank} → #{e.differential.rank}")
+                lines.append(f"   • {e.differential.diagnosis}: #{e.previous_rank} → #{e.differential.rank} ({e.previous_confidence}% → {e.differential.confidence}%)")
 
         if conf_up:
             lines.append("\n📈 CONFIDENCE INCREASED:")
             for e in conf_up:
-                lines.append(f"   • {e.differential.diagnosis}: {e.previous_confidence} → {e.differential.confidence}")
+                delta = e.differential.confidence - e.previous_confidence
+                lines.append(f"   • {e.differential.diagnosis}: {e.previous_confidence}% → {e.differential.confidence}% (+{delta}%)")
 
         if conf_down:
             lines.append("\n📉 CONFIDENCE DECREASED:")
             for e in conf_down:
-                lines.append(f"   • {e.differential.diagnosis}: {e.previous_confidence} → {e.differential.confidence}")
+                delta = e.previous_confidence - e.differential.confidence
+                lines.append(f"   • {e.differential.diagnosis}: {e.previous_confidence}% → {e.differential.confidence}% (-{delta}%)")
 
         if removed:
-            lines.append("\n❌ REMOVED:")
+            lines.append("\n❌ REMOVED FROM DIFFERENTIAL:")
             for d in removed:
-                lines.append(f"   • {d.diagnosis} (was #{d.rank}, {d.confidence})")
+                icd_str = f", ICD-10: {d.icd_code}" if d.icd_code else ""
+                lines.append(f"   • {d.diagnosis} (was #{d.rank}, {d.confidence}%{icd_str})")
 
         if unchanged:
             lines.append(f"\n➡️ UNCHANGED: {len(unchanged)} diagnosis(es)")

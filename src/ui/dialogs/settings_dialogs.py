@@ -248,7 +248,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          current_anthropic: str = "", current_gemini: str = "",
                          current_icd_version: str = "ICD-9", is_soap_settings: bool = False,
                          current_provider: str = "", is_advanced_analysis: bool = False,
-                         provider_messages: Dict[str, str] = None) -> None:
+                         provider_messages: Dict[str, str] = None,
+                         current_specialty: str = "general") -> None:
     """Show settings dialog for configuring prompt and model.
 
     Args:
@@ -268,6 +269,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         current_provider: Current AI provider for Advanced Analysis (empty = use global)
         is_advanced_analysis: Whether this is the Advanced Analysis settings dialog
         provider_messages: Dict of per-provider system messages for SOAP settings
+        current_specialty: Current clinical specialty for Advanced Analysis
     """
     # Initialize provider_messages if not provided
     if provider_messages is None:
@@ -296,7 +298,10 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
 
     # Add provider selector for Advanced Analysis settings
     provider_var = tk.StringVar(value=current_provider if current_provider else "")
+    specialty_var = tk.StringVar(value=current_specialty if current_specialty else "general")
+
     if is_advanced_analysis:
+        # Provider selection frame
         provider_frame = ttk.Labelframe(dialog, text="AI Provider", padding=10)
         provider_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
 
@@ -335,6 +340,77 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         ttk.Label(provider_frame,
                  text="Select a specific provider or use the global setting from the main app.",
                  foreground="gray").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+
+        # Clinical Specialty selection frame
+        specialty_frame = ttk.Labelframe(dialog, text="Clinical Specialty Focus", padding=10)
+        specialty_frame.pack(fill=tk.X, padx=10, pady=(5, 5))
+
+        ttk.Label(specialty_frame, text="Specialty:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        # Specialty options with descriptions
+        specialty_options = [
+            ("general", "General / Primary Care"),
+            ("emergency", "Emergency Medicine"),
+            ("internal", "Internal Medicine"),
+            ("cardiology", "Cardiology"),
+            ("pulmonology", "Pulmonology"),
+            ("neurology", "Neurology"),
+            ("gi", "Gastroenterology"),
+            ("pediatric", "Pediatrics"),
+            ("geriatric", "Geriatrics"),
+            ("psychiatry", "Psychiatry"),
+            ("orthopedic", "Orthopedics"),
+            ("oncology", "Oncology"),
+        ]
+
+        # Create combobox with display names
+        specialty_display_names = [name for _, name in specialty_options]
+        specialty_combo = ttk.Combobox(specialty_frame, values=specialty_display_names, state="readonly", width=25)
+        specialty_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # Set initial value based on current_specialty
+        specialty_map = {value: name for value, name in specialty_options}
+        initial_specialty_display = specialty_map.get(current_specialty, "General / Primary Care")
+        specialty_combo.set(initial_specialty_display)
+
+        # Reverse map for getting value from display name
+        specialty_display_to_value = {name: value for value, name in specialty_options}
+
+        def on_specialty_change(event=None):
+            display_name = specialty_combo.get()
+            specialty_var.set(specialty_display_to_value.get(display_name, "general"))
+
+        specialty_combo.bind("<<ComboboxSelected>>", on_specialty_change)
+
+        # Set initial value in specialty_var
+        specialty_var.set(current_specialty if current_specialty else "general")
+
+        # Description label that updates based on selection
+        specialty_descriptions = {
+            "general": "Broad primary care perspective. Consider common conditions first.",
+            "emergency": "PRIORITIZE LIFE-THREATENING CONDITIONS. Focus on red flags and time-sensitive diagnoses.",
+            "internal": "Consider multisystem involvement and complex medical conditions.",
+            "cardiology": "Focus on cardiovascular causes including structural, electrical, and vascular conditions.",
+            "pulmonology": "Focus on respiratory and pulmonary conditions.",
+            "neurology": "Focus on neurological causes including structural, vascular, and functional.",
+            "gi": "Focus on gastrointestinal and hepatobiliary conditions.",
+            "pediatric": "Apply age-appropriate differentials and consider developmental milestones.",
+            "geriatric": "Consider atypical presentations in elderly and account for polypharmacy.",
+            "psychiatry": "Consider psychiatric and biopsychosocial factors. Rule out organic causes.",
+            "orthopedic": "Focus on musculoskeletal conditions. Consider mechanical vs inflammatory causes.",
+            "oncology": "Consider malignancy in the differential. Look for paraneoplastic syndromes.",
+        }
+
+        description_label = ttk.Label(specialty_frame, text=specialty_descriptions.get(current_specialty, ""),
+                                      foreground="gray", wraplength=600)
+        description_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+
+        def update_description(event=None):
+            display_name = specialty_combo.get()
+            specialty_value = specialty_display_to_value.get(display_name, "general")
+            description_label.config(text=specialty_descriptions.get(specialty_value, ""))
+
+        specialty_combo.bind("<<ComboboxSelected>>", lambda e: [on_specialty_change(e), update_description(e)])
 
     # Create notebook for tabs
     notebook = ttk.Notebook(dialog)
@@ -464,10 +540,13 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         if is_soap_settings:
             icd_version_var.set("ICD-9")
 
-        # Reset provider for Advanced Analysis settings
+        # Reset provider and specialty for Advanced Analysis settings
         if is_advanced_analysis:
             provider_var.set("")
             provider_combo.set("Use Global Setting")
+            specialty_var.set("general")
+            specialty_combo.set("General / Primary Care")
+            update_description()
 
         # Set focus
         prompt_text.focus_set()
@@ -509,9 +588,10 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             if is_soap_settings:
                 save_args.append(icd_version_var.get())
 
-            # Add provider for Advanced Analysis settings
+            # Add provider and specialty for Advanced Analysis settings
             if is_advanced_analysis:
                 save_args.append(provider_var.get())
+                save_args.append(specialty_var.get())
 
         save_callback(*save_args)
         dialog.destroy()
