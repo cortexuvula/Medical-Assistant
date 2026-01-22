@@ -1217,3 +1217,189 @@ class NotebookTabs:
             SearchFilters object or None
         """
         return getattr(self, '_current_rag_filters', None)
+
+    def show_medication_analysis_tab(self):
+        """Switch to the Medication Analysis tab within the SOAP panel."""
+        try:
+            # Make sure analysis panel is expanded
+            if hasattr(self, '_analysis_collapsed') and self._analysis_collapsed:
+                self._toggle_analysis_panel()
+
+            # Find the analysis notebook
+            analysis_content = self.components.get('analysis_content')
+            if analysis_content:
+                for child in analysis_content.winfo_children():
+                    if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                        tabs = child.tabs()
+                        if tabs:
+                            child.select(tabs[0])  # Medication is first tab
+                        break
+        except Exception as e:
+            logger.debug(f"Could not switch to medication tab: {e}")
+
+    def show_differential_analysis_tab(self):
+        """Switch to the Differential Diagnosis tab within the SOAP panel."""
+        try:
+            # Make sure analysis panel is expanded
+            if hasattr(self, '_analysis_collapsed') and self._analysis_collapsed:
+                self._toggle_analysis_panel()
+
+            # Find the analysis notebook
+            analysis_content = self.components.get('analysis_content')
+            if analysis_content:
+                for child in analysis_content.winfo_children():
+                    if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                        tabs = child.tabs()
+                        if len(tabs) > 1:
+                            child.select(tabs[1])  # Differential is second tab
+                        break
+        except Exception as e:
+            logger.debug(f"Could not switch to differential tab: {e}")
+
+    def load_saved_analyses(self, recording_id: int) -> dict:
+        """Load saved medication and differential analyses from database.
+
+        Args:
+            recording_id: The recording ID to load analyses for
+
+        Returns:
+            Dict with 'medication' and 'differential' keys, each containing
+            the analysis result dict or None
+        """
+        try:
+            from processing.analysis_storage import get_analysis_storage
+
+            storage = get_analysis_storage()
+            analyses = storage.get_analyses_for_recording(recording_id)
+
+            # Update the analysis panels with saved data
+            if analyses.get('medication'):
+                self._update_medication_panel_from_saved(analyses['medication'])
+
+            if analyses.get('differential'):
+                self._update_differential_panel_from_saved(analyses['differential'])
+
+            return analyses
+
+        except Exception as e:
+            logger.error(f"Failed to load saved analyses for recording {recording_id}: {e}")
+            return {"medication": None, "differential": None}
+
+    def _update_medication_panel_from_saved(self, analysis: dict) -> None:
+        """Update medication analysis panel with saved analysis.
+
+        Args:
+            analysis: Saved analysis dict from database
+        """
+        try:
+            medication_widget = self.components.get('medication_analysis_text')
+            if not medication_widget:
+                return
+
+            result_text = analysis.get('result_text', '')
+            metadata = analysis.get('metadata_json', {}) or {}
+
+            # Store for View Details button
+            self.parent._last_medication_analysis = {
+                'result': result_text,
+                'analysis_type': analysis.get('analysis_subtype', 'comprehensive'),
+                'metadata': metadata
+            }
+
+            # Format and display
+            try:
+                from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
+                formatter = AnalysisPanelFormatter(medication_widget)
+                formatter.format_medication_panel(result_text, metadata)
+            except Exception:
+                # Fallback to plain text
+                medication_widget.config(state='normal')
+                medication_widget.delete('1.0', 'end')
+                medication_widget.insert('1.0', result_text)
+                medication_widget.config(state='disabled')
+
+            # Enable View Details button
+            view_btn = self.components.get('medication_view_details_btn')
+            if view_btn:
+                view_btn.config(state='normal')
+
+        except Exception as e:
+            logger.error(f"Failed to update medication panel from saved: {e}")
+
+    def _update_differential_panel_from_saved(self, analysis: dict) -> None:
+        """Update differential analysis panel with saved analysis.
+
+        Args:
+            analysis: Saved analysis dict from database
+        """
+        try:
+            differential_widget = self.components.get('differential_analysis_text')
+            if not differential_widget:
+                return
+
+            result_text = analysis.get('result_text', '')
+            metadata = analysis.get('metadata_json', {}) or {}
+
+            # Store for View Details button
+            self.parent._last_diagnostic_analysis = {
+                'result': result_text,
+                'metadata': metadata
+            }
+
+            # Format and display
+            try:
+                from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
+                formatter = AnalysisPanelFormatter(differential_widget)
+                formatter.format_diagnostic_panel(result_text, metadata)
+            except Exception:
+                # Fallback to plain text
+                differential_widget.config(state='normal')
+                differential_widget.delete('1.0', 'end')
+                differential_widget.insert('1.0', result_text)
+                differential_widget.config(state='disabled')
+
+            # Enable View Details button
+            view_btn = self.components.get('differential_view_details_btn')
+            if view_btn:
+                view_btn.config(state='normal')
+
+        except Exception as e:
+            logger.error(f"Failed to update differential panel from saved: {e}")
+
+    def clear_analysis_panels(self) -> None:
+        """Clear the medication and differential analysis panels."""
+        try:
+            # Clear medication panel
+            medication_widget = self.components.get('medication_analysis_text')
+            if medication_widget:
+                medication_widget.config(state='normal')
+                medication_widget.delete('1.0', 'end')
+                medication_widget.insert('1.0', "Medication analysis will appear here after SOAP note generation.")
+                medication_widget.config(state='disabled')
+
+            # Disable medication view details button
+            med_view_btn = self.components.get('medication_view_details_btn')
+            if med_view_btn:
+                med_view_btn.config(state='disabled')
+
+            # Clear differential panel
+            differential_widget = self.components.get('differential_analysis_text')
+            if differential_widget:
+                differential_widget.config(state='normal')
+                differential_widget.delete('1.0', 'end')
+                differential_widget.insert('1.0', "Differential diagnosis will appear here after SOAP note generation.")
+                differential_widget.config(state='disabled')
+
+            # Disable differential view details button
+            diff_view_btn = self.components.get('differential_view_details_btn')
+            if diff_view_btn:
+                diff_view_btn.config(state='disabled')
+
+            # Clear stored analyses
+            if hasattr(self.parent, '_last_medication_analysis'):
+                self.parent._last_medication_analysis = None
+            if hasattr(self.parent, '_last_diagnostic_analysis'):
+                self.parent._last_diagnostic_analysis = None
+
+        except Exception as e:
+            logger.debug(f"Error clearing analysis panels: {e}")

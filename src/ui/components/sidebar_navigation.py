@@ -35,11 +35,13 @@ class SidebarNavigation:
         self._tools_expanded = SETTINGS.get("sidebar_tools_expanded", True)
         self._generate_expanded = SETTINGS.get("sidebar_generate_expanded", True)
         self._file_expanded = SETTINGS.get("sidebar_file_expanded", True)
+        self._soap_expanded = SETTINGS.get("sidebar_soap_expanded", True)
         self._active_item = "record"
         self._is_dark = False
 
         # Widget references
         self._nav_items: Dict[str, tk.Frame] = {}
+        self._soap_items: Dict[str, tk.Frame] = {}
         self._tool_items: Dict[str, tk.Frame] = {}
         self._generate_items: Dict[str, tk.Frame] = {}
         self._file_items: Dict[str, tk.Frame] = {}
@@ -61,6 +63,12 @@ class SidebarNavigation:
         self._generate_container: Optional[tk.Frame] = None
         self._file_header: Optional[tk.Frame] = None
         self._file_container: Optional[tk.Frame] = None
+        self._soap_container: Optional[tk.Frame] = None
+        self._soap_toggle_label: Optional[tk.Label] = None
+
+        # Indicator labels for SOAP sub-items (to show data availability)
+        self._soap_medication_indicator: Optional[tk.Label] = None
+        self._soap_differential_indicator: Optional[tk.Label] = None
 
         # Scroll indicator
         self._scroll_fade_overlay: Optional[tk.Canvas] = None
@@ -560,14 +568,315 @@ class SidebarNavigation:
 
         # Create navigation items
         for item in SidebarConfig.get_nav_items():
-            nav_frame = self._create_nav_item(
-                item["id"],
-                item["label"],
-                item["icon"],
-                colors,
-                is_active=(item["id"] == self._active_item)
+            # Special handling for SOAP item - create collapsible section
+            if item["id"] == "soap":
+                self._create_soap_collapsible_nav_item(item, colors)
+            else:
+                nav_frame = self._create_nav_item(
+                    item["id"],
+                    item["label"],
+                    item["icon"],
+                    colors,
+                    is_active=(item["id"] == self._active_item)
+                )
+                self._nav_items[item["id"]] = nav_frame
+
+    def _create_soap_collapsible_nav_item(self, item: dict, colors: dict) -> None:
+        """Create the SOAP Note navigation item with collapsible sub-items.
+
+        Args:
+            item: Navigation item dict with id, label, icon
+            colors: Color scheme dict
+        """
+        is_active = item["id"] == self._active_item or self._active_item.startswith("soap_")
+
+        # Create main SOAP item frame (similar to regular nav item but with expand arrow)
+        bg_color = colors["bg_active"] if is_active else colors["bg"]
+        fg_color = colors["fg_active"] if is_active else colors["fg"]
+
+        item_frame = tk.Frame(
+            self._scrollable_frame,
+            bg=bg_color,
+            cursor="hand2"
+        )
+        item_frame.pack(fill=tk.X, padx=5, pady=1)
+
+        # Icon
+        icon_label = tk.Label(
+            item_frame,
+            text=item["icon"],
+            font=(Fonts.FAMILY[0], 14),
+            bg=bg_color,
+            fg=fg_color,
+            width=2
+        )
+        icon_label.pack(side=tk.LEFT, padx=(10, 5), pady=8)
+
+        # Label and expand toggle (only when not collapsed)
+        if not self._collapsed:
+            text_label = tk.Label(
+                item_frame,
+                text=item["label"],
+                font=(Fonts.FAMILY[0], 10),
+                bg=bg_color,
+                fg=fg_color,
+                anchor=tk.W
             )
-            self._nav_items[item["id"]] = nav_frame
+            text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=8)
+            text_label.bind("<Button-1>", lambda e: self._on_nav_click("soap"))
+
+            # Expand/collapse toggle
+            toggle_icon = Icons.SECTION_OPEN if self._soap_expanded else Icons.SECTION_CLOSED
+            self._soap_toggle_label = tk.Label(
+                item_frame,
+                text=toggle_icon,
+                font=(Fonts.FAMILY[0], 9),
+                bg=bg_color,
+                fg=colors["fg_muted"],
+                cursor="hand2"
+            )
+            self._soap_toggle_label.pack(side=tk.RIGHT, padx=(0, 8), pady=8)
+            self._soap_toggle_label.bind("<Button-1>", lambda e: self._toggle_soap_section())
+
+            # Store text label reference
+            item_frame._text_label = text_label
+        else:
+            item_frame._text_label = None
+
+        # Store references for theme updates
+        item_frame._icon_label = icon_label
+        item_frame._item_id = "soap"
+
+        # Bind click events for main item
+        item_frame.bind("<Button-1>", lambda e: self._on_nav_click("soap"))
+        icon_label.bind("<Button-1>", lambda e: self._on_nav_click("soap"))
+
+        # Add tooltip when collapsed
+        if self._collapsed:
+            ToolTip(item_frame, item["label"])
+            ToolTip(icon_label, item["label"])
+
+        # Store in nav_items
+        self._nav_items["soap"] = item_frame
+
+        # Create container for sub-items
+        self._soap_container = tk.Frame(self._scrollable_frame, bg=colors["bg"])
+
+        # Only show container if expanded and not collapsed
+        if self._soap_expanded and not self._collapsed:
+            self._soap_container.pack(fill=tk.X)
+
+        # Create sub-items
+        for subitem in SidebarConfig.get_soap_subitems():
+            sub_frame = self._create_soap_subitem(
+                subitem["id"],
+                subitem["label"],
+                subitem["icon"],
+                colors
+            )
+            self._soap_items[subitem["id"]] = sub_frame
+
+    def _create_soap_subitem(
+        self, item_id: str, label: str, icon: str, colors: dict
+    ) -> tk.Frame:
+        """Create a SOAP sub-item with icon, label, and optional indicator.
+
+        Args:
+            item_id: Unique identifier for the sub-item
+            label: Display label
+            icon: Icon character
+            colors: Color scheme dict
+
+        Returns:
+            tk.Frame: The sub-item frame
+        """
+        is_active = item_id == self._active_item
+
+        bg_color = colors["bg_active"] if is_active else colors["bg"]
+        fg_color = colors["fg_active"] if is_active else colors["fg"]
+
+        item_frame = tk.Frame(
+            self._soap_container,
+            bg=bg_color,
+            cursor="hand2"
+        )
+        item_frame.pack(fill=tk.X, padx=5, pady=1)
+
+        # Indentation spacer for sub-items
+        spacer = tk.Label(
+            item_frame,
+            text="",
+            bg=bg_color,
+            width=1
+        )
+        spacer.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Icon
+        icon_label = tk.Label(
+            item_frame,
+            text=icon,
+            font=(Fonts.FAMILY[0], 11),
+            bg=bg_color,
+            fg=fg_color,
+            width=2
+        )
+        icon_label.pack(side=tk.LEFT, padx=(5, 3), pady=6)
+
+        # Label (hidden when collapsed)
+        text_label = None
+        if not self._collapsed:
+            text_label = tk.Label(
+                item_frame,
+                text=label,
+                font=(Fonts.FAMILY[0], 9),
+                bg=bg_color,
+                fg=fg_color,
+                anchor=tk.W
+            )
+            text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=6)
+            text_label.bind("<Button-1>", lambda e, id=item_id: self._on_soap_subitem_click(id))
+
+            # Add indicator label (hidden by default, shown when analysis available)
+            indicator = tk.Label(
+                item_frame,
+                text="",
+                font=(Fonts.FAMILY[0], 8),
+                bg=bg_color,
+                fg=colors["fg_muted"],
+            )
+            indicator.pack(side=tk.RIGHT, padx=(0, 8), pady=6)
+
+            # Store indicator reference
+            if item_id == "soap_medication":
+                self._soap_medication_indicator = indicator
+            elif item_id == "soap_differential":
+                self._soap_differential_indicator = indicator
+
+        # Store references
+        item_frame._icon_label = icon_label
+        item_frame._text_label = text_label
+        item_frame._item_id = item_id
+
+        # Bind click events
+        item_frame.bind("<Button-1>", lambda e, id=item_id: self._on_soap_subitem_click(id))
+        icon_label.bind("<Button-1>", lambda e, id=item_id: self._on_soap_subitem_click(id))
+
+        # Add tooltip
+        ToolTip(item_frame, label)
+        ToolTip(icon_label, label)
+
+        return item_frame
+
+    def _toggle_soap_section(self):
+        """Toggle the SOAP sub-items expanded/collapsed state."""
+        if self._collapsed:
+            return  # Don't toggle when sidebar is collapsed
+
+        self._soap_expanded = not self._soap_expanded
+
+        # Save preference using settings_manager
+        settings_manager.set("sidebar_soap_expanded", self._soap_expanded)
+
+        # Update toggle icon
+        if self._soap_toggle_label:
+            toggle_icon = Icons.SECTION_OPEN if self._soap_expanded else Icons.SECTION_CLOSED
+            self._soap_toggle_label.config(text=toggle_icon)
+
+        # Show/hide container
+        if self._soap_expanded:
+            # Find the SOAP nav item and pack container after it
+            soap_frame = self._nav_items.get("soap")
+            if soap_frame and self._soap_container:
+                self._soap_container.pack(fill=tk.X, after=soap_frame)
+        else:
+            if self._soap_container:
+                self._soap_container.pack_forget()
+
+    def _on_soap_subitem_click(self, item_id: str):
+        """Handle click on SOAP sub-item.
+
+        Args:
+            item_id: The sub-item ID (soap_medication or soap_differential)
+        """
+        logger.debug(f"SOAP sub-item clicked: {item_id}")
+
+        # Navigate to SOAP tab first
+        if hasattr(self.parent, 'navigation_controller'):
+            self.parent.navigation_controller.navigate_to("soap")
+
+        # Then switch to the appropriate analysis tab
+        if item_id == "soap_medication":
+            self._show_medication_analysis_tab()
+        elif item_id == "soap_differential":
+            self._show_differential_analysis_tab()
+
+    def _show_medication_analysis_tab(self):
+        """Switch to the Medication Analysis tab within the SOAP panel."""
+        try:
+            # Find the analysis notebook in the SOAP tab
+            if hasattr(self.parent_ui, 'components'):
+                analysis_content = self.parent_ui.components.get('analysis_content')
+                if analysis_content:
+                    # Find the notebook widget within analysis_content
+                    for child in analysis_content.winfo_children():
+                        if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                            # This is a Notebook widget - select the first tab (Medication)
+                            tabs = child.tabs()
+                            if tabs:
+                                child.select(tabs[0])  # Medication is first tab
+                            break
+        except Exception as e:
+            logger.debug(f"Could not switch to medication tab: {e}")
+
+    def _show_differential_analysis_tab(self):
+        """Switch to the Differential Diagnosis tab within the SOAP panel."""
+        try:
+            # Find the analysis notebook in the SOAP tab
+            if hasattr(self.parent_ui, 'components'):
+                analysis_content = self.parent_ui.components.get('analysis_content')
+                if analysis_content:
+                    # Find the notebook widget within analysis_content
+                    for child in analysis_content.winfo_children():
+                        if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                            # This is a Notebook widget - select the second tab (Differential)
+                            tabs = child.tabs()
+                            if len(tabs) > 1:
+                                child.select(tabs[1])  # Differential is second tab
+                            break
+        except Exception as e:
+            logger.debug(f"Could not switch to differential tab: {e}")
+
+    def update_soap_indicators(
+        self,
+        has_medication: bool = False,
+        has_differential: bool = False
+    ):
+        """Update the SOAP sub-item indicators to show data availability.
+
+        Args:
+            has_medication: Whether medication analysis is available
+            has_differential: Whether differential diagnosis is available
+        """
+        try:
+            # Update medication indicator
+            if self._soap_medication_indicator:
+                if has_medication:
+                    self._soap_medication_indicator.config(text="●")
+                    colors = SidebarConfig.get_sidebar_colors(self._is_dark)
+                    self._soap_medication_indicator.config(fg=colors.get("fg_muted", "#888"))
+                else:
+                    self._soap_medication_indicator.config(text="")
+
+            # Update differential indicator
+            if self._soap_differential_indicator:
+                if has_differential:
+                    self._soap_differential_indicator.config(text="●")
+                    colors = SidebarConfig.get_sidebar_colors(self._is_dark)
+                    self._soap_differential_indicator.config(fg=colors.get("fg_muted", "#888"))
+                else:
+                    self._soap_differential_indicator.config(text="")
+        except Exception as e:
+            logger.debug(f"Could not update SOAP indicators: {e}")
 
     def _create_file_section(self, colors: dict):
         """Create the collapsible file operations section."""
@@ -993,12 +1302,17 @@ class SidebarNavigation:
         self._tool_items.clear()
         self._generate_items.clear()
         self._file_items.clear()
+        self._soap_items.clear()
         self._header_frame = None
         self._footer_frame = None
         self._scroll_canvas = None
         self._scrollable_frame = None
         self._scroll_fade_overlay = None
         self._scroll_container = None
+        self._soap_container = None
+        self._soap_toggle_label = None
+        self._soap_medication_indicator = None
+        self._soap_differential_indicator = None
 
         # Get colors
         colors = SidebarConfig.get_sidebar_colors(self._is_dark)

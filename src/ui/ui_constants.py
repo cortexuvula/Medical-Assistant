@@ -367,6 +367,10 @@ class Icons:
     TOOL_FEEDBACK = "✦"
     TOOL_RSVP = "◉"
 
+    # SOAP Sub-item Icons
+    SOAP_MEDICATION = "◇"
+    SOAP_DIFFERENTIAL = "◈"
+
     # File operation icons
     FILE_NEW = "○"
     FILE_SAVE = "◇"
@@ -506,6 +510,12 @@ class SidebarConfig:
         {"id": "rsvp_reader", "label": "RSVP Reader", "icon": "TOOL_RSVP"},
     ]
 
+    # SOAP Note sub-items for collapsible section
+    SOAP_SUBITEMS = [
+        {"id": "soap_medication", "label": "Medication", "icon": "SOAP_MEDICATION"},
+        {"id": "soap_differential", "label": "Differential", "icon": "SOAP_DIFFERENTIAL"},
+    ]
+
     @classmethod
     def get_nav_items(cls) -> list:
         """Get navigation items with resolved icon references."""
@@ -536,6 +546,14 @@ class SidebarConfig:
         return [
             {**item, "icon": getattr(Icons, item["icon"])}
             for item in cls.TOOL_ITEMS
+        ]
+
+    @classmethod
+    def get_soap_subitems(cls) -> list:
+        """Get SOAP sub-items with resolved icon references."""
+        return [
+            {**item, "icon": getattr(Icons, item["icon"])}
+            for item in cls.SOAP_SUBITEMS
         ]
 
     # Colors for sidebar (extends theme colors)

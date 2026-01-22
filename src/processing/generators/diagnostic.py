@@ -399,12 +399,79 @@ class DiagnosticGeneratorMixin:
             else:
                 logger.warning("Cannot access app.ui.components to enable View Details button")
 
+            # Save to database if recording_id is available
+            self._save_differential_diagnosis_to_db(result, metadata)
+
             self.app.status_manager.success("Differential diagnosis complete")
 
         except Exception as e:
             logger.error(f"Failed to format diagnostic panel: {e}")
             # Fall back to plain text update
             self._update_analysis_panel(self.app.differential_analysis_text, str(result))
+
+    def _save_differential_diagnosis_to_db(self, result: str, metadata: dict) -> None:
+        """Save differential diagnosis to database if recording_id is available.
+
+        Args:
+            result: The analysis result text
+            metadata: Analysis metadata
+        """
+        try:
+            from processing.analysis_storage import get_analysis_storage
+
+            # Get recording_id from current selection
+            recording_id = getattr(self.app, 'selected_recording_id', None)
+            if not recording_id:
+                logger.debug("No recording_id available, skipping differential diagnosis save")
+                return
+
+            # Get SOAP note as source text
+            source_text = ""
+            if hasattr(self.app, 'soap_text'):
+                source_text = self.app.soap_text.get("1.0", "end").strip()
+
+            storage = get_analysis_storage()
+            analysis_id = storage.save_differential_diagnosis(
+                result_text=result,
+                recording_id=recording_id,
+                metadata=metadata,
+                source_type="soap",
+                source_text=source_text[:5000] if source_text else None,  # Limit length
+                analysis_subtype="comprehensive"
+            )
+
+            if analysis_id:
+                logger.info(f"Saved differential diagnosis (id={analysis_id}) for recording {recording_id}")
+
+                # Update sidebar indicators
+                self._update_soap_indicators()
+
+        except Exception as e:
+            logger.error(f"Failed to save differential diagnosis to database: {e}")
+
+    def _update_soap_indicators(self) -> None:
+        """Update sidebar SOAP sub-item indicators."""
+        try:
+            from processing.analysis_storage import get_analysis_storage
+
+            recording_id = getattr(self.app, 'selected_recording_id', None)
+            if not recording_id:
+                return
+
+            storage = get_analysis_storage()
+            has_medication = storage.has_medication_analysis(recording_id)
+            has_differential = storage.has_differential_diagnosis(recording_id)
+
+            # Update sidebar indicators
+            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'components'):
+                sidebar_nav = self.app.ui.components.get('sidebar_navigation')
+                if sidebar_nav and hasattr(sidebar_nav, 'update_soap_indicators'):
+                    sidebar_nav.update_soap_indicators(
+                        has_medication=has_medication,
+                        has_differential=has_differential
+                    )
+        except Exception as e:
+            logger.debug(f"Could not update SOAP indicators: {e}")
 
 
 __all__ = ["DiagnosticGeneratorMixin"]

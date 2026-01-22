@@ -208,10 +208,66 @@ class RecordingsTabDataMixin:
 
             self.parent.status_manager.success(f"Loaded recording #{rec_id}")
             self.parent.current_recording_id = rec_id
+            self.parent.selected_recording_id = rec_id
+
+            # Load saved analyses from database
+            self._load_saved_analyses(rec_id)
 
         except Exception as e:
             logger.error(f"Error loading recording: {e}")
             tk.messagebox.showerror("Load Error", f"Failed to load recording: {str(e)}")
+
+    def _load_saved_analyses(self, recording_id: int) -> None:
+        """Load saved medication and differential analyses for a recording.
+
+        Args:
+            recording_id: The recording ID
+        """
+        try:
+            from processing.analysis_storage import get_analysis_storage
+
+            storage = get_analysis_storage()
+            analyses = storage.get_analyses_for_recording(recording_id)
+
+            has_medication = analyses.get('medication') is not None
+            has_differential = analyses.get('differential') is not None
+
+            # Update analysis panels if UI components available
+            if hasattr(self.parent, 'ui') and hasattr(self.parent.ui, 'notebook_tabs'):
+                notebook_tabs = self.parent.ui.notebook_tabs
+
+                # Clear existing analysis panels first
+                if hasattr(notebook_tabs, 'clear_analysis_panels'):
+                    notebook_tabs.clear_analysis_panels()
+
+                # Load saved analyses into panels
+                if has_medication or has_differential:
+                    if hasattr(notebook_tabs, 'load_saved_analyses'):
+                        notebook_tabs.load_saved_analyses(recording_id)
+
+            # Update sidebar indicators
+            self._update_soap_indicators(has_medication, has_differential)
+
+        except Exception as e:
+            logger.debug(f"Could not load saved analyses: {e}")
+
+    def _update_soap_indicators(self, has_medication: bool, has_differential: bool) -> None:
+        """Update sidebar SOAP sub-item indicators.
+
+        Args:
+            has_medication: Whether medication analysis exists
+            has_differential: Whether differential diagnosis exists
+        """
+        try:
+            if hasattr(self.parent, 'ui') and hasattr(self.parent.ui, 'sidebar_navigation'):
+                sidebar_nav = self.parent.ui.sidebar_navigation
+                if hasattr(sidebar_nav, 'update_soap_indicators'):
+                    sidebar_nav.update_soap_indicators(
+                        has_medication=has_medication,
+                        has_differential=has_differential
+                    )
+        except Exception as e:
+            logger.debug(f"Could not update SOAP indicators: {e}")
 
     # ========================================
     # Export Recording

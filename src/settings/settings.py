@@ -246,68 +246,68 @@ CONFIDENCE SCORING (REQUIRED):
 - Provide NUMERIC confidence (0-100%) for each diagnosis
 - Scale: 80-100% very likely, 60-79% likely, 40-59% possible, 20-39% less likely, <20% unlikely but serious
 - Consider patient demographics and pre-test probability
-- Ensure percentages across top 5 diagnoses roughly sum to a realistic total
 
 SAFETY REQUIREMENTS:
 - ALWAYS include a "MUST-NOT-MISS" section for serious/treatable conditions
 - Mark time-critical conditions with urgency window
 - Even low-probability diagnoses must be included if missing them causes harm
 
-OUTPUT FORMAT (use this exact structure):
+OUTPUT FORMAT:
 
 CHIEF COMPLAINT:
-[One sentence summary of the presenting problem]
+[One sentence summary]
 
 KEY CLINICAL FINDINGS:
-- [Finding 1 with clinical significance]
-- [Finding 2 with clinical significance]
-- [Additional relevant findings...]
+• [Finding 1 with clinical significance]
+• [Finding 2 with clinical significance]
 
 🚨 MUST-NOT-MISS (actively rule out):
 ⚠️ [Serious Diagnosis] - [X]% (ICD-10: [code])
-   Rule out with: [specific test/finding that excludes]
+   Rule out with: [specific test/finding]
    Time-sensitive: [Yes/No - specify window if yes]
-⚠️ [Another serious diagnosis if applicable]
-   Rule out with: [test/finding]
-   Time-sensitive: [Yes/No]
-(Include all serious/treatable conditions that must be actively excluded regardless of likelihood)
-
-RED FLAGS IDENTIFIED:
-🔴 [Urgent finding requiring immediate attention, or "None identified"]
 
 DIFFERENTIAL DIAGNOSES (ranked by likelihood):
 1. [Diagnosis] - [X]% confidence (ICD-10: [code])
-   Supporting: [transcript evidence]
-   Against: [contradicting evidence or "None"]
+   Supporting: [evidence from transcript]
+   Against: [contradicting evidence]
 
 2. [Diagnosis] - [X]% confidence (ICD-10: [code])
-   Supporting: [transcript evidence]
-   Against: [contradicting evidence or "None"]
+   Supporting: [evidence]
+   Against: [evidence]
 
-3. [Diagnosis] - [X]% confidence (ICD-10: [code])
-   Supporting: [transcript evidence]
-   Against: [contradicting evidence or "None"]
+[Continue for 3-5 diagnoses]
 
-4. [Diagnosis] - [X]% confidence (ICD-10: [code])
-   Supporting: [transcript evidence]
-   Against: [contradicting evidence or "None"]
-
-5. [Diagnosis] - [X]% confidence (ICD-10: [code])
-   Supporting: [transcript evidence]
-   Against: [contradicting evidence or "None"]
+RED FLAGS IDENTIFIED:
+🚨 CRITICAL (immediate action): [Finding] - [why critical, time window if applicable]
+⚠️ HIGH (within hours): [Finding] - [evaluation needed]
+⚡ MODERATE (this visit): [Finding] - [workup recommendation]
+[Omit severity levels with no findings. Categorize by clinical urgency: CRITICAL = potential life-threat, HIGH = needs same-day evaluation, MODERATE = needs attention but not emergent]
 
 RECOMMENDED WORKUP:
-🔴 URGENT (now): [Test] - [what it rules in/out]
-🟡 SOON (this visit): [Test] - [rationale]
-🟢 OUTPATIENT: [Test] - [rationale]
+🔴 URGENT (now):
+   • [Test] - Sens [X]%/Spec [Y]% for [condition] - rules out [diagnosis #s]
+🟡 SOON (this visit):
+   • [Test] - [diagnostic utility] - helps distinguish [A] from [B]
+🟢 OUTPATIENT (if stable):
+   • [Test] - [rationale]
+[Include sensitivity/specificity for key tests when clinically relevant for ruling in/out diagnoses]
 
 QUESTIONS TO NARROW DIFFERENTIAL:
-- [Question 1] - would help distinguish [diagnosis A] from [diagnosis B]
-- [Question 2] - addresses red flag symptom
-- [Question about relevant history]
+• [Question 1] - would help distinguish [diagnosis A] from [diagnosis B]
+• [Question 2] - addresses red flag symptom
+
+⚡ BIAS CHECK:
+[Only include if applicable - omit section entirely if analysis appears balanced and thorough]
+- Anchoring: [If top diagnosis matches chief complaint too closely, suggest alternatives to consider]
+- Availability: [If common diagnosis dominates, note rarer serious conditions to consider]
+- Premature closure: [If history incomplete, note what additional information would help]
+- Confirmation bias: [Note any findings that DON'T fit your leading diagnosis]
 
 IMMEDIATE ACTIONS:
-[Any urgent interventions or consults needed, or "Routine evaluation appropriate"]""",
+[Urgent interventions needed, or "Routine evaluation appropriate"]
+
+---
+Analysis #{number} | Elapsed: {time}""",
     **_make_provider_model_config(
         openai_model="gpt-4",
         gemini_model="gemini-1.5-pro",  # Pro for advanced analysis
