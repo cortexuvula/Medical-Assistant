@@ -1,0 +1,16 @@
+# Bandit security linter configuration
+exclude_dirs:
+  - tests
+  - .venv
+  - venv
+  - build
+  - dist
+  - assistant
+  - __pycache__
+
+skips:
+  - B101  # assert usage - acceptable in app code
+  - B311  # random for non-security - we use for UI, not crypto
+
+severity: medium
+confidence: high

@@ -59,7 +59,7 @@ try:
         migration_manager = get_migration_manager()
         current_version = migration_manager.get_current_version()
         pending = migration_manager.get_pending_migrations()
-        
+
         if pending:
             logger.info(f"Database at version {current_version}, applying {len(pending)} migrations...")
             migration_manager.migrate()
@@ -70,6 +70,18 @@ try:
         logger.error(f"Database initialization failed: {e}")
         logger.error("Please run 'python migrate_database.py' to fix database issues.")
         sys.exit(1)
+
+    # Run startup diagnostics to check service health
+    logger.info("Running startup diagnostics...")
+    try:
+        from utils.health_checker import run_startup_diagnostics
+        health_report = run_startup_diagnostics()
+        if not health_report.can_operate:
+            logger.warning("Some critical services unavailable - limited functionality")
+        elif health_report.unhealthy_services:
+            logger.info(f"Optional services unavailable: {', '.join(health_report.unhealthy_services)}")
+    except Exception as e:
+        logger.warning(f"Startup diagnostics failed (non-critical): {e}")
 
 except ConfigurationError as e:
     logger.error(f"Configuration error: {e}")

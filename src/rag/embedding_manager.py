@@ -9,6 +9,7 @@ Enhanced with:
 - Circuit breaker integration for resilience
 - Better handling of 429 rate limit responses
 - Batch throttling for large document uploads
+- Structured exception handling with RAG-specific errors
 """
 
 import asyncio
@@ -21,8 +22,16 @@ import time
 from typing import Optional
 
 from dotenv import load_dotenv
+from utils.structured_logging import timed
 
 from src.rag.models import EmbeddingRequest, EmbeddingResponse
+from src.rag.exceptions import (
+    EmbeddingError,
+    RateLimitError as RAGRateLimitError,
+    CircuitBreakerOpenError,
+    RAGConnectionError,
+    RAGErrorCodes,
+)
 
 # Load environment variables from multiple possible locations
 def _load_env():
@@ -174,6 +183,7 @@ class EmbeddingManager:
         except Exception:
             pass
 
+    @timed("rag_generate_embeddings")
     def generate_embeddings(self, texts: list[str]) -> EmbeddingResponse:
         """Generate embeddings for multiple texts.
 
@@ -194,9 +204,9 @@ class EmbeddingManager:
 
         # Check circuit breaker
         if not self._check_circuit_breaker():
-            from src.utils.exceptions import ServiceUnavailableError
-            raise ServiceUnavailableError(
-                "Embedding service unavailable - circuit breaker open"
+            raise CircuitBreakerOpenError(
+                "Embedding service unavailable - circuit breaker open",
+                service="openai_embedding",
             )
 
         client = self._get_client()
@@ -232,6 +242,7 @@ class EmbeddingManager:
 
                 except Exception as e:
                     error_str = str(e).lower()
+                    error_type = type(e).__name__
 
                     # Handle rate limit errors specially
                     if "rate" in error_str and "limit" in error_str:
@@ -251,10 +262,35 @@ class EmbeddingManager:
                         time.sleep(retry_after)
                         continue
 
-                    logger.warning(f"Embedding attempt {attempt + 1} failed: {e}")
+                    # Handle authentication errors
+                    if "authentication" in error_str or "unauthorized" in error_str or "401" in error_str:
+                        self._record_failure()
+                        raise EmbeddingError(
+                            f"Authentication failed for embedding API: {e}",
+                            model=self.model,
+                            error_code=RAGErrorCodes.EMBEDDING_FAILED,
+                        ) from e
+
+                    # Handle connection errors
+                    if "connection" in error_str or "timeout" in error_str:
+                        logger.warning(f"Embedding connection error (attempt {attempt + 1}): {error_type}")
+                        if attempt == self.max_retries - 1:
+                            self._record_failure()
+                            raise RAGConnectionError(
+                                f"Failed to connect to embedding service: {e}",
+                                service="openai_embedding",
+                            ) from e
+                        time.sleep(2 ** attempt)
+                        continue
+
+                    logger.warning(f"Embedding attempt {attempt + 1} failed: {error_type} - {e}")
                     if attempt == self.max_retries - 1:
                         self._record_failure()
-                        raise
+                        raise EmbeddingError(
+                            f"Embedding generation failed after {self.max_retries} attempts: {e}",
+                            model=self.model,
+                            input_length=sum(len(t) for t in cleaned_batch),
+                        ) from e
 
                     # Exponential backoff
                     time.sleep(2 ** attempt)
@@ -325,9 +361,24 @@ class EmbeddingManager:
                     return batch_embeddings, response.usage.total_tokens
 
                 except Exception as e:
-                    logger.warning(f"Async embedding attempt {attempt + 1} failed: {e}")
+                    error_str = str(e).lower()
+                    logger.warning(f"Async embedding attempt {attempt + 1} failed: {type(e).__name__} - {e}")
+
                     if attempt == self.max_retries - 1:
-                        raise
+                        # Wrap in specific exception
+                        if "rate" in error_str and "limit" in error_str:
+                            raise RAGRateLimitError(f"Rate limit exceeded: {e}") from e
+                        elif "connection" in error_str or "timeout" in error_str:
+                            raise RAGConnectionError(
+                                f"Connection failed: {e}",
+                                service="openai_embedding",
+                            ) from e
+                        else:
+                            raise EmbeddingError(
+                                f"Async embedding failed: {e}",
+                                model=self.model,
+                            ) from e
+
                     await asyncio.sleep(2 ** attempt)
 
         # Process batches concurrently (but respect rate limits)

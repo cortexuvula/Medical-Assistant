@@ -20,8 +20,15 @@ from typing import Any, Optional
 from uuid import UUID
 
 from dotenv import load_dotenv
+from utils.structured_logging import timed
 
 from src.rag.models import VectorSearchQuery, VectorSearchResult
+from src.rag.exceptions import (
+    VectorSearchError,
+    RAGConnectionError,
+    RAGConfigurationError,
+    RAGErrorCodes,
+)
 
 # Load environment variables from multiple possible locations
 def _load_env():
@@ -244,6 +251,7 @@ class NeonVectorStore:
 
         return ids
 
+    @timed("rag_vector_search")
     def search(
         self,
         query_embedding: list[float],
@@ -491,10 +499,15 @@ class NeonVectorStore:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
                     return cur.fetchone()[0] == 1
+        except RAGConnectionError:
+            # Already logged, just return False
+            return False
         except Exception as e:
-            logger.error(f"Neon health check failed: {e}")
+            error_type = type(e).__name__
+            logger.error(f"Neon health check failed ({error_type}): {e}")
             return False
 
+    @timed("rag_bm25_search")
     def search_bm25(
         self,
         query: str,
@@ -591,8 +604,11 @@ class NeonVectorStore:
                         AND column_name = 'search_vector'
                     """)
                     return cur.fetchone() is not None
+        except RAGConnectionError:
+            return False
         except Exception as e:
-            logger.error(f"Failed to check search_vector column: {e}")
+            error_type = type(e).__name__
+            logger.error(f"Failed to check search_vector column ({error_type}): {e}")
             return False
 
     def get_index_health(self) -> dict:
@@ -660,8 +676,12 @@ class NeonVectorStore:
                     if version_result:
                         health["pgvector_version"] = version_result[0]
 
+        except RAGConnectionError:
+            health["error"] = "Connection failed"
         except Exception as e:
-            logger.error(f"Failed to get index health: {e}")
+            error_type = type(e).__name__
+            logger.error(f"Failed to get index health ({error_type}): {e}")
+            health["error"] = str(e)
 
         return health
 

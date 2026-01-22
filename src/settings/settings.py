@@ -504,6 +504,30 @@ _DEFAULTS_RAG_SEARCH_QUALITY = {
     }
 }
 
+# Logging Configuration defaults
+_DEFAULTS_LOGGING = {
+    "logging": {
+        "level": "INFO",  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+        "file_level": "DEBUG",  # Level for file logs
+        "console_level": "INFO",  # Level for console output
+        "max_file_size_kb": 200,
+        "backup_count": 2,
+    }
+}
+
+# RAG Resilience defaults
+_DEFAULTS_RAG_RESILIENCE = {
+    "rag_resilience": {
+        "neo4j_failure_threshold": 3,
+        "neo4j_recovery_timeout": 30,
+        "neon_failure_threshold": 5,
+        "neon_recovery_timeout": 30,
+        "embedding_failure_threshold": 5,
+        "embedding_recovery_timeout": 60,
+        "health_check_cache_ttl": 30,
+    }
+}
+
 
 # =============================================================================
 # COMBINED DEFAULT SETTINGS
@@ -523,6 +547,8 @@ _DEFAULT_SETTINGS: Dict[str, Any] = {
     **_DEFAULTS_VOCABULARY,
     **_DEFAULTS_RSVP,
     **_DEFAULTS_RAG_SEARCH_QUALITY,
+    **_DEFAULTS_LOGGING,
+    **_DEFAULTS_RAG_RESILIENCE,
 }
 
 
@@ -580,7 +606,7 @@ def _migrate_suggestions_to_favorites(suggestions):
     return suggestions
 
 
-def load_settings(force_refresh: bool = False) -> dict:
+def load_settings(force_refresh: bool = False, validate: bool = True) -> dict:
     """Load settings with caching to avoid repeated file reads.
 
     Caches settings for SETTINGS_CACHE_TTL seconds to improve performance.
@@ -588,6 +614,7 @@ def load_settings(force_refresh: bool = False) -> dict:
 
     Args:
         force_refresh: Force reload from disk ignoring cache
+        validate: Run Pydantic validation on loaded settings (logs warnings)
 
     Returns:
         Settings dictionary
@@ -627,6 +654,18 @@ def load_settings(force_refresh: bool = False) -> dict:
                         merged["custom_chat_suggestions"] = _migrate_suggestions_to_favorites(
                             merged["custom_chat_suggestions"]
                         )
+
+                    # Validate settings if requested
+                    if validate:
+                        try:
+                            from settings.settings_models import validate_settings
+                            validated, result = validate_settings(merged)
+                            for warning in result.warnings:
+                                logger.warning(f"Settings validation: {warning}")
+                            for error in result.errors:
+                                logger.error(f"Settings validation error: {error}")
+                        except ImportError:
+                            pass  # Pydantic not available, skip validation
 
                     # Update cache
                     _settings_cache = merged

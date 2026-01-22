@@ -32,6 +32,7 @@ Usage:
 import logging
 import json
 import time
+import os
 import functools
 import threading
 from typing import Any, Dict, Optional, Callable, TypeVar
@@ -39,6 +40,72 @@ from datetime import datetime
 from contextlib import contextmanager
 
 T = TypeVar('T')
+
+# Log level mapping for string-to-int conversion
+_LOG_LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
+def _get_configured_log_level(level_key: str = "level") -> int:
+    """Get log level from environment or settings.
+
+    Priority:
+    1. Environment variable MEDICAL_ASSISTANT_LOG_LEVEL
+    2. Settings file (logging.{level_key})
+    3. Default to INFO
+
+    Args:
+        level_key: Which setting to read (level, file_level, console_level)
+
+    Returns:
+        Logging level as int
+    """
+    # Environment variable takes precedence
+    env_level = os.environ.get("MEDICAL_ASSISTANT_LOG_LEVEL", "").upper()
+    if env_level in _LOG_LEVEL_MAP:
+        return _LOG_LEVEL_MAP[env_level]
+
+    # Try settings file
+    try:
+        # Import here to avoid circular imports (settings imports structured_logging)
+        # Use a direct file read to avoid the circular dependency
+        import json as json_module
+        from pathlib import Path
+
+        # Try to find settings file
+        settings_paths = [
+            Path.home() / "AppData" / "Local" / "MedicalAssistant" / "settings.json",
+            Path.home() / ".config" / "MedicalAssistant" / "settings.json",
+            Path.home() / "Library" / "Application Support" / "MedicalAssistant" / "settings.json",
+        ]
+
+        for settings_path in settings_paths:
+            if settings_path.exists():
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    settings = json_module.load(f)
+                    level_str = settings.get("logging", {}).get(level_key, "INFO").upper()
+                    return _LOG_LEVEL_MAP.get(level_str, logging.INFO)
+    except Exception:
+        pass  # Fall through to default
+
+    return logging.INFO
+
+
+def get_log_level_from_string(level_str: str) -> int:
+    """Convert a log level string to logging level int.
+
+    Args:
+        level_str: Log level name (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+    Returns:
+        Logging level constant
+    """
+    return _LOG_LEVEL_MAP.get(level_str.upper(), logging.INFO)
 
 # Sensitive field names that should be redacted
 SENSITIVE_FIELDS = frozenset([
@@ -441,17 +508,21 @@ class RequestLogger:
 
 
 def configure_logging(
-    level: int = logging.INFO,
+    level: int = None,
     format_string: str = None,
     json_format: bool = False
 ) -> None:
     """Configure the root logger for structured logging.
 
     Args:
-        level: Logging level
+        level: Logging level (if None, reads from settings/environment)
         format_string: Custom format string (ignored if json_format=True)
         json_format: If True, configure for JSON output
     """
+    # Get level from settings/environment if not specified
+    if level is None:
+        level = _get_configured_log_level()
+
     if format_string is None:
         format_string = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 

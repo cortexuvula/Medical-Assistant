@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from rag.graph_data_provider import EntityType
+from rag.exceptions import EmbeddingError, RAGError
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +145,15 @@ class MLEntityClassifier:
             try:
                 from rag.embedding_manager import CachedEmbeddingManager
                 self._embedding_manager = CachedEmbeddingManager()
+            except ImportError as e:
+                logger.debug(f"Embedding manager not available: {e}")
+                return None
+            except RAGError as e:
+                logger.debug(f"Could not create embedding manager (RAG error): {e}")
+                return None
             except Exception as e:
-                logger.debug(f"Could not create embedding manager: {e}")
+                error_type = type(e).__name__
+                logger.debug(f"Could not create embedding manager ({error_type}): {e}")
                 return None
         return self._embedding_manager
 
@@ -293,8 +301,13 @@ class MLEntityClassifier:
                     else:
                         scores[entity_type] = similarity
 
+            except EmbeddingError as e:
+                logger.debug(f"Embedding classification failed (EmbeddingError): {e}")
+            except RAGError as e:
+                logger.debug(f"Embedding classification failed (RAGError): {e}")
             except Exception as e:
-                logger.debug(f"Embedding classification failed: {e}")
+                error_type = type(e).__name__
+                logger.debug(f"Embedding classification failed ({error_type}): {e}")
 
         # Step 4: Get top predictions
         sorted_types = sorted(scores.items(), key=lambda x: -x[1])

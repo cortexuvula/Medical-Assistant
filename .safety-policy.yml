@@ -1,0 +1,13 @@
+# Safety vulnerability scanner configuration
+version: "3.0"
+
+security:
+  # Ignore vulnerabilities below this severity
+  ignore-severity-below: medium
+
+  # Document any exemptions here with reasons
+  ignore-vulnerabilities: []
+    # Example:
+    # - vulnerability_id: "CVE-YYYY-XXXXX"
+    #   reason: "Not exploitable in desktop app context"
+    #   expires: "2025-06-01"

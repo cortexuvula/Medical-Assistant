@@ -9,7 +9,7 @@ import tkinter as tk
 from typing import Callable, Optional
 
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+from ttkbootstrap.constants import LEFT
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core.config import get_config
 from utils.exceptions import DatabaseError
-from utils.structured_logging import get_logger
+from utils.structured_logging import get_logger, timed
 
 
 class ConnectionPool:
@@ -369,13 +369,14 @@ class DatabaseConnectionManager:
                 conn.rollback()
                 raise
     
+    @timed("db_execute")
     def execute(self, query: str, params: Optional[tuple] = None) -> Any:
         """Execute a single query.
-        
+
         Args:
             query: SQL query to execute
             params: Query parameters
-            
+
         Returns:
             Query result
         """
@@ -387,13 +388,14 @@ class DatabaseConnectionManager:
                 cursor.execute(query)
             return cursor
     
+    @timed("db_executemany")
     def executemany(self, query: str, params_list: list) -> Any:
         """Execute a query multiple times with different parameters.
-        
+
         Args:
             query: SQL query to execute
             params_list: List of parameter tuples
-            
+
         Returns:
             Query result
         """

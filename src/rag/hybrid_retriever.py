@@ -20,6 +20,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
+from utils.structured_logging import timed
+
 from rag.models import (
     HybridSearchResult,
     QueryExpansion,
@@ -191,6 +193,7 @@ class HybridRetriever:
                 return None
         return self._temporal_reasoner
 
+    @timed("rag_hybrid_search")
     def search(
         self,
         request: RAGQueryRequest,
