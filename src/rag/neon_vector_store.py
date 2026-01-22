@@ -101,11 +101,23 @@ class NeonVectorStore:
         """Get or create connection pool."""
         if self._pool is None:
             try:
-                import psycopg_pool
-            except ImportError:
+                # Import psycopg first to ensure base package loads
+                import psycopg
+                logger.debug(f"psycopg loaded from: {psycopg.__file__}")
+            except ImportError as e:
+                logger.error(f"Failed to import psycopg: {e}")
                 raise ImportError(
                     "psycopg is required for Neon vector store. "
-                    "Install with: pip install 'psycopg[binary]'"
+                    f"Install with: pip install 'psycopg[binary]'. Error: {e}"
+                )
+
+            try:
+                import psycopg_pool
+            except ImportError as e:
+                logger.error(f"Failed to import psycopg_pool: {e}")
+                raise ImportError(
+                    "psycopg_pool is required for Neon vector store. "
+                    f"Install with: pip install 'psycopg[binary]'. Error: {e}"
                 )
 
             conn_str = self._get_connection_string()
