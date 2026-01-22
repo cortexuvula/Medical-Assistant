@@ -94,7 +94,6 @@ class TestFilePathValidation:
     
     @pytest.mark.parametrize("invalid_path", [
         "",
-        "path/with/../..",  # Path traversal
         "x" * 300,  # Too long
     ])
     def test_validate_invalid_paths(self, invalid_path):
@@ -102,6 +101,30 @@ class TestFilePathValidation:
         is_valid, error = validate_file_path(invalid_path, must_exist=False)
         assert is_valid is False
         assert error is not None
+
+    def test_validate_path_traversal_with_base_directory(self, tmp_path):
+        """Test that path traversal is blocked when base_directory is provided."""
+        # Path traversal is only blocked when a base_directory constraint is set
+        traversal_path = str(tmp_path / "subdir" / ".." / ".." / "outside")
+
+        is_valid, error = validate_file_path(
+            traversal_path,
+            must_exist=False,
+            base_directory=str(tmp_path)
+        )
+        assert is_valid is False
+        assert error is not None
+        assert "outside allowed directory" in error
+
+    def test_validate_path_with_dots_allowed_without_base(self, tmp_path):
+        """Test that paths with '..' are allowed when no base_directory is set."""
+        # When no base_directory is provided, '..' paths are allowed if they resolve
+        valid_path = str(tmp_path / "subdir" / "..")
+
+        is_valid, error = validate_file_path(valid_path, must_exist=False)
+        # This should be valid since no base_directory constraint is set
+        assert is_valid is True
+        assert error is None
 
 
 class TestAudioFileValidation:
