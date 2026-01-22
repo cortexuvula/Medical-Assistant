@@ -31,9 +31,20 @@ for pkg in ['managers', 'utils', 'core', 'settings', 'database', 'ai', 'audio',
             pass
 
 # Collect PostgreSQL driver packages (psycopg with binary extensions)
+# IMPORTANT: psycopg must be imported before psycopg_binary can be collected
+# This is because psycopg_binary depends on psycopg being loaded first
 psycopg_binaries = []
 psycopg_datas = []
 psycopg_hiddenimports = []
+
+# First, import psycopg to enable psycopg_binary collection
+try:
+    import psycopg
+    print(f"Pre-imported psycopg from: {psycopg.__file__}")
+except ImportError as e:
+    print(f"Warning: Could not pre-import psycopg: {e}")
+
+# Now collect packages in the correct order
 for pkg in ['psycopg', 'psycopg_binary', 'psycopg_pool', 'pgvector']:
     try:
         datas, binaries, hiddenimports = collect_all(pkg)
@@ -43,6 +54,30 @@ for pkg in ['psycopg', 'psycopg_binary', 'psycopg_pool', 'pgvector']:
         print(f"Collected psycopg package: {pkg} ({len(binaries)} binaries, {len(hiddenimports)} imports)")
     except Exception as e:
         print(f"Warning: Could not collect {pkg}: {e}")
+
+# Fallback: If psycopg_binary wasn't collected, try to manually locate its files
+if not any('psycopg_binary' in str(b) for b in psycopg_binaries):
+    print("Attempting manual psycopg_binary collection...")
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec('psycopg_binary')
+        if spec and spec.origin:
+            import os
+            pkg_dir = os.path.dirname(spec.origin)
+            print(f"Found psycopg_binary at: {pkg_dir}")
+            # Collect all .pyd/.so files (binary extensions)
+            for f in os.listdir(pkg_dir):
+                if f.endswith(('.pyd', '.so', '.dll')):
+                    src = os.path.join(pkg_dir, f)
+                    psycopg_binaries.append((src, 'psycopg_binary'))
+                    print(f"  Added binary: {f}")
+            # Collect all .py files as data
+            for f in os.listdir(pkg_dir):
+                if f.endswith('.py'):
+                    src = os.path.join(pkg_dir, f)
+                    psycopg_datas.append((src, 'psycopg_binary'))
+    except Exception as e:
+        print(f"Manual psycopg_binary collection failed: {e}")
 
 # Determine FFmpeg files based on platform
 ffmpeg_files = []
