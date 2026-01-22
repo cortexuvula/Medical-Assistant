@@ -198,19 +198,19 @@ jobs:
       run: |
         bandit -r src/ -c .bandit.yml -f json -o bandit-report.json
         # Fail only on HIGH severity issues
-        python -c "
-import json, sys
-with open('bandit-report.json') as f:
-    data = json.load(f)
-results = data.get('results', [])
-high_issues = [r for r in results if r['issue_severity'] == 'HIGH']
-if high_issues:
-    print('HIGH severity issues found:')
-    for r in high_issues:
-        print(f\"  {r['filename']}:{r['line_number']}: {r['issue_text']}\")
-    sys.exit(1)
-print(f'No HIGH severity issues. {len(results)} lower severity findings.')
-"
+        python3 << 'BANDIT_CHECK'
+        import json, sys
+        with open('bandit-report.json') as f:
+            data = json.load(f)
+        results = data.get('results', [])
+        high_issues = [r for r in results if r['issue_severity'] == 'HIGH']
+        if high_issues:
+            print('HIGH severity issues found:')
+            for r in high_issues:
+                print(f"  {r['filename']}:{r['line_number']}: {r['issue_text']}")
+            sys.exit(1)
+        print(f'No HIGH severity issues. {len(results)} lower severity findings.')
+        BANDIT_CHECK
 
     - name: Upload security reports
       uses: actions/upload-artifact@v4
