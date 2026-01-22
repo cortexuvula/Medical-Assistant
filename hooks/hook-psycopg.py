@@ -5,28 +5,19 @@ PyInstaller hook for psycopg (PostgreSQL driver).
 psycopg with the [binary] option includes binary extensions in psycopg_binary
 that need to be collected properly for PyInstaller to bundle them.
 
-This hook handles psycopg, psycopg_binary, and psycopg_pool together because
-psycopg must be imported before psycopg_binary can be accessed.
+This hook handles psycopg and its submodules. For psycopg_binary, see
+hook-psycopg_binary.py which handles it separately to avoid import order issues.
 """
 
+import os
+import importlib.util
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
 
-# Collect all psycopg submodules first
+# Collect all psycopg submodules
 hiddenimports = collect_submodules('psycopg')
 
-# Import psycopg before collecting psycopg_binary (required by psycopg_binary)
-try:
-    import psycopg
-    # Now we can safely collect psycopg_binary
-    hiddenimports += collect_submodules('psycopg_binary')
-except ImportError:
-    pass
-
-# psycopg_pool is a separate module
-try:
-    hiddenimports += collect_submodules('psycopg_pool')
-except Exception:
-    pass
+# DO NOT call collect_submodules('psycopg_binary') here - it will fail
+# because psycopg needs to be imported first. hook-psycopg_binary.py handles this.
 
 # Add explicit imports for commonly missed modules
 hiddenimports += [
@@ -50,18 +41,34 @@ hiddenimports += [
     'psycopg.pq.pq_ctypes',
 ]
 
-# Collect data files
+# Collect data files from psycopg
 datas = collect_data_files('psycopg')
-try:
-    import psycopg  # Ensure psycopg is imported before accessing psycopg_binary
-    datas += collect_data_files('psycopg_binary')
-except Exception:
-    pass
 
-# Collect dynamic libraries (C extensions)
+# Collect dynamic libraries from psycopg
 binaries = collect_dynamic_libs('psycopg')
+
+# Also try to manually collect psycopg_binary binaries
 try:
-    import psycopg  # Ensure psycopg is imported before accessing psycopg_binary
-    binaries += collect_dynamic_libs('psycopg_binary')
-except Exception:
-    pass
+    import psycopg  # Import psycopg first
+
+    spec = importlib.util.find_spec('psycopg_binary')
+    if spec and spec.origin:
+        pkg_dir = os.path.dirname(spec.origin)
+        print(f"[hook-psycopg] Found psycopg_binary at: {pkg_dir}")
+
+        for f in os.listdir(pkg_dir):
+            full_path = os.path.join(pkg_dir, f)
+            if f.endswith(('.pyd', '.so')):
+                binaries.append((full_path, 'psycopg_binary'))
+                print(f"[hook-psycopg] Added psycopg_binary: {f}")
+
+        # Check pq subdirectory
+        pq_dir = os.path.join(pkg_dir, 'pq')
+        if os.path.isdir(pq_dir):
+            for f in os.listdir(pq_dir):
+                full_path = os.path.join(pq_dir, f)
+                if f.endswith(('.pyd', '.so', '.dll')):
+                    binaries.append((full_path, 'psycopg_binary/pq'))
+
+except Exception as e:
+    print(f"[hook-psycopg] Could not collect psycopg_binary: {e}")
