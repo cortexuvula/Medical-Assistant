@@ -173,13 +173,11 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
         On POSIX systems (Linux, macOS), sets permissions to 0o600 (owner read/write only).
         This protects PHI data from access by other users on the system.
 
-        On Windows, file permissions are handled differently through ACLs,
-        but the user's profile directory typically provides adequate protection.
+        On Windows, explicitly sets ACLs to restrict access to the current user only.
+        Falls back to relying on AppData folder permissions if pywin32 is not available.
         """
         if platform.system() == 'Windows':
-            # Windows handles permissions through ACLs
-            # The database is stored in the user's AppData folder which has appropriate permissions
-            logger.debug("Database file permissions: Windows ACLs apply")
+            self._secure_database_file_windows()
             return
 
         try:
@@ -203,6 +201,80 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
         except OSError as e:
             # Log but don't fail - the application should still work
             logger.warning(f"Could not set database file permissions: {e}")
+
+    def _secure_database_file_windows(self):
+        """Set secure ACLs on Windows database file.
+
+        Restricts file access to the current user only using Windows ACLs.
+        Requires pywin32 for explicit ACL control; falls back to AppData
+        folder permissions if not available.
+        """
+        if not os.path.exists(self.db_path):
+            return
+
+        try:
+            # Try to use pywin32 for explicit ACL control
+            import win32security
+            import ntsecuritycon as con
+
+            # Get the current user's SID
+            user_name = os.environ.get('USERNAME', '')
+            domain = os.environ.get('USERDOMAIN', '')
+
+            if not user_name:
+                logger.warning("Could not determine Windows username for ACL")
+                return
+
+            try:
+                user_sid, _, _ = win32security.LookupAccountName(domain, user_name)
+            except Exception as e:
+                logger.warning(f"Could not get user SID: {e}")
+                return
+
+            # Create a new DACL that only allows the current user
+            dacl = win32security.ACL()
+
+            # Grant full control to the current user
+            dacl.AddAccessAllowedAce(
+                win32security.ACL_REVISION,
+                con.FILE_ALL_ACCESS,
+                user_sid
+            )
+
+            # Apply the DACL to the database file and related files
+            for file_path in [self.db_path, self.db_path + '-wal', self.db_path + '-shm']:
+                if os.path.exists(file_path):
+                    try:
+                        # Get the security descriptor
+                        sd = win32security.GetFileSecurity(
+                            file_path,
+                            win32security.DACL_SECURITY_INFORMATION
+                        )
+
+                        # Set the new DACL (protected = True to prevent inheritance)
+                        sd.SetSecurityDescriptorDacl(True, dacl, False)
+
+                        # Apply the security descriptor
+                        win32security.SetFileSecurity(
+                            file_path,
+                            win32security.DACL_SECURITY_INFORMATION,
+                            sd
+                        )
+                        logger.debug(f"Secured Windows ACL for: {os.path.basename(file_path)}")
+                    except Exception as e:
+                        logger.warning(f"Could not set ACL for {file_path}: {e}")
+
+            logger.info("Database file secured with Windows ACLs (user-only access)")
+
+        except ImportError:
+            # pywin32 not available - log security note
+            logger.debug(
+                "pywin32 not installed - database security relies on AppData folder ACLs. "
+                "Install pywin32 for explicit file-level ACL control: pip install pywin32"
+            )
+        except Exception as e:
+            # Log but don't fail - the application should still work
+            logger.warning(f"Could not set Windows ACLs on database: {e}")
 
     def _ensure_critical_columns(self):
         """Ensure critical columns exist in the recordings table."""

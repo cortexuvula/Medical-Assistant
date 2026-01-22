@@ -8,7 +8,7 @@ audio files, prompt exports/imports, and storage management.
 import os
 import json
 from datetime import datetime as dt
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from pydub import AudioSegment
@@ -69,7 +69,7 @@ class FileManager:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(text)
                     
-                logger.info(f"Text saved to: {file_path}")
+                logger.debug(f"Text saved to: {file_path}")
                 return file_path
                 
         except Exception as e:
@@ -104,7 +104,7 @@ class FileManager:
             )
             
             if file_path and os.path.exists(file_path):
-                logger.info(f"Audio file loaded: {file_path}")
+                logger.debug(f"Audio file loaded: {file_path}")
                 return file_path
                 
         except Exception as e:
@@ -159,7 +159,7 @@ class FileManager:
                 # Save the audio file
                 audio_data.export(file_path, format=audio_format)
                 
-                logger.info(f"Audio saved to: {file_path}")
+                logger.debug(f"Audio saved to: {file_path}")
                 return file_path
                 
         except Exception as e:
@@ -221,7 +221,7 @@ class FileManager:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(prompts_data, f, indent=2)
                     
-                logger.info(f"Prompts exported to: {file_path}")
+                logger.debug(f"Prompts exported to: {file_path}")
                 messagebox.showinfo("Export Successful", "Prompts exported successfully!")
                 return True
                 
@@ -231,12 +231,23 @@ class FileManager:
             
         return False
     
+    # Maximum file size for JSON imports (10MB)
+    MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+    # Valid prompt categories for schema validation
+    VALID_PROMPT_CATEGORIES = {'refine', 'improve', 'soap', 'referral', 'advanced_analysis'}
+
     def import_prompts(self, title: str = "Import Prompts") -> bool:
         """Import prompts from a JSON file.
-        
+
+        Includes security validations:
+        - File size limit (10MB max)
+        - JSON schema validation
+        - Temperature range validation
+
         Args:
             title: Dialog title
-            
+
         Returns:
             bool: True if imported successfully
         """
@@ -246,32 +257,126 @@ class FileManager:
                 title=title,
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
             )
-            
+
             if file_path and os.path.exists(file_path):
-                # Load prompts
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    prompts_data = json.load(f)
-                
-                # Update settings
+                # Security: Check file size before loading
+                file_size = os.path.getsize(file_path)
+                if file_size > self.MAX_IMPORT_FILE_SIZE:
+                    logger.warning(f"Import file too large: {file_size} bytes (max {self.MAX_IMPORT_FILE_SIZE})")
+                    messagebox.showerror(
+                        "Import Error",
+                        f"File too large ({file_size // 1024 // 1024}MB). Maximum allowed size is 10MB."
+                    )
+                    return False
+
+                if file_size == 0:
+                    messagebox.showerror("Import Error", "File is empty.")
+                    return False
+
+                # Load and parse JSON
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        prompts_data = json.load(f)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON in import file: {e}")
+                    messagebox.showerror("Import Error", f"Invalid JSON format: {str(e)}")
+                    return False
+
+                # Schema validation
+                validation_errors = self._validate_prompts_schema(prompts_data)
+                if validation_errors:
+                    logger.warning(f"Import schema validation failed: {validation_errors}")
+                    messagebox.showerror(
+                        "Import Error",
+                        f"Invalid prompt file format:\n{chr(10).join(validation_errors[:5])}"
+                    )
+                    return False
+
+                # Update settings with validated data
+                imported_count = 0
                 for category, data in prompts_data.items():
-                    if isinstance(data, dict):
-                        if "prompt" in data:
+                    if isinstance(data, dict) and category in self.VALID_PROMPT_CATEGORIES:
+                        if "prompt" in data and isinstance(data["prompt"], str):
                             settings_manager.set(f"{category}_prompt", data["prompt"], auto_save=False)
+                            imported_count += 1
                         if "temperature" in data:
-                            settings_manager.set(f"{category}_temperature", data["temperature"], auto_save=False)
+                            temp = data["temperature"]
+                            if isinstance(temp, (int, float)) and 0.0 <= temp <= 2.0:
+                                settings_manager.set(f"{category}_temperature", temp, auto_save=False)
 
                 # Save settings
                 settings_manager.save()
-                
-                logger.info(f"Prompts imported from: {file_path}")
-                messagebox.showinfo("Import Successful", "Prompts imported successfully!")
+
+                logger.debug(f"Prompts imported from: {file_path}")
+                messagebox.showinfo(
+                    "Import Successful",
+                    f"Prompts imported successfully! ({imported_count} categories)"
+                )
                 return True
-                
+
         except Exception as e:
             logger.error(f"Failed to import prompts: {e}")
             messagebox.showerror("Import Error", f"Failed to import prompts: {str(e)}")
-            
+
         return False
+
+    def _validate_prompts_schema(self, data: Any) -> list:
+        """Validate the schema of imported prompts data.
+
+        Args:
+            data: The parsed JSON data to validate
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+
+        # Must be a dictionary
+        if not isinstance(data, dict):
+            errors.append("Root element must be a JSON object")
+            return errors
+
+        # Check for empty data
+        if not data:
+            errors.append("No prompt categories found in file")
+            return errors
+
+        # Check each category
+        for category, value in data.items():
+            # Category name validation
+            if not isinstance(category, str):
+                errors.append(f"Category name must be a string, got {type(category).__name__}")
+                continue
+
+            if len(category) > 100:
+                errors.append(f"Category name too long: {category[:20]}...")
+                continue
+
+            # Value must be a dict with prompt and/or temperature
+            if not isinstance(value, dict):
+                errors.append(f"Category '{category}' must be an object")
+                continue
+
+            # Validate prompt field if present
+            if "prompt" in value:
+                if not isinstance(value["prompt"], str):
+                    errors.append(f"Category '{category}': prompt must be a string")
+                elif len(value["prompt"]) > 100000:  # 100KB per prompt max
+                    errors.append(f"Category '{category}': prompt too long (max 100KB)")
+
+            # Validate temperature if present
+            if "temperature" in value:
+                temp = value["temperature"]
+                if not isinstance(temp, (int, float)):
+                    errors.append(f"Category '{category}': temperature must be a number")
+                elif temp < 0.0 or temp > 2.0:
+                    errors.append(f"Category '{category}': temperature must be between 0.0 and 2.0")
+
+            # Warn about unknown categories (but don't fail)
+            if category not in self.VALID_PROMPT_CATEGORIES:
+                logger.debug(f"Unknown prompt category in import: {category}")
+
+        return errors
     
     def set_default_folder(self) -> Optional[str]:
         """Set the default storage folder.
@@ -291,7 +396,7 @@ class FileManager:
                 self.default_folder = folder_path
                 settings_manager.set("default_folder", folder_path)
                 
-                logger.info(f"Default folder set to: {folder_path}")
+                logger.debug(f"Default folder set to: {folder_path}")
                 return folder_path
                 
         except Exception as e:
@@ -313,7 +418,7 @@ class FileManager:
             if not dir_path.exists():
                 try:
                     dir_path.mkdir(parents=True, exist_ok=True)
-                    logger.info(f"Created directory: {directory}")
+                    logger.debug(f"Created directory: {directory}")
                 except Exception as e:
                     logger.error(f"Failed to create directory {directory}: {e}")
     

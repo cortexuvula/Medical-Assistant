@@ -80,42 +80,174 @@ DANGEROUS_PATTERNS = [
 ]
 
 def validate_api_key(provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
-    """Validate an API key for a specific provider.
-    
+    """Validate an API key for a specific provider (format validation only).
+
+    NOTE: This function only validates the API key FORMAT, not whether the key
+    actually works with the provider's API. Format validation alone cannot detect:
+    - Expired keys
+    - Revoked keys
+    - Keys with insufficient permissions
+    - Rate-limited accounts
+
+    RECOMMENDATION: After format validation passes, always perform a live
+    connection test using the provider's API to verify the key is actually valid.
+    Use `validate_api_key_with_connection_test()` for comprehensive validation.
+
     Args:
         provider: The API provider name (openai, deepgram, etc.)
         api_key: The API key to validate
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
     if not api_key:
         return False, "API key cannot be empty"
-    
+
     # Check length
     if len(api_key) > MAX_API_KEY_LENGTH:
         return False, f"API key is too long (max {MAX_API_KEY_LENGTH} characters)"
-    
+
     # Remove whitespace
     api_key = api_key.strip()
-    
+
     # Basic format validation for known providers
     if provider.lower() in API_KEY_PATTERNS:
         pattern = API_KEY_PATTERNS[provider.lower()]
         if not pattern.match(api_key):
             return False, f"Invalid {provider} API key format"
-    
+
     # Check for common mistakes
     if api_key.startswith('"') or api_key.endswith('"'):
         return False, "API key should not include quotes"
-    
+
     if ' ' in api_key:
         return False, "API key should not contain spaces"
-    
+
     if api_key == f"<YOUR_{provider.upper()}_API_KEY>" or api_key.startswith("<") or api_key.endswith(">"):
         return False, "Please replace the placeholder with your actual API key"
-    
+
     return True, None
+
+
+class APIKeyValidationResult:
+    """Result of API key validation including format check and optional connection test."""
+
+    def __init__(
+        self,
+        is_valid: bool,
+        format_valid: bool,
+        connection_tested: bool = False,
+        connection_success: bool = False,
+        error_message: Optional[str] = None,
+        recommendation: Optional[str] = None
+    ):
+        self.is_valid = is_valid
+        self.format_valid = format_valid
+        self.connection_tested = connection_tested
+        self.connection_success = connection_success
+        self.error_message = error_message
+        self.recommendation = recommendation
+
+
+def validate_api_key_comprehensive(
+    provider: str,
+    api_key: str,
+    test_connection: bool = False,
+    connection_tester: Optional[callable] = None
+) -> APIKeyValidationResult:
+    """Comprehensive API key validation with optional connection testing.
+
+    This function provides complete validation including:
+    1. Format validation (pattern matching)
+    2. Common mistake detection
+    3. Optional live connection testing
+
+    Args:
+        provider: The API provider name (openai, deepgram, etc.)
+        api_key: The API key to validate
+        test_connection: If True, also test the API connection
+        connection_tester: Optional callable that takes (provider, api_key) and
+                          returns (success: bool, error: Optional[str]).
+                          If not provided, connection testing is skipped.
+
+    Returns:
+        APIKeyValidationResult with detailed validation information
+
+    Example:
+        # Format validation only
+        result = validate_api_key_comprehensive("openai", "sk-...")
+
+        # With connection testing
+        def test_openai(provider, key):
+            try:
+                # Call OpenAI API with minimal request
+                return True, None
+            except Exception as e:
+                return False, str(e)
+
+        result = validate_api_key_comprehensive(
+            "openai", "sk-...",
+            test_connection=True,
+            connection_tester=test_openai
+        )
+    """
+    # First, validate format
+    format_valid, format_error = validate_api_key(provider, api_key)
+
+    if not format_valid:
+        return APIKeyValidationResult(
+            is_valid=False,
+            format_valid=False,
+            error_message=format_error,
+            recommendation="Please check the API key format and try again."
+        )
+
+    # Format is valid - check if connection testing is requested
+    if not test_connection or connection_tester is None:
+        return APIKeyValidationResult(
+            is_valid=True,  # Provisionally valid based on format
+            format_valid=True,
+            connection_tested=False,
+            recommendation=(
+                "API key format is valid. For complete validation, test the "
+                "connection using the 'Test Connection' button in Settings."
+            )
+        )
+
+    # Perform connection test
+    try:
+        connection_success, connection_error = connection_tester(provider, api_key)
+
+        if connection_success:
+            return APIKeyValidationResult(
+                is_valid=True,
+                format_valid=True,
+                connection_tested=True,
+                connection_success=True
+            )
+        else:
+            return APIKeyValidationResult(
+                is_valid=False,
+                format_valid=True,
+                connection_tested=True,
+                connection_success=False,
+                error_message=f"Connection test failed: {connection_error}",
+                recommendation=(
+                    "The API key format is correct but the connection test failed. "
+                    "Please verify: 1) The key is active and not expired, "
+                    "2) Your account has the required permissions, "
+                    "3) You have not exceeded rate limits."
+                )
+            )
+    except Exception as e:
+        return APIKeyValidationResult(
+            is_valid=False,
+            format_valid=True,
+            connection_tested=True,
+            connection_success=False,
+            error_message=f"Connection test error: {str(e)}",
+            recommendation="An unexpected error occurred during connection testing."
+        )
 
 
 def sanitize_for_logging(text: str, max_length: int = 500) -> str:
@@ -143,37 +275,75 @@ def sanitize_for_logging(text: str, max_length: int = 500) -> str:
     return sanitized
 
 
-def sanitize_prompt(prompt: str) -> str:
+class PromptInjectionError(ValueError):
+    """Raised when a prompt injection attempt is detected in strict mode."""
+    pass
+
+
+def sanitize_prompt(prompt: str, strict_mode: bool = False) -> str:
     """Sanitize user prompt before sending to API.
-    
+
     Args:
         prompt: The user's input prompt
-        
+        strict_mode: If True, reject prompts with dangerous content instead of sanitizing.
+                     Use strict_mode=True for untrusted external input.
+
     Returns:
         Sanitized prompt safe for API calls
+
+    Raises:
+        PromptInjectionError: If strict_mode=True and dangerous patterns are detected
     """
     if not prompt:
         return ""
-    
+
     # Truncate if too long
     if len(prompt) > MAX_PROMPT_LENGTH:
         logger.warning(f"Prompt truncated from {len(prompt)} to {MAX_PROMPT_LENGTH} characters")
         prompt = prompt[:MAX_PROMPT_LENGTH] + "..."
-    
-    # Remove dangerous patterns
-    original_prompt = prompt
+
+    # Check for dangerous patterns
+    detected_patterns = []
     for pattern in DANGEROUS_PATTERNS:
-        prompt = pattern.sub('', prompt)
-    
-    if prompt != original_prompt:
-        logger.warning("Potentially dangerous content removed from prompt")
-    
+        if pattern.search(prompt):
+            detected_patterns.append(pattern.pattern[:50])  # Truncate pattern for logging
+
+    if detected_patterns:
+        if strict_mode:
+            # In strict mode, reject the entire prompt
+            logger.warning(
+                f"Prompt injection attempt blocked (strict mode): {len(detected_patterns)} patterns detected"
+            )
+            # Log to audit if available
+            try:
+                from utils.audit_logger import audit_log, AuditEventType
+                audit_log(
+                    event_type=AuditEventType.SECURITY_WARNING,
+                    action="prompt_injection_blocked",
+                    outcome="warning",
+                    details={"patterns_detected": len(detected_patterns)}
+                )
+            except ImportError:
+                pass  # Audit logger not available
+            raise PromptInjectionError(
+                "Input contains potentially dangerous content and has been rejected. "
+                "Please remove any instruction-like text and try again."
+            )
+        else:
+            # In normal mode, sanitize by removing dangerous patterns
+            original_prompt = prompt
+            for pattern in DANGEROUS_PATTERNS:
+                prompt = pattern.sub('', prompt)
+            logger.warning(
+                f"Potentially dangerous content removed from prompt: {len(detected_patterns)} patterns"
+            )
+
     # Remove excessive whitespace
     prompt = ' '.join(prompt.split())
-    
+
     # Remove null bytes and other problematic characters
     prompt = prompt.replace('\x00', '').replace('\r', '\n')
-    
+
     # Ensure the prompt is valid UTF-8
     try:
         prompt.encode('utf-8')
@@ -181,8 +351,30 @@ def sanitize_prompt(prompt: str) -> str:
         # Remove non-UTF-8 characters
         prompt = prompt.encode('utf-8', 'ignore').decode('utf-8')
         logger.warning("Non-UTF-8 characters removed from prompt")
-    
+
     return prompt.strip()
+
+
+def validate_prompt_safety(prompt: str) -> tuple[bool, Optional[str]]:
+    """Check if a prompt contains potentially dangerous content.
+
+    This is a non-throwing alternative to strict_mode for cases where you
+    want to check before processing.
+
+    Args:
+        prompt: The prompt to validate
+
+    Returns:
+        Tuple of (is_safe, warning_message)
+    """
+    if not prompt:
+        return True, None
+
+    for pattern in DANGEROUS_PATTERNS:
+        if pattern.search(prompt):
+            return False, "Prompt contains potentially dangerous content that may attempt to manipulate AI behavior"
+
+    return True, None
 
 
 # Maximum device name length for validation
@@ -222,37 +414,68 @@ def sanitize_device_name(device_name: str) -> str:
     return device_name.strip()
 
 
-def validate_file_path(file_path: str, must_exist: bool = False, 
-                      must_be_writable: bool = False) -> Tuple[bool, Optional[str]]:
+def validate_file_path(
+    file_path: str,
+    must_exist: bool = False,
+    must_be_writable: bool = False,
+    base_directory: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
     """Validate a file path for safety and accessibility.
-    
+
     Args:
         file_path: The file path to validate
         must_exist: Whether the file must already exist
         must_be_writable: Whether we need write access to the file/directory
-        
+        base_directory: If provided, the resolved path must be within this directory.
+                        This prevents path traversal attacks.
+
     Returns:
         Tuple of (is_valid, error_message)
     """
     if not file_path:
         return False, "File path cannot be empty"
-    
+
     # Check length
     if len(file_path) > MAX_FILE_PATH_LENGTH:
         return False, f"File path too long (max {MAX_FILE_PATH_LENGTH} characters)"
-    
+
+    # Check for null bytes (can be used to truncate paths)
+    if '\x00' in file_path:
+        return False, "File path cannot contain null bytes"
+
     try:
+        # Resolve to absolute path first (this handles .., symlinks, etc.)
         path = Path(file_path).resolve()
-        
-        # Security check: ensure path doesn't escape intended directories
-        # This is a basic check - adjust based on your security requirements
+
+        # Security check: if base_directory provided, ensure resolved path is within it
+        # This check happens AFTER resolve() to prevent encoded path traversal
+        if base_directory:
+            base_path = Path(base_directory).resolve()
+            try:
+                # Python 3.9+ has is_relative_to
+                if hasattr(path, 'is_relative_to'):
+                    if not path.is_relative_to(base_path):
+                        logger.warning(f"Path traversal attempt blocked: {file_path} resolved outside {base_directory}")
+                        return False, "File path attempts to access location outside allowed directory"
+                else:
+                    # Fallback for Python 3.8
+                    try:
+                        path.relative_to(base_path)
+                    except ValueError:
+                        logger.warning(f"Path traversal attempt blocked: {file_path} resolved outside {base_directory}")
+                        return False, "File path attempts to access location outside allowed directory"
+            except Exception:
+                return False, "Could not validate path containment"
+
+        # Even without base_directory, warn about ".." in original path (might be intentional)
+        # But still allow if it resolves to a valid location
         if ".." in file_path:
-            return False, "File path cannot contain '..' for security reasons"
-        
+            logger.debug(f"Path contains '..', resolved to: {path}")
+
         # Check if path exists when required
         if must_exist and not path.exists():
             return False, f"File does not exist: {file_path}"
-        
+
         # Check write permissions
         if must_be_writable:
             if path.exists():
@@ -265,18 +488,18 @@ def validate_file_path(file_path: str, must_exist: bool = False,
                     return False, f"Parent directory does not exist: {parent}"
                 if not os.access(parent, os.W_OK):
                     return False, f"No write permission in directory: {parent}"
-        
-        # Check for dangerous file names (Windows)
+
+        # Check for dangerous file names (Windows reserved names)
         dangerous_names = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
-                          'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 
+                          'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2',
                           'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9']
-        
+
         base_name = path.stem.upper()
         if base_name in dangerous_names:
             return False, f"Reserved file name not allowed: {path.stem}"
-        
+
         return True, None
-        
+
     except Exception as e:
         return False, f"Invalid file path: {str(e)}"
 

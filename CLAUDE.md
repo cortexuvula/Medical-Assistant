@@ -820,13 +820,15 @@ The application implements multiple layers of security to protect sensitive medi
 - **PBKDF2 Key Derivation**: 100,000 iterations with SHA-256 for master key derivation
 - **Per-Installation Salt**: Unique 256-bit salt generated for each installation (stored in `salt.bin`)
 - **Machine-Specific Keys**: Encryption keys derived from machine identifiers (machine-id, filesystem UUID)
+- **Key Recovery**: See key_storage.py docstring for recovery procedures after OS reinstall
 - **Location**: `src/utils/security/key_storage.py`
 
 ### Database File Protection
 - **POSIX Permissions**: Database file set to 0600 (owner read/write only) on Linux/macOS
+- **Windows ACL Enforcement**: Explicit user-only ACLs set when pywin32 is available
 - **WAL/SHM Protection**: Write-ahead log files also secured with restrictive permissions
 - **Automatic Enforcement**: Permissions checked and corrected on each application startup
-- **Location**: `src/database/database.py` → `_secure_database_file()`
+- **Location**: `src/database/database.py` → `_secure_database_file()` and `_secure_database_file_windows()`
 
 ### HTTP Client Security
 - **Explicit TLS Verification**: All HTTPS clients explicitly enable certificate verification
@@ -836,9 +838,24 @@ The application implements multiple layers of security to protect sensitive medi
 
 ### Input Validation & Sanitization
 - **SQL Injection Prevention**: Field allowlists and parameterized queries
-- **Prompt Injection Blocking**: Input sanitization for AI prompts
-- **Path Traversal Protection**: Validated file paths for all file operations
+- **Prompt Injection Blocking**: Input sanitization with optional strict mode that rejects (not just sanitizes) dangerous content
+- **Path Traversal Protection**: Validated file paths AFTER resolution to prevent encoded traversal attacks
 - **SSRF Protection**: URL validation for external requests
+- **JSON Import Validation**: File size limits (10MB) and schema validation for imported data
+- **Null Byte Detection**: Prevents path truncation attacks
+
+### PHI Redaction in Logs
+- **Comprehensive PHI Fields**: SENSITIVE_FIELDS includes 60+ medical data field names
+- **Automatic Redaction**: Patient names, diagnoses, transcripts, SOAP notes, etc. automatically redacted
+- **Structured Logging**: `src/utils/structured_logging.py` provides consistent log sanitization
+- **Location**: `SENSITIVE_FIELDS` frozenset in structured_logging.py
+
+### Audit Logging
+- **Separate Audit Log**: Append-only audit.log file for compliance tracking
+- **HIPAA Compliance**: Tracks sensitive operations (API key access, data exports, recording access)
+- **PHI Redaction**: Audit entries automatically redact patient information
+- **Session Tracking**: Session hashes for correlation without exposing session IDs
+- **Location**: `src/utils/audit_logger.py`
 
 ### Rate Limiting
 - **API Call Throttling**: Configurable rate limits per provider
@@ -850,11 +867,21 @@ The application implements multiple layers of security to protect sensitive medi
 - **Deprecation Warnings**: Legacy salt usage logged for audit trail
 - **Location**: `src/utils/security/key_storage.py` → `_migrate_legacy_keys_if_needed()`
 
+### API Key Validation
+- **Format Validation**: Pattern matching for known provider key formats
+- **Comprehensive Validation**: `validate_api_key_comprehensive()` supports optional connection testing
+- **Validation Results**: Detailed result object with format validity, connection status, and recommendations
+- **Location**: `src/utils/validation.py`
+
 ### Security Implementation Files
 | File | Purpose |
 |------|---------|
 | `src/utils/security.py` | Main security manager, API key operations |
-| `src/utils/security/key_storage.py` | Encrypted key storage with migration |
+| `src/utils/security/key_storage.py` | Encrypted key storage with migration and recovery docs |
 | `src/utils/security_decorators.py` | Rate limiting and input sanitization decorators |
 | `src/utils/http_client_manager.py` | Secure HTTP client management |
-| `src/database/database.py` | Database file permission enforcement |
+| `src/utils/audit_logger.py` | HIPAA-compliant audit logging |
+| `src/utils/structured_logging.py` | PHI redaction in application logs |
+| `src/utils/validation.py` | Input validation with prompt injection detection |
+| `src/database/database.py` | Database file permission enforcement (POSIX + Windows) |
+| `src/managers/file_manager.py` | JSON import validation with size/schema checks |

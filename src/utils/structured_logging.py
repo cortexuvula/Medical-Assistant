@@ -108,10 +108,31 @@ def get_log_level_from_string(level_str: str) -> int:
     return _LOG_LEVEL_MAP.get(level_str.upper(), logging.INFO)
 
 # Sensitive field names that should be redacted
+# Includes both security credentials and PHI (Protected Health Information) fields
 SENSITIVE_FIELDS = frozenset([
+    # Security credentials
     'api_key', 'apikey', 'password', 'secret', 'token', 'auth',
     'authorization', 'credential', 'private_key', 'access_token',
-    'refresh_token', 'ssn', 'social_security', 'credit_card', 'cc_number'
+    'refresh_token', 'bearer_token', 'jwt', 'session_id', 'cookie',
+    # Financial PII
+    'ssn', 'social_security', 'credit_card', 'cc_number', 'bank_account',
+    # PHI (Protected Health Information) - HIPAA compliance
+    'patient_name', 'patient_id', 'patient', 'mrn', 'medical_record_number',
+    'diagnosis', 'diagnoses', 'symptoms', 'symptom', 'chief_complaint',
+    'transcript', 'transcription', 'soap_note', 'soap', 'clinical_note',
+    'medical_history', 'history', 'assessment', 'treatment', 'prognosis',
+    'medication', 'medications', 'prescription', 'dosage', 'drug',
+    'allergy', 'allergies', 'condition', 'conditions', 'disease',
+    'vital_signs', 'vitals', 'lab_result', 'lab_results', 'test_result',
+    'procedure', 'surgery', 'operation', 'imaging', 'radiology',
+    'dob', 'date_of_birth', 'birthdate', 'age', 'gender', 'sex',
+    'address', 'phone', 'email', 'insurance', 'insurance_id',
+    'emergency_contact', 'next_of_kin', 'guardian', 'caregiver',
+    'referring_physician', 'provider', 'doctor', 'physician',
+    # Additional clinical content
+    'subjective', 'objective', 'plan', 'impression', 'findings',
+    'recommendation', 'referral', 'referral_letter', 'discharge_summary',
+    'progress_note', 'encounter', 'visit_note', 'consultation',
 ])
 
 # Maximum length for string values in logs

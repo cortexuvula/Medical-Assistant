@@ -2,6 +2,38 @@
 Secure Key Storage Module
 
 Provides encrypted storage for API keys using Fernet encryption.
+
+Security Architecture:
+---------------------
+- API keys are encrypted at rest using Fernet (AES-128-CBC with HMAC)
+- Encryption keys are derived using PBKDF2-HMAC-SHA256 (100,000 iterations)
+- Each installation has a unique cryptographic salt stored in salt.bin
+- Master key is derived from machine-specific identifiers (or MEDICAL_ASSISTANT_MASTER_KEY env var)
+
+Legacy Salt Migration:
+----------------------
+Prior to version 2.0, all installations used a shared static salt
+('medical_assistant_salt_v1'). This has been mitigated:
+- New installations generate cryptographically random 256-bit salts
+- Existing installations are automatically migrated on first run
+- Migration re-encrypts all keys with the new unique salt
+- Legacy salt support exists only for migration and will be removed in future versions
+
+SECURITY NOTE: The legacy static salt meant all installations derived the same
+encryption key from the same machine identifier. With per-install salts, even
+identical machine IDs produce different encryption keys.
+
+Key Recovery:
+-------------
+If encryption keys become inaccessible (OS reinstall, hardware change), users must:
+1. Delete the AppData/MedicalAssistant/.keys folder
+2. Re-enter all API keys in Settings
+3. Optionally set MEDICAL_ASSISTANT_MASTER_KEY env var for portable key storage
+
+For enterprise deployments, consider:
+- Exporting API keys before system changes
+- Using MEDICAL_ASSISTANT_MASTER_KEY for cross-machine portability
+- Documenting which API keys are in use
 """
 
 import os
