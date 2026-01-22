@@ -813,38 +813,54 @@ class SidebarNavigation:
     def _show_medication_analysis_tab(self):
         """Switch to the Medication Analysis tab within the SOAP panel."""
         try:
-            # Find the analysis notebook in the SOAP tab
-            if hasattr(self.parent_ui, 'components'):
-                analysis_content = self.parent_ui.components.get('analysis_content')
-                if analysis_content:
-                    # Find the notebook widget within analysis_content
-                    for child in analysis_content.winfo_children():
-                        if hasattr(child, 'select') and hasattr(child, 'tabs'):
-                            # This is a Notebook widget - select the first tab (Medication)
-                            tabs = child.tabs()
-                            if tabs:
-                                child.select(tabs[0])  # Medication is first tab
-                            break
+            # Use the notebook_tabs method which properly expands the panel first
+            # notebook_tabs is stored as an instance variable on parent_ui
+            notebook_tabs = getattr(self.parent_ui, 'notebook_tabs', None)
+            if notebook_tabs and hasattr(notebook_tabs, 'show_medication_analysis_tab'):
+                notebook_tabs.show_medication_analysis_tab()
+                logger.debug("Switched to medication analysis tab via notebook_tabs")
+            else:
+                # Fallback: try to find and expand manually
+                logger.debug("Using fallback method for medication tab")
+                self._fallback_show_analysis_tab(0)
         except Exception as e:
             logger.debug(f"Could not switch to medication tab: {e}")
 
     def _show_differential_analysis_tab(self):
         """Switch to the Differential Diagnosis tab within the SOAP panel."""
         try:
-            # Find the analysis notebook in the SOAP tab
+            # Use the notebook_tabs method which properly expands the panel first
+            # notebook_tabs is stored as an instance variable on parent_ui
+            notebook_tabs = getattr(self.parent_ui, 'notebook_tabs', None)
+            if notebook_tabs and hasattr(notebook_tabs, 'show_differential_analysis_tab'):
+                notebook_tabs.show_differential_analysis_tab()
+                logger.debug("Switched to differential analysis tab via notebook_tabs")
+            else:
+                # Fallback: try to find and expand manually
+                logger.debug("Using fallback method for differential tab")
+                self._fallback_show_analysis_tab(1)
+        except Exception as e:
+            logger.debug(f"Could not switch to differential tab: {e}")
+
+    def _fallback_show_analysis_tab(self, tab_index: int):
+        """Fallback method to show analysis tab when notebook_tabs is not available.
+
+        Args:
+            tab_index: 0 for medication, 1 for differential
+        """
+        try:
             if hasattr(self.parent_ui, 'components'):
                 analysis_content = self.parent_ui.components.get('analysis_content')
                 if analysis_content:
                     # Find the notebook widget within analysis_content
                     for child in analysis_content.winfo_children():
                         if hasattr(child, 'select') and hasattr(child, 'tabs'):
-                            # This is a Notebook widget - select the second tab (Differential)
                             tabs = child.tabs()
-                            if len(tabs) > 1:
-                                child.select(tabs[1])  # Differential is second tab
+                            if len(tabs) > tab_index:
+                                child.select(tabs[tab_index])
                             break
         except Exception as e:
-            logger.debug(f"Could not switch to differential tab: {e}")
+            logger.debug(f"Fallback show analysis tab failed: {e}")
 
     def update_soap_indicators(
         self,
