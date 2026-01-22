@@ -4,14 +4,29 @@ PyInstaller hook for psycopg (PostgreSQL driver).
 
 psycopg with the [binary] option includes binary extensions in psycopg_binary
 that need to be collected properly for PyInstaller to bundle them.
+
+This hook handles psycopg, psycopg_binary, and psycopg_pool together because
+psycopg must be imported before psycopg_binary can be accessed.
 """
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
 
-# Collect all psycopg submodules
+# Collect all psycopg submodules first
 hiddenimports = collect_submodules('psycopg')
-hiddenimports += collect_submodules('psycopg_binary')
-hiddenimports += collect_submodules('psycopg_pool')
+
+# Import psycopg before collecting psycopg_binary (required by psycopg_binary)
+try:
+    import psycopg
+    # Now we can safely collect psycopg_binary
+    hiddenimports += collect_submodules('psycopg_binary')
+except ImportError:
+    pass
+
+# psycopg_pool is a separate module
+try:
+    hiddenimports += collect_submodules('psycopg_pool')
+except Exception:
+    pass
 
 # Add explicit imports for commonly missed modules
 hiddenimports += [
@@ -37,10 +52,16 @@ hiddenimports += [
 
 # Collect data files
 datas = collect_data_files('psycopg')
-datas += collect_data_files('psycopg_binary')
-datas += collect_data_files('psycopg_pool')
+try:
+    import psycopg  # Ensure psycopg is imported before accessing psycopg_binary
+    datas += collect_data_files('psycopg_binary')
+except Exception:
+    pass
 
 # Collect dynamic libraries (C extensions)
 binaries = collect_dynamic_libs('psycopg')
-binaries += collect_dynamic_libs('psycopg_binary')
-binaries += collect_dynamic_libs('psycopg_pool')
+try:
+    import psycopg  # Ensure psycopg is imported before accessing psycopg_binary
+    binaries += collect_dynamic_libs('psycopg_binary')
+except Exception:
+    pass
