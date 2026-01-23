@@ -18,6 +18,13 @@ if sys.version_info < (3, 10):
     sys.stderr.write("pip install -r requirements.txt\n")
     sys.exit(1)
 
+# Single instance check - uses PID file (more reliable than sockets on macOS)
+from utils.single_instance import ensure_single_instance, show_already_running_message
+
+if not ensure_single_instance():
+    show_already_running_message()
+    sys.exit(0)
+
 # Import configuration and validate before starting app
 from core.config import init_config, get_config
 from utils.exceptions import ConfigurationError, DatabaseError

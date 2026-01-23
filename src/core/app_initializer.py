@@ -163,19 +163,25 @@ class AppInitializer:
         # This prevents multiple windows from opening
         import platform
         if platform.system() == 'Darwin':
-            def on_macos_reopen():
+            def on_macos_reopen(*args):
                 """Handle macOS reopen event - bring existing window to front."""
+                logger.info("macOS ReopenApplication event received")
                 try:
                     self.app.deiconify()  # Restore if minimized
                     self.app.lift()  # Bring to front
                     self.app.focus_force()  # Focus the window
-                    logger.debug("macOS reopen: brought existing window to front")
+                    logger.info("macOS reopen: brought existing window to front")
                 except Exception as e:
-                    logger.debug(f"macOS reopen handler error: {e}")
+                    logger.error(f"macOS reopen handler error: {e}")
+                return ""  # Tcl expects string return
 
             # Register the handler with Tk's macOS-specific event
-            self.app.createcommand('::tk::mac::ReopenApplication', on_macos_reopen)
-            logger.debug("Registered macOS ReopenApplication handler")
+            # Must use self.app.tk.createcommand for Tcl interop
+            try:
+                self.app.tk.createcommand('::tk::mac::ReopenApplication', on_macos_reopen)
+                logger.info("Registered macOS ReopenApplication handler")
+            except Exception as e:
+                logger.error(f"Failed to register macOS reopen handler: {e}")
 
     def _setup_api_keys(self):
         """Initialize and validate API keys."""
