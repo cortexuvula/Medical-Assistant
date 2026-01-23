@@ -33,10 +33,10 @@ class FileProcessor:
         file_path = filedialog.askopenfilename(
             initialdir=os.path.expanduser("~"),
             title="Select Audio File",
-            filetypes=(
-                ("Audio Files", "*.wav;*.mp3;*.ogg;*.flac;*.m4a"),
+            filetypes=[
+                ("Audio Files", "*.wav *.mp3 *.ogg *.flac *.m4a"),
                 ("All Files", "*.*")
-            )
+            ]
         )
         if not file_path:
             return
