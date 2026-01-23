@@ -95,6 +95,9 @@ class SOAPGeneratorMixin:
                         )
                         if success:
                             logger.info(f"Updated existing recording {self.app.current_recording_id} with SOAP note")
+                            # Set selected_recording_id so analyses can save correctly
+                            self.app.selected_recording_id = self.app.current_recording_id
+                            logger.debug(f"Set selected_recording_id to {self.app.selected_recording_id} for analysis save")
                         else:
                             logger.error(f"Failed to update recording {self.app.current_recording_id} with SOAP note")
                     else:
