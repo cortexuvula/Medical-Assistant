@@ -158,7 +158,25 @@ class AppInitializer:
         
         # Store scaler reference in app for access by other components
         self.app.ui_scaler = ui_scaler
-        
+
+        # macOS-specific: Handle reopen events (clicking Dock icon when app is running)
+        # This prevents multiple windows from opening
+        import platform
+        if platform.system() == 'Darwin':
+            def on_macos_reopen():
+                """Handle macOS reopen event - bring existing window to front."""
+                try:
+                    self.app.deiconify()  # Restore if minimized
+                    self.app.lift()  # Bring to front
+                    self.app.focus_force()  # Focus the window
+                    logger.debug("macOS reopen: brought existing window to front")
+                except Exception as e:
+                    logger.debug(f"macOS reopen handler error: {e}")
+
+            # Register the handler with Tk's macOS-specific event
+            self.app.createcommand('::tk::mac::ReopenApplication', on_macos_reopen)
+            logger.debug("Registered macOS ReopenApplication handler")
+
     def _setup_api_keys(self):
         """Initialize and validate API keys."""
         # Get security manager for API key access
