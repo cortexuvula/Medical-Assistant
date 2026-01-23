@@ -222,5 +222,11 @@ if sys.platform == 'darwin':
         bundle_identifier='com.medicalassistant.app',
         info_plist={
             'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
+            # Prevent multiple instances and handle reopen events properly
+            'LSMultipleInstancesProhibited': True,
+            # Allow the app to be brought to foreground when relaunched
+            'NSSupportsAutomaticGraphicsSwitching': True,
+            # Set minimum macOS version
+            'LSMinimumSystemVersion': '10.15',
         },
     )
