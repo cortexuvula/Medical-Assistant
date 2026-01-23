@@ -37,6 +37,7 @@ from ui.dialogs.recordings_dialog_manager import RecordingsDialogManager
 from ui.dialogs.audio_dialogs import AudioDialogManager
 from ui.dialogs.folder_dialogs import FolderDialogManager
 from ui.theme_manager import ThemeManager
+from ui.theme_observer import ThemeObserver
 from processing.document_generators import DocumentGenerators
 from ai.soap_processor import SOAPProcessor
 from audio.soap_audio_processor import SOAPAudioProcessor
@@ -100,10 +101,23 @@ class AppInitializer:
         """Configure window appearance, size, and positioning."""
         # Get theme from settings or use default
         self.app.current_theme = SETTINGS.get("theme", "flatly")
-        
+
         # Initialize the ttk.Window with theme
         ttk.Window.__init__(self.app, themename=self.app.current_theme)
+
+        # CRITICAL: Register macOS handlers IMMEDIATELY after Tk init
+        # This prevents multiple windows from opening when the app is re-activated
+        self._setup_macos_handlers()
+
         self.app.title("Medical Assistant")
+
+        # Initialize ThemeObserver with the correct initial dark mode state
+        # This must happen before any theme-aware components are created
+        dark_themes = ["darkly", "solar", "cyborg", "superhero"]
+        is_dark = self.app.current_theme in dark_themes
+        theme_observer = ThemeObserver.get_instance()
+        theme_observer._is_dark = is_dark
+        logger.debug(f"ThemeObserver initialized with is_dark={is_dark} (theme: {self.app.current_theme})")
         
         # Initialize UI scaler with the root window
         ui_scaler.initialize(self.app)
@@ -159,29 +173,76 @@ class AppInitializer:
         # Store scaler reference in app for access by other components
         self.app.ui_scaler = ui_scaler
 
-        # macOS-specific: Handle reopen events (clicking Dock icon when app is running)
-        # This prevents multiple windows from opening
-        import platform
-        if platform.system() == 'Darwin':
-            def on_macos_reopen(*args):
-                """Handle macOS reopen event - bring existing window to front."""
-                logger.info("macOS ReopenApplication event received")
-                try:
-                    self.app.deiconify()  # Restore if minimized
-                    self.app.lift()  # Bring to front
-                    self.app.focus_force()  # Focus the window
-                    logger.info("macOS reopen: brought existing window to front")
-                except Exception as e:
-                    logger.error(f"macOS reopen handler error: {e}")
-                return ""  # Tcl expects string return
+    def _setup_macos_handlers(self):
+        """Register macOS event handlers immediately after Tk initialization.
 
-            # Register the handler with Tk's macOS-specific event
-            # Must use self.app.tk.createcommand for Tcl interop
+        This MUST be called immediately after ttk.Window.__init__() to prevent
+        multiple windows from opening when the app is re-activated via Finder
+        or Dock. The handlers intercept OpenApplication and ReopenApplication
+        events before macOS can spawn a new window.
+        """
+        import platform
+        if platform.system() != 'Darwin':
+            return
+
+        # Initialize state flags for macOS event handling
+        self.app._macos_fully_initialized = False
+        self.app._macos_last_event_time = 0
+
+        def on_macos_open(*args):
+            """Handle OpenApplication - fires when app opened from Finder.
+
+            If app is already fully initialized, just bring window to front.
+            Otherwise, allow normal initialization to proceed.
+            """
+            is_initialized = getattr(self.app, '_macos_fully_initialized', False)
+            logger.debug(f"macOS OpenApplication event (initialized={is_initialized})")
+
+            if is_initialized:
+                # App already running - bring existing window to front
+                try:
+                    self.app.deiconify()
+                    self.app.lift()
+                    self.app.focus_force()
+                    logger.info("macOS OpenApplication: brought existing window to front")
+                except Exception as e:
+                    logger.error(f"macOS OpenApplication handler error: {e}")
+            # If not initialized, let normal startup proceed
+            return ""  # Tcl expects string return
+
+        def on_macos_reopen(*args):
+            """Handle ReopenApplication - fires on Dock click when app running.
+
+            Includes debouncing to prevent rapid successive events from causing issues.
+            """
+            import time
+            now = time.time()
+            last_time = getattr(self.app, '_macos_last_event_time', 0)
+
+            # Debounce: ignore events within 0.5 seconds of each other
+            if now - last_time < 0.5:
+                logger.debug("macOS ReopenApplication debounced")
+                return ""
+
+            self.app._macos_last_event_time = now
+
+            logger.debug("macOS ReopenApplication event")
             try:
-                self.app.tk.createcommand('::tk::mac::ReopenApplication', on_macos_reopen)
-                logger.info("Registered macOS ReopenApplication handler")
+                self.app.deiconify()  # Restore if minimized
+                self.app.lift()  # Bring to front
+                self.app.focus_force()  # Focus the window
+                logger.info("macOS ReopenApplication: brought existing window to front")
             except Exception as e:
-                logger.error(f"Failed to register macOS reopen handler: {e}")
+                logger.error(f"macOS ReopenApplication handler error: {e}")
+            return ""  # Tcl expects string return
+
+        # Register the handlers with Tk's macOS-specific events
+        try:
+            self.app.tk.createcommand('::tk::mac::OpenApplication', on_macos_open)
+            self.app.tk.createcommand('::tk::mac::ReopenApplication', on_macos_reopen)
+            logger.info("Registered macOS OpenApplication and ReopenApplication handlers")
+        except Exception as e:
+            logger.error(f"Failed to register macOS handlers: {e}")
 
     def _setup_api_keys(self):
         """Initialize and validate API keys."""
@@ -455,6 +516,12 @@ class AppInitializer:
 
         # Check for incomplete recording after UI is fully ready
         self.app.after(1000, self.app.recording_recovery_controller.check_for_incomplete_recording)
+
+        # Mark macOS initialization as complete
+        # This allows the OpenApplication handler to distinguish between
+        # first launch and re-activation
+        self.app._macos_fully_initialized = True
+        logger.debug("macOS initialization flag set to True")
     
     def _on_queue_status_update(self, task_id: str, status: str, queue_size: int):
         """Handle queue status updates.

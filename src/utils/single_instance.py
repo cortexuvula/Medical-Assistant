@@ -128,8 +128,76 @@ def ensure_single_instance() -> bool:
     return True
 
 
+def _activate_existing_instance():
+    """Try to bring the existing instance's window to the front."""
+    if platform.system() == 'Darwin':
+        # macOS: Use AppleScript to activate the existing app
+        try:
+            import subprocess
+            # First, try to activate by app name
+            script = '''
+            tell application "System Events"
+                set appList to name of every process whose name contains "MedicalAssistant" or name contains "Medical Assistant"
+                if (count of appList) > 0 then
+                    set appName to item 1 of appList
+                    tell process appName
+                        set frontmost to true
+                    end tell
+                    return "activated"
+                end if
+            end tell
+            return "not_found"
+            '''
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.stdout.strip() == "activated":
+                logger.info("Activated existing instance via AppleScript")
+                return True
+            else:
+                logger.debug(f"AppleScript result: {result.stdout.strip()}")
+        except Exception as e:
+            logger.debug(f"Failed to activate via AppleScript: {e}")
+
+    elif platform.system() == 'Windows':
+        # Windows: Try to find and activate the window
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+
+            # Find window by title
+            hwnd = user32.FindWindowW(None, "Medical Assistant")
+            if hwnd:
+                # Restore if minimized
+                SW_RESTORE = 9
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                # Bring to front
+                user32.SetForegroundWindow(hwnd)
+                logger.info("Activated existing instance via Windows API")
+                return True
+        except Exception as e:
+            logger.debug(f"Failed to activate via Windows API: {e}")
+
+    return False
+
+
 def show_already_running_message():
-    """Show a message that another instance is already running."""
+    """Show a message that another instance is already running and try to activate it."""
+    # First, try to bring the existing window to front
+    activated = _activate_existing_instance()
+
+    if activated:
+        # Successfully activated - just exit silently on macOS
+        if platform.system() == 'Darwin':
+            logger.info("Existing instance activated, exiting silently")
+            return
+
+    # Show message if we couldn't activate or on non-macOS
     try:
         import tkinter as tk
         from tkinter import messagebox
