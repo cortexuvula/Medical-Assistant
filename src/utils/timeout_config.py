@@ -51,7 +51,7 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     "embedding_batch": 120.0, # Large batch embedding
 
     # Other service timeouts
-    "rag": 30.0,              # RAG/N8N webhook calls
+    "rag": 30.0,              # RAG local document search
     "stt": 120.0,             # Generic speech-to-text transcription
     "tts": 30.0,              # Text-to-speech synthesis
     "health_check": 5.0,      # Service health checks

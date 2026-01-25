@@ -472,7 +472,7 @@ class AppInitializer:
             # Get the RAG document manager singleton
             self.app.rag_document_manager = get_rag_document_manager()
 
-            # Check RAG mode (local vs N8N webhook)
+            # Check if RAG is configured
             rag_mode = self.app.rag_processor.get_rag_mode()
             if rag_mode == "local":
                 logger.info("RAG system initialized in local mode (Neon pgvector)")
@@ -482,10 +482,8 @@ class AppInitializer:
                     logger.info(f"RAG document library contains {doc_count} documents")
                 except Exception as e:
                     logger.debug(f"Could not get document count: {e}")
-            elif rag_mode == "n8n":
-                logger.info("RAG system initialized in N8N webhook mode")
             else:
-                logger.info("RAG system not configured (no Neon or N8N connection)")
+                logger.info("RAG system not configured (NEON_DATABASE_URL not set)")
 
         except Exception as e:
             logger.warning(f"RAG system initialization warning: {e}")

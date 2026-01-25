@@ -1,32 +1,24 @@
 """
 RAG Processor for Medical Assistant
 
-Supports two modes:
-1. N8N webhook mode (legacy) - sends queries to external N8N workflow
-2. Local RAG mode - uses local document embeddings with Neon pgvector
+Provides local RAG (Retrieval-Augmented Generation) functionality using
+Neon pgvector for vector storage and Neo4j for knowledge graph queries.
 
-The mode is determined by configuration:
-- If NEON_DATABASE_URL is set, local RAG mode is preferred
-- Falls back to N8N webhook mode if configured
+The RAG system is enabled when NEON_DATABASE_URL is configured in the environment.
 """
 
 import threading
-import requests
 import json
 import os
 import uuid
 import re
-from typing import Optional, Callable, Tuple, Dict, Any
+from typing import Optional, Callable, Tuple
 from datetime import datetime
-from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from managers.data_folder_manager import data_folder_manager
-from utils.timeout_config import get_timeout, get_timeout_tuple
-from utils.http_client_manager import get_http_client_manager
+from utils.timeout_config import get_timeout
 from utils.structured_logging import get_logger
-from utils.resilience import smart_retry
-from utils.exceptions import APIError
 
 logger = get_logger(__name__)
 
@@ -62,16 +54,12 @@ _load_env_file()
 
 
 class RagProcessor:
-    """Processes RAG queries via N8N webhook with security validation.
+    """Processes RAG queries using local vector database and knowledge graph.
 
-    Supports three modes:
+    Supports two modes:
     1. Local RAG with streaming - Progressive result display with cancellation
     2. Local RAG (legacy) - Blocking search
-    3. N8N webhook mode - External RAG system
     """
-
-    # Allowed URL schemes for webhook
-    ALLOWED_SCHEMES = {'https', 'http'}
 
     # Maximum allowed response length (prevent memory exhaustion)
     MAX_RESPONSE_LENGTH = 100000  # 100KB
@@ -94,19 +82,6 @@ class RagProcessor:
         (re.compile(r'\x1b\[[0-9;]*[a-zA-Z]'), ''),
         # Null bytes
         (re.compile(r'\x00'), ''),
-    ]
-
-    # Blocked private IP ranges (SSRF protection)
-    BLOCKED_IP_PATTERNS = [
-        r'^127\.',                    # Localhost
-        r'^10\.',                     # Private class A
-        r'^172\.(1[6-9]|2[0-9]|3[01])\.', # Private class B
-        r'^192\.168\.',               # Private class C
-        r'^169\.254\.',               # Link-local
-        r'^0\.',                      # Invalid
-        r'^localhost$',               # Localhost hostname
-        r'^::1$',                     # IPv6 localhost
-        r'^fd[0-9a-f]{2}:',           # IPv6 private
     ]
 
     def __init__(self, app):
@@ -178,25 +153,6 @@ class RagProcessor:
         # Store conversation exchanges for export functionality
         self._conversation_exchanges = []  # List of exchange dicts with query, response, sources
         self._max_exchanges = 100  # Maximum exchanges to store
-
-        # Get N8N webhook configuration from environment
-        raw_url = os.getenv("N8N_URL")
-        self.n8n_auth_header = os.getenv("N8N_AUTHORIZATION_SECRET")
-
-        # Validate and sanitize the webhook URL
-        self.n8n_webhook_url = None
-        if raw_url:
-            is_valid, validated_url, error = self._validate_webhook_url(raw_url)
-            if is_valid:
-                self.n8n_webhook_url = validated_url
-            else:
-                logger.error(f"Invalid N8N_URL: {error}")
-        else:
-            if not self.use_local_rag:
-                logger.warning("N8N_URL not found in environment variables")
-
-        if not self.n8n_auth_header and not self.use_local_rag:
-            logger.warning("N8N_AUTHORIZATION_SECRET not found in environment variables")
 
     def _get_hybrid_retriever(self):
         """Get or create hybrid retriever for local RAG mode."""
@@ -663,115 +619,17 @@ class RagProcessor:
         """Get current RAG mode.
 
         Returns:
-            'local' for local RAG, 'n8n' for webhook, 'none' if unconfigured
+            'local' for local RAG, 'none' if unconfigured
         """
         # Trust the configuration - if NEON_DATABASE_URL is set, use local RAG
         # Actual connectivity issues will be reported when operations are attempted
         if self.use_local_rag:
             return "local"
-        elif self.n8n_webhook_url:
-            return "n8n"
         return "none"
 
-    @smart_retry(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
-    def _make_webhook_request(
-        self,
-        url: str,
-        headers: Dict[str, str],
-        payload: Dict[str, Any]
-    ) -> requests.Response:
-        """Make retryable HTTP POST request to webhook.
-
-        Uses @smart_retry decorator to handle transient network errors
-        with exponential backoff.
-
-        Args:
-            url: Webhook URL to call
-            headers: HTTP headers
-            payload: JSON payload to send
-
-        Returns:
-            Response object from the request
-
-        Raises:
-            APIError: On non-retryable errors
-            requests.exceptions.RequestException: On network errors (may be retried)
-        """
-        session = get_http_client_manager().get_requests_session("rag")
-        timeout = get_timeout_tuple("rag")
-
-        response = session.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=timeout
-        )
-
-        # Raise for server errors (5xx) to trigger retry
-        # Client errors (4xx) should not be retried
-        if response.status_code >= 500:
-            response.raise_for_status()
-
-        return response
-
-    def _validate_webhook_url(self, url: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Validate webhook URL for security.
-
-        Performs SSRF protection by blocking private IP ranges and
-        validating URL format.
-
-        Args:
-            url: The URL to validate
-
-        Returns:
-            Tuple of (is_valid, sanitized_url, error_message)
-        """
-        if not url:
-            return False, None, "URL is empty"
-
-        url = url.strip()
-
-        try:
-            parsed = urlparse(url)
-
-            # Check scheme
-            if parsed.scheme.lower() not in self.ALLOWED_SCHEMES:
-                return False, None, f"Invalid scheme: {parsed.scheme}. Must be http or https"
-
-            # Check if hostname exists
-            if not parsed.hostname:
-                return False, None, "URL has no hostname"
-
-            hostname = parsed.hostname.lower()
-
-            # Check against blocked patterns (SSRF protection)
-            for pattern in self.BLOCKED_IP_PATTERNS:
-                if re.match(pattern, hostname, re.IGNORECASE):
-                    return False, None, f"Blocked hostname: {hostname} (private/local address)"
-
-            # Validate port if specified
-            if parsed.port:
-                if parsed.port < 1 or parsed.port > 65535:
-                    return False, None, f"Invalid port: {parsed.port}"
-
-            # Reconstruct URL to ensure it's properly formatted
-            # This also removes any extraneous components
-            sanitized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-            if parsed.query:
-                sanitized += f"?{parsed.query}"
-
-            logger.debug(f"Validated webhook URL: {sanitized}")
-            return True, sanitized, None
-
-        except Exception as e:
-            return False, None, f"URL parsing error: {str(e)}"
-            
     def process_message(self, user_message: str, callback: Optional[Callable] = None):
         """
-        Process a RAG query from the user.
-
-        Automatically selects between local RAG mode and N8N webhook mode
-        based on configuration.
+        Process a RAG query from the user using local vector database.
 
         Args:
             user_message: The user's query
@@ -781,37 +639,29 @@ class RagProcessor:
             logger.warning("RAG processor is already processing a message")
             return
 
-        # Check available RAG mode
+        # Check if RAG is configured
         rag_mode = self.get_rag_mode()
 
         if rag_mode == "none":
             self._display_error(
-                "No RAG system configured. Please either:\n"
-                "• Set NEON_DATABASE_URL for local RAG mode\n"
-                "• Set N8N_URL for webhook mode"
+                "No RAG system configured.\n"
+                "Please set NEON_DATABASE_URL in your environment."
             )
             if callback:
                 callback()
             return
 
         # Run processing in a separate thread to avoid blocking UI
-        if rag_mode == "local":
-            # Use streaming for local RAG mode
-            if self._use_streaming:
-                thread = threading.Thread(
-                    target=self._process_message_streaming,
-                    args=(user_message, callback),
-                    daemon=True
-                )
-            else:
-                thread = threading.Thread(
-                    target=self._process_message_local,
-                    args=(user_message, callback),
-                    daemon=True
-                )
+        # Use streaming for local RAG mode
+        if self._use_streaming:
+            thread = threading.Thread(
+                target=self._process_message_streaming,
+                args=(user_message, callback),
+                daemon=True
+            )
         else:
             thread = threading.Thread(
-                target=self._process_message_async,
+                target=self._process_message_local,
                 args=(user_message, callback),
                 daemon=True
             )
@@ -1161,127 +1011,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
         parts.append(f"\n---\n*Search completed in {response.processing_time_ms:.0f}ms*")
 
         return "\n".join(parts)
-        
-    def _process_message_async(self, user_message: str, callback: Optional[Callable]):
-        """Async processing of RAG query via N8N webhook."""
-        try:
-            self.is_processing = True
 
-            # Add user message to RAG tab
-            self._add_message_to_rag_tab("User", user_message)
-
-            # Show search progress indicator
-            self._show_typing_indicator('search')
-
-            # Enhance query with context if it's a follow-up question
-            search_query, is_followup, confidence, intent_type = self._process_query_with_context(user_message)
-            logger.info(f"Processing N8N RAG query: followup={is_followup}, intent={intent_type}")
-
-            # Make request to N8N webhook
-            try:
-                headers = {
-                    "Content-Type": "application/json"
-                }
-
-                # Add authorization header if provided
-                if self.n8n_auth_header:
-                    # Remove quotes if present
-                    auth_value = self.n8n_auth_header.strip("'\"")
-                    headers["Authorization"] = auth_value
-
-                # Prepare request payload with sessionId
-                # Generate a session ID - you can make this persistent per user session if needed
-                session_id = getattr(self, 'session_id', None)
-                if not session_id:
-                    self.session_id = str(uuid.uuid4())
-                    session_id = self.session_id
-
-                payload = {
-                    "chatInput": search_query,  # Use enhanced query
-                    "sessionId": session_id
-                }
-
-                logger.info(f"Sending RAG query to N8N webhook: {self.n8n_webhook_url}")
-                logger.debug(f"Payload: {payload}")
-
-                # Use retryable HTTP method with automatic retry on transient errors
-                response = self._make_webhook_request(
-                    self.n8n_webhook_url,
-                    headers,
-                    payload
-                )
-
-                # Check for client errors (4xx) - these weren't raised in _make_webhook_request
-                response.raise_for_status()
-
-                # Update indicator to show response generation phase
-                self._show_typing_indicator('generate')
-
-                # Log raw response for debugging
-                logger.info(f"Response status code: {response.status_code}")
-                logger.info(f"Response headers: {response.headers}")
-                response_text = response.text
-                logger.info(f"Raw response: {response_text[:500]}...")  # Log first 500 chars
-
-                # Parse response
-                if not response_text or response_text.strip() == "":
-                    logger.warning("Empty response from N8N webhook - the webhook may need to be configured to return data")
-                    output = "The RAG system processed your request but didn't return any data. Please check the N8N workflow configuration to ensure it returns a response."
-                else:
-                    try:
-                        response_data = response.json()
-
-                        # Handle the expected response format
-                        # Example: [{"output": "response text"}]
-                        if isinstance(response_data, list) and len(response_data) > 0:
-                            output = response_data[0].get("output", "No response received from RAG system.")
-                        elif isinstance(response_data, dict):
-                            output = response_data.get("output", "No response received from RAG system.")
-                        else:
-                            output = "Unexpected response format from RAG system."
-                    except json.JSONDecodeError:
-                        # If it's not JSON, just use the text response
-                        output = f"RAG Response: {response_text}"
-
-                # Update conversation history with original query
-                self._update_conversation_history(user_message, output)
-
-                # Hide indicator before adding response
-                self._hide_typing_indicator()
-
-                # Add response to RAG tab
-                self._add_message_to_rag_tab("RAG Assistant", output)
-
-            except requests.exceptions.Timeout:
-                self._hide_typing_indicator()  # Cleanup on error
-                error_msg = "Request timed out. The RAG system took too long to respond."
-                logger.error(error_msg)
-                self._display_error(error_msg)
-
-            except requests.exceptions.RequestException as e:
-                self._hide_typing_indicator()  # Cleanup on error
-                error_msg = f"Error connecting to RAG system: {str(e)}"
-                logger.error(error_msg)
-                self._display_error(error_msg)
-
-            except json.JSONDecodeError as e:
-                self._hide_typing_indicator()  # Cleanup on error
-                error_msg = f"Error parsing RAG response: {str(e)}"
-                logger.error(error_msg)
-                self._display_error(error_msg)
-
-        except Exception as e:
-            self._hide_typing_indicator()  # Cleanup on error
-            error_msg = f"Unexpected error in RAG processor: {str(e)}"
-            logger.error(error_msg)
-            self._display_error(error_msg)
-
-        finally:
-            self._hide_typing_indicator()  # Ensure cleanup
-            self.is_processing = False
-            if callback:
-                self.app.after(0, callback)
-                
     def _add_message_to_rag_tab(self, sender: str, message: str):
         """Add a message to the RAG tab."""
         if not hasattr(self.app, 'rag_text'):

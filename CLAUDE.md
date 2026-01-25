@@ -92,27 +92,27 @@ The periodic analysis feature provides real-time differential diagnosis during r
 
 ## RAG (Retrieval-Augmented Generation) Tab Implementation Summary
 
-The RAG tab provides document search capabilities through N8N webhook integration:
+The RAG tab provides document search capabilities using local vector storage:
 
 ### Architecture
-- **RagProcessor**: Core class in `src/ai/rag_processor.py` handling N8N webhook communication
-- **N8N Integration**: Webhook-based document search with authorization headers
+- **RagProcessor**: Core class in `src/ai/rag_processor.py` handling local RAG queries
+- **Vector Storage**: Neon PostgreSQL with pgvector for document embeddings
+- **Knowledge Graph**: Optional Neo4j integration for entity relationships
 - **UI Integration**: New tab alongside Chat tab with shared AI Assistant input
-- **Session Management**: Persistent session IDs for conversation continuity
 
 ### Key Features
-- Query documents stored in your RAG database via N8N webhook
+- Query documents stored in your local RAG database
+- Hybrid search combining vector similarity and keyword matching
 - Markdown rendering for formatted responses
 - Copy button for each RAG response
 - Clear history button to start new search sessions
-- Session persistence across queries
+- Streaming responses for progressive display
 
 ### Implementation Details
-- **Environment Variables**: N8N_URL and N8N_AUTHORIZATION_SECRET loaded from .env
-- **Request Format**: Sends `chatInput` and `sessionId` fields to N8N
-- **Response Handling**: Supports both array and object response formats
+- **Environment Variable**: NEON_DATABASE_URL for PostgreSQL connection
+- **Local Processing**: All queries processed locally without external webhooks
 - **Markdown Support**: Renders headers, bold text, bullets, numbered lists, and code blocks
-- **Error Handling**: Graceful handling of timeouts, connection errors, and empty responses
+- **Error Handling**: Graceful handling of connection errors and empty responses
 
 ### UI Components
 - RAG tab in main notebook (index 5, 0-based)

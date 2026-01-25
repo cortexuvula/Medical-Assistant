@@ -42,7 +42,7 @@ Medical Assistant is a comprehensive desktop application for medical documentati
 | **Workflow-Based Interface** | Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Chat) plus 6 text editor tabs |
 | **Unified Preferences** | Comprehensive settings dialog (`Ctrl+,`) with tabbed interface for API keys, audio settings, AI models, prompts, and storage |
 | **AI-Powered Chat** | ChatGPT-style interface with context-aware suggestions for interacting with your medical notes |
-| **RAG Document Search** | Search your document database via N8N webhook integration with markdown rendering |
+| **RAG Document Search** | Search your document database using local vector storage with markdown rendering |
 | **Advanced Recording** | Record medical conversations with visual feedback, waveform display, timer, and pause/resume capabilities |
 | **Real-Time Analysis** | Optional periodic analysis during recording generates differential diagnoses every 2 minutes |
 | **Queue System** | Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions |
@@ -220,9 +220,8 @@ python main.py
    # Optional: Local Models
    OLLAMA_API_URL=http://localhost:11434
 
-   # Optional: RAG Integration
-   N8N_URL=https://your-n8n-instance/webhook/...
-   N8N_AUTHORIZATION_SECRET=your-secret
+   # Optional: RAG Integration (Neon PostgreSQL with pgvector)
+   NEON_DATABASE_URL=postgresql://user:pass@host/database?sslmode=require
    ```
 
 5. **Install FFmpeg**
@@ -540,7 +539,7 @@ Medical-Assistant/
 │   │   ├── soap_generation.py
 │   │   ├── letter_generation.py
 │   │   ├── text_processing.py
-│   │   └── rag_processor.py  # RAG/N8N integration
+│   │   └── rag_processor.py  # RAG local integration
 │   ├── audio/                 # Audio recording and processing
 │   │   ├── audio.py          # Main audio handler
 │   │   ├── recording_manager.py
