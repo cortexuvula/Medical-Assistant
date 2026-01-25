@@ -3,8 +3,11 @@ Document processor for RAG system.
 
 Handles:
 - Text extraction from PDF, DOCX, TXT files
-- OCR for scanned documents and images
+- OCR for scanned documents and images (Azure Document Intelligence)
 - Semantic chunking with token counting
+
+OCR Provider:
+    Azure Document Intelligence (prebuilt-read model)
 """
 
 import hashlib
@@ -17,7 +20,7 @@ from typing import Optional
 
 import tiktoken
 
-from src.rag.models import (
+from rag.models import (
     DocumentChunk,
     DocumentMetadata,
     DocumentType,
@@ -26,6 +29,9 @@ from src.rag.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for OCR providers to avoid circular imports
+_ocr_manager = None
 
 # Supported file extensions mapped to document types
 EXTENSION_TO_TYPE = {
@@ -71,6 +77,22 @@ class DocumentProcessor:
         except Exception as e:
             logger.warning(f"Failed to load tiktoken encoding {encoding_name}: {e}")
             self.encoder = tiktoken.get_encoding("cl100k_base")
+
+    def _get_ocr_manager(self):
+        """Get or create the OCR provider manager.
+
+        Returns:
+            OCRProviderManager instance
+        """
+        global _ocr_manager
+        if _ocr_manager is None:
+            try:
+                from ocr_providers import get_ocr_manager
+                _ocr_manager = get_ocr_manager()
+            except ImportError as e:
+                logger.warning(f"OCR providers not available: {e}")
+                return None
+        return _ocr_manager
 
     def get_document_type(self, file_path: str) -> Optional[DocumentType]:
         """Determine document type from file extension.
@@ -123,7 +145,7 @@ class DocumentProcessor:
             raise ValueError(f"Unsupported document type: {doc_type}")
 
     def _extract_from_pdf(self, file_path: str, enable_ocr: bool) -> tuple[str, DocumentMetadata, int, bool]:
-        """Extract text from PDF using pdfplumber, with OCR fallback.
+        """Extract text from PDF using pdfplumber, with OCR for scanned pages.
 
         Args:
             file_path: Path to PDF file
@@ -169,7 +191,7 @@ class DocumentProcessor:
         return "\n\n".join(text_parts), metadata, page_count, ocr_used
 
     def _ocr_pdf_page(self, page) -> str:
-        """Perform OCR on a PDF page.
+        """Perform OCR on a PDF page using Azure Document Intelligence.
 
         Args:
             page: pdfplumber page object
@@ -178,10 +200,9 @@ class DocumentProcessor:
             OCR extracted text
         """
         try:
-            import pytesseract
             from PIL import Image
         except ImportError:
-            logger.warning("pytesseract or PIL not available for OCR")
+            logger.warning("PIL not available for PDF page rendering")
             return ""
 
         try:
@@ -189,9 +210,17 @@ class DocumentProcessor:
             img = page.to_image(resolution=300)
             pil_image = img.original
 
-            # Perform OCR
-            text = pytesseract.image_to_string(pil_image, lang=self.ocr_language)
-            return text.strip()
+            # Use OCR provider manager
+            ocr_manager = self._get_ocr_manager()
+            if ocr_manager:
+                result = ocr_manager.extract_from_pil_image(pil_image)
+                if result.success:
+                    return result.text
+                else:
+                    logger.warning(f"OCR failed: {result.error}")
+
+            return ""
+
         except Exception as e:
             logger.warning(f"OCR failed for page: {e}")
             return ""
@@ -273,7 +302,7 @@ class DocumentProcessor:
         return text, metadata, page_count, False
 
     def _extract_from_image(self, file_path: str, enable_ocr: bool) -> tuple[str, DocumentMetadata, int, bool]:
-        """Extract text from image using OCR.
+        """Extract text from image using Azure Document Intelligence.
 
         Args:
             file_path: Path to image file
@@ -288,19 +317,26 @@ class DocumentProcessor:
         if not enable_ocr:
             return "", metadata, 1, False
 
-        try:
-            import pytesseract
-            from PIL import Image
-        except ImportError:
-            raise ImportError("pytesseract and Pillow are required for image OCR. Install with: pip install pytesseract Pillow")
+        # Use OCR provider manager
+        ocr_manager = self._get_ocr_manager()
+        if ocr_manager:
+            result = ocr_manager.extract_from_image(file_path)
+            if result.success:
+                # Add OCR metadata
+                if result.metadata:
+                    metadata.custom_tags = metadata.custom_tags or []
+                    provider = result.metadata.get("provider", "unknown")
+                    metadata.custom_tags.append(f"ocr_provider:{provider}")
 
-        try:
-            image = Image.open(file_path)
-            text = pytesseract.image_to_string(image, lang=self.ocr_language)
-            return text.strip(), metadata, 1, True
-        except Exception as e:
-            logger.error(f"OCR failed for image {file_path}: {e}")
-            return "", metadata, 1, False
+                    # Add table info if present
+                    if result.tables:
+                        metadata.custom_tags.append(f"tables:{len(result.tables)}")
+
+                return result.text, metadata, 1, True
+            else:
+                logger.warning(f"OCR failed for {file_path}: {result.error}")
+
+        return "", metadata, 1, False
 
     def chunk_text(
         self,

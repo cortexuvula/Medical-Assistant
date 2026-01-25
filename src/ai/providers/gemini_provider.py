@@ -1,6 +1,6 @@
 """Gemini Provider Module.
 
-Handles all API calls to Google's Gemini models.
+Handles all API calls to Google's Gemini models using the new google-genai SDK.
 
 Return Types:
     - call_gemini: Returns AIResult for type-safe error handling
@@ -9,11 +9,19 @@ Return Types:
 
 import os
 
-import google.generativeai as genai
-
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+# Import new google-genai SDK
+try:
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    genai = None
+    types = None
 
 from ai.logging_utils import log_api_call_debug
 from utils.error_codes import get_error_message, format_api_error
@@ -36,13 +44,23 @@ from utils.timeout_config import get_timeout
     failure_threshold=5,
     recovery_timeout=60
 )
-def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generation_config: dict) -> str:
+def _gemini_api_call(
+    client,
+    model_name: str,
+    prompt_content: str,
+    system_message: str,
+    temperature: float,
+    max_output_tokens: int = 4096
+) -> str:
     """Make the actual API call to Google Gemini with resilience.
 
     Args:
-        model: Configured GenerativeModel instance
-        prompt_content: Combined system + user prompt content
-        generation_config: Generation configuration including temperature
+        client: Configured genai.Client instance
+        model_name: Model to use
+        prompt_content: User prompt content
+        system_message: System instruction
+        temperature: Generation temperature
+        max_output_tokens: Maximum output tokens
 
     Returns:
         Generated text response
@@ -54,10 +72,18 @@ def _gemini_api_call(model: genai.GenerativeModel, prompt_content: str, generati
     timeout_seconds = get_timeout("gemini")
 
     try:
-        response = model.generate_content(
-            prompt_content,
-            generation_config=genai.GenerationConfig(**generation_config),
-            request_options={"timeout": timeout_seconds}
+        # Build generation config
+        config = types.GenerateContentConfig(
+            system_instruction=system_message if system_message else None,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+
+        # Make the API call using the new SDK pattern
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt_content,
+            config=config,
         )
         return response.text
     except Exception as e:
@@ -80,7 +106,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
     """Call Google Gemini API.
 
     Args:
-        model_name: Model to use (e.g., gemini-1.5-flash, gemini-1.5-pro)
+        model_name: Model to use (e.g., gemini-2.0-flash, gemini-1.5-pro)
         system_message: System message to guide the AI's response
         prompt: User prompt
         temperature: Temperature parameter (0.0 to 1.0)
@@ -90,6 +116,13 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
                   result.is_success to check status. str(result) returns
                   text or error string for backward compatibility.
     """
+    if not GENAI_AVAILABLE:
+        logger.error("google-genai SDK not installed")
+        return AIResult.failure(
+            "google-genai SDK not installed. Install with: pip install google-genai",
+            error_code="DEPENDENCY_MISSING"
+        )
+
     # Get security manager
     security_manager = get_security_manager()
 
@@ -120,23 +153,17 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
         # Use consolidated debug logging
         log_api_call_debug("Gemini", model_name, temperature, system_message, prompt)
 
-        # Configure the Gemini API with the API key
-        genai.configure(api_key=api_key)
-
-        # Create the model with system instruction
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_message
-        )
-
-        # Configure generation parameters
-        generation_config = {
-            "temperature": temperature,
-            "max_output_tokens": 4096,
-        }
+        # Create client with API key (new SDK pattern)
+        client = genai.Client(api_key=api_key)
 
         # Make the API call
-        response_text = _gemini_api_call(model, prompt, generation_config)
+        response_text = _gemini_api_call(
+            client=client,
+            model_name=model_name,
+            prompt_content=prompt,
+            system_message=system_message,
+            temperature=temperature
+        )
         return AIResult.success(response_text.strip(), model=model_name, provider="gemini")
 
     except APITimeoutError as e:

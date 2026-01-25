@@ -8,7 +8,7 @@ ttkbootstrap
 python-dotenv
 openai>=1.0.0
 anthropic>=0.18.1  # For Anthropic Claude models
-google-generativeai>=0.3.0  # For Google Gemini models
+google-genai>=1.0.0  # For Google Gemini models (new unified SDK)
 pyaudio
 requests
 numpy

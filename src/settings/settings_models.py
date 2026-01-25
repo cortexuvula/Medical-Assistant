@@ -225,17 +225,55 @@ if PYDANTIC_AVAILABLE:
         stt_provider: str = "groq"
         theme: str = "flatly"
         storage_folder: str = ""
+        default_folder: str = ""
+        default_storage_folder: str = ""
 
         # Feature flags
         quick_continue_mode: bool = True
         max_background_workers: int = Field(default=2, ge=1, le=10)
         show_processing_notifications: bool = True
         auto_retry_failed: bool = True
+        auto_update_ui_on_completion: bool = True
         max_retry_attempts: int = Field(default=3, ge=1, le=10)
         autosave_enabled: bool = True
         autosave_interval: int = Field(default=300, ge=30, le=3600)
         recording_autosave_enabled: bool = True
         recording_autosave_interval: int = Field(default=60, ge=10, le=600)
+        notification_style: str = "toast"
+
+        # Window state
+        window_width: int = Field(default=1200, ge=400, le=10000)
+        window_height: int = Field(default=800, ge=300, le=10000)
+
+        # UI collapse states
+        sidebar_collapsed: bool = False
+        sidebar_file_expanded: bool = True
+        sidebar_generate_expanded: bool = True
+        sidebar_tools_expanded: bool = True
+        advanced_analysis_collapsed: bool = True
+        analysis_panel_collapsed: bool = True
+        bottom_section_collapsed: bool = False
+
+        # Global temperature
+        temperature: float = Field(default=0.4, ge=0.0, le=2.0)
+
+        # Prompt/text settings (allow any dict structure)
+        refine_text: Optional[Dict[str, Any]] = None
+        improve_text: Optional[Dict[str, Any]] = None
+        referral: Optional[Dict[str, Any]] = None
+        advanced_analysis: Optional[Dict[str, Any]] = None
+
+        # STT provider settings
+        deepgram: Optional[Dict[str, Any]] = None
+        elevenlabs: Optional[Dict[str, Any]] = None
+        groq: Optional[Dict[str, Any]] = None
+
+        # Custom data
+        custom_vocabulary: Optional[Dict[str, Any]] = None
+        custom_chat_suggestions: Optional[Dict[str, Any]] = None
+        custom_context_templates: Optional[Dict[str, Any]] = None
+        context_template_favorites: Optional[List[str]] = None
+        translation_canned_responses: Optional[Dict[str, Any]] = None
 
         # Nested settings
         logging: Optional[LoggingSettings] = None
@@ -243,10 +281,12 @@ if PYDANTIC_AVAILABLE:
         rag_search_quality: Optional[RAGSearchQualitySettings] = None
         soap_note: Optional[SOAPNoteSettings] = None
         agent_config: Optional[AgentConfigSettings] = None
+        ai_config: Optional[Dict[str, Any]] = None  # Legacy/alternative agent config
         translation: Optional[TranslationSettings] = None
         tts: Optional[TTSSettings] = None
         chat_interface: Optional[ChatInterfaceSettings] = None
         rsvp: Optional[RSVPSettings] = None
+        rsvp_reader: Optional[RSVPSettings] = None  # Alternative key for RSVP
 
         @field_validator("ai_provider")
         @classmethod

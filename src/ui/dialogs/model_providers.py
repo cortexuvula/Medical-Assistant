@@ -202,7 +202,7 @@ def get_gemini_models() -> List[str]:
             return cached_models
 
     try:
-        import google.generativeai as genai
+        from google import genai
         from utils.security import get_security_manager
 
         security_manager = get_security_manager()
@@ -213,13 +213,15 @@ def get_gemini_models() -> List[str]:
 
         if api_key:
             logger.info("Attempting to fetch Gemini models from API")
-            genai.configure(api_key=api_key)
+            # Create client with API key (new SDK pattern)
+            client = genai.Client(api_key=api_key)
 
             # Fetch models list from API
             models = []
-            for model in genai.list_models():
+            for model in client.models.list():
                 # Filter for models that support generateContent
-                if "generateContent" in model.supported_generation_methods:
+                supported_methods = getattr(model, 'supported_generation_methods', [])
+                if "generateContent" in supported_methods:
                     # Extract just the model name (remove 'models/' prefix)
                     model_name = model.name.replace("models/", "")
                     models.append(model_name)
@@ -245,7 +247,7 @@ def get_gemini_models() -> List[str]:
             return get_fallback_gemini_models()
 
     except ImportError:
-        logger.warning("google-generativeai library not installed, using fallback list")
+        logger.warning("google-genai library not installed, using fallback list")
         return get_fallback_gemini_models()
     except Exception as e:
         logger.error(f"Error fetching Gemini models from API: {e}")
