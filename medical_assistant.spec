@@ -228,5 +228,7 @@ if sys.platform == 'darwin':
             'NSSupportsAutomaticGraphicsSwitching': True,
             # Set minimum macOS version
             'LSMinimumSystemVersion': '10.15',
+            # Enable high-resolution icon rendering
+            'NSHighResolutionCapable': True,
         },
     )
