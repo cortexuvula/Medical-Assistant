@@ -400,12 +400,12 @@ pip install pgvector  # Vector operations
 
 ### Environment Variables
 ```bash
-# All correctly configured
-CLINICAL_GUIDELINES_DATABASE_URL=postgresql://...
+# All correctly configured (credentials redacted for security)
+CLINICAL_GUIDELINES_DATABASE_URL=postgresql://[REDACTED]
 CLINICAL_GUIDELINES_NEO4J_URI=bolt://trolley.proxy.rlwy.net:45633
 CLINICAL_GUIDELINES_NEO4J_USER=neo4j
-CLINICAL_GUIDELINES_NEO4J_PASSWORD=@yJiy2ZwuVTtKGQIjQm2eqaQNbR2m8Kq
-OPENAI_API_KEY=sk-proj-...
+CLINICAL_GUIDELINES_NEO4J_PASSWORD=[REDACTED]
+OPENAI_API_KEY=[REDACTED]
 ```
 
 ---
