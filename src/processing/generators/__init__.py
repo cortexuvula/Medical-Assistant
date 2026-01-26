@@ -27,6 +27,7 @@ from processing.generators.diagnostic import DiagnosticGeneratorMixin
 from processing.generators.medication import MedicationGeneratorMixin
 from processing.generators.extraction import DataExtractionGeneratorMixin
 from processing.generators.workflow import WorkflowGeneratorMixin
+from processing.generators.compliance import ComplianceGeneratorMixin
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -40,7 +41,8 @@ class DocumentGenerators(
     DiagnosticGeneratorMixin,
     MedicationGeneratorMixin,
     DataExtractionGeneratorMixin,
-    WorkflowGeneratorMixin
+    WorkflowGeneratorMixin,
+    ComplianceGeneratorMixin
 ):
     """Manages medical document generation functionality.
 
@@ -52,6 +54,7 @@ class DocumentGenerators(
     - Medication analysis
     - Clinical data extraction
     - Workflow management
+    - Clinical guidelines compliance
 
     Batch processing methods are delegated to BatchProcessor.
     """
@@ -95,4 +98,5 @@ __all__ = [
     "MedicationGeneratorMixin",
     "DataExtractionGeneratorMixin",
     "WorkflowGeneratorMixin",
+    "ComplianceGeneratorMixin",
 ]

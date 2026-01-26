@@ -61,6 +61,7 @@ class AgentType(str, Enum):
     DATA_EXTRACTION = "data_extraction"
     WORKFLOW = "workflow"
     CHAT = "chat"
+    COMPLIANCE = "compliance"
 
 
 class ResponseFormat(str, Enum):

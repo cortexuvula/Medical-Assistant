@@ -1,0 +1,796 @@
+"""
+Clinical Guidelines Upload Dialog.
+
+Provides a multi-file upload interface for clinical guidelines with:
+- File selection (PDF, DOCX, TXT)
+- Specialty and source metadata
+- Version and effective date
+- Guideline type selection
+- Progress tracking
+
+Architecture Note:
+    This uploads to the SEPARATE guidelines database, NOT the main RAG system.
+"""
+
+import os
+import tkinter as tk
+from datetime import date
+from pathlib import Path
+from tkinter import filedialog, messagebox
+from typing import Callable, Optional
+
+import ttkbootstrap as ttk
+from ttkbootstrap.dialogs import DatePickerDialog
+
+from rag.guidelines_models import (
+    GuidelineSpecialty,
+    GuidelineSource,
+    GuidelineType,
+    GuidelineUploadStatus,
+)
+
+
+# Supported file types for guidelines
+SUPPORTED_EXTENSIONS = [
+    ("All Supported", "*.pdf *.docx *.doc *.txt *.md"),
+    ("PDF Files", "*.pdf"),
+    ("Word Documents", "*.docx *.doc"),
+    ("Text Files", "*.txt *.md"),
+    ("All Files", "*.*"),
+]
+
+
+class GuidelinesUploadDialog(tk.Toplevel):
+    """Dialog for uploading clinical guidelines to the guidelines system."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        on_upload: Optional[Callable[[list[str], dict], None]] = None,
+    ):
+        """Initialize the upload dialog.
+
+        Args:
+            parent: Parent widget
+            on_upload: Callback when upload starts (files, options)
+        """
+        super().__init__(parent)
+        self.title("Upload Clinical Guidelines")
+        self.geometry("750x700")
+        self.minsize(650, 600)
+
+        self.on_upload = on_upload
+        self.selected_files: list[str] = []
+        self.is_uploading = False
+        self.effective_date: Optional[date] = None
+
+        self._create_widgets()
+        self._center_window()
+
+        # Make modal
+        self.transient(parent)
+        self.grab_set()
+
+    def _center_window(self):
+        """Center the dialog on screen."""
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _create_widgets(self):
+        """Create dialog widgets."""
+        # Main container with padding
+        main_frame = ttk.Frame(self, padding=15)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Title
+        title_label = ttk.Label(
+            main_frame,
+            text="Upload Clinical Guidelines",
+            font=("TkDefaultFont", 14, "bold"),
+        )
+        title_label.pack(anchor=tk.W)
+
+        description = ttk.Label(
+            main_frame,
+            text="Add clinical guidelines to your separate guidelines database. "
+                 "These will be used for compliance checking against SOAP notes. "
+                 "Supported formats: PDF, DOCX, TXT.",
+            wraplength=700,
+        )
+        description.pack(anchor=tk.W, pady=(5, 15))
+
+        # File selection area
+        file_frame = ttk.Labelframe(main_frame, text="Selected Files", padding=10)
+        file_frame.pack(fill=tk.BOTH, expand=True)
+
+        # File listbox with scrollbar
+        list_frame = ttk.Frame(file_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.file_listbox = tk.Listbox(
+            list_frame,
+            height=8,
+            selectmode=tk.EXTENDED,
+            font=("TkDefaultFont", 10),
+        )
+        self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.file_listbox.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.file_listbox.yview)
+
+        # File buttons
+        btn_frame = ttk.Frame(file_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ttk.Button(
+            btn_frame,
+            text="Add Files...",
+            command=self._add_files,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            btn_frame,
+            text="Add Folder...",
+            command=self._add_folder,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            btn_frame,
+            text="Remove Selected",
+            command=self._remove_selected,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            btn_frame,
+            text="Clear All",
+            command=self._clear_files,
+        ).pack(side=tk.LEFT)
+
+        self.file_count_label = ttk.Label(btn_frame, text="0 files selected")
+        self.file_count_label.pack(side=tk.RIGHT)
+
+        # Guideline Information frame
+        info_frame = ttk.Labelframe(main_frame, text="Guideline Information", padding=10)
+        info_frame.pack(fill=tk.X, pady=(15, 0))
+
+        # Row 1: Specialty and Source
+        row1 = ttk.Frame(info_frame)
+        row1.pack(fill=tk.X, pady=(0, 10))
+
+        # Specialty dropdown
+        ttk.Label(row1, text="Specialty:").pack(side=tk.LEFT)
+        self.specialty_var = tk.StringVar()
+        specialty_values = [""] + [s.value for s in GuidelineSpecialty]
+        specialty_combo = ttk.Combobox(
+            row1,
+            textvariable=self.specialty_var,
+            values=specialty_values,
+            state="readonly",
+            width=25,
+        )
+        specialty_combo.pack(side=tk.LEFT, padx=(10, 30))
+
+        # Source dropdown
+        ttk.Label(row1, text="Source:").pack(side=tk.LEFT)
+        self.source_var = tk.StringVar()
+        source_values = [""] + [s.value for s in GuidelineSource]
+        source_combo = ttk.Combobox(
+            row1,
+            textvariable=self.source_var,
+            values=source_values,
+            state="readonly",
+            width=20,
+        )
+        source_combo.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Row 2: Version and Effective Date
+        row2 = ttk.Frame(info_frame)
+        row2.pack(fill=tk.X, pady=(0, 10))
+
+        # Version entry
+        ttk.Label(row2, text="Version:").pack(side=tk.LEFT)
+        self.version_var = tk.StringVar()
+        version_entry = ttk.Entry(
+            row2,
+            textvariable=self.version_var,
+            width=15,
+        )
+        version_entry.pack(side=tk.LEFT, padx=(10, 30))
+        ttk.Label(
+            row2,
+            text="(e.g., 2024)",
+            foreground="gray",
+        ).pack(side=tk.LEFT, padx=(0, 30))
+
+        # Effective date
+        ttk.Label(row2, text="Effective Date:").pack(side=tk.LEFT)
+        self.date_var = tk.StringVar()
+        self.date_entry = ttk.Entry(
+            row2,
+            textvariable=self.date_var,
+            width=12,
+            state="readonly",
+        )
+        self.date_entry.pack(side=tk.LEFT, padx=(10, 5))
+
+        ttk.Button(
+            row2,
+            text="...",
+            command=self._pick_date,
+            width=3,
+        ).pack(side=tk.LEFT)
+
+        ttk.Button(
+            row2,
+            text="Clear",
+            command=self._clear_date,
+            width=5,
+        ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # Row 3: Guideline Type
+        row3 = ttk.Frame(info_frame)
+        row3.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(row3, text="Guideline Type:").pack(side=tk.LEFT)
+        self.type_var = tk.StringVar()
+        type_values = [""] + [t.value for t in GuidelineType]
+        type_combo = ttk.Combobox(
+            row3,
+            textvariable=self.type_var,
+            values=type_values,
+            state="readonly",
+            width=30,
+        )
+        type_combo.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Row 4: Custom Title (optional)
+        row4 = ttk.Frame(info_frame)
+        row4.pack(fill=tk.X)
+
+        ttk.Label(row4, text="Title (optional):").pack(side=tk.LEFT)
+        self.title_var = tk.StringVar()
+        title_entry = ttk.Entry(
+            row4,
+            textvariable=self.title_var,
+            width=50,
+        )
+        title_entry.pack(side=tk.LEFT, padx=(10, 0), fill=tk.X, expand=True)
+
+        # Processing Options frame
+        options_frame = ttk.Labelframe(main_frame, text="Processing Options", padding=10)
+        options_frame.pack(fill=tk.X, pady=(15, 0))
+
+        # Checkboxes row
+        check_frame = ttk.Frame(options_frame)
+        check_frame.pack(fill=tk.X)
+
+        self.extract_recommendations_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            check_frame,
+            text="Extract recommendations with evidence levels",
+            variable=self.extract_recommendations_var,
+        ).pack(side=tk.LEFT, padx=(0, 20))
+
+        self.graph_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            check_frame,
+            text="Build knowledge graph relationships",
+            variable=self.graph_var,
+        ).pack(side=tk.LEFT)
+
+        # OCR checkbox
+        check_frame2 = ttk.Frame(options_frame)
+        check_frame2.pack(fill=tk.X, pady=(10, 0))
+
+        self.ocr_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            check_frame2,
+            text="Enable OCR for scanned documents",
+            variable=self.ocr_var,
+        ).pack(side=tk.LEFT)
+
+        # Progress section (initially hidden)
+        self.progress_frame = ttk.Labelframe(main_frame, text="Upload Progress", padding=10)
+
+        self.progress_label = ttk.Label(self.progress_frame, text="Ready")
+        self.progress_label.pack(fill=tk.X)
+
+        self.progress_bar = ttk.Progressbar(
+            self.progress_frame,
+            mode="determinate",
+            length=400,
+        )
+        self.progress_bar.pack(fill=tk.X, pady=(5, 0))
+
+        self.current_file_label = ttk.Label(
+            self.progress_frame,
+            text="",
+            foreground="gray",
+        )
+        self.current_file_label.pack(fill=tk.X, pady=(5, 0))
+
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+
+        self.cancel_button = ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._on_cancel,
+            bootstyle="secondary",
+        )
+        self.cancel_button.pack(side=tk.RIGHT, padx=(10, 0))
+
+        self.upload_button = ttk.Button(
+            button_frame,
+            text="Upload Guideline",
+            command=self._start_upload,
+            bootstyle="success",
+            state=tk.DISABLED,
+        )
+        self.upload_button.pack(side=tk.RIGHT)
+
+    def _add_files(self):
+        """Open file dialog to add files."""
+        files = filedialog.askopenfilenames(
+            parent=self,
+            title="Select Clinical Guidelines",
+            filetypes=SUPPORTED_EXTENSIONS,
+        )
+
+        for file_path in files:
+            if file_path not in self.selected_files:
+                self.selected_files.append(file_path)
+
+        self._update_file_list()
+
+    def _add_folder(self):
+        """Add all supported files from a folder."""
+        folder = filedialog.askdirectory(
+            parent=self,
+            title="Select Folder",
+        )
+
+        if not folder:
+            return
+
+        # Get supported extensions
+        extensions = {".pdf", ".docx", ".doc", ".txt", ".md"}
+
+        # Walk folder and add files
+        added = 0
+        for root, _, files in os.walk(folder):
+            for filename in files:
+                ext = Path(filename).suffix.lower()
+                if ext in extensions:
+                    file_path = os.path.join(root, filename)
+                    if file_path not in self.selected_files:
+                        self.selected_files.append(file_path)
+                        added += 1
+
+        self._update_file_list()
+
+        if added > 0:
+            messagebox.showinfo(
+                "Files Added",
+                f"Added {added} files from folder.",
+                parent=self,
+            )
+
+    def _remove_selected(self):
+        """Remove selected files from list."""
+        selection = self.file_listbox.curselection()
+        if not selection:
+            return
+
+        for idx in reversed(selection):
+            self.selected_files.pop(idx)
+
+        self._update_file_list()
+
+    def _clear_files(self):
+        """Clear all files."""
+        self.selected_files.clear()
+        self._update_file_list()
+
+    def _update_file_list(self):
+        """Update the file listbox."""
+        self.file_listbox.delete(0, tk.END)
+
+        for file_path in self.selected_files:
+            filename = os.path.basename(file_path)
+            size = os.path.getsize(file_path)
+            size_str = self._format_size(size)
+            self.file_listbox.insert(tk.END, f"{filename}  ({size_str})")
+
+        count = len(self.selected_files)
+        total_size = sum(os.path.getsize(f) for f in self.selected_files)
+        self.file_count_label.config(
+            text=f"{count} file{'s' if count != 1 else ''} ({self._format_size(total_size)})"
+        )
+
+        if count > 0 and not self.is_uploading:
+            self.upload_button.config(state=tk.NORMAL)
+        else:
+            self.upload_button.config(state=tk.DISABLED)
+
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size for display."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        else:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+    def _pick_date(self):
+        """Open date picker dialog."""
+        try:
+            dialog = DatePickerDialog(
+                parent=self,
+                title="Select Effective Date",
+            )
+            selected_date = dialog.date_selected
+            if selected_date:
+                self.effective_date = selected_date
+                self.date_var.set(selected_date.strftime("%Y-%m-%d"))
+        except Exception:
+            # Fallback for older ttkbootstrap versions
+            from tkinter import simpledialog
+            date_str = simpledialog.askstring(
+                "Effective Date",
+                "Enter date (YYYY-MM-DD):",
+                parent=self,
+            )
+            if date_str:
+                try:
+                    from datetime import datetime
+                    self.effective_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    self.date_var.set(date_str)
+                except ValueError:
+                    messagebox.showerror(
+                        "Invalid Date",
+                        "Please enter date in YYYY-MM-DD format.",
+                        parent=self,
+                    )
+
+    def _clear_date(self):
+        """Clear the effective date."""
+        self.effective_date = None
+        self.date_var.set("")
+
+    def _start_upload(self):
+        """Start the upload process."""
+        if not self.selected_files:
+            messagebox.showwarning(
+                "No Files",
+                "Please select guideline files to upload.",
+                parent=self,
+            )
+            return
+
+        # Validate file sizes
+        max_size = 100 * 1024 * 1024  # 100 MB for guidelines
+        for file_path in self.selected_files:
+            if os.path.getsize(file_path) > max_size:
+                messagebox.showerror(
+                    "File Too Large",
+                    f"File exceeds maximum size (100 MB):\n{os.path.basename(file_path)}",
+                    parent=self,
+                )
+                return
+
+        # Prepare options with guideline metadata
+        options = {
+            "specialty": self.specialty_var.get() or None,
+            "source": self.source_var.get() or None,
+            "version": self.version_var.get() or None,
+            "effective_date": self.effective_date,
+            "document_type": self.type_var.get() or None,
+            "title": self.title_var.get() or None,
+            "extract_recommendations": self.extract_recommendations_var.get(),
+            "enable_graph": self.graph_var.get(),
+            "enable_ocr": self.ocr_var.get(),
+        }
+
+        # Show progress
+        self.progress_frame.pack(fill=tk.X, pady=(15, 0))
+        self.upload_button.config(state=tk.DISABLED)
+        self.is_uploading = True
+
+        # Call upload callback
+        if self.on_upload:
+            self.on_upload(self.selected_files.copy(), options)
+
+    def update_progress(
+        self,
+        filename: str,
+        status: GuidelineUploadStatus,
+        progress_percent: float,
+        error_message: Optional[str] = None,
+    ):
+        """Update progress display.
+
+        Args:
+            filename: Current file being processed
+            status: Upload status
+            progress_percent: Progress percentage (0-100)
+            error_message: Optional error message
+        """
+        if not self.winfo_exists():
+            return
+
+        self.progress_bar["value"] = progress_percent
+
+        status_text = {
+            GuidelineUploadStatus.PENDING: "Queued",
+            GuidelineUploadStatus.EXTRACTING: "Extracting text...",
+            GuidelineUploadStatus.CHUNKING: "Splitting into sections...",
+            GuidelineUploadStatus.EMBEDDING: "Generating embeddings...",
+            GuidelineUploadStatus.SYNCING_VECTOR: "Syncing to vector store...",
+            GuidelineUploadStatus.SYNCING_GRAPH: "Building knowledge graph...",
+            GuidelineUploadStatus.COMPLETED: "Completed",
+            GuidelineUploadStatus.FAILED: f"Failed: {error_message or 'Unknown error'}",
+        }.get(status, "Processing...")
+
+        self.progress_label.config(text=status_text)
+        self.current_file_label.config(text=filename)
+
+        self.update_idletasks()
+
+    def complete_upload(self, success_count: int, fail_count: int):
+        """Called when upload is complete.
+
+        Args:
+            success_count: Number of successful uploads
+            fail_count: Number of failed uploads
+        """
+        self.is_uploading = False
+        self.progress_bar["value"] = 100
+        self.progress_label.config(text="Upload Complete")
+
+        if fail_count == 0:
+            messagebox.showinfo(
+                "Upload Complete",
+                f"Successfully uploaded {success_count} guideline(s).",
+                parent=self,
+            )
+            self.destroy()
+        else:
+            messagebox.showwarning(
+                "Upload Complete",
+                f"Uploaded {success_count} guideline(s).\n{fail_count} failed.",
+                parent=self,
+            )
+            self.upload_button.config(state=tk.NORMAL)
+
+    def _on_cancel(self):
+        """Handle cancel button."""
+        if self.is_uploading:
+            if messagebox.askyesno(
+                "Cancel Upload",
+                "Upload is in progress. Cancel anyway?",
+                parent=self,
+            ):
+                self.destroy()
+        else:
+            self.destroy()
+
+
+class GuidelinesUploadProgressDialog(tk.Toplevel):
+    """Progress dialog for batch guideline uploads."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        total_files: int,
+    ):
+        """Initialize progress dialog.
+
+        Args:
+            parent: Parent widget
+            total_files: Total number of files to process
+        """
+        super().__init__(parent)
+        self.title("Uploading Clinical Guidelines")
+        self.geometry("550x350")
+        self.resizable(False, False)
+
+        self.total_files = total_files
+        self.processed_files = 0
+        self.success_count = 0
+        self.fail_count = 0
+        self.cancelled = False
+
+        self._create_widgets()
+        self._center_window()
+
+        # Make modal
+        self.transient(parent)
+        self.grab_set()
+
+        # Prevent closing
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _center_window(self):
+        """Center the dialog."""
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _create_widgets(self):
+        """Create dialog widgets."""
+        main_frame = ttk.Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Status label
+        self.status_label = ttk.Label(
+            main_frame,
+            text="Preparing guideline upload...",
+            font=("TkDefaultFont", 11),
+        )
+        self.status_label.pack(pady=(0, 10))
+
+        # Overall progress
+        ttk.Label(main_frame, text="Overall Progress:").pack(anchor=tk.W)
+        self.overall_progress = ttk.Progressbar(
+            main_frame,
+            mode="determinate",
+            length=450,
+        )
+        self.overall_progress.pack(fill=tk.X, pady=(5, 15))
+
+        self.overall_label = ttk.Label(
+            main_frame,
+            text=f"0 / {self.total_files} guidelines",
+        )
+        self.overall_label.pack(anchor=tk.W)
+
+        # Current file progress
+        ttk.Label(main_frame, text="Current Guideline:").pack(anchor=tk.W, pady=(10, 0))
+        self.current_file_label = ttk.Label(
+            main_frame,
+            text="",
+            foreground="gray",
+        )
+        self.current_file_label.pack(anchor=tk.W)
+
+        self.file_progress = ttk.Progressbar(
+            main_frame,
+            mode="determinate",
+            length=450,
+        )
+        self.file_progress.pack(fill=tk.X, pady=(5, 15))
+
+        self.file_status_label = ttk.Label(main_frame, text="")
+        self.file_status_label.pack(anchor=tk.W)
+
+        # Stats
+        self.stats_label = ttk.Label(
+            main_frame,
+            text="",
+            foreground="gray",
+        )
+        self.stats_label.pack(anchor=tk.W, pady=(10, 0))
+
+        # Cancel button
+        self.cancel_button = ttk.Button(
+            main_frame,
+            text="Cancel",
+            command=self._on_cancel,
+        )
+        self.cancel_button.pack(pady=(15, 0))
+
+    def update_file_start(self, filename: str, file_index: int):
+        """Called when starting a new file.
+
+        Args:
+            filename: Name of the file
+            file_index: Index of the file (0-based)
+        """
+        if not self.winfo_exists():
+            return
+
+        self.current_file_label.config(text=filename)
+        self.file_progress["value"] = 0
+        self.file_status_label.config(text="Starting...")
+
+        self.update_idletasks()
+
+    def update_file_progress(
+        self,
+        status: GuidelineUploadStatus,
+        progress_percent: float,
+        error_message: Optional[str] = None,
+    ):
+        """Update current file progress.
+
+        Args:
+            status: Upload status
+            progress_percent: Progress percentage (0-100)
+            error_message: Optional error message
+        """
+        if not self.winfo_exists():
+            return
+
+        self.file_progress["value"] = progress_percent
+
+        status_text = {
+            GuidelineUploadStatus.EXTRACTING: "Extracting text...",
+            GuidelineUploadStatus.CHUNKING: "Creating sections...",
+            GuidelineUploadStatus.EMBEDDING: "Generating embeddings...",
+            GuidelineUploadStatus.SYNCING_VECTOR: "Syncing to database...",
+            GuidelineUploadStatus.SYNCING_GRAPH: "Building graph...",
+            GuidelineUploadStatus.COMPLETED: "Complete!",
+            GuidelineUploadStatus.FAILED: f"Failed: {error_message or 'Error'}",
+        }.get(status, "Processing...")
+
+        self.file_status_label.config(text=status_text)
+        self.update_idletasks()
+
+    def update_file_complete(self, success: bool):
+        """Called when a file completes.
+
+        Args:
+            success: Whether the upload succeeded
+        """
+        if not self.winfo_exists():
+            return
+
+        self.processed_files += 1
+        if success:
+            self.success_count += 1
+        else:
+            self.fail_count += 1
+
+        # Update overall progress
+        progress_pct = (self.processed_files / self.total_files) * 100
+        self.overall_progress["value"] = progress_pct
+        self.overall_label.config(text=f"{self.processed_files} / {self.total_files} guidelines")
+
+        # Update stats
+        self.stats_label.config(
+            text=f"Success: {self.success_count}  |  Failed: {self.fail_count}"
+        )
+
+        self.update_idletasks()
+
+    def complete(self):
+        """Called when all uploads are complete."""
+        if not self.winfo_exists():
+            return
+
+        self.status_label.config(text="Upload Complete")
+        self.file_status_label.config(text="")
+        self.file_progress["value"] = 100
+        self.cancel_button.config(text="Close")
+
+        self.update_idletasks()
+
+    def _on_cancel(self):
+        """Handle cancel button."""
+        if self.cancel_button.cget("text") == "Close":
+            self.destroy()
+            return
+
+        if messagebox.askyesno(
+            "Cancel Upload",
+            "Are you sure you want to cancel the upload?",
+            parent=self,
+        ):
+            self.cancelled = True
+            self.destroy()
+
+    def _on_close(self):
+        """Handle window close."""
+        self._on_cancel()
