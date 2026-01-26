@@ -54,7 +54,7 @@ GitGuardian detected two exposed credentials in the repository. Both incidents h
 
 **Remediation Actions**:
 1. ✅ Rotated password in Neon Console
-2. ✅ New password: `npg_bx6myTz0FoXt`
+2. ✅ New password: `[REDACTED - Secure random password generated]`
 3. ✅ Redacted credentials from `RAILWAY_SETUP_COMPLETE.md`
 4. ✅ Redacted credentials from `SETUP_RAILWAY_GUIDELINES.md`
 5. ✅ Updated local `.env` file
