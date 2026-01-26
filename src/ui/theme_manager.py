@@ -173,7 +173,10 @@ class ThemeManager:
             self.app.style.configure("TButton", foreground=colors["fg"])
             self.app.style.configure("TFrame", background=colors["bg_secondary"])
             self.app.style.configure("TLabel", foreground=colors["fg"])
-    
+
+        # Note: Tab bar hiding is handled by geometry clipping (place with
+        # negative y-offset) in notebook_tabs.py, not via style overrides.
+
     def _update_theme_button(self, is_dark: bool, new_theme: str):
         """Update theme button icon and tooltip if available."""
         if hasattr(self.app, 'theme_btn') and self.app.theme_btn:

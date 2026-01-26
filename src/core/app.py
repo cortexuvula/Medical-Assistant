@@ -194,10 +194,13 @@ class MedicalDictationApp(
 
         # Create the text notebook (for transcripts, SOAP, etc.)
         # SOAP tab includes split layout with medication and differential analysis panels
-        (self.notebook, self.transcript_text, self.soap_text, self.referral_text,
+        # notebook_container is the clipping frame (for layout); notebook is the actual
+        # ttk.Notebook widget (for tab operations like .select(), .index(), .bind()).
+        (notebook_container, self.notebook,
+         self.transcript_text, self.soap_text, self.referral_text,
          self.letter_text, self.chat_text, self.rag_text, _,
          self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
-        self.content_paned.add(self.notebook, weight=1)
+        self.content_paned.add(notebook_container, weight=1)
 
         # Create bottom section with chat and analysis panels
         self._create_bottom_section(command_map)

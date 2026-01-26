@@ -31,35 +31,22 @@ class NotebookTabs:
     def create_notebook(self) -> tuple:
         """Create the notebook with tabs for transcript, soap note, referral, letter, chat, and RAG.
 
-        Note: Tab headers are hidden since sidebar navigation provides access to each section.
+        Note: Tab headers are hidden by clipping the tab bar above the visible area,
+        since sidebar navigation provides access to each section.
         The SOAP tab has a special split layout with medication and differential analysis panels.
 
         Returns:
-            tuple: (notebook, transcript_text, soap_text, referral_text, letter_text, chat_text,
-                    rag_text, context_text, medication_analysis_text, differential_analysis_text)
+            tuple: (notebook_container, notebook, transcript_text, soap_text, referral_text,
+                    letter_text, chat_text, rag_text, context_text,
+                    medication_analysis_text, differential_analysis_text)
         """
-        # Create a style that hides the notebook tabs
-        style = ttk.Style()
-        # Hide tabs by removing the tab bar from the notebook layout entirely.
-        # This is more reliable across platforms than styling individual tabs.
-        try:
-            # Remove the Tab_area from the notebook layout, keeping only the client area
-            style.layout("Hidden.TNotebook", [
-                ("Hidden.TNotebook.client", {"sticky": "nswe"})
-            ])
-        except Exception:
-            # Fallback: try to make tabs invisible via styling
-            style.configure("Hidden.TNotebook", tabmargins=[0, 0, 0, 0], padding=[0, 0])
-            style.configure("Hidden.TNotebook.Tab",
-                            padding=[0, 0, 0, 0],
-                            width=0,
-                            font=('', 1))
-            try:
-                style.layout("Hidden.TNotebook.Tab", [])
-            except Exception:
-                pass
+        # Create a container frame that will clip the notebook's tab bar.
+        # The notebook is placed inside with a negative y-offset so the tab
+        # bar is pushed above the container's visible area.
+        notebook_container = ttk.Frame(self.parent)
 
-        notebook = ttk.Notebook(self.parent, style="Hidden.TNotebook")
+        notebook = ttk.Notebook(notebook_container)
+        self._notebook = notebook  # Store actual notebook reference
         
         # Create tabs
         tabs = [
@@ -292,9 +279,16 @@ class NotebookTabs:
             # Store reference
             text_widgets[widget_key] = text_widget
             self.components[f'{widget_key}_text'] = text_widget
-        
-        # Return in expected order
+
+        # Hide the tab bar by placing the notebook with a negative y-offset
+        # inside the container frame. The container clips anything above y=0,
+        # effectively hiding the tab bar while keeping all tab content visible.
+        TAB_HEIGHT = 30
+        notebook.place(x=0, y=-TAB_HEIGHT, relwidth=1.0, relheight=1.0, height=TAB_HEIGHT)
+
+        # Return in expected order (container for layout, notebook for tab operations)
         return (
+            notebook_container,
             notebook,
             text_widgets["transcript"],
             text_widgets["soap"],
