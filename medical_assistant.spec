@@ -221,6 +221,7 @@ if sys.platform == 'darwin':
         icon='icon.icns',
         bundle_identifier='com.medicalassistant.app',
         info_plist={
+            'CFBundleIconFile': 'icon.icns',
             'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
             # Prevent multiple instances and handle reopen events properly
             'LSMultipleInstancesProhibited': True,

@@ -653,7 +653,9 @@ class UnifiedSettingsDialog:
         folder_label = ttk.Label(tab, text="Default Storage Folder:")
         folder_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(folder_label, "Default folder for saving documents")
-        folder_var = tk.StringVar(value=settings_manager.get("default_folder", ""))
+        # Read storage_folder (used by audio save), fall back to default_folder for compat
+        _storage_path = settings_manager.get("storage_folder", "") or settings_manager.get("default_folder", "")
+        folder_var = tk.StringVar(value=_storage_path)
         self.widgets['storage']['default_folder'] = folder_var
         folder_entry = ttk.Entry(tab, textvariable=folder_var, width=50)
         folder_entry.grid(row=row, column=1, sticky="ew", padx=(10, 5), pady=10)
@@ -868,10 +870,13 @@ class UnifiedSettingsDialog:
                 for key, var in ai_models['translation'].items():
                     settings_manager.set_nested(f'translation.{key}', var.get(), auto_save=False)
 
-            # Save Storage settings
+            # Save Storage settings - write to all keys for consistency
             storage = self.widgets.get('storage', {})
             if 'default_folder' in storage:
-                settings_manager.set('default_folder', storage['default_folder'].get(), auto_save=False)
+                folder_path = storage['default_folder'].get()
+                settings_manager.set('default_folder', folder_path, auto_save=False)
+                settings_manager.set('storage_folder', folder_path, auto_save=False)
+                settings_manager.set('default_storage_folder', folder_path, auto_save=False)
 
             # Save General settings
             general = self.widgets.get('general', {})

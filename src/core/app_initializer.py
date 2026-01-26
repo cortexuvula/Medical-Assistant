@@ -7,12 +7,10 @@ manager initialization.
 """
 
 import os
-import multiprocessing
-
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import messagebox
 from tkinter.constants import DISABLED
@@ -82,18 +80,13 @@ class AppInitializer:
         self._finalize_setup()
         
     def _setup_executors(self):
-        """Set up thread and process executors for concurrent operations."""
-        # Determine number of CPU cores available for optimal threading configuration
-        cpu_count = multiprocessing.cpu_count()
-        
+        """Set up thread executors for concurrent operations."""
+        import os
+        cpu_count = os.cpu_count() or 4
+
         # Initialize ThreadPoolExecutor for I/O-bound tasks (network calls, file operations)
-        # Use more threads for I/O operations since they spend most of their time waiting
         self.app.io_executor = ThreadPoolExecutor(max_workers=min(32, cpu_count * 4))
-        
-        # Initialize ProcessPoolExecutor for CPU-bound tasks (text processing, analysis)
-        # Use number of physical cores for CPU-intensive tasks to avoid context switching overhead
-        self.app.cpu_executor = ProcessPoolExecutor(max_workers=max(2, cpu_count - 1))
-        
+
         # Maintain the original executor for backwards compatibility
         self.app.executor = self.app.io_executor
         

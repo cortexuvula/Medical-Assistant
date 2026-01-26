@@ -406,6 +406,10 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                             storage_folder = settings_manager.get("default_storage_folder")
                             logger.debug("Using default_storage_folder", storage_folder=storage_folder)
 
+                        if not storage_folder:
+                            storage_folder = settings_manager.get("default_folder")
+                            logger.debug("Using default_folder", storage_folder=storage_folder)
+
                         if not storage_folder or not os.path.exists(storage_folder):
                             logger.warning(
                                 "Storage folder not found or not set, using default",

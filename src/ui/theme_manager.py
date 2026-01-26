@@ -141,15 +141,15 @@ class ThemeManager:
                 entry_muted = colors["fg_muted"] if "fg_muted" in colors else "#6c757d"
                 search_entry.configure(bg=entry_bg, fg=entry_fg, insertbackground=entry_fg)
 
-            # Update templates canvas background for theme
+            # Update context panel theme (collapse button + canvas backgrounds)
             context_panel = self.app.ui.context_panel
+            if hasattr(context_panel, 'update_theme'):
+                context_panel.update_theme(is_dark)
             if hasattr(context_panel, '_templates_canvas'):
                 canvas_bg = colors["bg"]
                 context_panel._templates_canvas.configure(bg=canvas_bg)
-                # Also update the inner frame background
                 if hasattr(context_panel, 'templates_frame'):
                     context_panel.templates_frame.configure(bg=canvas_bg)
-                # Update two-column layout backgrounds
                 if hasattr(context_panel, '_left_column'):
                     context_panel._left_column.configure(bg=canvas_bg)
                 if hasattr(context_panel, '_right_column'):

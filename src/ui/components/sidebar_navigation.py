@@ -523,20 +523,17 @@ class SidebarNavigation:
 
         # Toggle button (collapse/expand sidebar)
         toggle_icon = Icons.SIDEBAR_COLLAPSE if not self._collapsed else Icons.SIDEBAR_EXPAND
-        self._toggle_btn = tk.Button(
+        # Use Label instead of Button for macOS Aqua compatibility
+        self._toggle_btn = tk.Label(
             header,
             text=toggle_icon,
             font=(Fonts.FAMILY[0], 14),
             bg=colors["bg"],
             fg=colors["fg"],
-            activebackground=colors["bg_hover"],
-            activeforeground=colors["fg"],
-            relief=tk.FLAT,
-            bd=0,
             cursor="hand2",
-            command=self._toggle_sidebar
         )
         self._toggle_btn.pack(side=tk.LEFT, padx=5)
+        self._toggle_btn.bind("<Button-1>", lambda e: self._toggle_sidebar())
         ToolTip(self._toggle_btn, "Collapse sidebar" if not self._collapsed else "Expand sidebar")
 
         # Title label removed - window title already shows app name

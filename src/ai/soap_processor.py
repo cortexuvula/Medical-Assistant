@@ -85,6 +85,10 @@ class SOAPProcessor:
                 if not storage_folder:
                     storage_folder = settings_manager.get("default_storage_folder")
                     logger.info(f"Using default_storage_folder instead: {storage_folder}")
+
+                if not storage_folder:
+                    storage_folder = settings_manager.get("default_folder")
+                    logger.info(f"Using default_folder instead: {storage_folder}")
                 
                 # If no storage folder is set, create default one
                 if not storage_folder or not os.path.exists(storage_folder):

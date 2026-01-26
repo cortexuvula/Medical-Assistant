@@ -180,8 +180,10 @@ class RecoveryHandler:
         """
         try:
             # Save audio to file
-            storage_folder = settings_manager.get("storage_folder", "")
-            if not storage_folder:
+            storage_folder = (settings_manager.get("storage_folder", "")
+                              or settings_manager.get("default_storage_folder", "")
+                              or settings_manager.get("default_folder", ""))
+            if not storage_folder or not os.path.exists(storage_folder):
                 storage_folder = os.path.expanduser("~/Documents/Medical-Dictation/Storage")
                 os.makedirs(storage_folder, exist_ok=True)
 

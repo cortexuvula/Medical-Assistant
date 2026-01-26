@@ -462,7 +462,7 @@ class WindowController:
 
             # Shutdown all executor pools properly - wait for tasks to complete
             logger.info("Shutting down executor pools...")
-            for executor_name in ['io_executor', 'cpu_executor', 'executor']:
+            for executor_name in ['io_executor', 'executor']:
                 if hasattr(self.app, executor_name) and getattr(self.app, executor_name) is not None:
                     try:
                         executor = getattr(self.app, executor_name)

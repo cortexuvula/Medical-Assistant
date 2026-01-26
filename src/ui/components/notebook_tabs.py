@@ -40,20 +40,24 @@ class NotebookTabs:
         """
         # Create a style that hides the notebook tabs
         style = ttk.Style()
-        # Hide tabs by making them zero height and removing all visual elements
-        style.configure("Hidden.TNotebook", tabmargins=[0, 0, 0, 0], padding=[0, 0])
-        style.configure("Hidden.TNotebook.Tab",
-                        padding=[0, 0, 0, 0],
-                        width=0,
-                        font=('', 1))
-        style.map("Hidden.TNotebook.Tab",
-                  width=[("selected", 0), ("!selected", 0)],
-                  padding=[("selected", [0, 0, 0, 0]), ("!selected", [0, 0, 0, 0])])
-        # Override the layout to remove tab content
+        # Hide tabs by removing the tab bar from the notebook layout entirely.
+        # This is more reliable across platforms than styling individual tabs.
         try:
-            style.layout("Hidden.TNotebook.Tab", [])
+            # Remove the Tab_area from the notebook layout, keeping only the client area
+            style.layout("Hidden.TNotebook", [
+                ("Hidden.TNotebook.client", {"sticky": "nswe"})
+            ])
         except Exception:
-            pass  # Some themes may not support empty layout
+            # Fallback: try to make tabs invisible via styling
+            style.configure("Hidden.TNotebook", tabmargins=[0, 0, 0, 0], padding=[0, 0])
+            style.configure("Hidden.TNotebook.Tab",
+                            padding=[0, 0, 0, 0],
+                            width=0,
+                            font=('', 1))
+            try:
+                style.layout("Hidden.TNotebook.Tab", [])
+            except Exception:
+                pass
 
         notebook = ttk.Notebook(self.parent, style="Hidden.TNotebook")
         

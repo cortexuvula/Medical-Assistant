@@ -20,17 +20,30 @@ from ui.ui_constants import Icons
 class ContextPanel:
     """Manages the context side panel UI components with click-to-apply templates."""
 
-    # Colors for the context panel (light theme)
-    COLORS = {
-        "bg": "#f8f9fa",              # Light gray background
-        "header_bg": "#ffffff",        # White header
-        "border": "#e9ecef",          # Light border
-        "text": "#212529",            # Dark text
-        "text_muted": "#6c757d",      # Muted text
-        "item_hover": "#e3f2fd",      # Light blue hover
-        "item_active": "#bbdefb",     # Blue active
-        "expand_icon": "#6c757d",     # Gray expand icon
+    # Colors for the context panel
+    LIGHT_COLORS = {
+        "bg": "#f8f9fa",
+        "header_bg": "#ffffff",
+        "border": "#e9ecef",
+        "text": "#212529",
+        "text_muted": "#6c757d",
+        "item_hover": "#e3f2fd",
+        "item_active": "#bbdefb",
+        "expand_icon": "#6c757d",
     }
+
+    DARK_COLORS = {
+        "bg": "#1a1d21",
+        "header_bg": "#212529",
+        "border": "#343a40",
+        "text": "#f8f9fa",
+        "text_muted": "#adb5bd",
+        "item_hover": "#2d3138",
+        "item_active": "#0d6efd",
+        "expand_icon": "#adb5bd",
+    }
+
+    COLORS = LIGHT_COLORS.copy()
 
     def __init__(self, parent_ui):
         """Initialize the ContextPanel component.
@@ -42,6 +55,11 @@ class ContextPanel:
         self.parent = parent_ui.parent
         self.components = parent_ui.components
 
+        # Set colors based on current theme
+        current_theme = SETTINGS.get("theme", "flatly")
+        is_dark = current_theme in ("darkly", "cyborg", "vapor", "solar", "superhero")
+        self.COLORS = self.DARK_COLORS.copy() if is_dark else self.LIGHT_COLORS.copy()
+
         self._context_collapsed = False
         self.templates_frame = None
         self._template_item_frames: Dict[str, tk.Frame] = {}  # Store item frames for filtering
@@ -52,43 +70,44 @@ class ContextPanel:
         Returns:
             ttk.Frame: The context panel frame
         """
-        # Create a collapsible side panel with light background
+        # Create a collapsible side panel
         context_panel = tk.Frame(self.parent, bg=self.COLORS["bg"])
+        self._context_panel_frame = context_panel
 
         # Header with "Context & Templates" title and collapse button
-        header_frame = tk.Frame(context_panel, bg=self.COLORS["header_bg"])
-        header_frame.pack(fill=tk.X)
+        self._header_frame = tk.Frame(context_panel, bg=self.COLORS["header_bg"])
+        self._header_frame.pack(fill=tk.X)
 
         # Header content
-        header_content = tk.Frame(header_frame, bg=self.COLORS["header_bg"])
-        header_content.pack(fill=tk.X, padx=10, pady=8)
+        self._header_content = tk.Frame(self._header_frame, bg=self.COLORS["header_bg"])
+        self._header_content.pack(fill=tk.X, padx=10, pady=8)
 
-        # Collapse button
-        self._collapse_btn = tk.Button(
-            header_content,
+        # Collapse button — use Label instead of Button for macOS Aqua compatibility
+        self._collapse_btn = tk.Label(
+            self._header_content,
             text=Icons.SIDEBAR_COLLAPSE,
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 12),
             bg=self.COLORS["header_bg"],
             fg=self.COLORS["text_muted"],
-            relief=tk.FLAT,
-            bd=0,
             cursor="hand2",
-            command=self._toggle_context_panel
         )
         self._collapse_btn.pack(side=tk.LEFT)
+        self._collapse_btn.bind("<Button-1>", lambda e: self._toggle_context_panel())
         self.components['context_collapse_btn'] = self._collapse_btn
 
         # Title
-        tk.Label(
-            header_content,
+        self._title_label = tk.Label(
+            self._header_content,
             text="Context & Templates",
             font=("Segoe UI", 11, "bold"),
             bg=self.COLORS["header_bg"],
             fg=self.COLORS["text"]
-        ).pack(side=tk.LEFT, padx=8)
+        )
+        self._title_label.pack(side=tk.LEFT, padx=8)
 
         # Header border
-        tk.Frame(header_frame, height=1, bg=self.COLORS["border"]).pack(fill=tk.X)
+        self._header_border = tk.Frame(self._header_frame, height=1, bg=self.COLORS["border"])
+        self._header_border.pack(fill=tk.X)
 
         # Search box
         search_frame = tk.Frame(context_panel, bg=self.COLORS["bg"])
@@ -513,6 +532,34 @@ class ContextPanel:
             self.components['context_content_frame'].pack_forget()
             self._collapse_btn.config(text=Icons.SIDEBAR_EXPAND)
             self._context_collapsed = True
+
+    def update_theme(self, is_dark: bool):
+        """Update context panel colors for theme change."""
+        self.COLORS = self.DARK_COLORS.copy() if is_dark else self.LIGHT_COLORS.copy()
+        c = self.COLORS
+
+        # Update panel background
+        if hasattr(self, '_context_panel_frame'):
+            self._context_panel_frame.configure(bg=c["bg"])
+
+        # Update header frames
+        if hasattr(self, '_header_frame'):
+            self._header_frame.configure(bg=c["header_bg"])
+        if hasattr(self, '_header_content'):
+            self._header_content.configure(bg=c["header_bg"])
+        if hasattr(self, '_header_border'):
+            self._header_border.configure(bg=c["border"])
+
+        # Update collapse button (tk.Label)
+        if hasattr(self, '_collapse_btn'):
+            self._collapse_btn.configure(
+                bg=c["header_bg"],
+                fg=c["text_muted"],
+            )
+
+        # Update title label
+        if hasattr(self, '_title_label'):
+            self._title_label.configure(bg=c["header_bg"], fg=c["text"])
     
     def _save_context_template(self):
         """Save current context as a template."""
