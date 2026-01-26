@@ -31,6 +31,7 @@ from ai.agents.referral import ReferralAgent
 from ai.agents.data_extraction import DataExtractionAgent
 from ai.agents.workflow import WorkflowAgent
 from ai.agents.chat import ChatAgent
+from ai.agents.compliance import ComplianceAgent
 from settings.settings_manager import settings_manager
 from utils.safe_eval import safe_eval
 
@@ -67,6 +68,7 @@ class AgentManager:
         AgentType.DATA_EXTRACTION: DataExtractionAgent,
         AgentType.WORKFLOW: WorkflowAgent,
         AgentType.CHAT: ChatAgent,
+        AgentType.COMPLIANCE: ComplianceAgent,
     }
     
     def __new__(cls):

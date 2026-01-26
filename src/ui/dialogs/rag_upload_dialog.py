@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 import ttkbootstrap as ttk
 
-from src.rag.models import DocumentType, DocumentUploadProgress, UploadStatus
+from rag.models import DocumentType, DocumentUploadProgress, UploadStatus
 
 # Supported file types
 SUPPORTED_EXTENSIONS = [
@@ -105,7 +105,7 @@ class RAGUploadDialog(tk.Toplevel):
         description.pack(anchor=tk.W, pady=(5, 15))
 
         # File selection area
-        file_frame = ttk.LabelFrame(main_frame, text="Selected Files", padding=10)
+        file_frame = ttk.Labelframe(main_frame, text="Selected Files", padding=10)
         file_frame.pack(fill=tk.BOTH, expand=True)
 
         # File listbox with scrollbar
@@ -158,7 +158,7 @@ class RAGUploadDialog(tk.Toplevel):
         self.file_count_label.pack(side=tk.RIGHT)
 
         # Options frame
-        options_frame = ttk.LabelFrame(main_frame, text="Options", padding=10)
+        options_frame = ttk.Labelframe(main_frame, text="Options", padding=10)
         options_frame.pack(fill=tk.X, pady=(15, 0))
 
         # Category selection
@@ -213,7 +213,7 @@ class RAGUploadDialog(tk.Toplevel):
         ).pack(side=tk.LEFT)
 
         # Progress section (initially hidden)
-        self.progress_frame = ttk.LabelFrame(main_frame, text="Upload Progress", padding=10)
+        self.progress_frame = ttk.Labelframe(main_frame, text="Upload Progress", padding=10)
 
         self.progress_label = ttk.Label(self.progress_frame, text="Ready")
         self.progress_label.pack(fill=tk.X)

@@ -513,6 +513,70 @@ class NotebookTabs:
         text_widgets['differential_analysis'] = differential_analysis_text
         self.components['differential_analysis_text'] = differential_analysis_text
 
+        # ----- Tab 3: Clinical Guidelines Compliance -----
+        compliance_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(compliance_tab, text="  Clinical Guidelines  ")
+
+        # Compliance header with copy button
+        compliance_header = ttk.Frame(compliance_tab)
+        compliance_header.pack(fill=tk.X, padx=5, pady=3)
+
+        compliance_copy_btn = ttk.Button(
+            compliance_header,
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(compliance_analysis_text)
+        )
+        compliance_copy_btn.pack(side=tk.RIGHT, padx=2)
+
+        # View Details button for full compliance dialog
+        compliance_view_btn = ttk.Button(
+            compliance_header,
+            text="View Details",
+            bootstyle="success-outline",
+            command=self._open_compliance_details,
+            state='disabled'  # Initially disabled until analysis is available
+        )
+        compliance_view_btn.pack(side=tk.RIGHT, padx=2)
+        self.components['compliance_view_details_btn'] = compliance_view_btn
+
+        # Upload Guidelines button
+        upload_guidelines_btn = ttk.Button(
+            compliance_header,
+            text="Upload Guidelines",
+            bootstyle="warning-outline",
+            command=self._show_guidelines_upload_dialog
+        )
+        upload_guidelines_btn.pack(side=tk.LEFT, padx=2)
+        self.components['upload_guidelines_btn'] = upload_guidelines_btn
+
+        # Compliance analysis scrollbar and text widget
+        compliance_content = ttk.Frame(compliance_tab)
+        compliance_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        compliance_scroll = ttk.Scrollbar(compliance_content)
+        compliance_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        compliance_analysis_text = tk.Text(
+            compliance_content,
+            wrap=tk.WORD,
+            yscrollcommand=compliance_scroll.set,
+            state='disabled',
+            height=8
+        )
+        compliance_analysis_text.pack(fill=tk.BOTH, expand=True)
+        compliance_scroll.config(command=compliance_analysis_text.yview)
+
+        # Initial placeholder message
+        compliance_analysis_text.config(state='normal')
+        compliance_analysis_text.insert('1.0', "Clinical guidelines compliance will appear here after SOAP note generation.\n\n"
+                                        "Use the 'Upload Guidelines' button to add clinical guidelines to the database.")
+        compliance_analysis_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['compliance_analysis'] = compliance_analysis_text
+        self.components['compliance_analysis_text'] = compliance_analysis_text
+
         return soap_text
 
     def _copy_to_clipboard(self, text_widget: tk.Text) -> None:
@@ -1256,15 +1320,232 @@ class NotebookTabs:
         except Exception as e:
             logger.debug(f"Could not switch to differential tab: {e}")
 
+    def show_compliance_analysis_tab(self):
+        """Switch to the Clinical Guidelines tab within the SOAP panel."""
+        try:
+            # Make sure analysis panel is expanded
+            if hasattr(self, '_analysis_collapsed') and self._analysis_collapsed:
+                self._toggle_analysis_panel()
+
+            # Find the analysis notebook
+            analysis_content = self.components.get('analysis_content')
+            if analysis_content:
+                for child in analysis_content.winfo_children():
+                    if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                        tabs = child.tabs()
+                        if len(tabs) > 2:
+                            child.select(tabs[2])  # Compliance is third tab
+                        break
+        except Exception as e:
+            logger.debug(f"Could not switch to compliance tab: {e}")
+
+    def _open_compliance_details(self) -> None:
+        """Open full compliance results dialog with current analysis."""
+        try:
+            logger.debug("View Details button clicked - opening compliance details")
+
+            # Check if analysis exists and has content
+            analysis = getattr(self.parent, '_last_compliance_analysis', None)
+            if not analysis:
+                logger.warning("No compliance analysis available on parent")
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("No compliance analysis available. Generate a SOAP note first.")
+                return
+
+            result = analysis.get('result', '')
+            if not result:
+                logger.warning("Compliance analysis exists but result is empty")
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("Compliance analysis is empty")
+                return
+
+            # Try to use ComplianceResultsDialog if available
+            try:
+                from ui.dialogs.compliance_results_dialog import ComplianceResultsDialog
+                dialog = ComplianceResultsDialog(self.parent)
+                dialog.show_results(
+                    result,
+                    analysis.get('metadata', {})
+                )
+                return
+            except ImportError:
+                pass
+
+            # Fallback: simple dialog
+            dialog = tk.Toplevel(self.parent)
+            dialog.title("Clinical Guidelines Compliance Details")
+            dialog.geometry("700x550")
+            dialog.transient(self.parent)
+
+            # Create text widget with scrollbar
+            frame = ttk.Frame(dialog)
+            frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            scrollbar = ttk.Scrollbar(frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            text_widget = tk.Text(
+                frame,
+                wrap=tk.WORD,
+                yscrollcommand=scrollbar.set,
+                font=("Segoe UI", 10)
+            )
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
+
+            # Insert the analysis text
+            text_widget.insert('1.0', result)
+            text_widget.config(state='disabled')
+
+            # Add close button
+            close_btn = ttk.Button(
+                dialog,
+                text="Close",
+                command=dialog.destroy,
+                bootstyle="secondary"
+            )
+            close_btn.pack(pady=10)
+
+            # Center the dialog
+            dialog.update_idletasks()
+            x = self.parent.winfo_x() + (self.parent.winfo_width() - dialog.winfo_width()) // 2
+            y = self.parent.winfo_y() + (self.parent.winfo_height() - dialog.winfo_height()) // 2
+            dialog.geometry(f"+{x}+{y}")
+
+        except Exception as e:
+            logger.error(f"Error opening compliance details: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error("Failed to open compliance details")
+
+    def _show_guidelines_upload_dialog(self):
+        """Show the clinical guidelines upload dialog."""
+        try:
+            from ui.dialogs.guidelines_upload_dialog import GuidelinesUploadDialog
+
+            def on_upload(files: list, options: dict):
+                """Handle upload start."""
+                self._process_guidelines_uploads(files, options)
+
+            dialog = GuidelinesUploadDialog(self.parent, on_upload=on_upload)
+            dialog.wait_window()
+
+        except Exception as e:
+            logger.error(f"Error showing guidelines upload dialog: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error(f"Failed to open guidelines upload: {e}")
+
+    def _process_guidelines_uploads(self, files: list, options: dict):
+        """Process uploaded guideline files in background thread.
+
+        Args:
+            files: List of file paths to upload
+            options: Upload options (specialty, source, version, etc.)
+        """
+        import threading
+
+        def upload_thread():
+            try:
+                # Try to get guideline document manager (will be implemented later)
+                from rag.guidelines_upload_manager import get_guidelines_upload_manager
+
+                manager = get_guidelines_upload_manager()
+
+                # Show progress dialog
+                self.parent.after(0, lambda: self._show_guidelines_upload_progress(files, options, manager))
+
+            except ImportError:
+                # Manager not yet implemented - show info message
+                self.parent.after(0, lambda: self._show_guidelines_not_implemented())
+            except Exception as e:
+                logger.error(f"Error processing guidelines uploads: {e}")
+                error_msg = str(e)
+                self.parent.after(0, lambda msg=error_msg: self._show_upload_error(msg))
+
+        thread = threading.Thread(target=upload_thread, daemon=True)
+        thread.start()
+
+    def _show_guidelines_upload_progress(self, files: list, options: dict, manager):
+        """Show upload progress dialog and process guideline files.
+
+        Args:
+            files: List of file paths
+            options: Upload options
+            manager: Guidelines upload manager instance
+        """
+        from ui.dialogs.guidelines_upload_dialog import GuidelinesUploadProgressDialog
+        from rag.guidelines_models import GuidelineUploadStatus
+
+        progress_dialog = GuidelinesUploadProgressDialog(self.parent, len(files))
+
+        def process_files():
+            success_count = 0
+            fail_count = 0
+
+            for i, file_path in enumerate(files):
+                if progress_dialog.cancelled:
+                    break
+
+                import os
+                filename = os.path.basename(file_path)
+                self.parent.after(0, lambda f=filename, idx=i: progress_dialog.update_file_start(f, idx))
+
+                try:
+                    def progress_callback(status, progress_pct, error=None):
+                        self.parent.after(0, lambda s=status, p=progress_pct, e=error:
+                            progress_dialog.update_file_progress(s, p, e))
+
+                    manager.upload_guideline(
+                        file_path=file_path,
+                        specialty=options.get("specialty"),
+                        source=options.get("source"),
+                        version=options.get("version"),
+                        effective_date=options.get("effective_date"),
+                        document_type=options.get("document_type"),
+                        title=options.get("title"),
+                        extract_recommendations=options.get("extract_recommendations", True),
+                        enable_graph=options.get("enable_graph", True),
+                        enable_ocr=options.get("enable_ocr", True),
+                        progress_callback=progress_callback,
+                    )
+                    success_count += 1
+                    self.parent.after(0, lambda: progress_dialog.update_file_complete(True))
+
+                except Exception as e:
+                    logger.error(f"Failed to upload guideline {filename}: {e}")
+                    fail_count += 1
+                    self.parent.after(0, lambda: progress_dialog.update_file_complete(False))
+
+            self.parent.after(0, progress_dialog.complete)
+
+            if success_count > 0 and hasattr(self.parent, 'status_manager'):
+                self.parent.after(0, lambda: self.parent.status_manager.success(
+                    f"Uploaded {success_count} guideline(s)"
+                ))
+
+        thread = threading.Thread(target=process_files, daemon=True)
+        thread.start()
+
+    def _show_guidelines_not_implemented(self):
+        """Show message that guidelines upload is not yet fully implemented."""
+        from tkinter import messagebox
+        messagebox.showinfo(
+            "Guidelines Upload",
+            "Guidelines upload manager is being set up.\n\n"
+            "Please ensure the clinical guidelines database is configured:\n"
+            "• Set CLINICAL_GUIDELINES_DATABASE_URL in .env\n"
+            "• Run guidelines migrations",
+            parent=self.parent
+        )
+
     def load_saved_analyses(self, recording_id: int) -> dict:
-        """Load saved medication and differential analyses from database.
+        """Load saved medication, differential, and compliance analyses from database.
 
         Args:
             recording_id: The recording ID to load analyses for
 
         Returns:
-            Dict with 'medication' and 'differential' keys, each containing
-            the analysis result dict or None
+            Dict with 'medication', 'differential', and 'compliance' keys,
+            each containing the analysis result dict or None
         """
         try:
             from processing.analysis_storage import get_analysis_storage
@@ -1279,11 +1560,14 @@ class NotebookTabs:
             if analyses.get('differential'):
                 self._update_differential_panel_from_saved(analyses['differential'])
 
+            if analyses.get('compliance'):
+                self._update_compliance_panel_from_saved(analyses['compliance'])
+
             return analyses
 
         except Exception as e:
             logger.error(f"Failed to load saved analyses for recording {recording_id}: {e}")
-            return {"medication": None, "differential": None}
+            return {"medication": None, "differential": None, "compliance": None}
 
     def _update_medication_panel_from_saved(self, analysis: dict) -> None:
         """Update medication analysis panel with saved analysis.
@@ -1366,8 +1650,48 @@ class NotebookTabs:
         except Exception as e:
             logger.error(f"Failed to update differential panel from saved: {e}")
 
+    def _update_compliance_panel_from_saved(self, analysis: dict) -> None:
+        """Update compliance analysis panel with saved analysis.
+
+        Args:
+            analysis: Saved analysis dict from database
+        """
+        try:
+            compliance_widget = self.components.get('compliance_analysis_text')
+            if not compliance_widget:
+                return
+
+            result_text = analysis.get('result_text', '')
+            metadata = analysis.get('metadata_json', {}) or {}
+
+            # Store for View Details button
+            self.parent._last_compliance_analysis = {
+                'result': result_text,
+                'metadata': metadata
+            }
+
+            # Format and display
+            try:
+                from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
+                formatter = AnalysisPanelFormatter(compliance_widget)
+                formatter.format_compliance_panel(result_text, metadata)
+            except Exception:
+                # Fallback to plain text
+                compliance_widget.config(state='normal')
+                compliance_widget.delete('1.0', 'end')
+                compliance_widget.insert('1.0', result_text)
+                compliance_widget.config(state='disabled')
+
+            # Enable View Details button
+            view_btn = self.components.get('compliance_view_details_btn')
+            if view_btn:
+                view_btn.config(state='normal')
+
+        except Exception as e:
+            logger.error(f"Failed to update compliance panel from saved: {e}")
+
     def clear_analysis_panels(self) -> None:
-        """Clear the medication and differential analysis panels."""
+        """Clear the medication, differential, and compliance analysis panels."""
         try:
             # Clear medication panel
             medication_widget = self.components.get('medication_analysis_text')
@@ -1395,11 +1719,27 @@ class NotebookTabs:
             if diff_view_btn:
                 diff_view_btn.config(state='disabled')
 
+            # Clear compliance panel
+            compliance_widget = self.components.get('compliance_analysis_text')
+            if compliance_widget:
+                compliance_widget.config(state='normal')
+                compliance_widget.delete('1.0', 'end')
+                compliance_widget.insert('1.0', "Clinical guidelines compliance will appear here after SOAP note generation.\n\n"
+                                        "Use the 'Upload Guidelines' button to add clinical guidelines to the database.")
+                compliance_widget.config(state='disabled')
+
+            # Disable compliance view details button
+            compliance_view_btn = self.components.get('compliance_view_details_btn')
+            if compliance_view_btn:
+                compliance_view_btn.config(state='disabled')
+
             # Clear stored analyses
             if hasattr(self.parent, '_last_medication_analysis'):
                 self.parent._last_medication_analysis = None
             if hasattr(self.parent, '_last_diagnostic_analysis'):
                 self.parent._last_diagnostic_analysis = None
+            if hasattr(self.parent, '_last_compliance_analysis'):
+                self.parent._last_compliance_analysis = None
 
         except Exception as e:
             logger.debug(f"Error clearing analysis panels: {e}")

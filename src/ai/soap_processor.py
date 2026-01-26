@@ -217,6 +217,9 @@ class SOAPProcessor:
                         # Run differential diagnosis to panel
                         self.app.after(200, lambda sn=soap_note:
                             self.app.document_generators._run_diagnostic_to_panel(sn))
+                        # Run clinical guidelines compliance check to panel
+                        self.app.after(300, lambda sn=soap_note:
+                            self.app.document_generators._run_compliance_to_panel(sn))
 
                 self.app.after(0, finalize_soap)
             except concurrent.futures.TimeoutError:

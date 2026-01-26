@@ -50,6 +50,9 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     "embedding": 60.0,        # Embedding generation
     "embedding_batch": 120.0, # Large batch embedding
 
+    # OCR API timeouts
+    "azure_document_intelligence": 120.0,  # Azure OCR (long timeout for multi-page docs)
+
     # Other service timeouts
     "rag": 30.0,              # RAG local document search
     "stt": 120.0,             # Generic speech-to-text transcription

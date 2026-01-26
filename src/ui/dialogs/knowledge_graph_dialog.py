@@ -298,22 +298,54 @@ class KnowledgeGraphDialog(tk.Toplevel):
                 # Check health first
                 if not self._data_provider.health_check():
                     self.after(0, lambda: self._show_error(
-                        "Knowledge graph not configured.\n\n"
-                        "Set NEO4J_URI and NEO4J_PASSWORD environment variables\n"
-                        "or configure in settings."
+                        "Knowledge Graph is not configured.\n\n"
+                        "The Knowledge Graph requires a Neo4j database connection.\n"
+                        "Click the button below to configure Neo4j settings.",
+                        show_configure=True
                     ))
                     return
 
                 # Load data
                 self._graph_data = self._data_provider.get_full_graph_data(limit=500)
 
+                # Check if we got any data
+                if not self._graph_data or self._graph_data.node_count == 0:
+                    self.after(0, lambda: self._show_error(
+                        "Knowledge Graph is empty.\n\n"
+                        "No entities have been indexed yet.\n"
+                        "Upload documents in the RAG tab to populate the graph."
+                    ))
+                    return
+
                 # Update UI on main thread
                 self.after(0, self._on_data_loaded)
 
+            except ValueError as e:
+                # Configuration error (missing credentials)
+                logger.warning(f"Neo4j not configured: {e}")
+                self.after(0, lambda: self._show_error(
+                    "Knowledge Graph is not configured.\n\n"
+                    "Neo4j connection details are missing.\n"
+                    "Click the button below to configure Neo4j settings.",
+                    show_configure=True
+                ))
+
             except Exception as e:
                 logger.error(f"Failed to load graph data: {e}")
-                error_msg = f"Failed to load graph data:\n{e}"
-                self.after(0, lambda msg=error_msg: self._show_error(msg))
+                error_msg = str(e)
+
+                # Check if it's a connection refused error
+                if "refused" in error_msg.lower() or "connect" in error_msg.lower():
+                    self.after(0, lambda: self._show_error(
+                        "Cannot connect to Neo4j.\n\n"
+                        "Make sure Neo4j is running and accessible.\n"
+                        "Check your connection settings.",
+                        show_configure=True
+                    ))
+                else:
+                    self.after(0, lambda msg=error_msg: self._show_error(
+                        f"Failed to load graph data:\n\n{msg}"
+                    ))
 
             finally:
                 self._loading = False
@@ -337,22 +369,83 @@ class KnowledgeGraphDialog(tk.Toplevel):
 
         self.stats_label.config(text="Loading...")
 
-    def _show_error(self, message: str) -> None:
-        """Show error message in canvas."""
+    def _show_error(self, message: str, show_configure: bool = False) -> None:
+        """Show error message in canvas with optional configure button.
+
+        Args:
+            message: Error message to display
+            show_configure: If True, show a configure button for settings
+        """
         self.graph_canvas.delete("all")
         width = self.graph_canvas.winfo_width() or 800
         height = self.graph_canvas.winfo_height() or 600
 
+        # Clear any existing configure button
+        if hasattr(self, '_configure_btn_window'):
+            try:
+                self.graph_canvas.delete(self._configure_btn_window)
+            except Exception:
+                pass
+
         self.graph_canvas.create_text(
             width / 2,
-            height / 2,
+            height / 2 - 40,
             text=message,
             fill="#FF6666",
             font=("TkDefaultFont", 11),
             justify=tk.CENTER,
         )
 
-        self.stats_label.config(text="Error")
+        if show_configure:
+            # Add configure button
+            configure_btn = ttk.Button(
+                self.graph_canvas,
+                text="Open Settings",
+                command=self._open_neo4j_settings,
+            )
+            self._configure_btn_window = self.graph_canvas.create_window(
+                width / 2,
+                height / 2 + 40,
+                window=configure_btn,
+            )
+
+        self.stats_label.config(text="Not configured" if show_configure else "Error")
+
+    def _open_neo4j_settings(self) -> None:
+        """Open the settings dialog to configure Neo4j."""
+        try:
+            # Try to open unified settings dialog
+            parent = self.master
+            while parent and not hasattr(parent, 'show_preferences'):
+                parent = getattr(parent, 'master', None)
+
+            if parent and hasattr(parent, 'show_preferences'):
+                parent.show_preferences()
+                messagebox.showinfo(
+                    "Configure Neo4j",
+                    "To enable the Knowledge Graph:\n\n"
+                    "1. Go to 'API Keys' tab\n"
+                    "2. Scroll to find Neo4j settings\n"
+                    "3. Enter your Neo4j URI and password\n\n"
+                    "Or set environment variables:\n"
+                    "  NEO4J_URI=bolt://localhost:7687\n"
+                    "  NEO4J_PASSWORD=your_password",
+                    parent=self
+                )
+            else:
+                # Show manual instructions
+                messagebox.showinfo(
+                    "Configure Neo4j",
+                    "To enable the Knowledge Graph, add these to your .env file:\n\n"
+                    "NEO4J_URI=bolt://localhost:7687\n"
+                    "NEO4J_USER=neo4j\n"
+                    "NEO4J_PASSWORD=your_password\n\n"
+                    "Then restart the application.",
+                    parent=self
+                )
+        except Exception as e:
+            logger.error(f"Failed to open settings: {e}")
+            messagebox.showerror("Error", f"Could not open settings: {e}", parent=self)
 
     def _on_data_loaded(self) -> None:
         """Handle successful data load."""
