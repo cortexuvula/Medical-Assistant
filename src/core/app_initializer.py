@@ -242,24 +242,21 @@ class AppInitializer:
         # Get security manager for API key access
         security_manager = get_security_manager()
 
-        # Initialize API keys from environment/secure storage
-        self.app.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        self.app.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.app.groq_api_key = os.getenv("GROQ_API_KEY", "")
+        # Initialize API keys from security manager (checks env vars + encrypted storage)
+        self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
+        self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
+        self.app.groq_api_key = security_manager.get_api_key("groq") or ""
         self.app.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
 
         # Check for necessary API keys using security manager
         openai_key = security_manager.get_api_key("openai")
         anthropic_key = security_manager.get_api_key("anthropic")
         gemini_key = security_manager.get_api_key("gemini")
-        elevenlabs_key = security_manager.get_api_key("elevenlabs")
-        deepgram_key = security_manager.get_api_key("deepgram")
-        groq_key = security_manager.get_api_key("groq")
         ollama_url = os.getenv("OLLAMA_API_URL")
 
         # Check if we have at least one LLM and one STT provider
         has_llm = bool(openai_key or anthropic_key or gemini_key or ollama_url)
-        has_stt = bool(elevenlabs_key or deepgram_key or groq_key)
+        has_stt = bool(self.app.elevenlabs_api_key or self.app.deepgram_api_key or self.app.groq_api_key)
 
         if not has_llm or not has_stt:
             messagebox.showinfo(
@@ -273,10 +270,10 @@ class AppInitializer:
             # Open the API key dialog
             result = show_api_keys_dialog(self.app)
             if result:
-                # Update the keys after dialog closes
-                self.app.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-                self.app.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-                self.app.groq_api_key = os.getenv("GROQ_API_KEY", "")
+                # Update the keys after dialog closes (re-check encrypted storage)
+                self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
+                self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
+                self.app.groq_api_key = security_manager.get_api_key("groq") or ""
                 
     def _initialize_audio_handler(self):
         """Initialize the audio handler and text processor."""
