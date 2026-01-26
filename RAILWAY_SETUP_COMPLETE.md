@@ -170,16 +170,16 @@ Keep an eye on:
 Make sure these are set in your `.env` file:
 
 ```bash
-# Clinical Guidelines PostgreSQL (Neon)
-CLINICAL_GUIDELINES_DATABASE_URL=postgresql://neondb_owner:npg_i40RlDLHzceB@ep-restless-scene-aha4yrpo-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+# Clinical Guidelines PostgreSQL (Neon) - CREDENTIALS REDACTED
+CLINICAL_GUIDELINES_DATABASE_URL=postgresql://[REDACTED]
 
-# Clinical Guidelines Neo4j (Railway with TCP Proxy)
+# Clinical Guidelines Neo4j (Railway with TCP Proxy) - CREDENTIALS REDACTED
 CLINICAL_GUIDELINES_NEO4J_URI=bolt://trolley.proxy.rlwy.net:45633
 CLINICAL_GUIDELINES_NEO4J_USER=neo4j
-CLINICAL_GUIDELINES_NEO4J_PASSWORD=guidelines_password_2024
+CLINICAL_GUIDELINES_NEO4J_PASSWORD=[REDACTED]
 
-# OpenAI (required for embeddings)
-OPENAI_API_KEY=sk-proj-...
+# OpenAI (required for embeddings) - CREDENTIALS REDACTED
+OPENAI_API_KEY=[REDACTED]
 ```
 
 ## Architecture

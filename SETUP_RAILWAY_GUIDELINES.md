@@ -86,16 +86,16 @@ CLINICAL_GUIDELINES_NEO4J_URI=bolt://monorail.proxy.rlwy.net:15432
 Make sure these are set in `.env`:
 
 ```bash
-# PostgreSQL (Neon)
-CLINICAL_GUIDELINES_DATABASE_URL=postgresql://neondb_owner:npg_i40RlDLHzceB@ep-restless-scene-aha4yrpo-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+# PostgreSQL (Neon) - CREDENTIALS REDACTED
+CLINICAL_GUIDELINES_DATABASE_URL=postgresql://[REDACTED]
 
-# Neo4j (Railway with TCP Proxy - UPDATE THIS)
+# Neo4j (Railway with TCP Proxy) - CREDENTIALS REDACTED
 CLINICAL_GUIDELINES_NEO4J_URI=bolt://<RAILWAY_TCP_PROXY_DOMAIN>:<RAILWAY_TCP_PROXY_PORT>
 CLINICAL_GUIDELINES_NEO4J_USER=neo4j
-CLINICAL_GUIDELINES_NEO4J_PASSWORD=guidelines_password_2024
+CLINICAL_GUIDELINES_NEO4J_PASSWORD=[REDACTED]
 
-# Required for embeddings
-OPENAI_API_KEY=sk-proj-...
+# Required for embeddings - CREDENTIALS REDACTED
+OPENAI_API_KEY=[REDACTED]
 ```
 
 ---
