@@ -20,7 +20,19 @@ from settings.settings import SETTINGS
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
 )
-import google.generativeai as genai
+
+# Optional import for Google Gemini SDK
+# Handle both old (google.generativeai) and new (google.genai) packages
+try:
+    import google.genai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    try:
+        import google.generativeai as genai
+        GENAI_AVAILABLE = True
+    except ImportError:
+        genai = None
+        GENAI_AVAILABLE = False
 
 from utils.structured_logging import get_logger
 
@@ -318,6 +330,11 @@ class ModelProvider:
     def _fetch_gemini_models(self) -> Optional[List[str]]:
         """Fetch available models from Google Gemini."""
         try:
+            # Check if Gemini SDK is available
+            if not GENAI_AVAILABLE or genai is None:
+                logger.warning("Google Gemini SDK not available, using fallback models")
+                return None
+
             api_key = self._security_manager.get_api_key(PROVIDER_GEMINI)
             if not api_key:
                 return None
