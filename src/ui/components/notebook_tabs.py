@@ -3,6 +3,7 @@ Notebook Tabs Component for Medical Assistant
 Handles the main text editor notebook with tabs
 """
 
+import threading
 import tkinter as tk
 import ttkbootstrap as ttk
 from utils.structured_logging import get_logger
