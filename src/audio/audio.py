@@ -889,13 +889,17 @@ class AudioHandler:
         
         return channels, self.sample_rate
 
-    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default") -> Callable:
+    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default", mark_stopping: Callable = None) -> Callable:
         """Create the stop function for the audio stream.
 
         Args:
             stream: The sounddevice InputStream.
             flush_callback: Optional callback to flush any remaining audio data.
             stream_purpose: Purpose identifier for this stream
+            mark_stopping: Optional function to signal the audio callback to stop
+                          processing before the stream is stopped. Prevents GIL
+                          crashes when the callback tries to call tkinter during
+                          stream shutdown.
 
         Returns:
             Function to stop the stream.
@@ -906,11 +910,23 @@ class AudioHandler:
         def stop_stream(wait_for_stop: bool = False) -> None:
             if stream:
                 try:
-                    # First, flush any accumulated audio if callback provided
+                    # Signal the audio callback to stop processing BEFORE
+                    # stopping the stream. This prevents the callback from
+                    # calling into tkinter while stream.stop() is waiting
+                    # for the callback to finish, which would cause a
+                    # fatal GIL crash (PyEval_RestoreThread error).
+                    if mark_stopping:
+                        mark_stopping()
+
+                    stream.stop()
+
+                    # Flush remaining accumulated audio AFTER the stream is
+                    # stopped. This is safe because flush runs on the main
+                    # thread (which can call tkinter) and no concurrent
+                    # callbacks can fire after stream.stop() returns.
                     if flush_callback:
                         flush_callback()
 
-                    stream.stop()
                     stream.close()
                     logger.info("sounddevice InputStream stopped and closed")
                 except Exception as e:
@@ -929,7 +945,7 @@ class AudioHandler:
 
         return stop_stream
 
-    def _create_audio_callback(self, phrase_time_limit: int, callback: Callable = None) -> Tuple[Callable, Callable]:
+    def _create_audio_callback(self, phrase_time_limit: int, callback: Callable = None) -> Tuple[Callable, Callable, Callable]:
         """Create the audio callback function for sounddevice.
 
         Args:
@@ -938,7 +954,7 @@ class AudioHandler:
                      If None, falls back to self.callback_function (legacy behavior).
 
         Returns:
-            Tuple of (callback_function, flush_function).
+            Tuple of (callback_function, flush_function, mark_stopping_function).
         """
         # Buffer to accumulate audio data
         accumulated_data = []
@@ -948,6 +964,16 @@ class AudioHandler:
         # Capture the callback in a closure variable to avoid race conditions
         # when multiple streams are started/stopped
         captured_callback = callback if callback is not None else self.callback_function
+
+        # Flag to prevent the PortAudio callback thread from calling into
+        # Python/tkinter during stream shutdown. This avoids a fatal GIL crash
+        # (PyEval_RestoreThread) that occurs when stream.stop() waits for the
+        # callback while the callback is inside tkinter._register().
+        _stopping = [False]
+
+        def mark_stopping():
+            """Signal the audio callback to stop calling captured_callback."""
+            _stopping[0] = True
 
         logger.info(f"Audio will accumulate until {target_frames} frames (approx. {phrase_time_limit} seconds) before processing")
 
@@ -970,6 +996,12 @@ class AudioHandler:
 
         def audio_callback_sd(indata: np.ndarray, frames: int, _: Any, status: sd.CallbackFlags) -> None:
             nonlocal accumulated_data, accumulated_frames
+
+            # Check stopping flag first - if the stream is shutting down,
+            # return immediately to avoid calling into tkinter from the
+            # PortAudio callback thread (which would crash the GIL).
+            if _stopping[0]:
+                return
 
             if status:
                 logger.warning(f"sounddevice status: {status}")
@@ -1009,7 +1041,7 @@ class AudioHandler:
                 accumulated_data = []
                 accumulated_frames = 0
 
-        return audio_callback_sd, flush_accumulated_audio
+        return audio_callback_sd, flush_accumulated_audio, mark_stopping
 
     def _listen_with_sounddevice(self, device_name: str, callback: Callable, phrase_time_limit: int = None, stream_purpose: str = "default") -> Callable:
         """Listen using sounddevice library, resolving name to index just-in-time.
@@ -1052,7 +1084,7 @@ class AudioHandler:
 
             # Create audio callback with the callback captured in a closure
             # to avoid race conditions when multiple streams are started/stopped
-            audio_callback_sd, flush_callback = self._create_audio_callback(phrase_time_limit, callback)
+            audio_callback_sd, flush_callback, mark_stopping = self._create_audio_callback(phrase_time_limit, callback)
 
             # Get device info for logging
             device_info = sd.query_devices(device_id)
@@ -1082,8 +1114,8 @@ class AudioHandler:
                 # Track that this instance owns this stream
                 self._instance_streams.add(stream_purpose)
 
-            # Create stop function with flush callback
-            stop_function = self._create_stop_function(stream, flush_callback, stream_purpose)
+            # Create stop function with flush callback and stopping flag
+            stop_function = self._create_stop_function(stream, flush_callback, stream_purpose, mark_stopping)
 
             return stop_function # Return the specific closer for this stream
 

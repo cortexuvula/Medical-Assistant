@@ -40,12 +40,20 @@ class SOAPAudioProcessor:
                            f"max_amp={np.abs(audio_data).max():.4f}")
             else:
                 logger.debug(f"Added audio segment to RecordingManager: shape={audio_data.shape}, dtype={audio_data.dtype}")
-        
+
         # Visual feedback for UI updates
+        # Guard against calling tkinter from non-main threads when the app
+        # is shutting down or the window has been destroyed.
+        try:
+            if not self.app.winfo_exists():
+                return
+        except Exception:
+            return
+
         try:
             if isinstance(audio_data, np.ndarray):
                 max_amp = np.abs(audio_data).max()
-                
+
                 # Visual feedback based on audio level
                 if max_amp < 0.005:
                     self.app.after(0, lambda: self.app.update_status("Audio level too low - please speak louder", "warning"))
@@ -59,16 +67,19 @@ class SOAPAudioProcessor:
                         # Convert AudioSegment to numpy array
                         raw_data = np.frombuffer(new_segment.raw_data, dtype=np.int16)
                         self.app.recording_manager.add_audio_segment(raw_data)
-                        
+
                         # Visual feedback
                         self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))
                     else:
                         logger.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
                 except Exception as e:
                     logger.error(f"Error processing non-numpy audio data: {str(e)}", exc_info=True)
-        
+
         except Exception as e:
             logger.error(f"Error in SOAP audio callback: {str(e)}", exc_info=True)
-            self.app.after(0, lambda: self.app.update_status("Error processing audio", "error"))
+            try:
+                self.app.after(0, lambda: self.app.update_status("Error processing audio", "error"))
+            except Exception:
+                pass
     
     

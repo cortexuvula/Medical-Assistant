@@ -14,21 +14,17 @@ logger = get_logger(__name__)
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Colors
+from ui.theme_observer import ThemeObserver
 from settings.settings import SETTINGS
 
 
 class RecordingHeader:
     """Creates a prominent recording header with button, waveform, and device selector."""
 
-    # Colors for buttons - using centralized color constants where possible
-    # Some explicit colors remain for specific UI requirements
+    # Colors for waveform visualization
     COLORS = {
-        "button_bg": Colors.INFO,         # Blue button (was #2196F3)
-        "button_fg": "#ffffff",           # White text
-        "button_recording": Colors.RECORDING_ACTIVE,  # Red when recording (was #f44336)
-        "button_paused": Colors.RECORDING_PAUSED,     # Orange when paused (was #FF9800)
-        "waveform_idle": "#90CAF9",       # Light blue dots (specific to waveform)
-        "waveform_active": Colors.INFO,   # Blue waveform (was #2196F3)
+        "waveform_idle": "#90CAF9",       # Light blue dots
+        "waveform_active": Colors.INFO,   # Blue waveform
     }
 
     def __init__(self, parent_ui):
@@ -47,6 +43,9 @@ class RecordingHeader:
         self._is_recording = False
         self._animation_id = None
 
+        # Recording button reference
+        self._record_btn = None
+
         # Recording controls state
         self._controls_frame = None
         self._pause_btn = None
@@ -56,6 +55,12 @@ class RecordingHeader:
         self._timer_start_time = None
         self._timer_paused_time = 0
         self._timer_id = None
+
+        # Theme state
+        self._is_dark = ThemeObserver.get_instance().is_dark
+
+        # Register for theme updates
+        ThemeObserver.get_instance().register(self)
 
     def create_recording_header(self, command_map: Dict[str, Callable], parent=None) -> ttk.Frame:
         """Create the recording header component.
@@ -83,22 +88,16 @@ class RecordingHeader:
         left_section = ttk.Frame(content)
         left_section.pack(side=tk.LEFT)
 
-        # Recording button
-        self._record_btn = tk.Button(
+        # Recording button - use ttk.Button for macOS compatibility
+        self._record_btn = ttk.Button(
             left_section,
             text="▶  Start Recording",
-            font=("Segoe UI", 12, "bold"),
-            bg=self.COLORS["button_bg"],
-            fg=self.COLORS["button_fg"],
-            activebackground="#1976D2",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=25,
-            pady=8,
+            bootstyle="info",
+            width=18,
             cursor="hand2",
             command=command_map.get("toggle_soap_recording")
         )
-        self._record_btn.pack(side=tk.LEFT)
+        self._record_btn.pack(side=tk.LEFT, ipady=5)
         ToolTip(self._record_btn, "Start/Stop Recording (Ctrl+Shift+S)")
 
         # Store reference
@@ -108,35 +107,23 @@ class RecordingHeader:
         self._controls_frame = ttk.Frame(left_section)
         # Don't pack yet - will be shown when recording starts
 
-        # Pause button
-        self._pause_btn = tk.Button(
+        # Pause button - use ttk.Button for macOS compatibility
+        self._pause_btn = ttk.Button(
             self._controls_frame,
             text="⏸ Pause",
-            font=("Segoe UI", 10),
-            bg="#FF9800",  # Orange
-            fg="#ffffff",
-            activebackground="#F57C00",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=12,
-            pady=5,
+            bootstyle="warning",
+            width=10,
             cursor="hand2",
             command=command_map.get("toggle_soap_pause")
         )
         self._pause_btn.pack(side=tk.LEFT, padx=(15, 5))
 
-        # Cancel button
-        self._cancel_btn = tk.Button(
+        # Cancel button - use ttk.Button for macOS compatibility
+        self._cancel_btn = ttk.Button(
             self._controls_frame,
             text="✕ Cancel",
-            font=("Segoe UI", 10),
-            bg="#f44336",  # Red
-            fg="#ffffff",
-            activebackground="#D32F2F",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=12,
-            pady=5,
+            bootstyle="danger",
+            width=10,
             cursor="hand2",
             command=command_map.get("cancel_soap_recording")
         )
@@ -361,20 +348,16 @@ class RecordingHeader:
 
             # Update button appearance based on paused state
             if is_paused:
-                # Main button stays as Stop Recording
-                self._record_btn.config(
-                    text="⏹  Stop Recording",
-                    bg=self.COLORS["button_recording"]
-                )
-                # Only pause button changes to Resume
-                self._pause_btn.config(text="▶ Resume", bg=Colors.SUCCESS)  # Green
+                # Main button stays as Stop Recording (red/danger)
+                self._record_btn.configure(text="⏹  Stop Recording", bootstyle="danger")
+                # Pause button changes to Resume (green/success)
+                self._pause_btn.configure(text="▶ Resume", bootstyle="success")
                 self._pause_timer()
             else:
-                self._record_btn.config(
-                    text="⏹  Stop Recording",
-                    bg=self.COLORS["button_recording"]
-                )
-                self._pause_btn.config(text="⏸ Pause", bg=self.COLORS["button_paused"])  # Orange
+                # Recording active - stop button is red/danger
+                self._record_btn.configure(text="⏹  Stop Recording", bootstyle="danger")
+                # Pause button is orange/warning
+                self._pause_btn.configure(text="⏸ Pause", bootstyle="warning")
                 # Check if resuming from pause (has accumulated time) vs fresh start
                 if self._timer_paused_time > 0:
                     self._resume_timer()
@@ -387,11 +370,8 @@ class RecordingHeader:
             # Hide controls frame
             self._controls_frame.pack_forget()
 
-            # Reset button to idle state
-            self._record_btn.config(
-                text="▶  Start Recording",
-                bg=self.COLORS["button_bg"]
-            )
+            # Reset button to idle state (blue/info)
+            self._record_btn.configure(text="▶  Start Recording", bootstyle="info")
 
             # Stop timer
             self._stop_timer()
@@ -496,3 +476,19 @@ class RecordingHeader:
         self._timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
 
         self._timer_id = self._timer_label.after(1000, self._update_timer_display)
+
+    # =========================================================================
+    # THEME METHODS
+    # =========================================================================
+
+    def update_theme(self, is_dark: bool) -> None:
+        """Update component for theme change.
+
+        ttk.Button with bootstyle automatically adapts to the theme,
+        so we just need to track the state for any custom styling needs.
+
+        Args:
+            is_dark: Whether dark mode is active
+        """
+        self._is_dark = is_dark
+        logger.debug(f"RecordingHeader theme updated: is_dark={is_dark}")
