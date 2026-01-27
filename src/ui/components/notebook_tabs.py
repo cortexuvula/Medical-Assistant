@@ -599,6 +599,7 @@ class NotebookTabs:
             content = text_widget.get('1.0', 'end-1c')
             self.parent.clipboard_clear()
             self.parent.clipboard_append(content)
+            self.parent.update()  # Flush clipboard to macOS pasteboard
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("Copied to clipboard")
         except Exception as e:

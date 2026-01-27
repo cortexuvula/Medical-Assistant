@@ -285,6 +285,7 @@ class HistoryMixin:
             text = f"[{entry.original_language}] {entry.original_text}\n[{entry.target_language}] {display_translation}"
             self.dialog.clipboard_clear()
             self.dialog.clipboard_append(text)
+            self.dialog.update()  # Flush clipboard to macOS pasteboard
             self.recording_status.config(text="Copied to clipboard", foreground="green")
         except Exception as e:
             ctx = ErrorContext.capture(

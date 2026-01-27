@@ -294,6 +294,7 @@ class RecordTab:
         try:
             self.parent.clipboard_clear()
             self.parent.clipboard_append(text)
+            self.parent.update()  # Flush clipboard to macOS pasteboard
             self._show_feedback("Copied to clipboard")
         except Exception as e:
             logger.error(f"Error copying analysis: {e}")

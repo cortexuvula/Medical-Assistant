@@ -516,6 +516,7 @@ class DiagnosticHistoryDialog:
                 try:
                     self.dialog.clipboard_clear()
                     self.dialog.clipboard_append(analysis.get('result_text', ''))
+                    self.dialog.update()  # Flush clipboard to macOS pasteboard
                     messagebox.showinfo(
                         "Copied",
                         "Analysis copied to clipboard.",

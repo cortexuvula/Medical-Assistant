@@ -389,6 +389,7 @@ class TranslationDialog(
             if text:
                 self.dialog.clipboard_clear()
                 self.dialog.clipboard_append(text)
+                self.dialog.update()  # Flush clipboard to macOS pasteboard
                 self.recording_status.config(text="Copied to clipboard", foreground="green")
             else:
                 self.recording_status.config(text="Nothing to copy", foreground="orange")
@@ -503,6 +504,7 @@ class TranslationDialog(
             combined = f"[{self.doctor_language}] {doctor_text}\n[{self.patient_language}] {trans_text}"
             self.dialog.clipboard_clear()
             self.dialog.clipboard_append(combined)
+            self.dialog.update()  # Flush clipboard to macOS pasteboard
             self.recording_status.config(text="Both languages copied!", foreground="green")
         except Exception as e:
             ctx = ErrorContext.capture(
