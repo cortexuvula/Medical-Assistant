@@ -150,15 +150,16 @@ class AppRecordingMixin:
             return
 
         # Show confirmation dialog before canceling
-        # Force focus to ensure keyboard shortcuts work
+        # Uses Tk-based dialog to avoid macOS GameControllerUI crash
+        from ui.dialogs.dialog_utils import tk_askyesno
         self.focus_force()
         self.update()
 
-        if not messagebox.askyesno("Cancel Recording",
-                                  "Are you sure you want to cancel the current recording?\n\n"
-                                  "All recorded audio will be discarded.",
-                                  icon="warning",
-                                  parent=self):
+        if not tk_askyesno("Cancel Recording",
+                           "Are you sure you want to cancel the current recording?\n\n"
+                           "All recorded audio will be discarded.",
+                           icon="warning",
+                           parent=self):
             return  # User clicked "No", abort cancellation
 
         self.update_status("Cancelling recording...")

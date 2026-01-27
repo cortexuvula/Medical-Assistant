@@ -285,11 +285,12 @@ class RecordingController:
         if not (self.is_recording or self.is_paused):
             return
 
-        # Show confirmation dialog
+        # Show confirmation dialog (Tk-based to avoid macOS GameControllerUI crash)
+        from ui.dialogs.dialog_utils import tk_askyesno
         self.app.focus_force()
         self.app.update()
 
-        if not messagebox.askyesno(
+        if not tk_askyesno(
             "Cancel Recording",
             "Are you sure you want to cancel the current recording?\n\n"
             "All recorded audio will be discarded.",

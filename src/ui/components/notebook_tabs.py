@@ -11,7 +11,7 @@ from utils.structured_logging import get_logger
 from ui.tooltip import ToolTip
 
 logger = get_logger(__name__)
-from ui.ui_constants import Icons
+from ui.ui_constants import Icons, SidebarConfig, Fonts
 from settings.settings import SETTINGS, save_settings
 
 
@@ -355,24 +355,35 @@ class NotebookTabs:
         self._analysis_collapsed = is_collapsed
 
         # Header with collapse button on the left
-        header_frame = ttk.Frame(bottom_frame)
+        is_dark = SETTINGS.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
+        sidebar_colors = SidebarConfig.get_sidebar_colors(is_dark)
+
+        header_frame = tk.Frame(bottom_frame, bg=sidebar_colors["bg"])
         header_frame.pack(fill=tk.X, padx=2, pady=2)
 
-        # Collapse button first (on the left)
+        # Collapse button first (on the left) — use tk.Label for clean minimal look
         # Icon shows the ACTION: when collapsed show expand icon (▼), when expanded show collapse icon (▲)
         initial_icon = Icons.EXPAND if is_collapsed else Icons.COLLAPSE
-        collapse_btn = ttk.Button(
+        collapse_btn = tk.Label(
             header_frame,
             text=initial_icon,
-            width=3,
-            bootstyle="secondary-outline",
-            command=self._toggle_analysis_panel
+            font=(Fonts.FAMILY[0], 14),
+            bg=sidebar_colors["bg"],
+            fg=sidebar_colors["fg"],
+            cursor="hand2",
         )
-        collapse_btn.pack(side=tk.LEFT, padx=2)
+        collapse_btn.pack(side=tk.LEFT, padx=5)
+        collapse_btn.bind("<Button-1>", lambda e: self._toggle_analysis_panel())
         self.components['analysis_collapse_btn'] = collapse_btn
 
         # Then the label
-        header_label = ttk.Label(header_frame, text="Analysis", font=("", 10, "bold"))
+        header_label = tk.Label(
+            header_frame,
+            text="Analysis",
+            font=(Fonts.FAMILY[0], 11, "bold"),
+            bg=sidebar_colors["bg"],
+            fg=sidebar_colors["fg"],
+        )
         header_label.pack(side=tk.LEFT, padx=5)
 
         # Analysis content frame

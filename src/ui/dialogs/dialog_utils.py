@@ -13,6 +13,100 @@ from ui.scaling_utils import ui_scaler
 from ui.dialogs.model_providers import clear_model_cache
 
 
+def tk_askyesno(title: str, message: str, parent: tk.Tk = None, icon: str = "warning") -> bool:
+    """Tk-based yes/no confirmation dialog.
+
+    Drop-in replacement for messagebox.askyesno() that uses a Toplevel window
+    instead of native macOS alerts. This avoids a macOS crash in Apple's
+    GameControllerUI framework (GCUINavigationSession.AlertPresentationAssertion)
+    that can occur when native alert sheets are deallocated during Tk's
+    autorelease pool drain cycle.
+
+    Args:
+        title: Dialog title
+        message: Message to display
+        parent: Parent window (optional)
+        icon: Icon type - "warning", "error", "info", "question" (for display)
+
+    Returns:
+        True if user clicked Yes, False otherwise
+    """
+    import sys
+    # On non-macOS platforms, use the native dialog (no crash risk)
+    if sys.platform != "darwin":
+        return messagebox.askyesno(title, message, icon=icon, parent=parent)
+
+    result = [False]
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.transient(parent)
+
+    # Main frame with padding
+    frame = ttk.Frame(dialog, padding=20)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    # Icon + message area
+    msg_frame = ttk.Frame(frame)
+    msg_frame.pack(fill=tk.X, pady=(0, 15))
+
+    # Map icon type to unicode symbol
+    icon_map = {"warning": "\u26A0", "error": "\u274C", "info": "\u2139", "question": "\u2753"}
+    icon_char = icon_map.get(icon, icon_map["warning"])
+    ttk.Label(msg_frame, text=icon_char, font=("", 24)).pack(side=tk.LEFT, padx=(0, 15))
+
+    ttk.Label(
+        msg_frame, text=message, wraplength=350, justify=tk.LEFT
+    ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    # Button frame
+    btn_frame = ttk.Frame(frame)
+    btn_frame.pack(fill=tk.X)
+
+    def yes():
+        result[0] = True
+        dialog.destroy()
+
+    def no():
+        result[0] = False
+        dialog.destroy()
+
+    ttk.Button(btn_frame, text="Yes", command=yes, bootstyle="danger", width=8).pack(
+        side=tk.RIGHT, padx=5
+    )
+    ttk.Button(btn_frame, text="No", command=no, width=8).pack(side=tk.RIGHT)
+
+    # Keyboard bindings
+    dialog.bind("<Return>", lambda e: yes())
+    dialog.bind("<Escape>", lambda e: no())
+
+    # Center on parent
+    dialog.update_idletasks()
+    w = dialog.winfo_reqwidth()
+    h = dialog.winfo_reqheight()
+    if parent:
+        px = parent.winfo_rootx() + (parent.winfo_width() // 2) - (w // 2)
+        py = parent.winfo_rooty() + (parent.winfo_height() // 2) - (h // 2)
+    else:
+        px = (dialog.winfo_screenwidth() // 2) - (w // 2)
+        py = (dialog.winfo_screenheight() // 2) - (h // 2)
+    dialog.geometry(f"+{px}+{py}")
+
+    dialog.deiconify()
+    try:
+        dialog.grab_set()
+    except tk.TclError:
+        pass
+    dialog.focus_set()
+
+    if parent:
+        parent.wait_window(dialog)
+    else:
+        dialog.wait_window(dialog)
+
+    return result[0]
+
+
 def create_toplevel_dialog(parent: tk.Tk, title: str, geometry: str = "700x500") -> tk.Toplevel:
     """Create a top-level dialog with standard properties.
 

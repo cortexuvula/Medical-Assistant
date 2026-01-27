@@ -34,7 +34,7 @@ from utils.utils import get_valid_microphones
 from settings.settings import SETTINGS, save_settings
 from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog, show_groq_settings_dialog
 from ui.tooltip import ToolTip
-from ui.ui_constants import Icons
+from ui.ui_constants import Icons, SidebarConfig, Fonts
 
 import time
 
@@ -330,27 +330,34 @@ class MedicalDictationApp(
         self.ui.components['bottom_section'] = bottom_section
 
         # Create header row with single collapse button for entire bottom section
-        bottom_header = ttk.Frame(bottom_section)
+        is_dark = SETTINGS.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
+        sidebar_colors = SidebarConfig.get_sidebar_colors(is_dark)
+
+        bottom_header = tk.Frame(bottom_section, bg=sidebar_colors["bg"])
         bottom_header.pack(fill=tk.X, padx=10, pady=(8, 5))
 
-        # Single collapse button for both panels
+        # Single collapse button for both panels — use tk.Label for clean minimal look
         self._bottom_collapsed = SETTINGS.get("bottom_section_collapsed", False)
         # Icon shows the ACTION: when collapsed show expand icon (▼), when expanded show collapse icon (▲)
         collapse_icon = Icons.EXPAND if self._bottom_collapsed else Icons.COLLAPSE
-        self._bottom_collapse_btn = ttk.Button(
+        self._bottom_collapse_btn = tk.Label(
             bottom_header,
             text=collapse_icon,
-            width=3,
-            bootstyle="secondary-outline",
-            command=self._toggle_bottom_section
+            font=(Fonts.FAMILY[0], 14),
+            bg=sidebar_colors["bg"],
+            fg=sidebar_colors["fg"],
+            cursor="hand2",
         )
         self._bottom_collapse_btn.pack(side=tk.LEFT, padx=(0, 5))
+        self._bottom_collapse_btn.bind("<Button-1>", lambda e: self._toggle_bottom_section())
 
         # Title label
-        bottom_title = ttk.Label(
+        bottom_title = tk.Label(
             bottom_header,
             text="AI Assistant & Analysis",
-            font=("", 10, "bold")
+            font=(Fonts.FAMILY[0], 11, "bold"),
+            bg=sidebar_colors["bg"],
+            fg=sidebar_colors["fg"],
         )
         bottom_title.pack(side=tk.LEFT)
         self.ui.components['bottom_header'] = bottom_header
