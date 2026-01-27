@@ -170,7 +170,7 @@ class TestElevenLabsProvider:
 
         # Check that diarization parameters were sent
         call_args = mock_session.post.call_args
-        assert call_args[1]["data"]["diarize"] is True
+        assert call_args[1]["data"]["diarize"] == "true"
         assert call_args[1]["data"]["num_speakers"] == 2
         assert call_args[1]["data"]["language_code"] == "en-US"
         assert call_args[1]["data"]["timestamps_granularity"] == "word"

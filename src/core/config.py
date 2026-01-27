@@ -112,7 +112,7 @@ class UIConfig:
 @dataclass
 class TranscriptionConfig:
     """Configuration for transcription settings."""
-    default_provider: str = STTProvider.GROQ.value
+    default_provider: str = STTProvider.ELEVENLABS.value
     chunk_duration_seconds: int = 30
     overlap_seconds: int = 2
     min_confidence: float = 0.7

@@ -185,8 +185,10 @@ class ElevenLabsProvider(BaseSTTProvider):
             diarize = elevenlabs_settings.get("diarize", True)
             
             if diarize:
-                # ElevenLabs API expects a boolean value
-                data['diarize'] = True
+                # ElevenLabs API expects lowercase "true"/"false" in multipart form data;
+                # Python's requests library sends bool True as "True" (capital T) which
+                # the API may silently ignore.
+                data['diarize'] = 'true'
                 
                 # Get number of speakers setting
                 num_speakers = elevenlabs_settings.get("num_speakers", None)
@@ -212,7 +214,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             # Add audio event tagging setting (controls ambient sound descriptions)
             # When False, transcription won't include things like "[keyboard clicking]"
             tag_audio_events = elevenlabs_settings.get("tag_audio_events", True)
-            data['tag_audio_events'] = tag_audio_events
+            data['tag_audio_events'] = str(tag_audio_events).lower()
 
             # Add entity detection if configured (scribe_v2 feature)
             # Options: "phi" (health info), "pii" (personal info), "pci" (payment info), "offensive"
@@ -318,7 +320,10 @@ class ElevenLabsProvider(BaseSTTProvider):
                         word_fields.add(key)
                         if 'speaker' in key.lower():
                             has_speaker_info = True
-                            diarization_location = f"words.{key}"
+                            # Prefer 'speaker_id' over other speaker-related fields
+                            # (e.g. 'speaker_confidence') to avoid picking a float
+                            if key == 'speaker_id' or diarization_location is None:
+                                diarization_location = f"words.{key}"
                     
                     self.logger.debug(f"Word-level fields: {word_fields}")
                     
@@ -327,6 +332,19 @@ class ElevenLabsProvider(BaseSTTProvider):
                     for i, word in enumerate(result['words'][:3]):
                         self.logger.debug(f"Word {i+1}: {word}")
                 
+                # Log unique speakers found for diagnostics
+                if has_speaker_info and diarization_location and diarization_location.startswith("words."):
+                    speaker_field_name = diarization_location.split('.')[1]
+                    unique_speakers = set()
+                    for w in result['words']:
+                        sid = w.get(speaker_field_name)
+                        if sid is not None:
+                            unique_speakers.add(sid)
+                    self.logger.info(
+                        f"Diarization result: {len(unique_speakers)} unique speakers detected "
+                        f"(field: {speaker_field_name}, speakers: {unique_speakers})"
+                    )
+
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
                     self.logger.debug(f"\nFound speaker information at: {diarization_location}")
@@ -353,7 +371,16 @@ class ElevenLabsProvider(BaseSTTProvider):
                     # Use plain text if not diarized
                     transcript = result.get("text", "")
                     self.logger.debug(f"\nUsing plain text transcript (no speaker information found)")
-                    
+
+                # Warn if diarization was enabled but only one speaker came through
+                if diarize and transcript and transcript.count("Speaker ") <= 1:
+                    self.logger.warning(
+                        "Diarization was enabled but only one speaker detected. "
+                        "This may indicate: (1) only one person is speaking, "
+                        "(2) audio quality insufficient for speaker separation, or "
+                        "(3) diarize parameter was not received by the API."
+                    )
+
             else:
                 error_msg = f"ElevenLabs API error: {response.status_code} - {response.text}"
                 self.logger.error(error_msg)
@@ -427,7 +454,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             elevenlabs_settings = settings_manager.get("elevenlabs", {})
             data = {
                 'model_id': elevenlabs_settings.get("model_id", "scribe_v2"),
-                'diarize': elevenlabs_settings.get("diarize", True),
+                'diarize': str(elevenlabs_settings.get("diarize", True)).lower(),
                 'num_speakers': elevenlabs_settings.get("num_speakers", 2),
             }
 

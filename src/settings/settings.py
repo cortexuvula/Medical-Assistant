@@ -34,7 +34,7 @@ SETTINGS_CACHE_TTL = 60.0  # Cache valid for 60 seconds
 # Global defaults
 DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
 DEFAULT_AI_PROVIDER = "openai"
-DEFAULT_STT_PROVIDER = "groq"
+DEFAULT_STT_PROVIDER = "elevenlabs"
 DEFAULT_THEME = "flatly"
 
 

@@ -40,7 +40,7 @@
     "autoscroll_transcript": true
   },
   "transcription": {
-    "default_provider": "groq",
+    "default_provider": "elevenlabs",
     "chunk_duration_seconds": 30,
     "overlap_seconds": 2,
     "min_confidence": 0.7,

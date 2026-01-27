@@ -63,7 +63,7 @@ class TranscriptionMixin:
         Returns:
             Transcription text or empty string if transcription failed
         """
-        primary_provider = SETTINGS.get("stt_provider", "deepgram")
+        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
         fallback_attempted = False
 
         # First attempt with selected provider
@@ -120,7 +120,7 @@ class TranscriptionMixin:
                 logger.error(f"Error prepending prefix audio: {e}", exc_info=True)
 
         # Get the selected STT provider from settings
-        primary_provider = SETTINGS.get("stt_provider", "deepgram")
+        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
         fallback_attempted = False
 
         # First attempt with selected provider
