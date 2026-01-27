@@ -1442,8 +1442,8 @@ class NotebookTabs:
                 # grab_set() conflicts that crash macOS .app bundles.
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.info(
-                        "Guidelines upload not yet configured \u2013 "
-                        "set CLINICAL_GUIDELINES_DATABASE_URL in .env"
+                        "Guidelines not configured \u2013 "
+                        "go to Settings \u2192 Preferences \u2192 RAG & Guidelines"
                     )
                 else:
                     self._show_guidelines_not_implemented()
