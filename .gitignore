@@ -223,3 +223,6 @@ PRPs/
 INITIAL.md
 # Screenshots
 screenshot*.png
+
+# MCP config (contains API tokens)
+.mcp.json
