@@ -1420,13 +1420,22 @@ class NotebookTabs:
         """Show the clinical guidelines upload dialog."""
         try:
             # Check if the guidelines upload manager is available before opening dialog.
-            # This avoids a Tk grab conflict crash on macOS: the dialog holds grab_set(),
-            # and showing a messagebox with parent=self.parent while grab is held
-            # causes the app to hang or crash.
+            # Catch all exceptions (not just ImportError) because importing the rag
+            # package may trigger cascading imports that fail with other error types
+            # in a frozen PyInstaller bundle.
             try:
                 from rag.guidelines_upload_manager import get_guidelines_upload_manager
-            except ImportError:
-                self._show_guidelines_not_implemented()
+            except Exception:
+                logger.info("Guidelines upload manager not available")
+                # Use status bar instead of messagebox to avoid potential Tk
+                # grab_set() conflicts that crash macOS .app bundles.
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.info(
+                        "Guidelines upload not yet configured \u2013 "
+                        "set CLINICAL_GUIDELINES_DATABASE_URL in .env"
+                    )
+                else:
+                    self._show_guidelines_not_implemented()
                 return
 
             from ui.dialogs.guidelines_upload_dialog import GuidelinesUploadDialog
@@ -1444,7 +1453,7 @@ class NotebookTabs:
 
         except Exception as e:
             self._guidelines_dialog = None
-            logger.error(f"Error showing guidelines upload dialog: {e}")
+            logger.error(f"Error showing guidelines upload dialog: {e}", exc_info=True)
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open guidelines upload: {e}")
 

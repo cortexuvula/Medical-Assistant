@@ -23,15 +23,16 @@ from dotenv import load_dotenv
 # Load environment variables
 def _load_env():
     """Load .env from multiple possible locations."""
-    paths = [
-        pathlib.Path(__file__).parent.parent.parent / '.env',
-        pathlib.Path.cwd() / '.env',
-    ]
+    paths = []
     try:
         from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)
+        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
     except Exception:
         pass
+    paths.extend([
+        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+        pathlib.Path.cwd() / '.env',  # Current working directory
+    ])
 
     for p in paths:
         try:

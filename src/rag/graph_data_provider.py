@@ -26,15 +26,16 @@ from src.utils.timeout_config import get_timeout
 # Load environment variables from multiple possible locations
 def _load_env():
     """Load .env from multiple possible locations."""
-    paths = [
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path.cwd() / '.env',  # Current working directory
-    ]
+    paths = []
     try:
         from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)  # AppData
+        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
     except Exception:
         pass
+    paths.extend([
+        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+        pathlib.Path.cwd() / '.env',  # Current working directory
+    ])
 
     for p in paths:
         try:

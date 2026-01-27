@@ -29,12 +29,12 @@ def _load_env_file():
     """Try to load .env from multiple locations."""
     # Possible .env locations in order of priority
     possible_paths = [
-        # 1. Project root (relative to this file)
-        pathlib.Path(__file__).parent.parent.parent / '.env',
-        # 2. Current working directory
-        pathlib.Path.cwd() / '.env',
-        # 3. AppData folder (for packaged apps)
+        # 1. AppData / Application Support folder (most reliable for packaged apps)
         data_folder_manager.env_file_path,
+        # 2. Project root (relative to this file) — useful when running from source
+        pathlib.Path(__file__).parent.parent.parent / '.env',
+        # 3. Current working directory
+        pathlib.Path.cwd() / '.env',
     ]
 
     for env_path in possible_paths:
@@ -113,7 +113,7 @@ class RagProcessor:
             # Log env var status to help debug
             logger.warning(
                 "Local RAG not configured - NEON_DATABASE_URL not found in environment. "
-                "Checked locations: project root .env, cwd .env, AppData .env"
+                f"Place .env at: {data_folder_manager.env_file_path}"
             )
 
         # Typing indicator state for progress feedback

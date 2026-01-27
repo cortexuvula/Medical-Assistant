@@ -3,6 +3,7 @@ Data folder management for Medical Assistant application.
 Centralizes all application data files into a proper folder structure.
 """
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -13,31 +14,44 @@ logger = get_logger(__name__)
 
 class DataFolderManager:
     """Manages the application data folder structure."""
-    
+
     def __init__(self):
         self._app_data_folder: Optional[Path] = None
         self._init_data_folder()
-    
+
     def _init_data_folder(self):
         """Initialize the data folder based on the running environment."""
         if getattr(sys, 'frozen', False):
-            # Running as compiled executable
-            app_dir = Path(sys.executable).parent
+            if sys.platform == 'darwin':
+                # macOS: use ~/Library/Application Support/MedicalAssistant
+                # Storing data inside the .app bundle is problematic because
+                # the bundle is treated as a single file, code-signing would
+                # be invalidated, and app updates replace the entire bundle.
+                self._app_data_folder = (
+                    Path.home() / "Library" / "Application Support" / "MedicalAssistant"
+                )
+            else:
+                # Windows / Linux: keep AppData next to executable
+                app_dir = Path(sys.executable).parent
+                self._app_data_folder = app_dir / "AppData"
         else:
             # Running as script - get project root
             # Navigate from src/managers/data_folder_manager.py to project root
             current_file = Path(__file__).resolve()
             # Go up from managers -> src -> project root
             app_dir = current_file.parent.parent.parent
-        
-        # Create AppData folder in the project root
-        self._app_data_folder = app_dir / "AppData"
+            self._app_data_folder = app_dir / "AppData"
+
         self._ensure_folders_exist()
+
+        # On macOS frozen builds, migrate data from the old in-bundle location
+        if getattr(sys, 'frozen', False) and sys.platform == 'darwin':
+            self._migrate_from_bundle()
     
     def _ensure_folders_exist(self):
         """Ensure all required folders exist."""
-        # Create main AppData folder
-        self._app_data_folder.mkdir(exist_ok=True)
+        # Create main AppData folder (parents=True for macOS Application Support path)
+        self._app_data_folder.mkdir(parents=True, exist_ok=True)
         
         # Create subfolders
         (self._app_data_folder / "config").mkdir(exist_ok=True)
@@ -79,6 +93,39 @@ class DataFolderManager:
         """Get the general data folder path."""
         return self._app_data_folder / "data"
     
+    def _migrate_from_bundle(self):
+        """Migrate data from the old in-bundle AppData location on macOS.
+
+        Previous builds stored data at
+        /Applications/MedicalAssistant.app/Contents/MacOS/AppData/.
+        Copy any files found there to the new ~/Library/Application Support/
+        location so users don't lose settings, database, or .env credentials.
+        """
+        old_bundle_dir = Path(sys.executable).parent / "AppData"
+        if not old_bundle_dir.exists() or not old_bundle_dir.is_dir():
+            return
+
+        migrated = 0
+        for item in old_bundle_dir.rglob("*"):
+            if not item.is_file():
+                continue
+            rel = item.relative_to(old_bundle_dir)
+            dest = self._app_data_folder / rel
+            if dest.exists():
+                continue
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(item), str(dest))
+                migrated += 1
+            except Exception as e:
+                logger.warning(f"Failed to migrate {rel} from bundle: {e}")
+
+        if migrated:
+            logger.info(
+                f"Migrated {migrated} file(s) from old bundle AppData to "
+                f"{self._app_data_folder}"
+            )
+
     def migrate_existing_files(self):
         """Migrate existing files to the new structure."""
         if getattr(sys, 'frozen', False):
