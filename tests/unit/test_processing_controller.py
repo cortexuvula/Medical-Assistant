@@ -65,6 +65,9 @@ class MockApp:
     def clipboard_append(self, text):
         self.clipboard_content = text
 
+    def update(self):
+        pass
+
     def update_status(self, message, status_type="info"):
         pass
 
