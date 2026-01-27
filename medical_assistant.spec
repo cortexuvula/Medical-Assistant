@@ -110,6 +110,17 @@ if soundcard_spec and soundcard_spec.origin:
         if os.path.exists(h_path):
             soundcard_datas.append((h_path, 'soundcard'))
 
+# Collect Whisper assets explicitly (mel_filters.npz, tokenizer files).
+# The hook-whisper.py should also do this, but the hook may not trigger if
+# PyInstaller doesn't detect the lazy `import whisper` inside functions.
+whisper_datas = []
+if platform.system() != 'Linux':
+    try:
+        whisper_datas = collect_data_files('whisper')
+        print(f"Collected {len(whisper_datas)} Whisper data files")
+    except Exception as e:
+        print(f"Warning: Could not collect Whisper data files: {e}")
+
 # Exclude heavy packages on Linux to avoid build size issues
 # Users who need local Whisper on Linux can install torch separately
 linux_excludes = [
@@ -134,7 +145,7 @@ a = Analysis(
         ('icon256x256.ico', '.'),  # Include as backup
         ('config', 'config'),  # Include config folder and its contents
         ('src', 'src'),  # Include entire src directory
-    ] + soundcard_datas + internal_datas + psycopg_datas,
+    ] + soundcard_datas + internal_datas + psycopg_datas + whisper_datas,
     hiddenimports=[
         'tkinter',
         'ttkbootstrap',
@@ -160,6 +171,11 @@ a = Analysis(
         'PIL._tkinter_finder',
         'PIL._imagingtk',
         'PIL.ImageTk',
+        # Local Whisper STT (lazy-imported inside functions, so PyInstaller
+        # misses it and never triggers hook-whisper.py for asset collection)
+        'whisper',
+        'whisper.audio',
+        'whisper.transcribe',
         # PostgreSQL driver for Neon RAG
         'psycopg',
         'psycopg.adapt',

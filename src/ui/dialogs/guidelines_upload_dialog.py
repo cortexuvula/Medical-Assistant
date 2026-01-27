@@ -404,14 +404,23 @@ class GuidelinesUploadDialog(tk.Toplevel):
         """Update the file listbox."""
         self.file_listbox.delete(0, tk.END)
 
+        total_size = 0
+        stale_files = []
         for file_path in self.selected_files:
             filename = os.path.basename(file_path)
-            size = os.path.getsize(file_path)
-            size_str = self._format_size(size)
-            self.file_listbox.insert(tk.END, f"{filename}  ({size_str})")
+            try:
+                size = os.path.getsize(file_path)
+                total_size += size
+                size_str = self._format_size(size)
+                self.file_listbox.insert(tk.END, f"{filename}  ({size_str})")
+            except OSError:
+                stale_files.append(file_path)
+
+        # Remove files that no longer exist on disk
+        for f in stale_files:
+            self.selected_files.remove(f)
 
         count = len(self.selected_files)
-        total_size = sum(os.path.getsize(f) for f in self.selected_files)
         self.file_count_label.config(
             text=f"{count} file{'s' if count != 1 else ''} ({self._format_size(total_size)})"
         )
@@ -479,12 +488,21 @@ class GuidelinesUploadDialog(tk.Toplevel):
         # Validate file sizes
         max_size = 100 * 1024 * 1024  # 100 MB for guidelines
         for file_path in self.selected_files:
-            if os.path.getsize(file_path) > max_size:
+            try:
+                if os.path.getsize(file_path) > max_size:
+                    messagebox.showerror(
+                        "File Too Large",
+                        f"File exceeds maximum size (100 MB):\n{os.path.basename(file_path)}",
+                        parent=self,
+                    )
+                    return
+            except OSError:
                 messagebox.showerror(
-                    "File Too Large",
-                    f"File exceeds maximum size (100 MB):\n{os.path.basename(file_path)}",
+                    "File Not Found",
+                    f"File no longer exists:\n{os.path.basename(file_path)}",
                     parent=self,
                 )
+                self._update_file_list()
                 return
 
         # Prepare options with guideline metadata
@@ -534,8 +552,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
             GuidelineUploadStatus.EXTRACTING: "Extracting text...",
             GuidelineUploadStatus.CHUNKING: "Splitting into sections...",
             GuidelineUploadStatus.EMBEDDING: "Generating embeddings...",
-            GuidelineUploadStatus.SYNCING_VECTOR: "Syncing to vector store...",
-            GuidelineUploadStatus.SYNCING_GRAPH: "Building knowledge graph...",
+            GuidelineUploadStatus.SYNCING: "Syncing to database...",
             GuidelineUploadStatus.COMPLETED: "Completed",
             GuidelineUploadStatus.FAILED: f"Failed: {error_message or 'Unknown error'}",
         }.get(status, "Processing...")
@@ -729,8 +746,7 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
             GuidelineUploadStatus.EXTRACTING: "Extracting text...",
             GuidelineUploadStatus.CHUNKING: "Creating sections...",
             GuidelineUploadStatus.EMBEDDING: "Generating embeddings...",
-            GuidelineUploadStatus.SYNCING_VECTOR: "Syncing to database...",
-            GuidelineUploadStatus.SYNCING_GRAPH: "Building graph...",
+            GuidelineUploadStatus.SYNCING: "Syncing to database...",
             GuidelineUploadStatus.COMPLETED: "Complete!",
             GuidelineUploadStatus.FAILED: f"Failed: {error_message or 'Error'}",
         }.get(status, "Processing...")

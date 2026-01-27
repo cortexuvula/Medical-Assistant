@@ -3,11 +3,54 @@ Whisper STT provider implementation.
 """
 
 import os
+import sys
 import tempfile
 from typing import Optional
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
+
+
+def _ensure_whisper_assets():
+    """Ensure Whisper asset files are accessible in PyInstaller bundles.
+
+    In a frozen PyInstaller app, whisper's audio.py looks for mel_filters.npz
+    at os.path.dirname(whisper.__file__) / assets /. If the assets were bundled
+    to a different location within _MEIPASS, copy them to where whisper expects.
+    """
+    if not getattr(sys, 'frozen', False):
+        return
+
+    try:
+        import whisper as _whisper_pkg
+        whisper_dir = os.path.dirname(_whisper_pkg.__file__)
+        assets_dir = os.path.join(whisper_dir, 'assets')
+        mel_path = os.path.join(assets_dir, 'mel_filters.npz')
+
+        if os.path.exists(mel_path):
+            return  # Assets already in place
+
+        # Check if assets are elsewhere in _MEIPASS
+        meipass = getattr(sys, '_MEIPASS', '')
+        alt_assets = os.path.join(meipass, 'whisper', 'assets')
+        alt_mel = os.path.join(alt_assets, 'mel_filters.npz')
+
+        if os.path.exists(alt_mel):
+            # Assets are in _MEIPASS/whisper/assets but whisper.__file__
+            # points elsewhere. Create the expected directory and symlink.
+            os.makedirs(assets_dir, exist_ok=True)
+            for fname in os.listdir(alt_assets):
+                src = os.path.join(alt_assets, fname)
+                dst = os.path.join(assets_dir, fname)
+                if not os.path.exists(dst):
+                    try:
+                        os.symlink(src, dst)
+                    except OSError:
+                        import shutil
+                        shutil.copy2(src, dst)
+    except Exception:
+        pass  # Best-effort; transcribe() will report the real error
+
 
 class WhisperProvider(BaseSTTProvider):
     """Implementation of the local Whisper STT provider."""
@@ -49,10 +92,10 @@ class WhisperProvider(BaseSTTProvider):
             True if Whisper can be imported and used
         """
         return self.is_available
-    
+
     def _check_whisper_available(self) -> bool:
         """Check if Whisper is available on the system.
-        
+
         Returns:
             True if Whisper is available, False otherwise
         """
@@ -63,26 +106,29 @@ class WhisperProvider(BaseSTTProvider):
         except ImportError:
             self.logger.warning("Local Whisper model is not available")
             return False
-    
+
     def transcribe(self, segment: AudioSegment) -> str:
         """Transcribe audio using local Whisper model.
-        
+
         Args:
             segment: Audio segment to transcribe
-            
+
         Returns:
             Transcription text
         """
         if not self.is_available:
             self.logger.warning("Whisper is not available")
             return ""
-        
+
         temp_file = None
         transcript = ""
-            
+
         try:
             # Import inside function to avoid startup delays
             import whisper
+
+            # Ensure asset files are accessible in bundled apps
+            _ensure_whisper_assets()
             
             # Convert segment to WAV for Whisper
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:

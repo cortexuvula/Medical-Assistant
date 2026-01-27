@@ -1419,16 +1419,31 @@ class NotebookTabs:
     def _show_guidelines_upload_dialog(self):
         """Show the clinical guidelines upload dialog."""
         try:
+            # Check if the guidelines upload manager is available before opening dialog.
+            # This avoids a Tk grab conflict crash on macOS: the dialog holds grab_set(),
+            # and showing a messagebox with parent=self.parent while grab is held
+            # causes the app to hang or crash.
+            try:
+                from rag.guidelines_upload_manager import get_guidelines_upload_manager
+            except ImportError:
+                self._show_guidelines_not_implemented()
+                return
+
             from ui.dialogs.guidelines_upload_dialog import GuidelinesUploadDialog
+
+            self._guidelines_dialog = None
 
             def on_upload(files: list, options: dict):
                 """Handle upload start."""
                 self._process_guidelines_uploads(files, options)
 
             dialog = GuidelinesUploadDialog(self.parent, on_upload=on_upload)
+            self._guidelines_dialog = dialog
             dialog.wait_window()
+            self._guidelines_dialog = None
 
         except Exception as e:
+            self._guidelines_dialog = None
             logger.error(f"Error showing guidelines upload dialog: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open guidelines upload: {e}")
@@ -1444,7 +1459,6 @@ class NotebookTabs:
 
         def upload_thread():
             try:
-                # Try to get guideline document manager (will be implemented later)
                 from rag.guidelines_upload_manager import get_guidelines_upload_manager
 
                 manager = get_guidelines_upload_manager()
@@ -1453,8 +1467,9 @@ class NotebookTabs:
                 self.parent.after(0, lambda: self._show_guidelines_upload_progress(files, options, manager))
 
             except ImportError:
-                # Manager not yet implemented - show info message
-                self.parent.after(0, lambda: self._show_guidelines_not_implemented())
+                # Manager not available - close the dialog first to release grab,
+                # then show info message
+                self.parent.after(0, self._dismiss_guidelines_dialog_and_notify)
             except Exception as e:
                 logger.error(f"Error processing guidelines uploads: {e}")
                 error_msg = str(e)
@@ -1462,6 +1477,21 @@ class NotebookTabs:
 
         thread = threading.Thread(target=upload_thread, daemon=True)
         thread.start()
+
+    def _dismiss_guidelines_dialog_and_notify(self):
+        """Safely dismiss the guidelines dialog before showing a notification.
+
+        This prevents Tk grab conflicts on macOS where showing a messagebox
+        while another dialog holds grab_set() causes the app to crash.
+        """
+        dialog = getattr(self, '_guidelines_dialog', None)
+        if dialog:
+            try:
+                dialog.destroy()
+            except Exception:
+                pass
+            self._guidelines_dialog = None
+        self._show_guidelines_not_implemented()
 
     def _show_guidelines_upload_progress(self, files: list, options: dict, manager):
         """Show upload progress dialog and process guideline files.
