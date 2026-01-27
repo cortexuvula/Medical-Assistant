@@ -433,10 +433,14 @@ class WorkflowResultsDialog:
     
     def copy_to_clipboard(self):
         """Copy workflow text to clipboard."""
-        self.dialog.clipboard_clear()
-        self.dialog.clipboard_append(self.workflow_text)
-        self.dialog.update()
-        
+        try:
+            import pyperclip
+            pyperclip.copy(self.workflow_text)
+        except Exception:
+            self.dialog.clipboard_clear()
+            self.dialog.clipboard_append(self.workflow_text)
+            self.dialog.update()
+
         messagebox.showinfo(
             "Copied",
             "Workflow copied to clipboard!",

@@ -495,9 +495,14 @@ class ProcessingController:
     def copy_text(self) -> None:
         """Copy active text widget content to clipboard."""
         active_widget = self.get_active_text_widget()
-        self.app.clipboard_clear()
-        self.app.clipboard_append(active_widget.get("1.0", tk.END))
-        self.app.update()  # Flush clipboard to macOS pasteboard
+        text = active_widget.get("1.0", "end-1c")
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+        except Exception:
+            self.app.clipboard_clear()
+            self.app.clipboard_append(text)
+            self.app.update()
         self.app.update_status("Text copied to clipboard.")
 
     def clear_text(self) -> None:

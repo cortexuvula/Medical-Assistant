@@ -195,6 +195,10 @@ a = Analysis(
         # pgvector for PostgreSQL vector operations
         'pgvector',
         'pgvector.psycopg',
+        # tiktoken for token counting in RAG document chunking
+        'tiktoken',
+        'tiktoken_ext',
+        'tiktoken_ext.openai_public',
     ] + internal_hiddenimports + psycopg_hiddenimports,  # Add all internal modules collected above
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},

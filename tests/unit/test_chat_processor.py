@@ -724,7 +724,7 @@ class TestCopyToClipboard:
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.settings_manager')
     def test_copy_to_clipboard(self, mock_settings, mock_mcp):
-        """Test copying text to clipboard."""
+        """Test copying text to clipboard via pyperclip."""
         mock_settings.get_chat_settings.return_value = {'enable_tools': False}
 
         from src.ai.chat_processor import ChatProcessor
@@ -735,11 +735,11 @@ class TestCopyToClipboard:
         app.update = Mock()
 
         processor = ChatProcessor(app)
-        processor._copy_to_clipboard("Test text")
 
-        app.clipboard_clear.assert_called_once()
-        app.clipboard_append.assert_called_once_with("Test text")
-        app.update.assert_called_once()
+        with patch('pyperclip.copy') as mock_pyperclip:
+            processor._copy_to_clipboard("Test text")
+            mock_pyperclip.assert_called_once_with("Test text")
+
         app.status_manager.success.assert_called()
 
 

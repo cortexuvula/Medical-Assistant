@@ -174,16 +174,17 @@ class TestTextOperations:
     """Test basic text operations."""
 
     def test_copy_text(self):
-        """Test copy_text copies to clipboard."""
+        """Test copy_text copies to clipboard via pyperclip."""
+        from unittest.mock import patch as mock_patch
         from core.controllers.processing_controller import ProcessingController
 
         mock_app = MockApp()
         mock_app.transcript_text.get.return_value = "Text to copy"
         controller = ProcessingController(mock_app)
 
-        controller.copy_text()
-
-        assert mock_app.clipboard_content == "Text to copy"
+        with mock_patch('pyperclip.copy') as mock_pyperclip:
+            controller.copy_text()
+            mock_pyperclip.assert_called_once_with("Text to copy")
 
     def test_append_text_basic(self):
         """Test append_text adds text to transcript."""

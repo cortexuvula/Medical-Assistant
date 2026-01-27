@@ -76,7 +76,26 @@ class DocumentProcessor:
             self.encoder = tiktoken.get_encoding(encoding_name)
         except Exception as e:
             logger.warning(f"Failed to load tiktoken encoding {encoding_name}: {e}")
-            self.encoder = tiktoken.get_encoding("cl100k_base")
+            self.encoder = None
+
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in text using tiktoken.
+
+        Falls back to a character-based estimate (~4 chars per token) when
+        tiktoken encodings are unavailable (e.g. PyInstaller bundle).
+
+        Args:
+            text: Text to count tokens for
+
+        Returns:
+            Number of tokens
+        """
+        if not text:
+            return 0
+        if self.encoder is not None:
+            return len(self.encoder.encode(text))
+        # Approximate: ~4 characters per token for English text
+        return max(1, len(text) // 4)
 
     def _get_ocr_manager(self):
         """Get or create the OCR provider manager.
@@ -106,18 +125,6 @@ class DocumentProcessor:
         ext = Path(file_path).suffix.lower()
         return EXTENSION_TO_TYPE.get(ext)
 
-    def count_tokens(self, text: str) -> int:
-        """Count tokens in text using tiktoken.
-
-        Args:
-            text: Text to count tokens for
-
-        Returns:
-            Number of tokens
-        """
-        if not text:
-            return 0
-        return len(self.encoder.encode(text))
 
     def extract_text(self, file_path: str, enable_ocr: bool = True) -> tuple[str, DocumentMetadata, int, bool]:
         """Extract text from a document.

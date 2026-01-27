@@ -1210,10 +1210,13 @@ Please provide a comprehensive answer based on the above context. If you cite sp
     def _copy_to_clipboard(self, text: str):
         """Copy text to clipboard."""
         try:
-            # Clear clipboard and append new text
-            self.app.clipboard_clear()
-            self.app.clipboard_append(text)
-            self.app.update()  # Required to finalize clipboard operation
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except Exception:
+                self.app.clipboard_clear()
+                self.app.clipboard_append(text)
+                self.app.update()
 
             # Show brief success message
             if hasattr(self.app, 'status_manager'):

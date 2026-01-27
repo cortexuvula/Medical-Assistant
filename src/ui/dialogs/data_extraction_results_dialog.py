@@ -273,10 +273,14 @@ class DataExtractionResultsDialog:
     
     def copy_to_clipboard(self):
         """Copy extracted data to clipboard."""
-        self.dialog.clipboard_clear()
-        self.dialog.clipboard_append(self.extracted_data)
-        self.dialog.update()
-        
+        try:
+            import pyperclip
+            pyperclip.copy(self.extracted_data)
+        except Exception:
+            self.dialog.clipboard_clear()
+            self.dialog.clipboard_append(self.extracted_data)
+            self.dialog.update()
+
         # Show confirmation
         messagebox.showinfo(
             "Copied",

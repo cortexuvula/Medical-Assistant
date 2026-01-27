@@ -1029,11 +1029,14 @@ class ChatProcessor:
     def _copy_to_clipboard(self, text: str):
         """Copy text to clipboard."""
         try:
-            # Clear clipboard and append new text
-            self.app.clipboard_clear()
-            self.app.clipboard_append(text)
-            self.app.update()  # Required to finalize clipboard operation
-            
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except Exception:
+                self.app.clipboard_clear()
+                self.app.clipboard_append(text)
+                self.app.update()
+
             # Show brief success message
             self.app.status_manager.success("Response copied to clipboard")
             logger.info("Assistant response copied to clipboard")

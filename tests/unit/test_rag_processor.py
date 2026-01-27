@@ -378,30 +378,31 @@ class TestCopyToClipboard:
                 self.processor = RagProcessor(self.mock_app)
 
     def test_copy_to_clipboard_success(self):
-        """Test successful copy to clipboard."""
+        """Test successful copy to clipboard via pyperclip."""
         self.mock_app.status_manager = Mock()
 
-        self.processor._copy_to_clipboard("Test text")
-
-        self.mock_app.clipboard_clear.assert_called_once()
-        self.mock_app.clipboard_append.assert_called_once_with("Test text")
-        self.mock_app.update.assert_called_once()
+        with patch('pyperclip.copy') as mock_pyperclip:
+            self.processor._copy_to_clipboard("Test text")
+            mock_pyperclip.assert_called_once_with("Test text")
 
     def test_copy_to_clipboard_shows_success_message(self):
         """Test that success message is shown."""
         self.mock_app.status_manager = Mock()
 
-        self.processor._copy_to_clipboard("Test text")
+        with patch('pyperclip.copy'):
+            self.processor._copy_to_clipboard("Test text")
 
         self.mock_app.status_manager.success.assert_called_once()
 
     def test_copy_to_clipboard_handles_error(self):
         """Test error handling during clipboard copy."""
-        self.mock_app.clipboard_clear.side_effect = Exception("Clipboard error")
         self.mock_app.status_manager = Mock()
 
-        # Should not raise
-        self.processor._copy_to_clipboard("Test text")
+        with patch('pyperclip.copy', side_effect=Exception("Clipboard error")):
+            # pyperclip fails, falls back to tkinter which also fails
+            self.mock_app.clipboard_clear.side_effect = Exception("Tk error")
+            # Should not raise
+            self.processor._copy_to_clipboard("Test text")
 
         self.mock_app.status_manager.error.assert_called_once()
 
@@ -410,8 +411,9 @@ class TestCopyToClipboard:
         # Remove status_manager attribute
         delattr(self.mock_app, 'status_manager') if hasattr(self.mock_app, 'status_manager') else None
 
-        # Should not raise
-        self.processor._copy_to_clipboard("Test text")
+        with patch('pyperclip.copy'):
+            # Should not raise
+            self.processor._copy_to_clipboard("Test text")
 
 
 class TestHistoryManagement:

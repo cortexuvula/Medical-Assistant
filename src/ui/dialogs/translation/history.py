@@ -283,9 +283,13 @@ class HistoryMixin:
         try:
             display_translation = entry.llm_refined_text or entry.translated_text
             text = f"[{entry.original_language}] {entry.original_text}\n[{entry.target_language}] {display_translation}"
-            self.dialog.clipboard_clear()
-            self.dialog.clipboard_append(text)
-            self.dialog.update()  # Flush clipboard to macOS pasteboard
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except Exception:
+                self.dialog.clipboard_clear()
+                self.dialog.clipboard_append(text)
+                self.dialog.update()
             self.recording_status.config(text="Copied to clipboard", foreground="green")
         except Exception as e:
             ctx = ErrorContext.capture(

@@ -597,9 +597,13 @@ class NotebookTabs:
         """
         try:
             content = text_widget.get('1.0', 'end-1c')
-            self.parent.clipboard_clear()
-            self.parent.clipboard_append(content)
-            self.parent.update()  # Flush clipboard to macOS pasteboard
+            try:
+                import pyperclip
+                pyperclip.copy(content)
+            except Exception:
+                self.parent.clipboard_clear()
+                self.parent.clipboard_append(content)
+                self.parent.update()
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("Copied to clipboard")
         except Exception as e:
