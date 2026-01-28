@@ -212,17 +212,15 @@ class SOAPProcessor:
                         logger.debug("No current_recording_id, creating new database entry")
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
 
-                    # Auto-run analyses to the side panels
+                    # Auto-run all analyses in parallel to the side panels
+                    # Each method submits work to thread pool, so they can safely run concurrently
                     if hasattr(self.app, 'document_generators') and self.app.document_generators:
                         logger.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
-                        # Run medication analysis to panel
-                        self.app.after(100, lambda sn=soap_note:
+                        self.app.after(0, lambda sn=soap_note:
                             self.app.document_generators._run_medication_to_panel(sn))
-                        # Run differential diagnosis to panel
-                        self.app.after(200, lambda sn=soap_note:
+                        self.app.after(0, lambda sn=soap_note:
                             self.app.document_generators._run_diagnostic_to_panel(sn))
-                        # Run clinical guidelines compliance check to panel
-                        self.app.after(300, lambda sn=soap_note:
+                        self.app.after(0, lambda sn=soap_note:
                             self.app.document_generators._run_compliance_to_panel(sn))
 
                 self.app.after(0, finalize_soap)
