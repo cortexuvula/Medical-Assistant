@@ -419,6 +419,65 @@ def get_current_version(cursor) -> int:
         return 0
 
 
+def _check_old_schema_exists(cursor) -> bool:
+    """Check if this is an old schema database (tables exist but no migrations table)."""
+    try:
+        # Check if guidelines table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'guidelines'
+            )
+        """)
+        has_guidelines = cursor.fetchone()[0]
+
+        # Check if migrations table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'guideline_migrations'
+            )
+        """)
+        has_migrations = cursor.fetchone()[0]
+
+        return has_guidelines and not has_migrations
+    except Exception:
+        return False
+
+
+def _bootstrap_old_schema(cursor) -> bool:
+    """Bootstrap migration tracking for old schema databases.
+
+    For databases created with the old setup_guidelines_db.sql script,
+    we need to create the migrations table and mark version 1 as done
+    (since the core tables already exist).
+    """
+    try:
+        logger.info("Detected old schema database - bootstrapping migration tracking")
+
+        # Create the migrations tracking table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guideline_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TIMESTAMPTZ DEFAULT NOW(),
+                description TEXT
+            )
+        """)
+
+        # Mark version 1 as applied (tables already exist from old schema)
+        cursor.execute("""
+            INSERT INTO guideline_migrations (version, description)
+            VALUES (1, 'Bootstrapped from old schema')
+            ON CONFLICT (version) DO NOTHING
+        """)
+
+        logger.info("Migration tracking bootstrapped - will run migration 2 to add missing columns")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to bootstrap old schema: {e}")
+        return False
+
+
 def run_guidelines_migrations(
     connection_string: Optional[str] = None,
     target_version: Optional[int] = None,
@@ -451,6 +510,13 @@ def run_guidelines_migrations(
     try:
         with psycopg.connect(conn_str) as conn:
             with conn.cursor() as cur:
+                # Check for old schema that needs bootstrapping
+                if _check_old_schema_exists(cur):
+                    if not _bootstrap_old_schema(cursor=cur):
+                        conn.rollback()
+                        return False
+                    conn.commit()
+
                 current = get_current_version(cur)
 
                 if current >= target:
