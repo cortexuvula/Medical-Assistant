@@ -472,12 +472,34 @@ class AppInitializer:
                     logger.info(f"RAG document library contains {doc_count} documents")
                 except Exception as e:
                     logger.debug(f"Could not get document count: {e}")
+
+                # Background sync from remote Neon store
+                self._sync_rag_documents_background()
             else:
                 logger.info("RAG system not configured (NEON_DATABASE_URL not set)")
 
         except Exception as e:
             logger.warning(f"RAG system initialization warning: {e}")
             self.app.rag_document_manager = None
+
+    def _sync_rag_documents_background(self):
+        """Sync RAG documents from remote Neon store in a background thread.
+
+        Non-blocking - failures are logged but don't prevent startup.
+        """
+        import threading
+
+        def _sync():
+            try:
+                manager = get_rag_document_manager()
+                synced = manager.sync_from_remote()
+                if synced > 0:
+                    logger.info(f"Background sync: added {synced} remote document(s) to local library")
+            except Exception as e:
+                logger.debug(f"Background RAG sync failed (non-critical): {e}")
+
+        thread = threading.Thread(target=_sync, daemon=True, name="rag-bg-sync")
+        thread.start()
 
     def _setup_api_dependent_features(self):
         """Configure features that depend on API availability."""

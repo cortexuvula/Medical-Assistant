@@ -27,6 +27,7 @@ class UploadStatus(str, Enum):
     SYNCING = "syncing"
     COMPLETED = "completed"
     FAILED = "failed"
+    SYNCED = "synced"  # Synced from remote, not locally uploaded
 
 
 class DocumentMetadata(BaseModel):

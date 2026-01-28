@@ -560,6 +560,16 @@ class NotebookTabs:
         upload_guidelines_btn.pack(side=tk.LEFT, padx=2)
         self.components['upload_guidelines_btn'] = upload_guidelines_btn
 
+        # Guidelines Library button
+        guidelines_library_btn = ttk.Button(
+            compliance_header,
+            text="Guidelines Library",
+            bootstyle="info-outline",
+            command=self._show_guidelines_library_dialog
+        )
+        guidelines_library_btn.pack(side=tk.LEFT, padx=2)
+        self.components['guidelines_library_btn'] = guidelines_library_btn
+
         # Compliance analysis scrollbar and text widget
         compliance_content = ttk.Frame(compliance_tab)
         compliance_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
@@ -902,6 +912,15 @@ class NotebookTabs:
             from src.managers.rag_document_manager import get_rag_document_manager
 
             manager = get_rag_document_manager()
+
+            # Sync remote documents before loading the list
+            try:
+                synced = manager.sync_from_remote()
+                if synced > 0:
+                    logger.info(f"Synced {synced} remote document(s) into local library")
+            except Exception as e:
+                logger.debug(f"Remote sync before library open failed: {e}")
+
             documents = manager.get_documents()
 
             def on_delete(doc_id: str) -> bool:
@@ -1578,6 +1597,32 @@ class NotebookTabs:
 
         thread = threading.Thread(target=process_files, daemon=True)
         thread.start()
+
+    def _show_guidelines_library_dialog(self):
+        """Show the clinical guidelines library dialog."""
+        try:
+            from src.ui.dialogs.guidelines_library_dialog import GuidelinesLibraryDialog
+            from src.rag.guidelines_vector_store import get_guidelines_vector_store
+
+            store = get_guidelines_vector_store()
+
+            def on_delete(guideline_id: str) -> bool:
+                return store.delete_guideline_complete(guideline_id)
+
+            def on_refresh():
+                return store.list_guidelines()
+
+            dialog = GuidelinesLibraryDialog(
+                self.parent,
+                on_delete=on_delete,
+                on_refresh=on_refresh,
+            )
+            dialog.wait_window()
+
+        except Exception as e:
+            logger.error(f"Error showing guidelines library dialog: {e}", exc_info=True)
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error(f"Failed to open guidelines library: {e}")
 
     def _show_guidelines_not_implemented(self):
         """Show message that guidelines upload is not yet fully implemented."""

@@ -501,6 +501,116 @@ class GuidelinesVectorStore:
 
         return results
 
+    def list_guidelines(self) -> list:
+        """List all guidelines from the remote guidelines table.
+
+        Returns:
+            List of GuidelineListItem objects from the guidelines table
+        """
+        from src.rag.guidelines_models import GuidelineListItem, GuidelineUploadStatus
+
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        g.id,
+                        g.filename,
+                        g.title,
+                        g.specialty,
+                        g.source,
+                        g.version,
+                        g.effective_date,
+                        g.document_type,
+                        g.upload_status,
+                        g.neon_synced,
+                        g.neo4j_synced,
+                        g.created_at,
+                        COUNT(ge.id) as chunk_count
+                    FROM guidelines g
+                    LEFT JOIN guideline_embeddings ge ON ge.guideline_id = g.id
+                    GROUP BY g.id, g.filename, g.title, g.specialty, g.source,
+                             g.version, g.effective_date, g.document_type,
+                             g.upload_status, g.neon_synced, g.neo4j_synced,
+                             g.created_at
+                    ORDER BY g.created_at DESC
+                """)
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            (gid, filename, title, specialty, source, version,
+             effective_date, document_type, upload_status,
+             neon_synced, neo4j_synced, created_at, chunk_count) = row
+
+            try:
+                status = GuidelineUploadStatus(upload_status) if upload_status else GuidelineUploadStatus.COMPLETED
+            except (ValueError, KeyError):
+                status = GuidelineUploadStatus.COMPLETED
+
+            from datetime import datetime
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at)
+                except Exception:
+                    created_at = datetime.now()
+            elif created_at is None:
+                created_at = datetime.now()
+
+            results.append(GuidelineListItem(
+                guideline_id=str(gid),
+                filename=filename or "Unknown",
+                title=title,
+                specialty=specialty or "general",
+                source=source or "OTHER",
+                version=version,
+                effective_date=str(effective_date) if effective_date else None,
+                document_type=document_type or "treatment_protocol",
+                chunk_count=chunk_count or 0,
+                upload_status=status,
+                neon_synced=bool(neon_synced) if neon_synced is not None else True,
+                neo4j_synced=bool(neo4j_synced) if neo4j_synced is not None else False,
+                created_at=created_at,
+            ))
+
+        return results
+
+    def delete_guideline_complete(self, guideline_id: str) -> bool:
+        """Delete a guideline completely from both guidelines and guideline_embeddings tables.
+
+        Args:
+            guideline_id: UUID of the guideline to delete
+
+        Returns:
+            True if successfully deleted
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Delete embeddings first (foreign key)
+                cur.execute(
+                    "DELETE FROM guideline_embeddings WHERE guideline_id = %s::uuid",
+                    (guideline_id,)
+                )
+                embeddings_deleted = cur.rowcount
+
+                # Delete the guideline record
+                cur.execute(
+                    "DELETE FROM guidelines WHERE id = %s::uuid",
+                    (guideline_id,)
+                )
+                guideline_deleted = cur.rowcount
+
+                conn.commit()
+
+        logger.info(
+            f"Deleted guideline {guideline_id}: "
+            f"{guideline_deleted} record(s), {embeddings_deleted} embedding(s)"
+        )
+        return guideline_deleted > 0
+
     def delete_guideline(self, guideline_id: str) -> int:
         """Delete all embeddings for a guideline.
 

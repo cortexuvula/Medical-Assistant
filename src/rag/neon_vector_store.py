@@ -612,6 +612,54 @@ class NeonVectorStore:
             logger.error(f"Failed to check search_vector column ({error_type}): {e}")
             return False
 
+    def get_remote_document_summaries(self) -> list[dict]:
+        """Get summaries of all documents stored in the remote Neon database.
+
+        Queries document_embeddings for distinct document IDs and extracts
+        metadata (filename, category, tags, chunk count) from the JSONB column.
+
+        Returns:
+            List of dicts with keys: document_id, filename, category, tags, chunk_count
+        """
+        pool = self._get_pool()
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        document_id,
+                        COUNT(*) as chunk_count,
+                        MIN(metadata) as sample_metadata
+                    FROM document_embeddings
+                    GROUP BY document_id
+                """)
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            doc_id, chunk_count, metadata_val = row
+
+            # Parse metadata
+            if metadata_val is None:
+                metadata = {}
+            elif isinstance(metadata_val, dict):
+                metadata = metadata_val
+            else:
+                try:
+                    metadata = json.loads(metadata_val)
+                except Exception:
+                    metadata = {}
+
+            results.append({
+                "document_id": str(doc_id),
+                "filename": metadata.get("filename", "Unknown"),
+                "category": metadata.get("category"),
+                "tags": metadata.get("tags", []),
+                "chunk_count": chunk_count,
+            })
+
+        return results
+
     def get_index_health(self) -> dict:
         """Get health and statistics for vector indexes.
 

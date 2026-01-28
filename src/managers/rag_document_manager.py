@@ -831,6 +831,80 @@ class RAGDocumentManager:
             logger.error(f"Background: Knowledge graph processing failed for {filename}: {e}")
             # Don't update graphiti_synced - it stays False
 
+    def sync_from_remote(self) -> int:
+        """Sync document records from remote Neon into local SQLite.
+
+        For each document in the remote vector store that is NOT already
+        in the local rag_documents table, inserts a new record with
+        status="synced" so it appears in the library dialog.
+
+        Returns:
+            Number of new documents synced
+        """
+        try:
+            vector_store = self._get_vector_store()
+            remote_docs = vector_store.get_remote_document_summaries()
+        except Exception as e:
+            logger.warning(f"Could not fetch remote document summaries: {e}")
+            return 0
+
+        if not remote_docs:
+            return 0
+
+        db = self._get_db_manager()
+        synced_count = 0
+
+        for rdoc in remote_docs:
+            doc_id = rdoc["document_id"]
+
+            # Check if already exists locally
+            existing = db.fetchone(
+                "SELECT document_id FROM rag_documents WHERE document_id = ?",
+                (doc_id,)
+            )
+            if existing:
+                continue
+
+            # Insert a synced record
+            metadata_json = json.dumps({
+                "category": rdoc.get("category"),
+                "custom_tags": rdoc.get("tags", []),
+                "synced_from_remote": True,
+            })
+
+            try:
+                db.execute(
+                    """
+                    INSERT INTO rag_documents
+                    (document_id, filename, file_type, file_path, file_size_bytes,
+                     page_count, ocr_required, upload_status, chunk_count,
+                     neon_synced, graphiti_synced, metadata_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        doc_id,
+                        rdoc.get("filename", "Unknown"),
+                        "unknown",  # We don't know the original file type
+                        None,       # No local file path
+                        0,          # Unknown file size
+                        0,          # Unknown page count
+                        False,
+                        UploadStatus.SYNCED.value,  # Distinguishes from locally-uploaded
+                        rdoc.get("chunk_count", 0),
+                        True,       # It's in Neon
+                        False,
+                        metadata_json,
+                    )
+                )
+                synced_count += 1
+            except Exception as e:
+                logger.debug(f"Could not insert synced document {doc_id}: {e}")
+
+        if synced_count > 0:
+            logger.info(f"Synced {synced_count} document(s) from remote Neon store")
+
+        return synced_count
+
     def _update_document_record(self, doc: RAGDocument):
         """Update full document record."""
         db = self._get_db_manager()

@@ -106,7 +106,7 @@ class RAGDocumentLibraryDialog(tk.Toplevel):
         status_combo = ttk.Combobox(
             filter_frame,
             textvariable=self.status_filter_var,
-            values=["All", "Completed", "Processing", "Failed"],
+            values=["All", "Completed", "Remote", "Processing", "Failed"],
             state="readonly",
             width=12,
         )
@@ -242,6 +242,7 @@ class RAGDocumentLibraryDialog(tk.Toplevel):
         self.tree.tag_configure(UploadStatus.FAILED, foreground="red")
         self.tree.tag_configure(UploadStatus.EMBEDDING, foreground="blue")
         self.tree.tag_configure(UploadStatus.SYNCING, foreground="blue")
+        self.tree.tag_configure(UploadStatus.SYNCED, foreground="teal")
 
     def _get_status_icon(self, status) -> str:
         """Get icon for status."""
@@ -256,6 +257,7 @@ class RAGDocumentLibraryDialog(tk.Toplevel):
             UploadStatus.CHUNKING: "⟳",
             UploadStatus.EMBEDDING: "⟳",
             UploadStatus.SYNCING: "⟳",
+            UploadStatus.SYNCED: "☁",
         }
         return icons.get(status, "○")
 
@@ -272,6 +274,7 @@ class RAGDocumentLibraryDialog(tk.Toplevel):
             UploadStatus.CHUNKING: "Chunking",
             UploadStatus.EMBEDDING: "Embedding",
             UploadStatus.SYNCING: "Syncing",
+            UploadStatus.SYNCED: "Remote",
         }
         return texts.get(status, str(status))
 
@@ -322,7 +325,9 @@ class RAGDocumentLibraryDialog(tk.Toplevel):
                     continue
                 if status_filter == "Failed" and doc.upload_status != UploadStatus.FAILED:
                     continue
-                if status_filter == "Processing" and doc.upload_status in [UploadStatus.COMPLETED, UploadStatus.FAILED]:
+                if status_filter == "Remote" and doc.upload_status != UploadStatus.SYNCED:
+                    continue
+                if status_filter == "Processing" and doc.upload_status in [UploadStatus.COMPLETED, UploadStatus.FAILED, UploadStatus.SYNCED]:
                     continue
 
             # Type filter
@@ -537,5 +542,6 @@ class DocumentDetailsDialog(tk.Toplevel):
             UploadStatus.CHUNKING: "Chunking",
             UploadStatus.EMBEDDING: "Embedding",
             UploadStatus.SYNCING: "Syncing",
+            UploadStatus.SYNCED: "Remote",
         }
         return texts.get(status, str(status))
