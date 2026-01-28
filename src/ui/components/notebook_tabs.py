@@ -38,7 +38,8 @@ class NotebookTabs:
         Returns:
             tuple: (notebook_container, notebook, transcript_text, soap_text, referral_text,
                     letter_text, chat_text, rag_text, context_text,
-                    medication_analysis_text, differential_analysis_text)
+                    medication_analysis_text, differential_analysis_text,
+                    compliance_analysis_text)
         """
         # Create a container frame that will clip the notebook's tab bar.
         # The notebook is placed inside with a negative y-offset so the tab
@@ -298,7 +299,8 @@ class NotebookTabs:
             text_widgets["rag"],
             None,  # No context text in notebook for workflow UI
             text_widgets.get("medication_analysis"),
-            text_widgets.get("differential_analysis")
+            text_widgets.get("differential_analysis"),
+            text_widgets.get("compliance_analysis")
         )
     
     def _create_soap_split_layout(self, frame: ttk.Frame, text_widgets: dict) -> tk.Text:

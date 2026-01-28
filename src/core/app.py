@@ -199,7 +199,8 @@ class MedicalDictationApp(
         (notebook_container, self.notebook,
          self.transcript_text, self.soap_text, self.referral_text,
          self.letter_text, self.chat_text, self.rag_text, _,
-         self.medication_analysis_text, self.differential_analysis_text) = self.ui.create_notebook()
+         self.medication_analysis_text, self.differential_analysis_text,
+         self.compliance_analysis_text) = self.ui.create_notebook()
         self.content_paned.add(notebook_container, weight=1)
 
         # Create bottom section with chat and analysis panels
