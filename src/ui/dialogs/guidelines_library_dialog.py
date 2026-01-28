@@ -212,7 +212,8 @@ class GuidelinesLibraryDialog(tk.Toplevel):
                 self.after(0, lambda g=guidelines: self._on_guidelines_loaded(g))
             except Exception as e:
                 logger.error(f"Failed to load guidelines: {e}")
-                self.after(0, lambda: self._on_load_error(str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: self._on_load_error(msg))
 
         thread = threading.Thread(target=_fetch, daemon=True)
         thread.start()
