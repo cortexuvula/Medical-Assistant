@@ -202,7 +202,12 @@ a = Analysis(
     ] + internal_hiddenimports + psycopg_hiddenimports,  # Add all internal modules collected above
     hookspath=['.', 'hooks'],  # Look for hooks in current directory and hooks folder
     hooksconfig={},
-    runtime_hooks=['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux' else (['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows' else []),
+    runtime_hooks=(
+        ['hooks/runtime_hook_linux.py'] if platform.system() == 'Linux'
+        else ['hooks/runtime_hook_windows.py'] if platform.system() == 'Windows'
+        else ['hooks/runtime_hook_macos.py'] if platform.system() == 'Darwin'
+        else []
+    ),
     excludes=linux_excludes,
     noarchive=False,
     optimize=0,

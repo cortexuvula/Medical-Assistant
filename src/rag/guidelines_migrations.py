@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 # Migration versions
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 # SQL migrations by version
 MIGRATIONS = {
@@ -183,6 +183,204 @@ MIGRATIONS = {
     -- Record this migration
     INSERT INTO guideline_migrations (version, description)
     VALUES (1, 'Initial clinical guidelines schema')
+    ON CONFLICT (version) DO NOTHING;
+    """,
+
+    2: """
+    -- Migration 2: Add missing columns for databases created with old schema
+    -- This handles databases created from setup_guidelines_db.sql which lacks
+    -- filename, upload_status, sync tracking columns, etc.
+
+    -- Add filename column if not exists (derive from file_path or title)
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'filename'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN filename TEXT;
+            -- Populate filename from file_path or title
+            UPDATE guidelines
+            SET filename = COALESCE(
+                NULLIF(SUBSTRING(file_path FROM '[^/\\\\]+$'), ''),
+                title,
+                'unknown.pdf'
+            )
+            WHERE filename IS NULL;
+        END IF;
+    END $$;
+
+    -- Add file_type column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'file_type'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN file_type VARCHAR(10);
+            -- Infer file_type from filename or file_path
+            UPDATE guidelines
+            SET file_type = LOWER(SUBSTRING(COALESCE(filename, file_path, '') FROM '\\.([^.]+)$'))
+            WHERE file_type IS NULL;
+        END IF;
+    END $$;
+
+    -- Add file_size_bytes column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'file_size_bytes'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN file_size_bytes INTEGER DEFAULT 0;
+        END IF;
+    END $$;
+
+    -- Add page_count column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'page_count'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN page_count INTEGER DEFAULT 0;
+        END IF;
+    END $$;
+
+    -- Add chunk_count column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'chunk_count'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN chunk_count INTEGER DEFAULT 0;
+            -- Populate chunk_count from actual embedding counts
+            UPDATE guidelines g
+            SET chunk_count = (
+                SELECT COUNT(*) FROM guideline_embeddings ge
+                WHERE ge.guideline_id = g.id
+            );
+        END IF;
+    END $$;
+
+    -- Add upload_status column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'upload_status'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN upload_status VARCHAR(20) DEFAULT 'completed';
+        END IF;
+    END $$;
+
+    -- Add neon_synced column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'neon_synced'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN neon_synced BOOLEAN DEFAULT TRUE;
+        END IF;
+    END $$;
+
+    -- Add neo4j_synced column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'neo4j_synced'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN neo4j_synced BOOLEAN DEFAULT FALSE;
+        END IF;
+    END $$;
+
+    -- Add error_message column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'error_message'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN error_message TEXT;
+        END IF;
+    END $$;
+
+    -- Add expiration_date column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'expiration_date'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN expiration_date DATE;
+        END IF;
+    END $$;
+
+    -- Add array columns if not exist
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'authors'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN authors TEXT[] DEFAULT '{}';
+        END IF;
+    END $$;
+
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'keywords'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN keywords TEXT[] DEFAULT '{}';
+        END IF;
+    END $$;
+
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'conditions_covered'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN conditions_covered TEXT[] DEFAULT '{}';
+        END IF;
+    END $$;
+
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'medications_covered'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN medications_covered TEXT[] DEFAULT '{}';
+        END IF;
+    END $$;
+
+    -- Add updated_at column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'updated_at'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+    END $$;
+
+    -- Ensure guideline_migrations table exists (for databases created before migrations)
+    CREATE TABLE IF NOT EXISTS guideline_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at TIMESTAMPTZ DEFAULT NOW(),
+        description TEXT
+    );
+
+    -- Record this migration
+    INSERT INTO guideline_migrations (version, description)
+    VALUES (2, 'Add missing columns for old schema compatibility')
     ON CONFLICT (version) DO NOTHING;
     """,
 }

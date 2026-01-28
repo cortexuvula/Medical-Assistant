@@ -7,6 +7,7 @@ manager initialization.
 """
 
 import os
+import sys
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -98,6 +99,9 @@ class AppInitializer:
         # Initialize the ttk.Window with theme
         ttk.Window.__init__(self.app, themename=self.app.current_theme)
 
+        # Set macOS dock icon as fallback (in case runtime hook didn't execute)
+        self._set_macos_dock_icon_fallback()
+
         # CRITICAL: Register macOS handlers IMMEDIATELY after Tk init
         # This prevents multiple windows from opening when the app is re-activated
         self._setup_macos_handlers()
@@ -165,6 +169,57 @@ class AppInitializer:
         
         # Store scaler reference in app for access by other components
         self.app.ui_scaler = ui_scaler
+
+    def _set_macos_dock_icon_fallback(self):
+        """Set the macOS dock icon as a fallback if runtime hook didn't execute.
+
+        This is a belt-and-suspenders approach: the runtime hook should set the
+        icon before Tkinter initializes, but if it failed or wasn't present,
+        this method attempts to fix it after Tk init.
+        """
+        import platform
+        if platform.system() != 'Darwin':
+            return
+
+        try:
+            from AppKit import NSApplication, NSImage
+
+            app = NSApplication.sharedApplication()
+
+            # Try to find the icon in various locations
+            icon_paths = []
+
+            # Check if we're in a frozen app bundle
+            if hasattr(sys, '_MEIPASS'):
+                bundle_path = os.path.dirname(os.path.dirname(sys._MEIPASS))
+                icon_paths.extend([
+                    os.path.join(bundle_path, 'Resources', 'icon.icns'),
+                    os.path.join(sys._MEIPASS, 'icon.icns'),
+                    os.path.join(os.path.dirname(sys._MEIPASS), 'icon.icns'),
+                ])
+
+            # Development mode: check project root
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            icon_paths.append(os.path.join(project_root, 'icon.icns'))
+
+            for icon_path in icon_paths:
+                if os.path.exists(icon_path):
+                    icon = NSImage.alloc().initWithContentsOfFile_(icon_path)
+                    if icon:
+                        app.setApplicationIconImage_(icon)
+                        logger.debug(f"Set macOS dock icon from {icon_path}")
+                        return
+                    else:
+                        logger.warning(f"Failed to load icon from {icon_path}")
+
+            logger.debug("icon.icns not found for dock icon fallback")
+
+        except ImportError:
+            # PyObjC not available - expected in non-macOS or development without PyObjC
+            logger.debug("PyObjC not available for dock icon fallback")
+        except Exception as e:
+            # Don't crash the app if icon setting fails
+            logger.warning(f"Failed to set dock icon fallback: {e}")
 
     def _setup_macos_handlers(self):
         """Register macOS event handlers immediately after Tk initialization.

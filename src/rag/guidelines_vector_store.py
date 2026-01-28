@@ -124,6 +124,14 @@ class GuidelinesVectorStore:
                 )
 
             conn_str = self._get_connection_string()
+
+            # Run migrations before creating pool to ensure schema is up to date
+            try:
+                from src.rag.guidelines_migrations import run_guidelines_migrations
+                run_guidelines_migrations(conn_str)
+            except Exception as e:
+                logger.warning(f"Could not run guidelines migrations: {e}")
+
             self._pool = psycopg_pool.ConnectionPool(
                 conn_str,
                 min_size=1,
