@@ -242,6 +242,46 @@ class GuidelinesGraphitiClient:
         await client.build_indices_and_constraints()
         logger.info("Guidelines knowledge graph initialized")
 
+    def _ensure_vector_indexes(self):
+        """Create vector indexes that graphiti-core does not create.
+
+        graphiti-core queries RELATES_TO.fact_embedding with
+        vector.similarity.cosine() but only creates range/fulltext
+        indexes.  Without a vector index the query still works but
+        triggers Neo4j warnings and uses brute-force scanning.
+        """
+        driver = self._get_neo4j_driver()
+        if driver is None:
+            return
+
+        queries = [
+            (
+                "CREATE VECTOR INDEX rel_fact_embedding IF NOT EXISTS "
+                "FOR ()-[r:RELATES_TO]-() ON (r.fact_embedding) "
+                "OPTIONS {indexConfig: {"
+                "`vector.dimensions`: 1536, "
+                "`vector.similarity_function`: 'cosine'}}"
+            ),
+            (
+                "CREATE VECTOR INDEX entity_name_embedding IF NOT EXISTS "
+                "FOR (n:Entity) ON (n.name_embedding) "
+                "OPTIONS {indexConfig: {"
+                "`vector.dimensions`: 1536, "
+                "`vector.similarity_function`: 'cosine'}}"
+            ),
+        ]
+
+        try:
+            with driver.session() as session:
+                for query in queries:
+                    try:
+                        session.run(query)
+                    except Exception as e:
+                        logger.debug(f"Could not create vector index: {e}")
+            logger.info("Guidelines Neo4j vector indexes ensured")
+        except Exception as e:
+            logger.warning(f"Failed to create Neo4j vector indexes: {e}")
+
     def initialize(self):
         """Initialize the guidelines knowledge graph schema (sync)."""
         with self._init_lock:
@@ -250,6 +290,7 @@ class GuidelinesGraphitiClient:
 
             worker = _get_guidelines_async_worker()
             worker.run_coroutine(self._initialize_async())
+            self._ensure_vector_indexes()
             self._initialized = True
 
     async def _add_guideline_episode_async(
