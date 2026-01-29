@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Any, Literal
 from enum import Enum
 
 try:
-    from pydantic import BaseModel, Field, field_validator, model_validator
+    from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
@@ -62,17 +62,18 @@ if PYDANTIC_AVAILABLE:
 
     class LoggingSettings(BaseModel):
         """Logging configuration settings."""
+        model_config = ConfigDict(extra="allow")
+
         level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
         file_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
         console_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
         max_file_size_kb: int = Field(default=200, ge=10, le=10000)
         backup_count: int = Field(default=2, ge=0, le=20)
 
-        class Config:
-            extra = "allow"
-
     class RAGResilienceSettings(BaseModel):
         """RAG resilience and circuit breaker settings."""
+        model_config = ConfigDict(extra="allow")
+
         neo4j_failure_threshold: int = Field(default=3, ge=1, le=20)
         neo4j_recovery_timeout: int = Field(default=30, ge=5, le=600)
         neon_failure_threshold: int = Field(default=5, ge=1, le=20)
@@ -81,11 +82,10 @@ if PYDANTIC_AVAILABLE:
         embedding_recovery_timeout: int = Field(default=60, ge=5, le=600)
         health_check_cache_ttl: int = Field(default=30, ge=5, le=300)
 
-        class Config:
-            extra = "allow"
-
     class RAGSearchQualitySettings(BaseModel):
         """RAG search quality enhancement settings."""
+        model_config = ConfigDict(extra="allow")
+
         enable_adaptive_threshold: bool = True
         min_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
         max_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
@@ -110,11 +110,10 @@ if PYDANTIC_AVAILABLE:
                 pass
             return self
 
-        class Config:
-            extra = "allow"
-
     class SOAPNoteSettings(BaseModel):
         """SOAP note generation settings."""
+        model_config = ConfigDict(extra="allow")
+
         model: str = "gpt-3.5-turbo"
         ollama_model: str = "llama3"
         anthropic_model: str = "claude-sonnet-4-20250514"
@@ -131,11 +130,10 @@ if PYDANTIC_AVAILABLE:
         ollama_system_message: str = ""
         gemini_system_message: str = ""
 
-        class Config:
-            extra = "allow"
-
     class AgentSettings(BaseModel):
         """Settings for an individual agent."""
+        model_config = ConfigDict(extra="allow")
+
         enabled: bool = False
         provider: str = "openai"
         model: str = "gpt-4"
@@ -143,11 +141,10 @@ if PYDANTIC_AVAILABLE:
         max_tokens: int = Field(default=500, ge=50, le=16000)
         system_prompt: str = ""
 
-        class Config:
-            extra = "allow"
-
     class AgentConfigSettings(BaseModel):
         """Collection of agent configurations."""
+        model_config = ConfigDict(extra="allow")
+
         synopsis: Optional[AgentSettings] = None
         diagnostic: Optional[AgentSettings] = None
         medication: Optional[AgentSettings] = None
@@ -155,11 +152,10 @@ if PYDANTIC_AVAILABLE:
         data_extraction: Optional[AgentSettings] = None
         workflow: Optional[AgentSettings] = None
 
-        class Config:
-            extra = "allow"
-
     class TranslationSettings(BaseModel):
         """Translation feature settings."""
+        model_config = ConfigDict(extra="allow")
+
         provider: str = "deep_translator"
         sub_provider: str = "google"
         patient_language: str = "es"
@@ -172,11 +168,10 @@ if PYDANTIC_AVAILABLE:
         refinement_model: str = "gpt-3.5-turbo"
         refinement_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
 
-        class Config:
-            extra = "allow"
-
     class TTSSettings(BaseModel):
         """Text-to-speech settings."""
+        model_config = ConfigDict(extra="allow")
+
         provider: str = "pyttsx3"
         voice: str = "default"
         rate: int = Field(default=150, ge=50, le=400)
@@ -184,11 +179,10 @@ if PYDANTIC_AVAILABLE:
         language: str = "en"
         elevenlabs_model: str = "eleven_turbo_v2_5"
 
-        class Config:
-            extra = "allow"
-
     class ChatInterfaceSettings(BaseModel):
         """Chat interface settings."""
+        model_config = ConfigDict(extra="allow")
+
         enabled: bool = True
         max_input_length: int = Field(default=2000, ge=100, le=50000)
         max_context_length: int = Field(default=8000, ge=1000, le=128000)
@@ -197,11 +191,10 @@ if PYDANTIC_AVAILABLE:
         auto_apply_changes: bool = True
         temperature: float = Field(default=0.3, ge=0.0, le=2.0)
 
-        class Config:
-            extra = "allow"
-
     class RSVPSettings(BaseModel):
         """RSVP reader settings."""
+        model_config = ConfigDict(extra="allow")
+
         wpm: int = Field(default=300, ge=50, le=2000)
         font_size: int = Field(default=48, ge=12, le=200)
         chunk_size: int = Field(default=1, ge=1, le=5)
@@ -210,9 +203,6 @@ if PYDANTIC_AVAILABLE:
         audio_cue: bool = False
         show_context: bool = False
 
-        class Config:
-            extra = "allow"
-
     class AllSettings(BaseModel):
         """
         Complete settings model with validation.
@@ -220,6 +210,8 @@ if PYDANTIC_AVAILABLE:
         This is the top-level model that validates all settings sections.
         Uses extra="allow" to permit forward compatibility with new settings.
         """
+        model_config = ConfigDict(extra="allow")
+
         # Core settings
         ai_provider: str = "openai"
         stt_provider: str = "groq"
@@ -306,9 +298,6 @@ if PYDANTIC_AVAILABLE:
             if v.lower() not in known_providers:
                 pass
             return v
-
-        class Config:
-            extra = "allow"
 
 
 # =============================================================================
