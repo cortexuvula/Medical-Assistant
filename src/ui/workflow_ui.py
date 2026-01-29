@@ -143,8 +143,8 @@ class WorkflowUI:
         if hasattr(self, '_pending_tab_refresh'):
             try:
                 self.parent.after_cancel(self._pending_tab_refresh)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to cancel pending tab refresh: {e}")
 
         # Schedule the actual refresh with 100ms debounce
         self._pending_tab_refresh = self.parent.after(100, lambda: self._do_tab_change(event))

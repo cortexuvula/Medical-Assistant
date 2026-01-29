@@ -41,7 +41,7 @@ def _load_env():
         from managers.data_folder_manager import data_folder_manager
         paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
     except Exception:
-        pass
+        pass  # Logger not available yet during early initialization
     paths.extend([
         pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
         pathlib.Path.cwd() / '.env',  # Current working directory
@@ -53,7 +53,7 @@ def _load_env():
                 load_dotenv(dotenv_path=str(p))
                 return
         except Exception:
-            pass
+            pass  # Logger not available yet during early initialization
     load_dotenv()  # Try default search
 
 _load_env()
@@ -111,8 +111,8 @@ class EmbeddingManager:
                         from src.managers.api_key_manager import get_api_key_manager
                         manager = get_api_key_manager()
                         api_key = manager.get_key("openai")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not get OpenAI API key from api_key_manager: {e}")
 
                 if not api_key:
                     raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable or configure in settings.")
@@ -151,8 +151,8 @@ class EmbeddingManager:
                     f"Embedding rate limit exceeded. Please wait {wait_time:.1f} seconds.",
                     retry_after=int(wait_time) + 1
                 )
-        except ImportError:
-            pass  # Security module not available
+        except ImportError as e:
+            logger.debug(f"Security module not available for rate limiting: {e}")
 
     def _check_circuit_breaker(self) -> bool:
         """Check if embedding circuit breaker allows requests.
@@ -163,7 +163,8 @@ class EmbeddingManager:
         try:
             from src.rag.rag_resilience import is_openai_embedding_available
             return is_openai_embedding_available()
-        except ImportError:
+        except ImportError as e:
+            logger.debug(f"Circuit breaker not available for embedding: {e}")
             return True  # No circuit breaker available
 
     def _record_success(self) -> None:
@@ -172,8 +173,8 @@ class EmbeddingManager:
             from src.rag.rag_resilience import get_openai_embedding_circuit_breaker
             cb = get_openai_embedding_circuit_breaker()
             cb._on_success()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not record success to embedding circuit breaker: {e}")
 
     def _record_failure(self) -> None:
         """Record failed embedding operation."""
@@ -181,8 +182,8 @@ class EmbeddingManager:
             from src.rag.rag_resilience import get_openai_embedding_circuit_breaker
             cb = get_openai_embedding_circuit_breaker()
             cb._on_failure()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not record failure to embedding circuit breaker: {e}")
 
     @timed("rag_generate_embeddings")
     def generate_embeddings(self, texts: list[str]) -> EmbeddingResponse:
@@ -253,8 +254,8 @@ class EmbeddingManager:
                             # OpenAI errors often have a response attribute
                             if hasattr(e, 'response') and hasattr(e.response, 'headers'):
                                 retry_after = int(e.response.headers.get('retry-after', 60))
-                        except Exception:
-                            pass
+                        except Exception as parse_err:
+                            logger.debug(f"Could not parse retry-after header: {parse_err}")
 
                         logger.warning(
                             f"Embedding rate limit hit, waiting {retry_after}s "
@@ -333,8 +334,8 @@ class EmbeddingManager:
                     from src.managers.api_key_manager import get_api_key_manager
                     manager = get_api_key_manager()
                     api_key = manager.get_key("openai")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Could not get OpenAI API key from api_key_manager (async): {e}")
 
         if not api_key:
             raise ValueError("OpenAI API key not found")
@@ -620,7 +621,8 @@ class EmbeddingCache:
 
         try:
             return provider.health_check()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Cache health check failed: {e}")
             return False
 
 

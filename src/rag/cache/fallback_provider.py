@@ -68,8 +68,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                             self._using_primary = True
                             self._last_primary_failure = None
                             return self._primary
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Primary cache health check failed during restore attempt: {e}")
                     # Update failure time for next retry
                     self._last_primary_failure = time.time()
 
@@ -96,8 +96,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                 # Retry with secondary
                 try:
                     return self._secondary.get(text_hash, model)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Secondary cache get also failed: {e}")
             return None
 
     def set(self, text_hash: str, embedding: list[float], model: str) -> bool:
@@ -111,8 +111,8 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._secondary and self._using_primary:
                 try:
                     self._primary.set(text_hash, embedding, model)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to sync embedding to primary cache: {e}")
 
             return result
         except Exception as e:
@@ -120,8 +120,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.set(text_hash, embedding, model)
-                except Exception:
-                    pass
+                except Exception as e2:
+                    logger.debug(f"Secondary cache set also failed: {e2}")
             return False
 
     def get_batch(
@@ -139,8 +139,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.get_batch(text_hashes, model)
-                except Exception:
-                    pass
+                except Exception as e2:
+                    logger.debug(f"Secondary cache get_batch also failed: {e2}")
             return {}
 
     def set_batch(
@@ -158,8 +158,8 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._secondary and self._using_primary:
                 try:
                     self._primary.set_batch(entries, model)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to sync batch to primary cache: {e}")
 
             return result
         except Exception as e:
@@ -167,8 +167,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.set_batch(entries, model)
-                except Exception:
-                    pass
+                except Exception as e2:
+                    logger.debug(f"Secondary cache set_batch also failed: {e2}")
             return 0
 
     def delete(self, text_hash: str, model: str) -> bool:
@@ -182,13 +182,13 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._primary:
                 try:
                     self._secondary.delete(text_hash, model)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to delete from secondary cache: {e}")
             else:
                 try:
                     self._primary.delete(text_hash, model)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to delete from primary cache: {e}")
 
             return result
         except Exception as e:
@@ -196,8 +196,8 @@ class FallbackCacheProvider(BaseCacheProvider):
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.delete(text_hash, model)
-                except Exception:
-                    pass
+                except Exception as e2:
+                    logger.debug(f"Secondary cache delete also failed: {e2}")
             return False
 
     def clear(self) -> int:
@@ -270,13 +270,13 @@ class FallbackCacheProvider(BaseCacheProvider):
 
         try:
             primary_healthy = self._primary.health_check()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Primary cache health check failed: {e}")
 
         try:
             secondary_healthy = self._secondary.health_check()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Secondary cache health check failed: {e}")
 
         return primary_healthy or secondary_healthy
 
@@ -284,10 +284,10 @@ class FallbackCacheProvider(BaseCacheProvider):
         """Close both cache providers."""
         try:
             self._primary.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error closing primary cache: {e}")
 
         try:
             self._secondary.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error closing secondary cache: {e}")

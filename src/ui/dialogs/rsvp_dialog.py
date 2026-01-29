@@ -41,6 +41,9 @@ import time
 import platform
 
 from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RSVPDialog:
@@ -1131,8 +1134,8 @@ class RSVPDialog:
                 winsound.Beep(800, 100)
             else:
                 self.dialog.bell()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to play section audio cue: {e}")
 
     def _prev_word(self) -> None:
         """Go to previous word(s)."""

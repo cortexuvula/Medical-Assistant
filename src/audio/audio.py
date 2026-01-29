@@ -237,8 +237,13 @@ class AudioHandler:
             # Only cleanup if we have streams to clean
             if hasattr(self, '_instance_streams') and self._instance_streams:
                 self.cleanup_resources()
-        except Exception:
-            pass  # Don't raise in __del__
+        except Exception as e:
+            # Log but don't raise in __del__ to avoid exceptions during GC
+            # Use print as logger may not be available during interpreter shutdown
+            try:
+                logger.debug(f"AudioHandler.__del__ cleanup error (non-fatal): {e}")
+            except Exception:
+                pass  # Logger may be unavailable during shutdown
     
     def reset_prefix_audio_cache(self) -> None:
         """Reset the prefix audio cache to force reloading.
@@ -666,7 +671,7 @@ class AudioHandler:
             devices = []
             # Get all microphones from soundcard
             if not SOUNDCARD_AVAILABLE:
-                self.logger.warning("Soundcard not available, returning empty device list")
+                logger.warning("Soundcard not available, returning empty device list")
                 return []
             mics = soundcard.all_microphones(include_loopback=False)
             

@@ -20,6 +20,7 @@ from pydub import AudioSegment
 from datetime import datetime
 from utils.cleanup_utils import clear_all_content, clear_content_except_context
 from utils.security import get_security_manager
+from utils.error_handling import sanitize_error_for_user
 from database.database import Database
 from audio.audio import AudioHandler
 from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
@@ -79,8 +80,10 @@ def main() -> None:
         # Don't show popup for TclErrors - these are usually harmless UI timing issues
         if exc_type.__name__ != "TclError":
             # Show error message to user for other types of errors
+            # SECURITY: Use sanitized error message to avoid exposing sensitive details
             try:
-                messagebox.showerror("Error", f"An unexpected error occurred:\n{exc_type.__name__}: {str(exc_value)}")
+                user_friendly_error = sanitize_error_for_user(exc_value)
+                messagebox.showerror("Error", f"An unexpected error occurred:\n{user_friendly_error}")
             except tk.TclError:
                 pass  # UI may be unavailable during shutdown
     

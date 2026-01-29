@@ -260,8 +260,8 @@ class PeriodicAnalyzer:
         if callback:
             try:
                 callback(-1)  # Signal stop (negative = hide countdown)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error in countdown callback during stop: {e}")
 
         logger.info(f"Stopped periodic analysis after {analysis_count} analyses")
 
@@ -306,8 +306,8 @@ class PeriodicAnalyzer:
                 if callback:
                     try:
                         callback(0)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Error signaling 'Analyzing...' state to countdown callback: {e}")
 
                 self._perform_analysis()
 

@@ -44,7 +44,7 @@ class StreamingMixin:
                 # Force update to show changes immediately
                 widget.update_idletasks()
             except Exception as e:
-                logger.debug(f"Error appending streaming chunk: {e}")
+                logger.warning(f"Error appending streaming chunk: {e}")
 
         # Schedule UI update on main thread
         self.app.after(0, update)
@@ -63,7 +63,7 @@ class StreamingMixin:
                 widget.delete('1.0', 'end')
                 widget.update_idletasks()
             except Exception as e:
-                logger.debug(f"Error preparing streaming display: {e}")
+                logger.warning(f"Error preparing streaming display: {e}")
 
         self.app.after(0, setup)
         self.app.status_manager.progress(status_msg)
@@ -89,7 +89,7 @@ class StreamingMixin:
                 # Update status
                 self.app.status_manager.success(success_msg)
             except Exception as e:
-                logger.debug(f"Error finishing streaming display: {e}")
+                logger.warning(f"Error finishing streaming display: {e}")
 
         self.app.after(0, finish)
 

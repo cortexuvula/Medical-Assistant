@@ -109,8 +109,8 @@ class LetterGeneratorMixin:
                     # Add edit separator for undo support
                     try:
                         self.app.letter_text.edit_separator()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Failed to add edit separator: {e}")
 
                     # Update status
                     self.app.status_manager.success(f"Letter to {recipient_display} generated from {source_name}")

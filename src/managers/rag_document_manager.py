@@ -97,7 +97,8 @@ class RAGDocumentManager:
             try:
                 from src.rag.graphiti_client import get_graphiti_client
                 self._graphiti_client = get_graphiti_client()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to get Graphiti client: {e}")
                 return None
         return self._graphiti_client
 
@@ -657,8 +658,8 @@ class RAGDocumentManager:
             if row[10]:  # metadata_json
                 try:
                     metadata = json.loads(row[10])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to parse metadata JSON for document: {e}")
 
             documents.append(DocumentListItem(
                 document_id=row[0],

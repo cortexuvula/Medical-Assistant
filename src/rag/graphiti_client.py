@@ -33,7 +33,7 @@ def _load_env():
         from managers.data_folder_manager import data_folder_manager
         paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
     except Exception:
-        pass
+        pass  # Logger not available yet during early initialization
     paths.extend([
         pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
         pathlib.Path.cwd() / '.env',  # Current working directory
@@ -45,7 +45,7 @@ def _load_env():
                 load_dotenv(dotenv_path=str(p))
                 return
         except Exception:
-            pass
+            pass  # Logger not available yet during early initialization
     load_dotenv()  # Try default search
 
 _load_env()
@@ -158,8 +158,8 @@ def _cleanup_async_worker():
     if _async_worker is not None:
         try:
             _async_worker.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error stopping async worker during cleanup: {e}")
         _async_worker = None
 
 
@@ -206,16 +206,16 @@ class GraphitiClient:
                 uri = uri or SETTINGS.get("graphiti_neo4j_uri")
                 user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
                 password = password or SETTINGS.get("graphiti_neo4j_password")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load Neo4j settings from SETTINGS: {e}")
 
         if not openai_key:
             try:
                 from src.managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
                 openai_key = manager.get_key("openai")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load OpenAI API key from api_key_manager: {e}")
 
         return uri, user, password, openai_key
 
@@ -430,8 +430,8 @@ class GraphitiClient:
             if cb.state == CircuitState.OPEN:
                 logger.warning("Neo4j circuit breaker open, skipping graph search")
                 return []
-        except ImportError:
-            pass  # Resilience module not available, continue without CB
+        except ImportError as e:
+            logger.debug(f"Resilience module not available, continuing without circuit breaker: {e}")
 
         if not self._initialized:
             try:
@@ -457,8 +457,8 @@ class GraphitiClient:
             from src.rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_success()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not record success to circuit breaker: {e}")
 
     def _record_failure(self):
         """Record failed operation for circuit breaker."""
@@ -466,8 +466,8 @@ class GraphitiClient:
             from src.rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_failure()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not record failure to circuit breaker: {e}")
 
     async def _get_entity_context_async(
         self,
@@ -550,8 +550,8 @@ class GraphitiClient:
             if cb.state == CircuitState.OPEN:
                 logger.debug("Neo4j circuit breaker open, health check returns False")
                 return False
-        except ImportError:
-            pass  # Resilience module not available
+        except ImportError as e:
+            logger.debug(f"Resilience module not available for health check: {e}")
 
         try:
             driver = self._get_neo4j_driver()
@@ -575,8 +575,8 @@ class GraphitiClient:
             try:
                 worker = _get_async_worker()
                 worker.run_coroutine(self._client.close())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing Graphiti client: {e}")
             self._client = None
             self._initialized = False
 
@@ -584,8 +584,8 @@ class GraphitiClient:
         if self._neo4j_driver:
             try:
                 self._neo4j_driver.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing Neo4j driver: {e}")
             self._neo4j_driver = None
 
 
@@ -603,8 +603,8 @@ def get_graphiti_client() -> Optional[GraphitiClient]:
             try:
                 from src.settings.settings import SETTINGS
                 uri = SETTINGS.get("graphiti_neo4j_uri")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not load graphiti_neo4j_uri from SETTINGS: {e}")
 
         if not uri:
             logger.debug("Graphiti not configured - Neo4j URI not found")

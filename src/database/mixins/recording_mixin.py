@@ -515,9 +515,9 @@ class RecordingMixin:
             try:
                 cursor.execute("DELETE FROM processing_queue")
                 cursor.execute("DELETE FROM sqlite_sequence WHERE name='processing_queue'")
-            except Exception:
+            except Exception as e:
                 # Table might not exist
-                pass
+                logger.debug(f"Could not clear processing_queue (table may not exist): {e}")
 
         # Delete the audio files (outside transaction - file operations should not affect DB commit)
         for filename in filenames:

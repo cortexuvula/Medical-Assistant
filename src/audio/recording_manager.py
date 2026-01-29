@@ -434,8 +434,10 @@ class RecordingManager:
             try:
                 import soundcard
                 devices = list(soundcard.all_microphones())
-            except (ImportError, Exception):
-                pass
+            except ImportError:
+                logger.debug("soundcard library not available for device enumeration")
+            except Exception as e:
+                logger.debug(f"soundcard device enumeration failed: {e}")
 
             # Try sounddevice if soundcard didn't work
             if not devices:
@@ -443,8 +445,10 @@ class RecordingManager:
                     import sounddevice as sd
                     all_devices = sd.query_devices()
                     devices = [d for d in all_devices if d.get('max_input_channels', 0) > 0]
-                except (ImportError, Exception):
-                    pass
+                except ImportError:
+                    logger.debug("sounddevice library not available for device enumeration")
+                except Exception as e:
+                    logger.debug(f"sounddevice device enumeration failed: {e}")
 
             # Update cache
             self._device_cache = devices

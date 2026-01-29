@@ -15,6 +15,9 @@ from ui.scaling_utils import ui_scaler
 from ui.dialogs.dialog_utils import create_toplevel_dialog
 from ui.tooltip import ToolTip
 from settings.settings_manager import settings_manager
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class UnifiedSettingsDialog:
@@ -1202,7 +1205,8 @@ class UnifiedSettingsDialog:
         try:
             from managers.data_folder_manager import data_folder_manager
             env_path = data_folder_manager.env_file_path
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not get env path from data_folder_manager, using fallback: {e}")
             import pathlib
             env_path = pathlib.Path(__file__).parent.parent.parent.parent / '.env'
 
@@ -1211,8 +1215,8 @@ class UnifiedSettingsDialog:
         if env_path.exists():
             try:
                 existing_lines = env_path.read_text(encoding="utf-8").splitlines()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not read existing .env file: {e}")
 
         # Build a dict of KEY=value to update
         updates = {}

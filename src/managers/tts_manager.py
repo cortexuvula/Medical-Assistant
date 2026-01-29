@@ -274,15 +274,15 @@ class TTSManager:
             sd.stop()
             # Small delay to allow audio system to clean up
             time.sleep(0.05)
-        except Exception:
-            pass  # sounddevice may not be playing
+        except Exception as e:
+            self.logger.debug(f"Could not stop sounddevice (may not be playing): {e}")
 
         # Stop pygame playback
         try:
             if self._pygame_available and pygame.mixer.music.get_busy():
                 pygame.mixer.music.stop()
-        except Exception:
-            pass  # pygame may not be initialized
+        except Exception as e:
+            self.logger.debug(f"Could not stop pygame (may not be initialized): {e}")
     
     def get_available_voices(self, language: str = None) -> List[Dict[str, Any]]:
         """Get available voices for current provider.

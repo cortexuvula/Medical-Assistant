@@ -1007,8 +1007,8 @@ class ChatProcessor:
                 if self._typing_animation_id:
                     try:
                         self.app.after_cancel(self._typing_animation_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Failed to cancel typing animation: {e}")
                     self._typing_animation_id = None
 
                 # Remove indicator text if mark exists

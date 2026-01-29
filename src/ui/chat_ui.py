@@ -638,8 +638,8 @@ class ChatUI:
                     if len(panes) >= 2:
                         # Configure the second pane (bottom_section) to have a small minimum size
                         content_paned.pane(panes[1], weight=0)  # weight=0 prevents auto-resize
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to configure pane weight: {e}")
 
             # Set the sash position (sash index 0 is between first two panes)
             content_paned.sashpos(0, new_sash_pos)
@@ -647,8 +647,8 @@ class ChatUI:
             # Force geometry update
             content_paned.update_idletasks()
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to set sash position: {e}")
 
     def _toggle_tools(self):
         """Toggle tool usage on/off."""
