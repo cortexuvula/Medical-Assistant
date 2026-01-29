@@ -7,7 +7,7 @@ Record, Process, and Generate.
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from typing import Dict, Callable
+from typing import Any, Callable, Dict, List, Optional
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,15 +26,15 @@ from ui.components.shared_panel_manager import SharedPanelManager
 class WorkflowUI:
     """Manages the workflow-oriented user interface."""
     
-    def __init__(self, parent):
+    def __init__(self, parent: tk.Tk) -> None:
         """Initialize the WorkflowUI.
-        
+
         Args:
             parent: The parent widget (main application window)
         """
         self.parent = parent
-        self.components = {}
-        self.current_workflow = "record"
+        self.components: Dict[str, Any] = {}
+        self.current_workflow: str = "record"
         
         # Initialize component handlers
         self.record_tab = RecordTab(self)
@@ -47,49 +47,8 @@ class WorkflowUI:
         self.shared_panel_manager = None  # Initialized in create_shared_panel()
 
         # Advanced analysis variable (will be set by RecordTab)
-        self.advanced_analysis_var = None
+        self.advanced_analysis_var: Optional[tk.BooleanVar] = None
         
-    def create_workflow_tabs(self, command_map: Dict[str, Callable]) -> ttk.Notebook:
-        """Create the main workflow tabs.
-
-        DEPRECATED: Use create_shared_panel() instead for the new single-panel UI.
-        This method is kept for backwards compatibility only.
-
-        Args:
-            command_map: Dictionary mapping button names to their command functions
-
-        Returns:
-            ttk.Notebook: The workflow notebook widget
-        """
-        logger.warning("create_workflow_tabs is deprecated. Use create_shared_panel() instead.")
-
-        # Create main workflow notebook with hidden tabs
-        style = ttk.Style()
-        style.layout("HiddenWorkflow.TNotebook.Tab", [])
-
-        workflow_notebook = ttk.Notebook(self.parent, style="HiddenWorkflow.TNotebook")
-
-        # Create Record tab (index 0) - uses analysis panel
-        record_frame = self.record_tab.create_record_tab(command_map)
-        workflow_notebook.add(record_frame, text="Record")
-
-        # Create placeholder tabs for backwards compatibility
-        placeholder1 = ttk.Frame(workflow_notebook)
-        workflow_notebook.add(placeholder1, text="Process")
-
-        placeholder2 = ttk.Frame(workflow_notebook)
-        workflow_notebook.add(placeholder2, text="Generate")
-
-        # Create Recordings tab (index 3)
-        recordings_frame = self.recordings_tab.create_recordings_tab(command_map)
-        workflow_notebook.add(recordings_frame, text="Recordings")
-
-        # Bind tab change event
-        workflow_notebook.bind("<<NotebookTabChanged>>", self._on_workflow_tab_changed)
-
-        self.components['workflow_notebook'] = workflow_notebook
-        return workflow_notebook
-    
     def create_shared_panel(self, command_map: Dict[str, Callable], show_collapse_button: bool = True) -> ttk.Frame:
         """Create the single shared panel area.
 
@@ -133,7 +92,7 @@ class WorkflowUI:
         self.components['shared_panel'] = container
         return container
 
-    def _on_workflow_tab_changed(self, event):
+    def _on_workflow_tab_changed(self, event: tk.Event) -> None:
         """Handle workflow tab change event with debouncing.
 
         Uses 100ms debounce to prevent multiple refreshes during rapid tab switching.
@@ -149,7 +108,7 @@ class WorkflowUI:
         # Schedule the actual refresh with 100ms debounce
         self._pending_tab_refresh = self.parent.after(100, lambda: self._do_tab_change(event))
 
-    def _do_tab_change(self, event):
+    def _do_tab_change(self, event: tk.Event) -> None:
         """Perform the actual tab change handling after debounce."""
         try:
             notebook = event.widget
@@ -182,7 +141,7 @@ class WorkflowUI:
         """
         return self.sidebar_navigation.create_sidebar(command_map)
 
-    def create_recording_header(self, command_map: Dict[str, Callable], parent=None) -> ttk.Frame:
+    def create_recording_header(self, command_map: Dict[str, Callable], parent: Optional[tk.Widget] = None) -> ttk.Frame:
         """Create the prominent recording header at the top.
 
         Args:
@@ -213,9 +172,9 @@ class WorkflowUI:
         """
         return self.context_panel.create_context_panel()
     
-    def show_quick_actions(self, actions: list):
+    def show_quick_actions(self, actions: List[Dict[str, Any]]) -> None:
         """Show quick action buttons after recording.
-        
+
         Args:
             actions: List of action dictionaries with 'text', 'command', and 'style'
         """
@@ -237,13 +196,13 @@ class WorkflowUI:
         # Show the quick actions frame
         self.components['quick_actions'].pack(pady=20)
     
-    def hide_quick_actions(self):
+    def hide_quick_actions(self) -> None:
         """Hide the quick actions frame."""
         self.components['quick_actions'].pack_forget()
     
-    def update_recording_status(self, status: str, style: str = "default"):
+    def update_recording_status(self, status: str, style: str = "default") -> None:
         """Update the recording status display.
-        
+
         Args:
             status: Status text to display
             style: Style to apply (default, recording, paused, processing)
@@ -262,7 +221,7 @@ class WorkflowUI:
             else:
                 status_label.config(foreground="")
     
-    def update_timer(self, time_str: str):
+    def update_timer(self, time_str: str) -> None:
         """Update the timer display.
 
         Args:
@@ -272,7 +231,7 @@ class WorkflowUI:
         if hasattr(self.recording_header, '_timer_label') and self.recording_header._timer_label:
             self.recording_header._timer_label.config(text=time_str)
 
-    def set_recording_state(self, recording: bool, paused: bool = False):
+    def set_recording_state(self, recording: bool, paused: bool = False) -> None:
         """Update UI elements based on recording state.
 
         Args:
@@ -281,7 +240,7 @@ class WorkflowUI:
         """
         self.record_tab.set_recording_state(recording, paused)
 
-    def update_recording_progress(self, progress_text: str):
+    def update_recording_progress(self, progress_text: str) -> None:
         """Update recording progress/status text.
 
         Args:
@@ -291,25 +250,25 @@ class WorkflowUI:
         if status_label:
             status_label.config(text=progress_text)
 
-    def start_timer(self):
+    def start_timer(self) -> None:
         """Start the recording timer."""
         # Timer is now managed by the recording header
         if hasattr(self.recording_header, '_start_timer'):
             self.recording_header._start_timer()
 
-    def pause_timer(self):
+    def pause_timer(self) -> None:
         """Pause the recording timer."""
         # Timer is now managed by the recording header
         if hasattr(self.recording_header, '_pause_timer'):
             self.recording_header._pause_timer()
 
-    def resume_timer(self):
+    def resume_timer(self) -> None:
         """Resume the recording timer."""
         # Timer is now managed by the recording header
         if hasattr(self.recording_header, '_resume_timer'):
             self.recording_header._resume_timer()
 
-    def stop_timer(self):
+    def stop_timer(self) -> None:
         """Stop and reset the recording timer."""
         # Timer is now managed by the recording header
         if hasattr(self.recording_header, '_stop_timer'):
@@ -332,14 +291,14 @@ class WorkflowUI:
         return self.notebook_tabs.create_notebook()
     
     # Expose component methods for backwards compatibility
-    def _refresh_recordings_list(self):
+    def _refresh_recordings_list(self) -> None:
         """Refresh the recordings list from database."""
         self.recordings_tab._refresh_recordings_list()
     
-    def _clear_chat_history(self):
+    def _clear_chat_history(self) -> None:
         """Clear the chat conversation history."""
         self.notebook_tabs._clear_chat_history()
     
-    def _clear_rag_history(self):
+    def _clear_rag_history(self) -> None:
         """Clear the RAG conversation history."""
         self.notebook_tabs._clear_rag_history()

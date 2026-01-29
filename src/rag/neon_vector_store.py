@@ -13,14 +13,12 @@ Performance optimizations:
 """
 
 import json
-import logging
 import os
 import pathlib
 from typing import Any, Optional
-from uuid import UUID
 
 from dotenv import load_dotenv
-from utils.structured_logging import timed
+from utils.structured_logging import get_logger, timed
 
 from src.rag.models import VectorSearchQuery, VectorSearchResult
 from src.rag.exceptions import (
@@ -55,7 +53,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default HNSW search parameter
 # Higher values = better recall but slower search

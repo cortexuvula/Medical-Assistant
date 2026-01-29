@@ -7,7 +7,6 @@ Manages secure storage of API keys using encryption.
 
 import sys
 import tkinter as tk
-from pathlib import Path
 from typing import Dict, Optional
 from managers.data_folder_manager import data_folder_manager
 from utils.structured_logging import get_logger

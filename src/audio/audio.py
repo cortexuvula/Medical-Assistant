@@ -204,9 +204,9 @@ class AudioHandler:
                             stream.stop()
                             stream.close()
                             streams_closed += 1
-                        except Exception as e:
+                        except (OSError, AttributeError) as e:
                             logger.error(f"AudioHandler: Error stopping stream for {purpose}: {str(e)}")
-                except Exception as e:
+                except (OSError, KeyError) as e:
                     logger.error(f"AudioHandler: Error cleaning up stream {purpose}: {str(e)}", exc_info=True)
 
             # Clear instance stream tracking
@@ -216,7 +216,7 @@ class AudioHandler:
         try:
             if SOUNDDEVICE_AVAILABLE:
                 sd.stop()
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             logger.error(f"AudioHandler: Error stopping sounddevice: {str(e)}", exc_info=True)
 
         # Reset any internal state variables that might persist
@@ -685,7 +685,7 @@ class AudioHandler:
                 devices.append(device_info)
                 
             return devices
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Error getting input devices: {str(e)}", exc_info=True)
             return []
             
@@ -718,7 +718,7 @@ class AudioHandler:
                     try:
                         existing_info['stream'].stop()
                         existing_info['stream'].close()
-                    except Exception as e:
+                    except (OSError, AttributeError) as e:
                         logger.error(f"Error stopping existing stream: {e}")
                 AudioHandler._active_streams.pop(stream_purpose, None)
                 # Also remove from instance tracking if present
@@ -729,52 +729,9 @@ class AudioHandler:
             self.listening_device = mic_name # Store the requested name
             self.callback_function = callback # Store callback
 
-            # Determine if sounddevice should be used (typically for Voicemeeter/virtual cables)
-            # or if soundcard should be attempted (for physical devices, though problematic).
-            # Let's prefer sounddevice if possible as it seems more reliable with indexing.
-            use_sounddevice = True # Default to sounddevice for now based on previous issues
-
-
-            if use_sounddevice:
-                logger.info(f"Using sounddevice backend for: {mic_name}")
-                # Delegate to the sounddevice-specific method, passing the name
-                stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
-                return stop_function
-            else:
-                # --- Soundcard Logic (currently disabled, potentially problematic) ---
-                logger.info(f"Attempting to use soundcard backend for: {mic_name}")
-                if not SOUNDCARD_AVAILABLE:
-                    logger.error("Soundcard not available, cannot use soundcard backend")
-                    return lambda: None
-                try:
-                    mics = soundcard.all_microphones(include_loopback=True)
-                    selected_sc_device = None
-                    for mic in mics:
-                        # Need a robust way to match mic_name to soundcard mic object name
-                        if mic_name in mic.name: # Simple substring match, might be fragile
-                            selected_sc_device = mic
-                            logger.info(f"Found soundcard match: {mic.name}")
-                            break
-
-                    if not selected_sc_device:
-                        logger.error(f"Could not find a matching soundcard device for '{mic_name}'. Falling back to sounddevice.")
-                        # Fallback to sounddevice if soundcard match fails
-                        return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
-                except Exception as e:
-                    logger.error(f"Soundcard backend failed: {e}. Falling back to sounddevice.")
-                    return self._listen_with_sounddevice(mic_name, callback, phrase_time_limit)
-
-                # Start recording thread using soundcard
-                self.recording = True
-                self.recorded_frames = []
-                self.recording_thread = threading.Thread(
-                    target=self._background_recording_thread_sc,
-                    args=(selected_sc_device, phrase_time_limit), # Pass soundcard device object
-                    daemon=True
-                )
-                self.recording_thread.start()
-                logger.info(f"Started soundcard background thread for {selected_sc_device.name}")
-                return lambda wait_for_stop=True: self._stop_listening(wait_for_stop)
+            logger.info(f"Using sounddevice backend for: {mic_name}")
+            stop_function = self._listen_with_sounddevice(mic_name, callback, phrase_time_limit, stream_purpose)
+            return stop_function
 
         except Exception as e:
             logger.error(f"Error in listen_in_background for '{mic_name}': {e}", exc_info=True)
@@ -884,7 +841,7 @@ class AudioHandler:
                 channels = 1
             else:
                 logger.warning(f"Device {device_info['name']} reports {max_channels} input channels")
-        except Exception as e:
+        except (KeyError, AttributeError) as e:
             logger.warning(f"Error determining channel count for {device_info['name']}: {e}. Defaulting to {channels}.")
 
         self.channels = channels
@@ -934,7 +891,7 @@ class AudioHandler:
 
                     stream.close()
                     logger.info("sounddevice InputStream stopped and closed")
-                except Exception as e:
+                except (OSError, AttributeError) as e:
                     logger.error(f"Error stopping sounddevice stream: {e}", exc_info=True)
                 finally:
                     # Clear references

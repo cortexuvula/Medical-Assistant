@@ -6,7 +6,6 @@ to update UI elements during long operations.
 """
 
 import time
-import tkinter as tk
 from typing import Callable, Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -186,32 +185,3 @@ class DocumentGenerationProgress:
         return tracker
 
 
-def create_progress_callback(status_manager, progress_bar=None) -> Callable[[ProgressInfo], None]:
-    """
-    Create a progress callback for UI updates.
-    
-    Args:
-        status_manager: Application status manager
-        progress_bar: Optional progress bar widget
-        
-    Returns:
-        Callback function for progress updates
-    """
-    def callback(progress: ProgressInfo):
-        """Update UI with progress information."""
-        # Update status message
-        status_manager.progress(str(progress))
-        
-        # Update progress bar if available
-        if progress_bar and hasattr(progress_bar, 'config'):
-            try:
-                # For determinate progress bar
-                progress_bar.config(value=progress.percentage)
-            except (tk.TclError, AttributeError):
-                # Fallback for indeterminate progress bar or widget destroyed
-                pass
-                
-        # Log progress
-        logger.debug(f"Progress: {progress.current}/{progress.total} - {progress.message}")
-    
-    return callback

@@ -93,32 +93,6 @@ def temp_file(suffix: str = '', prefix: str = 'medical_temp_') -> Generator[str,
                 logger.warning(f"Failed to delete temp file {path}: {e}")
 
 
-@contextmanager
-def temp_directory(prefix: str = 'medical_temp_') -> Generator[str, None, None]:
-    """Context manager for creating temporary directories with automatic cleanup.
-
-    Creates a temporary directory that is automatically deleted (including all
-    contents) when the context exits.
-
-    Args:
-        prefix: Prefix for the temp directory name
-
-    Yields:
-        str: Path to the temporary directory
-    """
-    import shutil
-    path = None
-    try:
-        path = tempfile.mkdtemp(prefix=prefix)
-        yield path
-    finally:
-        if path and os.path.exists(path):
-            try:
-                shutil.rmtree(path)
-            except OSError as e:
-                logger.warning(f"Failed to delete temp directory {path}: {e}")
-
-
 def safe_delete_file(file_path: str, log_errors: bool = True) -> bool:
     """Safely delete a file, handling errors gracefully.
 

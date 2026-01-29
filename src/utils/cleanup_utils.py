@@ -79,60 +79,6 @@ def clear_all_content(app_instance: "MedicalDictationApp") -> None:
         app_instance.update_status("All content cleared", "info")
 
 
-def clear_text_only(app_instance: "MedicalDictationApp") -> None:
-    """
-    Clear just the text widgets without affecting audio segments.
-
-    Args:
-        app_instance: The main application instance with references to text widgets
-    """
-    logger.info("Clearing all text content")
-    
-    # Clear all text widgets
-    widgets_to_clear = [app_instance.transcript_text, app_instance.soap_text, app_instance.referral_text, app_instance.letter_text, app_instance.context_text]
-    
-    # Add chat_text if it exists
-    if hasattr(app_instance, 'chat_text'):
-        widgets_to_clear.append(app_instance.chat_text)
-    
-    for widget in widgets_to_clear:
-        if widget:
-            widget.delete("1.0", tk.END)
-            widget.edit_reset()  # Clear undo/redo history
-    
-    # Update status to inform the user
-    if hasattr(app_instance, "update_status"):
-        app_instance.update_status("All text cleared", "info")
-
-
-def clear_audio_only(app_instance: "MedicalDictationApp") -> None:
-    """
-    Clear just the audio segments without affecting text widgets.
-
-    Args:
-        app_instance: The main application instance with references to audio segments
-    """
-    logger.info("Clearing all audio content")
-    
-    # Clear audio state via AudioStateManager
-    if hasattr(app_instance, "audio_state_manager") and app_instance.audio_state_manager:
-        app_instance.audio_state_manager.clear_all()
-        logger.info("Cleared all audio via AudioStateManager")
-    
-    # Clear legacy audio segments (for backward compatibility)
-    # Clear file-loaded audio segments
-    if hasattr(app_instance, "audio_segments"):
-        app_instance.audio_segments = []
-    
-    # Clear text chunks (for scratch-that functionality)
-    if hasattr(app_instance, "text_chunks"):
-        app_instance.text_chunks = []
-    
-    # Update status to inform the user
-    if hasattr(app_instance, "update_status"):
-        app_instance.update_status("All audio cleared", "info")
-
-
 def clear_content_except_context(app_instance: "MedicalDictationApp") -> None:
     """
     Clear all content except the context tab text.
