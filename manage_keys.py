@@ -10,8 +10,11 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from src.utils.security import get_security_manager
-from src.core.config import get_config
+# Add src to path for consistent imports (matches main.py)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+
+from utils.security import get_security_manager
+from core.config import get_config
 
 
 def add_key(args):

@@ -11,7 +11,6 @@ Enhanced with:
 - Driver reuse for efficiency
 """
 
-import logging
 import os
 import pathlib
 from dataclasses import dataclass, field
@@ -21,7 +20,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from src.utils.timeout_config import get_timeout
+from utils.structured_logging import get_logger
+from utils.timeout_config import get_timeout
 
 # Load environment variables from multiple possible locations
 def _load_env():
@@ -48,7 +48,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EntityType(str, Enum):
@@ -462,7 +462,7 @@ class GraphDataProvider:
 
         if not uri or not password:
             try:
-                from src.settings.settings import SETTINGS
+                from settings.settings import SETTINGS
                 uri = uri or SETTINGS.get("graphiti_neo4j_uri")
                 user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
                 password = password or SETTINGS.get("graphiti_neo4j_password")
@@ -487,7 +487,7 @@ class GraphDataProvider:
     def _record_success(self):
         """Record successful operation for circuit breaker."""
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_success()
         except Exception:
@@ -496,7 +496,7 @@ class GraphDataProvider:
     def _record_failure(self):
         """Record failed operation for circuit breaker."""
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_failure()
         except Exception:
@@ -520,8 +520,8 @@ class GraphDataProvider:
         """
         # Check circuit breaker first for fast fail
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
-            from src.utils.resilience import CircuitState
+            from rag.rag_resilience import get_neo4j_circuit_breaker
+            from utils.resilience import CircuitState
 
             cb = get_neo4j_circuit_breaker()
             if cb.state == CircuitState.OPEN:
@@ -672,8 +672,8 @@ class GraphDataProvider:
         """
         # Fast-fail if circuit breaker is open
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
-            from src.utils.resilience import CircuitState
+            from rag.rag_resilience import get_neo4j_circuit_breaker
+            from utils.resilience import CircuitState
 
             cb = get_neo4j_circuit_breaker()
             if cb.state == CircuitState.OPEN:

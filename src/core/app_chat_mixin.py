@@ -6,7 +6,7 @@ These are extracted as a mixin to reduce the size of the main app.py file.
 """
 
 import tkinter as tk
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from utils.structured_logging import get_logger
 
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 class AppChatMixin:
     """Mixin class providing chat-related methods for MedicalDictationApp."""
 
-    def _handle_chat_message(self, message: str):
+    def _handle_chat_message(self, message: str) -> None:
         """Handle chat message from the chat UI."""
         logger.info(f"Chat message received: {message}")
 
@@ -78,7 +78,7 @@ class AppChatMixin:
 
             self.chat_processor.process_message(message, on_complete)
 
-    def _update_chat_suggestions(self):
+    def _update_chat_suggestions(self) -> None:
         """Update chat suggestions based on current tab and content."""
         if not hasattr(self, 'chat_ui') or not self.chat_ui:
             return
@@ -95,7 +95,7 @@ class AppChatMixin:
         custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
 
         # Helper to normalize suggestion to object format
-        def normalize_suggestion(s):
+        def normalize_suggestion(s: Any) -> Optional[Dict[str, Any]]:
             if isinstance(s, dict) and "text" in s:
                 return s
             elif isinstance(s, str):
@@ -250,7 +250,7 @@ class AppChatMixin:
                 ]
         return []
 
-    def _focus_chat_input(self):
+    def _focus_chat_input(self) -> None:
         """Focus the chat input field."""
         if hasattr(self, 'chat_ui') and self.chat_ui:
             self.chat_ui.focus_input()

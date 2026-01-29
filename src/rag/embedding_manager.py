@@ -15,17 +15,16 @@ Enhanced with:
 import asyncio
 import hashlib
 import json
-import logging
 import os
 import pathlib
 import time
 from typing import Optional
 
 from dotenv import load_dotenv
-from utils.structured_logging import timed
+from utils.structured_logging import get_logger, timed
 
-from src.rag.models import EmbeddingRequest, EmbeddingResponse
-from src.rag.exceptions import (
+from rag.models import EmbeddingRequest, EmbeddingResponse
+from rag.exceptions import (
     EmbeddingError,
     RateLimitError as RAGRateLimitError,
     CircuitBreakerOpenError,
@@ -58,7 +57,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Throttle delay between batches (ms)
 BATCH_THROTTLE_MS = 100
@@ -108,7 +107,7 @@ class EmbeddingManager:
                 if not api_key:
                     # Try to get from application settings
                     try:
-                        from src.managers.api_key_manager import get_api_key_manager
+                        from managers.api_key_manager import get_api_key_manager
                         manager = get_api_key_manager()
                         api_key = manager.get_key("openai")
                     except Exception as e:
@@ -140,8 +139,8 @@ class EmbeddingManager:
             RateLimitError: If rate limit is exceeded
         """
         try:
-            from src.utils.security import get_security_manager
-            from src.utils.exceptions import RateLimitError
+            from utils.security import get_security_manager
+            from utils.exceptions import RateLimitError
 
             security_manager = get_security_manager()
             is_allowed, wait_time = security_manager.check_rate_limit("openai_embeddings")
@@ -161,7 +160,7 @@ class EmbeddingManager:
             True if requests are allowed, False if circuit is open
         """
         try:
-            from src.rag.rag_resilience import is_openai_embedding_available
+            from rag.rag_resilience import is_openai_embedding_available
             return is_openai_embedding_available()
         except ImportError as e:
             logger.debug(f"Circuit breaker not available for embedding: {e}")
@@ -170,7 +169,7 @@ class EmbeddingManager:
     def _record_success(self) -> None:
         """Record successful embedding operation."""
         try:
-            from src.rag.rag_resilience import get_openai_embedding_circuit_breaker
+            from rag.rag_resilience import get_openai_embedding_circuit_breaker
             cb = get_openai_embedding_circuit_breaker()
             cb._on_success()
         except Exception as e:
@@ -179,7 +178,7 @@ class EmbeddingManager:
     def _record_failure(self) -> None:
         """Record failed embedding operation."""
         try:
-            from src.rag.rag_resilience import get_openai_embedding_circuit_breaker
+            from rag.rag_resilience import get_openai_embedding_circuit_breaker
             cb = get_openai_embedding_circuit_breaker()
             cb._on_failure()
         except Exception as e:
@@ -331,7 +330,7 @@ class EmbeddingManager:
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
                 try:
-                    from src.managers.api_key_manager import get_api_key_manager
+                    from managers.api_key_manager import get_api_key_manager
                     manager = get_api_key_manager()
                     api_key = manager.get_key("openai")
                 except Exception as e:

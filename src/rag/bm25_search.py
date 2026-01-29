@@ -5,13 +5,13 @@ Uses PostgreSQL's ts_vector/ts_query for keyword-based search
 to complement vector similarity search.
 """
 
-import logging
+from utils.structured_logging import get_logger
 import re
 from typing import Optional
 
 from rag.search_config import SearchQualityConfig, get_search_quality_config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BM25SearchResult:

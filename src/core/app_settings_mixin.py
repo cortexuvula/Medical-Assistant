@@ -7,6 +7,8 @@ These are extracted as a mixin to reduce the size of the main app.py file.
 
 import tkinter as tk
 from tkinter import messagebox
+from typing import Any, Dict, Optional
+
 import ttkbootstrap as ttk
 
 from settings import settings_manager
@@ -240,7 +242,7 @@ class AppSettingsMixin:
                            ollama_model: str,
                            anthropic_model: str, gemini_model: str = "",
                            icd_code_version: str = "ICD-9",
-                           provider_messages: dict = None) -> None:
+                           provider_messages: Optional[Dict[str, Any]] = None) -> None:
         """Save SOAP note settings with per-provider system messages.
 
         Args:

@@ -68,7 +68,7 @@ class ConnectionMixin:
                     if conn is not None:
                         conn.close()
                         logger.debug(f"Closed database connection for thread {thread_id}")
-                except Exception as e:
+                except (sqlite3.Error, AttributeError) as e:
                     logger.warning(f"Error closing connection for thread {thread_id}: {e}")
 
             self._thread_connections.clear()
@@ -236,7 +236,7 @@ class ConnectionMixin:
             try:
                 self._local.conn.close()
                 logger.debug(f"Disconnected database connection for thread {thread_id}")
-            except Exception as e:
+            except sqlite3.Error as e:
                 logger.warning(f"Error closing database connection: {e}")
             finally:
                 self._local.conn = None
@@ -295,7 +295,7 @@ class ConnectionMixin:
                         conn.close()
                         cleaned += 1
                         logger.debug(f"Cleaned up stale connection from thread {thread_id}")
-                    except Exception as e:
+                    except sqlite3.Error as e:
                         logger.warning(f"Error closing stale connection: {e}")
 
         if cleaned > 0:

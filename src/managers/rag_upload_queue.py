@@ -5,7 +5,6 @@ Manages async document uploads with queue management and cancellation support.
 Allows non-blocking document uploads with progress tracking.
 """
 
-import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -15,8 +14,9 @@ from enum import Enum
 from typing import Any, Callable, Optional
 
 from rag.cancellation import CancellationError, CancellationToken
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UploadTaskStatus(Enum):

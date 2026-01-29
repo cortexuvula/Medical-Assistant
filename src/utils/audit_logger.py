@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from managers.data_folder_manager import data_folder_manager
+from utils.structured_logging import get_logger
 
 
 class AuditEventType(str, Enum):
@@ -117,7 +118,7 @@ class AuditLogger:
         self._log_path = self._log_dir / "audit.log"
 
         # Set up Python logger for audit
-        self._logger = logging.getLogger("audit")
+        self._logger = get_logger("audit")
         self._logger.setLevel(logging.INFO)
         self._logger.propagate = False  # Don't propagate to root logger
 

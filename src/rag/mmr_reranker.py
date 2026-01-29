@@ -7,14 +7,14 @@ relevant to the query and diverse from already-selected documents.
 MMR formula: MMR = λ * relevance - (1-λ) * max_similarity_to_selected
 """
 
-import logging
 import math
 from typing import Optional
 
 from rag.models import HybridSearchResult
 from rag.search_config import SearchQualityConfig, get_search_quality_config
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MMRReranker:

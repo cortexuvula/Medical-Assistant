@@ -14,7 +14,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
 
-from src.rag.models import DocumentListItem, DocumentType, UploadStatus
+from rag.models import DocumentListItem, DocumentType, UploadStatus
 
 
 class RAGDocumentLibraryDialog(tk.Toplevel):

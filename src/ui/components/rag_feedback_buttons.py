@@ -4,14 +4,15 @@ RAG Feedback Buttons Component.
 Provides upvote/downvote/flag buttons for RAG search results.
 """
 
-import logging
 import tkinter as tk
 from typing import Callable, Optional
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import LEFT
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RAGFeedbackButtons:

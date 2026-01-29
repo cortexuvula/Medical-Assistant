@@ -12,15 +12,14 @@ Architecture Note:
 """
 
 import json
-import logging
 import os
 import pathlib
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from utils.structured_logging import timed
+from utils.structured_logging import get_logger, timed
 
-from src.rag.guidelines_models import GuidelineSearchResult
+from rag.guidelines_models import GuidelineSearchResult
 
 
 # Load environment variables from multiple possible locations
@@ -48,7 +47,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default HNSW search parameter for guidelines (can be lower than main RAG)
 DEFAULT_HNSW_EF_SEARCH = 40
@@ -88,7 +87,7 @@ class GuidelinesVectorStore:
 
         # Try settings
         try:
-            from src.settings.settings import SETTINGS
+            from settings.settings import SETTINGS
             guidelines_settings = SETTINGS.get("clinical_guidelines", {})
             conn_str = guidelines_settings.get("database_url")
             if conn_str:
@@ -127,7 +126,7 @@ class GuidelinesVectorStore:
 
             # Run migrations before creating pool to ensure schema is up to date
             try:
-                from src.rag.guidelines_migrations import run_guidelines_migrations
+                from rag.guidelines_migrations import run_guidelines_migrations
                 run_guidelines_migrations(conn_str)
             except Exception as e:
                 logger.warning(f"Could not run guidelines migrations: {e}")
@@ -515,7 +514,7 @@ class GuidelinesVectorStore:
         Returns:
             List of GuidelineListItem objects from the guidelines table
         """
-        from src.rag.guidelines_models import GuidelineListItem, GuidelineUploadStatus
+        from rag.guidelines_models import GuidelineListItem, GuidelineUploadStatus
 
         pool = self._get_pool()
 

@@ -12,14 +12,14 @@ Provides pattern-based and dictionary-based extraction of medical entities:
 """
 
 import json
-import logging
+from utils.structured_logging import get_logger
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MedicalEntityType(str, Enum):

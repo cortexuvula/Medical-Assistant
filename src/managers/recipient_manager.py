@@ -36,13 +36,13 @@ class RecipientManager:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the recipient manager."""
         if self._initialized:
             return
 
         self.db_manager = get_db_manager()
-        self._initialized = True
+        self._initialized: bool = True
         logger.info("RecipientManager initialized")
 
     def get_all_recipients(self, recipient_type: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -563,7 +563,7 @@ class RecipientManager:
             parts.append(recipient["postal_code"])
         return ", ".join(parts) if parts else recipient.get("address", "")
 
-    def _row_to_dict(self, row) -> Dict[str, Any]:
+    def _row_to_dict(self, row: Any) -> Dict[str, Any]:
         """Convert a database row to a dictionary.
 
         Args:

@@ -10,6 +10,7 @@ The RAG system is enabled when NEON_DATABASE_URL is configured in the environmen
 import threading
 import json
 import os
+import tkinter as tk
 import uuid
 import re
 from typing import Optional, Callable, Tuple
@@ -158,9 +159,9 @@ class RagProcessor:
         """Get or create hybrid retriever for local RAG mode."""
         if self._hybrid_retriever is None:
             try:
-                from src.rag.hybrid_retriever import get_hybrid_retriever
+                from rag.hybrid_retriever import get_hybrid_retriever
                 self._hybrid_retriever = get_hybrid_retriever()
-            except Exception as e:
+            except ImportError as e:
                 logger.error(f"Failed to initialize hybrid retriever: {e}")
                 return None
         return self._hybrid_retriever
@@ -169,9 +170,9 @@ class RagProcessor:
         """Get or create streaming retriever for local RAG mode."""
         if self._streaming_retriever is None:
             try:
-                from src.rag.streaming_retriever import get_streaming_retriever
+                from rag.streaming_retriever import get_streaming_retriever
                 self._streaming_retriever = get_streaming_retriever()
-            except Exception as e:
+            except ImportError as e:
                 logger.error(f"Failed to initialize streaming retriever: {e}")
                 return None
         return self._streaming_retriever
@@ -180,10 +181,10 @@ class RagProcessor:
         """Get or create conversation manager for semantic context handling."""
         if self._conversation_manager is None:
             try:
-                from src.rag.conversation_manager import get_conversation_manager
-                from src.rag.followup_detector import get_followup_detector
-                from src.rag.conversation_summarizer import get_conversation_summarizer
-                from src.rag.medical_ner import get_ner_extractor
+                from rag.conversation_manager import get_conversation_manager
+                from rag.followup_detector import get_followup_detector
+                from rag.conversation_summarizer import get_conversation_summarizer
+                from rag.medical_ner import get_ner_extractor
 
                 # Initialize components
                 detector = get_followup_detector()
@@ -196,7 +197,7 @@ class RagProcessor:
                     entity_extractor=ner,
                 )
                 logger.info("Conversation manager initialized")
-            except Exception as e:
+            except ImportError as e:
                 logger.warning(f"Failed to initialize conversation manager: {e}")
                 return None
         return self._conversation_manager
@@ -205,10 +206,10 @@ class RagProcessor:
         """Get or create feedback manager for user feedback handling."""
         if self._feedback_manager is None:
             try:
-                from src.rag.feedback_manager import get_feedback_manager
+                from rag.feedback_manager import get_feedback_manager
                 self._feedback_manager = get_feedback_manager()
                 logger.info("Feedback manager initialized")
-            except Exception as e:
+            except ImportError as e:
                 logger.warning(f"Failed to initialize feedback manager: {e}")
                 return None
         return self._feedback_manager
@@ -263,7 +264,7 @@ class RagProcessor:
                         self._typing_frame_index = 0
                         rag_widget.insert(self._typing_indicator_mark, frames[0], "typing_indicator")
                         return
-                    except Exception:
+                    except (tk.TclError, AttributeError):
                         pass
 
                 # Mark the position where we insert the indicator
@@ -280,7 +281,7 @@ class RagProcessor:
                 # Start animation
                 self._animate_typing_indicator()
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error showing typing indicator: {e}")
 
         # Execute on main thread
@@ -316,7 +317,7 @@ class RagProcessor:
                 # Schedule next animation (500ms interval)
                 self._typing_animation_id = self.app.after(500, animate)
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error animating typing indicator: {e}")
 
         animate()
@@ -329,7 +330,7 @@ class RagProcessor:
                 if self._typing_animation_id:
                     try:
                         self.app.after_cancel(self._typing_animation_id)
-                    except Exception:
+                    except (tk.TclError, ValueError):
                         pass
                     self._typing_animation_id = None
 
@@ -339,14 +340,14 @@ class RagProcessor:
                     try:
                         # Delete from mark to end
                         rag_widget.delete(self._typing_indicator_mark, "end")
-                    except Exception:
+                    except tk.TclError:
                         pass
                     self._typing_indicator_mark = None
 
                 self._typing_frame_index = 0
                 self._current_indicator_type = None
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error hiding typing indicator: {e}")
 
         # Execute on main thread
@@ -555,7 +556,7 @@ class RagProcessor:
                         intent_type=intent_type,
                     )
                     return
-                except Exception as e:
+                except (AttributeError, KeyError, ValueError) as e:
                     logger.warning(f"Conversation manager update failed: {e}")
 
         # Fallback to legacy history
@@ -586,7 +587,7 @@ class RagProcessor:
                         query_embedding=query_embedding,
                     )
                     return enhanced_query, is_followup, confidence, intent_type
-                except Exception as e:
+                except (AttributeError, KeyError, ValueError) as e:
                     logger.warning(f"Semantic follow-up detection failed: {e}")
 
         # Fallback to legacy pattern-based detection
@@ -610,7 +611,7 @@ class RagProcessor:
             if retriever:
                 stats = retriever.get_retrieval_stats()
                 return stats.get("vector_store_available", False)
-        except Exception:
+        except (ConnectionError, OSError, AttributeError):
             pass
 
         return False
@@ -695,7 +696,7 @@ class RagProcessor:
             logger.info(f"Processing local RAG query: {search_query[:100]}... (followup={is_followup}, intent={intent_type})")
 
             # Perform hybrid search
-            from src.rag.models import RAGQueryRequest
+            from rag.models import RAGQueryRequest
             request = RAGQueryRequest(
                 query=search_query,  # Use enhanced query for search
                 top_k=5,
@@ -729,7 +730,7 @@ class RagProcessor:
 
             logger.info(f"Local RAG query completed: {response.total_results} results in {response.processing_time_ms:.0f}ms")
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, ValueError) as e:
             error_msg = f"Error processing local RAG query: {str(e)}"
             logger.error(error_msg)
             self._hide_typing_indicator()  # Cleanup on error
@@ -751,7 +752,7 @@ class RagProcessor:
             user_message: The user's query
             callback: Optional callback when processing is complete
         """
-        from src.rag.streaming_models import (
+        from rag.streaming_models import (
             CancellationError,
             CancellationToken,
             StreamEvent,
@@ -805,7 +806,7 @@ class RagProcessor:
                         logger.error(f"Stream error: {event.message}")
                     elif event.event_type == StreamEventType.CANCELLED:
                         logger.info(f"Stream cancelled: {event.message}")
-                except Exception as e:
+                except (tk.TclError, AttributeError) as e:
                     logger.debug(f"Error handling stream event: {e}")
 
             # Perform streaming hybrid search
@@ -842,7 +843,7 @@ class RagProcessor:
             self._hide_typing_indicator()
             self._add_message_to_rag_tab("System", "Search cancelled.")
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, ValueError) as e:
             error_msg = f"Error processing streaming RAG query: {str(e)}"
             logger.error(error_msg)
             self._hide_typing_indicator()
@@ -867,7 +868,7 @@ class RagProcessor:
                 # The typing indicator animation already handles the display
                 # Just log the progress for now
                 logger.debug(f"RAG progress: {message}")
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.debug(f"Error updating progress message: {e}")
 
     def _generate_rag_response(self, query: str, response) -> str:
@@ -969,7 +970,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
 
             return response_text
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, KeyError, ValueError) as e:
             logger.error(f"Failed to generate AI response: {e}")
             # Fallback to formatted results
             return self._format_local_rag_response(query, response)
@@ -1213,7 +1214,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             try:
                 import pyperclip
                 pyperclip.copy(text)
-            except Exception:
+            except ImportError:
                 self.app.clipboard_clear()
                 self.app.clipboard_append(text)
                 self.app.update()
@@ -1222,7 +1223,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.success("Response copied to clipboard")
             logger.info("RAG response copied to clipboard")
-        except Exception as e:
+        except (tk.TclError, OSError) as e:
             logger.error(f"Failed to copy to clipboard: {e}")
             if hasattr(self.app, 'status_manager'):
                 self.app.status_manager.error("Failed to copy response")
@@ -1236,7 +1237,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
             return
 
         try:
-            from src.ui.components.rag_feedback_buttons import RAGFeedbackButtons
+            from ui.components.rag_feedback_buttons import RAGFeedbackButtons
 
             # Add a label for the feedback section
             self.app.rag_text.insert("end", "\n**Rate these sources:**\n", "feedback_header")
@@ -1282,7 +1283,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
 
         except ImportError as e:
             logger.debug(f"Feedback buttons not available: {e}")
-        except Exception as e:
+        except (tk.TclError, AttributeError, KeyError) as e:
             logger.error(f"Error adding feedback buttons: {e}")
 
     def _handle_result_feedback(self, document_id: str, chunk_index: int, feedback_type: str):
@@ -1323,7 +1324,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                         }
                         self.app.status_manager.info(feedback_labels.get(feedback_type, 'Feedback recorded'))
 
-        except Exception as e:
+        except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Error handling feedback: {e}")
 
     def _get_result_score(self, document_id: str, chunk_index: int) -> float:
@@ -1378,7 +1379,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                 return manager.remove_feedback(document_id, chunk_index, session_id)
             else:
                 # Record new feedback
-                from src.rag.feedback_manager import FeedbackType
+                from rag.feedback_manager import FeedbackType
                 fb_type = FeedbackType(feedback_type)
                 return manager.record_feedback(
                     document_id=document_id,
@@ -1388,7 +1389,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                     session_id=session_id,
                     original_score=original_score,
                 )
-        except Exception as e:
+        except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Failed to record feedback: {e}")
             return False
 
@@ -1412,7 +1413,7 @@ Please provide a comprehensive answer based on the above context. If you cite sp
                 try:
                     session_id = getattr(self, 'session_id', 'default')
                     manager.clear_session(session_id)
-                except Exception as e:
+                except (AttributeError, KeyError) as e:
                     logger.warning(f"Failed to clear conversation manager session: {e}")
 
         if hasattr(self.app, 'rag_text'):

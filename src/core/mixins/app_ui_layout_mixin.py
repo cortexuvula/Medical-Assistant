@@ -7,7 +7,7 @@ Extracted from app.py for better separation of concerns.
 """
 
 import tkinter as tk
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from settings.settings import SETTINGS, save_settings
 from utils.structured_logging import get_logger
@@ -54,7 +54,7 @@ class AppUiLayoutMixin:
         # Adjust the sash position
         self._adjust_bottom_sash()
 
-    def _on_content_paned_configure(self, event=None) -> None:
+    def _on_content_paned_configure(self, event: Optional[tk.Event] = None) -> None:
         """Handle resize events on content_paned to maintain sash proportions."""
         try:
             content_paned = self.ui.components.get('content_paned')

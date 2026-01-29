@@ -5,13 +5,13 @@ Provides singleton circuit breakers for external services used by the RAG system
 enabling graceful degradation when services become unavailable.
 """
 
-import logging
+from utils.structured_logging import get_logger
 from typing import Optional
 
 from utils.resilience import CircuitBreaker, CircuitState
 from utils.exceptions import ServiceUnavailableError
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Singleton circuit breakers for RAG services
 _neo4j_circuit_breaker: Optional[CircuitBreaker] = None

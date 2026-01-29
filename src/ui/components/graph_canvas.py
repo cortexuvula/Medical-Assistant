@@ -5,7 +5,6 @@ Custom Tkinter Canvas widget that renders nodes and edges from
 a knowledge graph using NetworkX for layout calculation.
 """
 
-import logging
 import math
 import tkinter as tk
 from typing import Callable, Optional
@@ -16,9 +15,10 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
-from src.rag.graph_data_provider import EntityType, GraphData, GraphEdge, GraphNode
+from rag.graph_data_provider import EntityType, GraphData, GraphEdge, GraphNode
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GraphCanvas(tk.Canvas):

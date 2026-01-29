@@ -5,10 +5,14 @@ Handles the main text editor notebook with tabs
 
 import threading
 import tkinter as tk
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import ttkbootstrap as ttk
 from utils.structured_logging import get_logger
 
 from ui.tooltip import ToolTip
+
+if TYPE_CHECKING:
+    from ui.workflow_ui import WorkflowUI
 
 logger = get_logger(__name__)
 from ui.ui_constants import Icons, SidebarConfig, Fonts
@@ -18,9 +22,9 @@ from settings.settings import SETTINGS, save_settings
 class NotebookTabs:
     """Manages the notebook tabs UI components."""
     
-    def __init__(self, parent_ui):
+    def __init__(self, parent_ui: "WorkflowUI") -> None:
         """Initialize the NotebookTabs component.
-        
+
         Args:
             parent_ui: Reference to the parent WorkflowUI instance
         """
@@ -244,7 +248,7 @@ class NotebookTabs:
                     legend_frame = ttk.Frame(frame)
                     self._rag_source_legend = SourceLegend(legend_frame)
                     self.components['rag_legend_frame'] = legend_frame
-                except Exception as e:
+                except (ImportError, AttributeError) as e:
                     logger.debug(f"Could not initialize source highlighter: {e}")
                     self._rag_source_highlighter = None
                     self._rag_source_legend = None
@@ -303,7 +307,7 @@ class NotebookTabs:
             text_widgets.get("compliance_analysis")
         )
     
-    def _create_soap_split_layout(self, frame: ttk.Frame, text_widgets: dict) -> tk.Text:
+    def _create_soap_split_layout(self, frame: ttk.Frame, text_widgets: Dict[str, tk.Text]) -> tk.Text:
         """Create the SOAP tab layout with analysis tabs below.
 
         Layout:
@@ -410,7 +414,7 @@ class NotebookTabs:
                     if total_height > 50:  # Only adjust if widget is properly sized
                         collapsed_height = max(30, total_height - 30)
                         soap_paned.sashpos(0, collapsed_height)
-                except Exception:
+                except tk.TclError:
                     pass  # Widget might not be ready yet
             # Use after to let widget realize its size first
             self.parent.after(100, adjust_collapsed_sash)
@@ -612,13 +616,13 @@ class NotebookTabs:
             try:
                 import pyperclip
                 pyperclip.copy(content)
-            except Exception:
+            except ImportError:
                 self.parent.clipboard_clear()
                 self.parent.clipboard_append(content)
                 self.parent.update()
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.success("Copied to clipboard")
-        except Exception as e:
+        except tk.TclError as e:
             logger.error(f"Failed to copy to clipboard: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to copy")
@@ -657,7 +661,7 @@ class NotebookTabs:
             try:
                 current_sash = soap_paned.sashpos(0)
                 self._saved_sash_position = current_sash
-            except Exception:
+            except tk.TclError:
                 self._saved_sash_position = None
 
             # Move sash to nearly the bottom (leave room for header only ~30px)
@@ -667,7 +671,7 @@ class NotebookTabs:
                 # Leave just enough room for the header (approximately 30 pixels)
                 collapsed_height = max(30, total_height - 30)
                 soap_paned.sashpos(0, collapsed_height)
-            except Exception as e:
+            except tk.TclError as e:
                 logger.debug(f"Could not set sash position: {e}")
         else:
             # Expand: show the analysis content and restore sash position
@@ -688,10 +692,10 @@ class NotebookTabs:
                     # Default to 70% for SOAP note
                     default_sash = int(total_height * 0.7)
                     soap_paned.sashpos(0, default_sash)
-            except Exception as e:
+            except tk.TclError as e:
                 logger.debug(f"Could not restore sash position: {e}")
 
-    def _clear_chat_history(self):
+    def _clear_chat_history(self) -> None:
         """Clear the chat conversation history."""
         try:
             # Clear the chat processor history
@@ -726,12 +730,12 @@ class NotebookTabs:
                 
             logger.info("Chat history cleared successfully")
             
-        except Exception as e:
+        except tk.TclError as e:
             logger.error(f"Error clearing chat history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear chat history")
     
-    def _clear_rag_history(self):
+    def _clear_rag_history(self) -> None:
         """Clear the RAG conversation history."""
         try:
             # Clear the RAG processor history
@@ -765,12 +769,12 @@ class NotebookTabs:
                 
             logger.info("RAG history cleared successfully")
             
-        except Exception as e:
+        except tk.TclError as e:
             logger.error(f"Error clearing RAG history: {e}")
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to clear RAG history")
 
-    def _cancel_rag_query(self):
+    def _cancel_rag_query(self) -> None:
         """Cancel the current RAG query if one is in progress."""
         try:
             if hasattr(self.parent, 'rag_processor') and self.parent.rag_processor:
@@ -782,31 +786,31 @@ class NotebookTabs:
                     self._hide_cancel_button()
                 else:
                     logger.debug("No RAG query to cancel")
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             logger.error(f"Error cancelling RAG query: {e}")
 
-    def show_cancel_button(self):
+    def show_cancel_button(self) -> None:
         """Show the cancel button when a RAG query starts."""
         try:
             if 'cancel_rag_button' in self.components:
                 self.components['cancel_rag_button'].pack(side=tk.RIGHT, padx=(0, 5))
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Error showing cancel button: {e}")
 
-    def _hide_cancel_button(self):
+    def _hide_cancel_button(self) -> None:
         """Hide the cancel button when a RAG query completes."""
         try:
             if 'cancel_rag_button' in self.components:
                 self.components['cancel_rag_button'].pack_forget()
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Error hiding cancel button: {e}")
 
-    def _show_rag_upload_dialog(self):
+    def _show_rag_upload_dialog(self) -> None:
         """Show the RAG document upload dialog."""
         try:
-            from src.ui.dialogs.rag_upload_dialog import RAGUploadDialog
+            from ui.dialogs.rag_upload_dialog import RAGUploadDialog
 
-            def on_upload(files: list, options: dict):
+            def on_upload(files: List[str], options: Dict[str, Any]) -> None:
                 """Handle upload start."""
                 self._process_rag_uploads(files, options)
 
@@ -819,7 +823,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open upload dialog: {e}")
 
-    def _process_rag_uploads(self, files: list, options: dict):
+    def _process_rag_uploads(self, files: List[str], options: Dict[str, Any]) -> None:
         """Process uploaded files in background thread.
 
         Args:
@@ -830,8 +834,8 @@ class NotebookTabs:
 
         def upload_thread():
             try:
-                from src.managers.rag_document_manager import get_rag_document_manager
-                from src.ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
+                from managers.rag_document_manager import get_rag_document_manager
+                from ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
 
                 manager = get_rag_document_manager()
 
@@ -846,7 +850,7 @@ class NotebookTabs:
         thread = threading.Thread(target=upload_thread, daemon=True)
         thread.start()
 
-    def _show_upload_progress(self, files: list, options: dict, manager):
+    def _show_upload_progress(self, files: List[str], options: Dict[str, Any], manager: Any) -> None:
         """Show upload progress dialog and process files.
 
         Args:
@@ -854,7 +858,7 @@ class NotebookTabs:
             options: Upload options
             manager: RAGDocumentManager instance
         """
-        from src.ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
+        from ui.dialogs.rag_upload_dialog import RAGUploadProgressDialog
 
         progress_dialog = RAGUploadProgressDialog(self.parent, len(files))
 
@@ -902,16 +906,16 @@ class NotebookTabs:
         thread = threading.Thread(target=process_files, daemon=True)
         thread.start()
 
-    def _show_upload_error(self, error_msg: str):
+    def _show_upload_error(self, error_msg: str) -> None:
         """Show upload error message."""
         from tkinter import messagebox
         messagebox.showerror("Upload Error", f"Failed to start upload:\n{error_msg}", parent=self.parent)
 
-    def _show_rag_library_dialog(self):
+    def _show_rag_library_dialog(self) -> None:
         """Show the RAG document library dialog."""
         try:
-            from src.ui.dialogs.rag_document_library_dialog import RAGDocumentLibraryDialog
-            from src.managers.rag_document_manager import get_rag_document_manager
+            from ui.dialogs.rag_document_library_dialog import RAGDocumentLibraryDialog
+            from managers.rag_document_manager import get_rag_document_manager
 
             manager = get_rag_document_manager()
 
@@ -950,11 +954,11 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open document library: {e}")
 
-    def _show_knowledge_graph_dialog(self):
+    def _show_knowledge_graph_dialog(self) -> None:
         """Show the knowledge graph visualization dialog."""
         try:
-            from src.ui.dialogs.knowledge_graph_dialog import KnowledgeGraphDialog
-            from src.rag.graphiti_client import get_graphiti_client
+            from ui.dialogs.knowledge_graph_dialog import KnowledgeGraphDialog
+            from rag.graphiti_client import get_graphiti_client
 
             graphiti = get_graphiti_client()
             dialog = KnowledgeGraphDialog(self.parent, graphiti_client=graphiti)
@@ -965,13 +969,13 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open knowledge graph: {e}")
 
-    def _update_rag_document_count(self):
+    def _update_rag_document_count(self) -> None:
         """Update the RAG document count label."""
         try:
             if not hasattr(self, 'rag_doc_count_label'):
                 return
 
-            from src.managers.rag_document_manager import get_rag_document_manager
+            from managers.rag_document_manager import get_rag_document_manager
             manager = get_rag_document_manager()
             count = manager.get_document_count()
 
@@ -1097,7 +1101,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to open diagnostic details")
 
-    def _export_rag_conversation(self, format: str):
+    def _export_rag_conversation(self, format: str) -> None:
         """Export RAG conversation history to specified format.
 
         Args:
@@ -1167,7 +1171,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Export failed: {str(e)}")
 
-    def _toggle_rag_filters(self):
+    def _toggle_rag_filters(self) -> None:
         """Toggle visibility of the RAG filters panel."""
         try:
             self._rag_filters_visible = not getattr(self, '_rag_filters_visible', False)
@@ -1210,7 +1214,7 @@ class NotebookTabs:
         except Exception as e:
             logger.error(f"Error toggling RAG filters: {e}")
 
-    def _on_rag_filters_changed(self, filters):
+    def _on_rag_filters_changed(self, filters: Any) -> None:
         """Handle RAG filter changes.
 
         Args:
@@ -1237,7 +1241,7 @@ class NotebookTabs:
         except Exception as e:
             logger.debug(f"Error handling filter change: {e}")
 
-    def _show_search_syntax_help(self):
+    def _show_search_syntax_help(self) -> None:
         """Show help dialog for advanced search syntax."""
         try:
             from rag.search_syntax_parser import get_search_syntax_parser
@@ -1294,7 +1298,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to show syntax help")
 
-    def get_rag_source_highlighter(self):
+    def get_rag_source_highlighter(self) -> Optional[Any]:
         """Get the RAG source highlighter instance.
 
         Returns:
@@ -1302,7 +1306,7 @@ class NotebookTabs:
         """
         return getattr(self, '_rag_source_highlighter', None)
 
-    def get_rag_source_legend(self):
+    def get_rag_source_legend(self) -> Optional[Any]:
         """Get the RAG source legend instance.
 
         Returns:
@@ -1310,7 +1314,7 @@ class NotebookTabs:
         """
         return getattr(self, '_rag_source_legend', None)
 
-    def get_current_rag_filters(self):
+    def get_current_rag_filters(self) -> Optional[Any]:
         """Get the current RAG filter settings.
 
         Returns:
@@ -1318,7 +1322,7 @@ class NotebookTabs:
         """
         return getattr(self, '_current_rag_filters', None)
 
-    def show_medication_analysis_tab(self):
+    def show_medication_analysis_tab(self) -> None:
         """Switch to the Medication Analysis tab within the SOAP panel."""
         try:
             # Make sure analysis panel is expanded
@@ -1334,10 +1338,10 @@ class NotebookTabs:
                         if tabs:
                             child.select(tabs[0])  # Medication is first tab
                         break
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Could not switch to medication tab: {e}")
 
-    def show_differential_analysis_tab(self):
+    def show_differential_analysis_tab(self) -> None:
         """Switch to the Differential Diagnosis tab within the SOAP panel."""
         try:
             # Make sure analysis panel is expanded
@@ -1353,10 +1357,10 @@ class NotebookTabs:
                         if len(tabs) > 1:
                             child.select(tabs[1])  # Differential is second tab
                         break
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Could not switch to differential tab: {e}")
 
-    def show_compliance_analysis_tab(self):
+    def show_compliance_analysis_tab(self) -> None:
         """Switch to the Clinical Guidelines tab within the SOAP panel."""
         try:
             # Make sure analysis panel is expanded
@@ -1372,7 +1376,7 @@ class NotebookTabs:
                         if len(tabs) > 2:
                             child.select(tabs[2])  # Compliance is third tab
                         break
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Could not switch to compliance tab: {e}")
 
     def _open_compliance_details(self) -> None:
@@ -1453,7 +1457,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error("Failed to open compliance details")
 
-    def _show_guidelines_upload_dialog(self):
+    def _show_guidelines_upload_dialog(self) -> None:
         """Show the clinical guidelines upload dialog."""
         try:
             # Check if the guidelines upload manager is available before opening dialog.
@@ -1479,7 +1483,7 @@ class NotebookTabs:
 
             self._guidelines_dialog = None
 
-            def on_upload(files: list, options: dict):
+            def on_upload(files: List[str], options: Dict[str, Any]) -> None:
                 """Handle upload start."""
                 self._process_guidelines_uploads(files, options)
 
@@ -1494,7 +1498,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open guidelines upload: {e}")
 
-    def _process_guidelines_uploads(self, files: list, options: dict):
+    def _process_guidelines_uploads(self, files: List[str], options: Dict[str, Any]) -> None:
         """Process uploaded guideline files in background thread.
 
         Args:
@@ -1524,7 +1528,7 @@ class NotebookTabs:
         thread = threading.Thread(target=upload_thread, daemon=True)
         thread.start()
 
-    def _dismiss_guidelines_dialog_and_notify(self):
+    def _dismiss_guidelines_dialog_and_notify(self) -> None:
         """Safely dismiss the guidelines dialog before showing a notification.
 
         This prevents Tk grab conflicts on macOS where showing a messagebox
@@ -1539,7 +1543,7 @@ class NotebookTabs:
             self._guidelines_dialog = None
         self._show_guidelines_not_implemented()
 
-    def _show_guidelines_upload_progress(self, files: list, options: dict, manager):
+    def _show_guidelines_upload_progress(self, files: List[str], options: Dict[str, Any], manager: Any) -> None:
         """Show upload progress dialog and process guideline files.
 
         Args:
@@ -1600,11 +1604,11 @@ class NotebookTabs:
         thread = threading.Thread(target=process_files, daemon=True)
         thread.start()
 
-    def _show_guidelines_library_dialog(self):
+    def _show_guidelines_library_dialog(self) -> None:
         """Show the clinical guidelines library dialog."""
         try:
-            from src.ui.dialogs.guidelines_library_dialog import GuidelinesLibraryDialog
-            from src.rag.guidelines_vector_store import get_guidelines_vector_store
+            from ui.dialogs.guidelines_library_dialog import GuidelinesLibraryDialog
+            from rag.guidelines_vector_store import get_guidelines_vector_store
 
             store = get_guidelines_vector_store()
 
@@ -1626,7 +1630,7 @@ class NotebookTabs:
             if hasattr(self.parent, 'status_manager'):
                 self.parent.status_manager.error(f"Failed to open guidelines library: {e}")
 
-    def _show_guidelines_not_implemented(self):
+    def _show_guidelines_not_implemented(self) -> None:
         """Show message that guidelines upload is not yet fully implemented."""
         from tkinter import messagebox
         messagebox.showinfo(
@@ -1638,7 +1642,7 @@ class NotebookTabs:
             parent=self.parent
         )
 
-    def load_saved_analyses(self, recording_id: int) -> dict:
+    def load_saved_analyses(self, recording_id: int) -> Dict[str, Any]:
         """Load saved medication, differential, and compliance analyses from database.
 
         Args:
@@ -1670,7 +1674,7 @@ class NotebookTabs:
             logger.error(f"Failed to load saved analyses for recording {recording_id}: {e}")
             return {"medication": None, "differential": None, "compliance": None}
 
-    def _update_medication_panel_from_saved(self, analysis: dict) -> None:
+    def _update_medication_panel_from_saved(self, analysis: Dict[str, Any]) -> None:
         """Update medication analysis panel with saved analysis.
 
         Args:
@@ -1696,7 +1700,7 @@ class NotebookTabs:
                 from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
                 formatter = AnalysisPanelFormatter(medication_widget)
                 formatter.format_medication_panel(result_text, metadata)
-            except Exception:
+            except (ImportError, tk.TclError):
                 # Fallback to plain text
                 medication_widget.config(state='normal')
                 medication_widget.delete('1.0', 'end')
@@ -1711,7 +1715,7 @@ class NotebookTabs:
         except Exception as e:
             logger.error(f"Failed to update medication panel from saved: {e}")
 
-    def _update_differential_panel_from_saved(self, analysis: dict) -> None:
+    def _update_differential_panel_from_saved(self, analysis: Dict[str, Any]) -> None:
         """Update differential analysis panel with saved analysis.
 
         Args:
@@ -1736,7 +1740,7 @@ class NotebookTabs:
                 from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
                 formatter = AnalysisPanelFormatter(differential_widget)
                 formatter.format_diagnostic_panel(result_text, metadata)
-            except Exception:
+            except (ImportError, tk.TclError):
                 # Fallback to plain text
                 differential_widget.config(state='normal')
                 differential_widget.delete('1.0', 'end')
@@ -1751,7 +1755,7 @@ class NotebookTabs:
         except Exception as e:
             logger.error(f"Failed to update differential panel from saved: {e}")
 
-    def _update_compliance_panel_from_saved(self, analysis: dict) -> None:
+    def _update_compliance_panel_from_saved(self, analysis: Dict[str, Any]) -> None:
         """Update compliance analysis panel with saved analysis.
 
         Args:
@@ -1776,7 +1780,7 @@ class NotebookTabs:
                 from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
                 formatter = AnalysisPanelFormatter(compliance_widget)
                 formatter.format_compliance_panel(result_text, metadata)
-            except Exception:
+            except (ImportError, tk.TclError):
                 # Fallback to plain text
                 compliance_widget.config(state='normal')
                 compliance_widget.delete('1.0', 'end')
@@ -1842,5 +1846,5 @@ class NotebookTabs:
             if hasattr(self.parent, '_last_compliance_analysis'):
                 self.parent._last_compliance_analysis = None
 
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Error clearing analysis panels: {e}")

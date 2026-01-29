@@ -15,7 +15,6 @@ Uses SEPARATE infrastructure from the main RAG system:
 """
 
 import json
-import logging
 import os
 import threading
 from datetime import date
@@ -23,9 +22,10 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
-from src.rag.guidelines_models import GuidelineUploadStatus
+from rag.guidelines_models import GuidelineUploadStatus
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum file size (50 MB)
 MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -55,7 +55,7 @@ class GuidelinesUploadManager:
     def _get_document_processor(self):
         """Get document processor configured for guidelines (smaller chunks)."""
         if self._document_processor is None:
-            from src.rag.document_processor import DocumentProcessor
+            from rag.document_processor import DocumentProcessor
             self._document_processor = DocumentProcessor(
                 chunk_size_tokens=GUIDELINES_CHUNK_SIZE,
                 chunk_overlap_tokens=GUIDELINES_CHUNK_OVERLAP,
@@ -65,14 +65,14 @@ class GuidelinesUploadManager:
     def _get_embedding_manager(self):
         """Get embedding manager (reuses CachedEmbeddingManager)."""
         if self._embedding_manager is None:
-            from src.rag.embedding_manager import CachedEmbeddingManager
+            from rag.embedding_manager import CachedEmbeddingManager
             self._embedding_manager = CachedEmbeddingManager()
         return self._embedding_manager
 
     def _get_vector_store(self):
         """Get guidelines vector store (separate from main RAG)."""
         if self._vector_store is None:
-            from src.rag.guidelines_vector_store import get_guidelines_vector_store
+            from rag.guidelines_vector_store import get_guidelines_vector_store
             self._vector_store = get_guidelines_vector_store()
         return self._vector_store
 
@@ -80,7 +80,7 @@ class GuidelinesUploadManager:
         """Get guidelines Graphiti client (separate Neo4j instance)."""
         if self._graphiti_client is None:
             try:
-                from src.rag.guidelines_graphiti_client import get_guidelines_graphiti_client
+                from rag.guidelines_graphiti_client import get_guidelines_graphiti_client
                 self._graphiti_client = get_guidelines_graphiti_client()
             except Exception:
                 return None

@@ -11,7 +11,6 @@ Orchestrates the document processing pipeline:
 """
 
 import json
-import logging
 import os
 import threading
 from datetime import datetime
@@ -19,7 +18,7 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
-from src.rag.models import (
+from rag.models import (
     DocumentChunk,
     DocumentListItem,
     DocumentMetadata,
@@ -29,8 +28,9 @@ from src.rag.models import (
     UploadStatus,
 )
 from rag.cancellation import CancellationError, CancellationToken
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum file size (50 MB)
 MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -66,28 +66,28 @@ class RAGDocumentManager:
     def _get_db_manager(self):
         """Get database manager."""
         if self._db_manager is None:
-            from src.database.db_pool import get_db_manager
+            from database.db_pool import get_db_manager
             self._db_manager = get_db_manager()
         return self._db_manager
 
     def _get_document_processor(self):
         """Get document processor."""
         if self._document_processor is None:
-            from src.rag.document_processor import DocumentProcessor
+            from rag.document_processor import DocumentProcessor
             self._document_processor = DocumentProcessor()
         return self._document_processor
 
     def _get_embedding_manager(self):
         """Get embedding manager."""
         if self._embedding_manager is None:
-            from src.rag.embedding_manager import CachedEmbeddingManager
+            from rag.embedding_manager import CachedEmbeddingManager
             self._embedding_manager = CachedEmbeddingManager()
         return self._embedding_manager
 
     def _get_vector_store(self):
         """Get vector store."""
         if self._vector_store is None:
-            from src.rag.neon_vector_store import get_vector_store
+            from rag.neon_vector_store import get_vector_store
             self._vector_store = get_vector_store()
         return self._vector_store
 
@@ -95,7 +95,7 @@ class RAGDocumentManager:
         """Get graphiti client."""
         if self._graphiti_client is None:
             try:
-                from src.rag.graphiti_client import get_graphiti_client
+                from rag.graphiti_client import get_graphiti_client
                 self._graphiti_client = get_graphiti_client()
             except Exception as e:
                 logger.debug(f"Failed to get Graphiti client: {e}")

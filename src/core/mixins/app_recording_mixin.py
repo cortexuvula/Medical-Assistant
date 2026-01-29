@@ -10,7 +10,7 @@ import time
 import threading
 import tkinter as tk
 from tkinter import messagebox
-from typing import TYPE_CHECKING, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from settings.settings import SETTINGS
 from utils.cleanup_utils import clear_content_except_context
@@ -38,7 +38,7 @@ class AppRecordingMixin:
     - ui: WorkflowUI instance
     """
 
-    def _finalize_soap_recording(self, recording_data: dict = None) -> None:
+    def _finalize_soap_recording(self, recording_data: Optional[Dict[str, Any]] = None) -> None:
         """Complete the SOAP recording process with recording data from RecordingManager."""
         # Recording data should come from RecordingManager which uses AudioStateManager
         if not recording_data or not recording_data.get('audio'):

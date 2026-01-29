@@ -9,7 +9,7 @@ Provides real-time suggestions as user types, sourcing from:
 
 import tkinter as tk
 import ttkbootstrap as ttk
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from utils.structured_logging import get_logger
 
@@ -49,8 +49,8 @@ class SearchAutocomplete:
         self,
         parent: tk.Widget,
         input_widget: tk.Entry,
-        get_recent_queries: Optional[Callable[[], list[str]]] = None,
-        get_medical_terms: Optional[Callable[[str], list[str]]] = None,
+        get_recent_queries: Optional[Callable[[], List[str]]] = None,
+        get_medical_terms: Optional[Callable[[str], List[str]]] = None,
         on_select: Optional[Callable[[str], None]] = None
     ):
         """Initialize the autocomplete component.
@@ -75,16 +75,16 @@ class SearchAutocomplete:
         self._bind_events()
 
         # Debounce timer
-        self._debounce_id = None
+        self._debounce_id: Optional[str] = None
         self._debounce_delay = 150  # ms
 
         # Track if dropdown is visible
-        self._visible = False
+        self._visible: bool = False
 
         # Current selection index
-        self._selection_index = -1
+        self._selection_index: int = -1
 
-    def _create_dropdown(self):
+    def _create_dropdown(self) -> None:
         """Create the dropdown listbox widget."""
         # Create toplevel window for dropdown (so it can float)
         self.dropdown_window = tk.Toplevel(self.parent)
@@ -124,7 +124,7 @@ class SearchAutocomplete:
         # Bind window close to hide dropdown
         self.dropdown_window.bind("<FocusOut>", self._on_focus_out)
 
-    def _bind_events(self):
+    def _bind_events(self) -> None:
         """Bind keyboard and focus events to input widget."""
         self.input_widget.bind("<KeyRelease>", self._on_key_release)
         self.input_widget.bind("<Up>", self._on_arrow_up)
@@ -133,7 +133,7 @@ class SearchAutocomplete:
         self.input_widget.bind("<Escape>", self._on_escape)
         self.input_widget.bind("<FocusOut>", self._on_input_focus_out)
 
-    def _on_key_release(self, event):
+    def _on_key_release(self, event: tk.Event) -> None:
         """Handle key release - fetch and show suggestions with debounce."""
         # Ignore navigation keys
         if event.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
@@ -149,7 +149,7 @@ class SearchAutocomplete:
             self._update_suggestions
         )
 
-    def _update_suggestions(self):
+    def _update_suggestions(self) -> None:
         """Update suggestions based on current input."""
         text = self.input_widget.get().strip()
 
@@ -164,7 +164,7 @@ class SearchAutocomplete:
         else:
             self._hide_dropdown()
 
-    def _get_suggestions(self, prefix: str) -> list[str]:
+    def _get_suggestions(self, prefix: str) -> List[str]:
         """Get suggestions from multiple sources.
 
         Args:
@@ -222,7 +222,7 @@ class SearchAutocomplete:
 
         return suggestions[:self.MAX_SUGGESTIONS]
 
-    def _show_dropdown(self, suggestions: list[str]):
+    def _show_dropdown(self, suggestions: List[str]) -> None:
         """Show the dropdown with suggestions.
 
         Args:
@@ -247,7 +247,7 @@ class SearchAutocomplete:
         num_items = min(len(suggestions), 8)
         self.listbox.config(height=num_items)
 
-    def _position_dropdown(self):
+    def _position_dropdown(self) -> None:
         """Position dropdown below the input widget."""
         try:
             # Get input widget position
@@ -257,16 +257,16 @@ class SearchAutocomplete:
 
             # Set dropdown position and size
             self.dropdown_window.geometry(f"{width}x{self.listbox.winfo_reqheight()}+{x}+{y}")
-        except Exception as e:
+        except tk.TclError as e:
             logger.debug(f"Error positioning dropdown: {e}")
 
-    def _hide_dropdown(self):
+    def _hide_dropdown(self) -> None:
         """Hide the dropdown."""
         self.dropdown_window.withdraw()
         self._visible = False
         self._selection_index = -1
 
-    def _on_arrow_up(self, event):
+    def _on_arrow_up(self, event: tk.Event) -> str:
         """Handle up arrow key."""
         if not self._visible:
             return
@@ -280,7 +280,7 @@ class SearchAutocomplete:
 
         return "break"  # Prevent default behavior
 
-    def _on_arrow_down(self, event):
+    def _on_arrow_down(self, event: tk.Event) -> str:
         """Handle down arrow key."""
         if not self._visible:
             return
@@ -291,41 +291,41 @@ class SearchAutocomplete:
 
         return "break"  # Prevent default behavior
 
-    def _highlight_selection(self):
+    def _highlight_selection(self) -> None:
         """Highlight the current selection."""
         self.listbox.selection_clear(0, tk.END)
         if 0 <= self._selection_index < self.listbox.size():
             self.listbox.selection_set(self._selection_index)
             self.listbox.see(self._selection_index)
 
-    def _on_enter(self, event):
+    def _on_enter(self, event: tk.Event) -> Optional[str]:
         """Handle Enter key."""
         if self._visible and 0 <= self._selection_index < self.listbox.size():
             self._select_current()
             return "break"  # Prevent default behavior
 
-    def _on_escape(self, event):
+    def _on_escape(self, event: tk.Event) -> Optional[str]:
         """Handle Escape key."""
         if self._visible:
             self._hide_dropdown()
             return "break"
 
-    def _on_click(self, event):
+    def _on_click(self, event: tk.Event) -> None:
         """Handle click on listbox item."""
         self._select_current()
 
-    def _on_mouse_move(self, event):
+    def _on_mouse_move(self, event: tk.Event) -> None:
         """Handle mouse movement over listbox."""
         index = self.listbox.nearest(event.y)
         if index >= 0:
             self._selection_index = index
             self._highlight_selection()
 
-    def _on_mouse_leave(self, event):
+    def _on_mouse_leave(self, event: tk.Event) -> None:
         """Handle mouse leaving listbox."""
         pass  # Keep current selection
 
-    def _select_current(self):
+    def _select_current(self) -> None:
         """Select the current highlighted item."""
         if not self._visible:
             return
@@ -338,7 +338,7 @@ class SearchAutocomplete:
             selected_text = self.listbox.get(self._selection_index)
             self._apply_selection(selected_text)
 
-    def _apply_selection(self, text: str):
+    def _apply_selection(self, text: str) -> None:
         """Apply the selected suggestion to input.
 
         Args:
@@ -361,44 +361,44 @@ class SearchAutocomplete:
         # Set focus back to input
         self.input_widget.focus_set()
 
-    def _on_focus_out(self, event):
+    def _on_focus_out(self, event: tk.Event) -> None:
         """Handle focus leaving dropdown window."""
         # Check if focus went to input widget
         try:
             if self.parent.focus_get() != self.input_widget:
                 self._hide_dropdown()
-        except Exception:
+        except tk.TclError:
             self._hide_dropdown()
 
-    def _on_input_focus_out(self, event):
+    def _on_input_focus_out(self, event: tk.Event) -> None:
         """Handle focus leaving input widget."""
         # Delay hide to allow click on dropdown
         self.parent.after(150, self._check_hide)
 
-    def _check_hide(self):
+    def _check_hide(self) -> None:
         """Check if dropdown should be hidden."""
         try:
             focused = self.parent.focus_get()
             if focused != self.input_widget and focused != self.listbox:
                 self._hide_dropdown()
-        except Exception:
+        except tk.TclError:
             self._hide_dropdown()
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Clean up resources."""
         if self._debounce_id:
             try:
                 self.parent.after_cancel(self._debounce_id)
-            except Exception:
+            except tk.TclError:
                 pass
 
         try:
             self.dropdown_window.destroy()
-        except Exception:
+        except tk.TclError:
             pass
 
 
-def get_medical_term_suggestions(prefix: str) -> list[str]:
+def get_medical_term_suggestions(prefix: str) -> List[str]:
     """Get medical term suggestions based on prefix.
 
     This function uses the MEDICAL_ABBREVIATIONS from query_expander.

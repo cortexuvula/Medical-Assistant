@@ -6,11 +6,11 @@ critical medical context for follow-up queries.
 """
 
 import json
-import logging
+from utils.structured_logging import get_logger
 from dataclasses import dataclass, field
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

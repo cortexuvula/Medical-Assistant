@@ -5,7 +5,6 @@ Provides local single-user caching using SQLite database.
 """
 
 import json
-import logging
 import os
 import sqlite3
 import threading
@@ -13,8 +12,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from rag.cache.base import BaseCacheProvider, CacheConfig, CacheStats
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SQLiteCacheProvider(BaseCacheProvider):

@@ -5,15 +5,15 @@ Provides resilient caching by automatically falling back to SQLite
 when Redis is unavailable.
 """
 
-import logging
 import threading
 import time
 from datetime import datetime
 from typing import Optional
 
 from rag.cache.base import BaseCacheProvider, CacheConfig, CacheStats
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FallbackCacheProvider(BaseCacheProvider):
@@ -68,7 +68,7 @@ class FallbackCacheProvider(BaseCacheProvider):
                             self._using_primary = True
                             self._last_primary_failure = None
                             return self._primary
-                    except Exception as e:
+                    except (ConnectionError, TimeoutError, OSError) as e:
                         logger.debug(f"Primary cache health check failed during restore attempt: {e}")
                     # Update failure time for next retry
                     self._last_primary_failure = time.time()
@@ -90,13 +90,13 @@ class FallbackCacheProvider(BaseCacheProvider):
         try:
             result = provider.get(text_hash, model)
             return result
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, KeyError) as e:
             if provider is self._primary:
                 self._switch_to_secondary(e)
                 # Retry with secondary
                 try:
                     return self._secondary.get(text_hash, model)
-                except Exception as e:
+                except (ConnectionError, TimeoutError, OSError, KeyError) as e:
                     logger.debug(f"Secondary cache get also failed: {e}")
             return None
 
@@ -111,16 +111,16 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._secondary and self._using_primary:
                 try:
                     self._primary.set(text_hash, embedding, model)
-                except Exception as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     logger.debug(f"Failed to sync embedding to primary cache: {e}")
 
             return result
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             if provider is self._primary:
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.set(text_hash, embedding, model)
-                except Exception as e2:
+                except (ConnectionError, TimeoutError, OSError) as e2:
                     logger.debug(f"Secondary cache set also failed: {e2}")
             return False
 
@@ -134,12 +134,12 @@ class FallbackCacheProvider(BaseCacheProvider):
 
         try:
             return provider.get_batch(text_hashes, model)
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             if provider is self._primary:
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.get_batch(text_hashes, model)
-                except Exception as e2:
+                except (ConnectionError, TimeoutError, OSError) as e2:
                     logger.debug(f"Secondary cache get_batch also failed: {e2}")
             return {}
 
@@ -158,16 +158,16 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._secondary and self._using_primary:
                 try:
                     self._primary.set_batch(entries, model)
-                except Exception as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     logger.debug(f"Failed to sync batch to primary cache: {e}")
 
             return result
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             if provider is self._primary:
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.set_batch(entries, model)
-                except Exception as e2:
+                except (ConnectionError, TimeoutError, OSError) as e2:
                     logger.debug(f"Secondary cache set_batch also failed: {e2}")
             return 0
 
@@ -182,21 +182,21 @@ class FallbackCacheProvider(BaseCacheProvider):
             if provider is self._primary:
                 try:
                     self._secondary.delete(text_hash, model)
-                except Exception as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     logger.debug(f"Failed to delete from secondary cache: {e}")
             else:
                 try:
                     self._primary.delete(text_hash, model)
-                except Exception as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     logger.debug(f"Failed to delete from primary cache: {e}")
 
             return result
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             if provider is self._primary:
                 self._switch_to_secondary(e)
                 try:
                     return self._secondary.delete(text_hash, model)
-                except Exception as e2:
+                except (ConnectionError, TimeoutError, OSError) as e2:
                     logger.debug(f"Secondary cache delete also failed: {e2}")
             return False
 
@@ -207,12 +207,12 @@ class FallbackCacheProvider(BaseCacheProvider):
         # Clear both providers
         try:
             total += self._primary.clear()
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.warning(f"Failed to clear primary cache: {e}")
 
         try:
             total += self._secondary.clear()
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.warning(f"Failed to clear secondary cache: {e}")
 
         return total
@@ -228,12 +228,12 @@ class FallbackCacheProvider(BaseCacheProvider):
         # Cleanup both providers
         try:
             total += self._primary.cleanup(max_age_days, max_entries)
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.warning(f"Failed to cleanup primary cache: {e}")
 
         try:
             total += self._secondary.cleanup(max_age_days, max_entries)
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.warning(f"Failed to cleanup secondary cache: {e}")
 
         return total
@@ -270,12 +270,12 @@ class FallbackCacheProvider(BaseCacheProvider):
 
         try:
             primary_healthy = self._primary.health_check()
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.debug(f"Primary cache health check failed: {e}")
 
         try:
             secondary_healthy = self._secondary.health_check()
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.debug(f"Secondary cache health check failed: {e}")
 
         return primary_healthy or secondary_healthy
@@ -284,10 +284,10 @@ class FallbackCacheProvider(BaseCacheProvider):
         """Close both cache providers."""
         try:
             self._primary.close()
-        except Exception as e:
+        except (ConnectionError, OSError, AttributeError) as e:
             logger.debug(f"Error closing primary cache: {e}")
 
         try:
             self._secondary.close()
-        except Exception as e:
+        except (ConnectionError, OSError, AttributeError) as e:
             logger.debug(f"Error closing secondary cache: {e}")

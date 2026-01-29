@@ -12,7 +12,7 @@ OCR Provider:
 
 import hashlib
 import io
-import logging
+from utils.structured_logging import get_logger
 import os
 import re
 from pathlib import Path
@@ -28,7 +28,7 @@ from rag.models import (
     UploadStatus,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Lazy import for OCR providers to avoid circular imports
 _ocr_manager = None

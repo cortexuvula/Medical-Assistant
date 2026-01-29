@@ -120,7 +120,7 @@ class WindowController:
         try:
             if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'sidebar_navigation'):
                 self.app.ui.sidebar_navigation.set_active_item(view_id)
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error updating sidebar: {e}")
 
     def _show_view(self, view_id: str) -> bool:
@@ -144,7 +144,7 @@ class WindowController:
             else:
                 logger.warning(f"Unknown view ID: {view_id}")
                 return False
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing view {view_id}: {e}")
             return False
 
@@ -172,7 +172,7 @@ class WindowController:
                 self.app.notebook.select(0)  # Transcript tab
 
             return True
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing record view: {e}")
             return False
 
@@ -196,7 +196,7 @@ class WindowController:
                 self.app.workflow_notebook.select(3)  # Recordings tab
 
             return True
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing recordings view: {e}")
             return False
 
@@ -224,7 +224,7 @@ class WindowController:
                 self.app.workflow_notebook.select(0)  # Record tab
 
             return True
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing advanced analysis view: {e}")
             return False
 
@@ -257,7 +257,7 @@ class WindowController:
                 pass
 
             return True
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing document view {view_id}: {e}")
             return False
 
@@ -331,7 +331,7 @@ class WindowController:
             for callback in self._callbacks[event]:
                 try:
                     callback(*args)
-                except Exception as e:
+                except (tk.TclError, AttributeError, ValueError) as e:
                     logger.error(f"Error in navigation callback: {e}")
 
     def get_history(self) -> List[str]:
@@ -417,7 +417,7 @@ class WindowController:
                     self.app.soap_stop_listening_function = None  # Prevent double calls
                     # Give the audio thread a moment to release resources
                     time.sleep(0.2)
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Error stopping SOAP recording: {str(e)}", exc_info=True)
 
             # Stop periodic analysis if running
@@ -425,7 +425,7 @@ class WindowController:
                 logger.info("Stopping periodic analyzer...")
                 try:
                     self.app._stop_periodic_analysis()
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Error stopping periodic analyzer: {str(e)}", exc_info=True)
 
             # Stop any active listening in the audio handler
@@ -433,7 +433,7 @@ class WindowController:
                 logger.info("Ensuring audio handler is properly closed...")
                 try:
                     self.app.audio_handler.cleanup_resources()
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Error cleaning up audio handler: {str(e)}", exc_info=True)
 
             # Shutdown processing queue if it exists
@@ -441,7 +441,7 @@ class WindowController:
                 logger.info("Shutting down processing queue...")
                 try:
                     self.app.processing_queue.shutdown(wait=True)
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
 
             # Cleanup notification manager if it exists
@@ -449,7 +449,7 @@ class WindowController:
                 logger.info("Cleaning up notification manager...")
                 try:
                     self.app.notification_manager.cleanup()
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Error cleaning up notification manager: {str(e)}", exc_info=True)
 
             # Shutdown MCP servers
@@ -457,7 +457,7 @@ class WindowController:
             logger.info("Shutting down MCP servers...")
             try:
                 mcp_manager.stop_all()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Error shutting down MCP servers: {str(e)}", exc_info=True)
 
             # Shutdown all executor pools properly - wait for tasks to complete
@@ -472,13 +472,13 @@ class WindowController:
                     except TypeError:
                         # Handle older Python versions without cancel_futures parameter
                         executor.shutdown(wait=True)
-                    except Exception as e:
+                    except (OSError, RuntimeError) as e:
                         logger.error(f"Error shutting down {executor_name}: {str(e)}", exc_info=True)
 
             # Final logging message before closing
             logger.info("Application shutdown complete")
 
-        except Exception as e:
+        except (OSError, RuntimeError, tk.TclError) as e:
             logger.error(f"Error during application cleanup: {str(e)}", exc_info=True)
 
         # Destroy the window
@@ -552,7 +552,7 @@ class WindowController:
                 close_btn.pack(pady=5)
             else:
                 messagebox.showwarning("File Not Found", "Log file not found.")
-        except Exception as e:
+        except (OSError, tk.TclError) as e:
             messagebox.showerror("Error", f"Failed to open log file: {str(e)}")
 
     def open_logs_folder(self, log_dir: str) -> None:
@@ -567,7 +567,7 @@ class WindowController:
             if not success:
                 messagebox.showerror("Error", f"Could not open logs directory: {error}")
                 logger.error(f"Error opening logs directory: {error}")
-        except Exception as e:
+        except OSError as e:
             messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
             logger.error(f"Error opening logs directory: {str(e)}")
 

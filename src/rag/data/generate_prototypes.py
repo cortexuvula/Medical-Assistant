@@ -12,10 +12,12 @@ Usage:
 import json
 import logging
 from datetime import datetime
+
+from utils.structured_logging import get_logger
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Example terms for each entity type
 # These are used to generate prototype embeddings

@@ -4,7 +4,7 @@ import sys
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 import tkinter as tk
 # Don't import ttkbootstrap here as it patches ttk globally
 # import ttkbootstrap as ttk
@@ -273,23 +273,273 @@ def mock_ai_processor():
     """Mock AI processor for testing."""
     processor = Mock()
     processor.current_provider = "openai"
-    
+
     processor.refine_text.return_value = {
         "success": True,
         "text": "Refined text"
     }
-    
+
     processor.improve_text.return_value = {
         "success": True,
         "text": "Improved text"
     }
-    
+
     processor.generate_soap.return_value = {
         "success": True,
         "text": "Generated SOAP note"
     }
-    
+
     return processor
+
+
+# =========================================================================
+# Agent System Fixtures
+# =========================================================================
+
+@pytest.fixture
+def mock_ai_caller():
+    """Create a mock AI caller for testing agents without making real API calls."""
+    from ai.agents.ai_caller import MockAICaller
+    return MockAICaller(default_response="Mock response")
+
+
+@pytest.fixture
+def mock_ai_caller_json():
+    """Create a mock AI caller that returns JSON responses."""
+    from ai.agents.ai_caller import MockAICaller
+    return MockAICaller(default_response='{"key": "value", "status": "success"}')
+
+
+@pytest.fixture
+def sample_agent_config():
+    """Create a sample AgentConfig for testing."""
+    from ai.agents.models import AgentConfig
+    return AgentConfig(
+        name="TestAgent",
+        description="Test agent for unit tests",
+        system_prompt="You are a helpful test assistant.",
+        model="gpt-4",
+        temperature=0.5,
+        max_tokens=500
+    )
+
+
+@pytest.fixture
+def sample_agent_task():
+    """Create a sample AgentTask for testing."""
+    from ai.agents.models import AgentTask
+    return AgentTask(
+        task_description="Test task description",
+        context="Test context for the task",
+        input_data={"key": "value", "clinical_text": "Patient presents with headache."}
+    )
+
+
+@pytest.fixture
+def sample_agent_task_with_soap():
+    """Create a sample AgentTask with a SOAP note."""
+    from ai.agents.models import AgentTask
+    return AgentTask(
+        task_description="Process SOAP note",
+        context="Medical consultation",
+        input_data={
+            "soap_note": """S: Patient reports persistent headache x3 days.
+O: BP 120/80, afebrile. Neuro exam normal.
+A: Tension headache.
+P: Ibuprofen 400mg PRN, follow up in 1 week.""",
+            "clinical_text": "Patient with headache for 3 days"
+        }
+    )
+
+
+@pytest.fixture
+def sample_clinical_text():
+    """Sample clinical text for data extraction testing."""
+    return """
+    Chief Complaint: 45-year-old male with chest pain and shortness of breath.
+
+    Vital Signs:
+    - Blood Pressure: 145/92 mmHg
+    - Heart Rate: 88 bpm
+    - Temperature: 98.6°F
+    - Respiratory Rate: 18/min
+    - O2 Saturation: 97% on room air
+
+    Laboratory Values:
+    - Hemoglobin: 14.2 g/dL (13.5-17.5)
+    - WBC: 8,500/µL (4,500-11,000)
+    - Troponin I: 0.02 ng/mL (<0.04)
+    - BNP: 150 pg/mL (<100) [H]
+    - Creatinine: 1.1 mg/dL (0.7-1.3)
+
+    Current Medications:
+    - Lisinopril 10mg PO daily
+    - Metformin 500mg PO BID
+    - Aspirin 81mg PO daily
+
+    Assessment:
+    1. Hypertension (I10)
+    2. Type 2 Diabetes Mellitus (E11.9)
+    3. Chest pain, unspecified (R07.9)
+
+    Plan:
+    - ECG and chest X-ray
+    - Continue current medications
+    - Follow up in 2 weeks
+    """
+
+
+# =========================================================================
+# RAG System Fixtures
+# =========================================================================
+
+@pytest.fixture
+def mock_postgresql_pool():
+    """Create a mock PostgreSQL connection pool for RAG testing."""
+    pool = Mock()
+    conn = MagicMock()
+    cursor = MagicMock()
+
+    # Setup connection context manager
+    pool.connection.return_value.__enter__ = Mock(return_value=conn)
+    pool.connection.return_value.__exit__ = Mock(return_value=False)
+
+    # Setup cursor context manager
+    conn.cursor.return_value.__enter__ = Mock(return_value=cursor)
+    conn.cursor.return_value.__exit__ = Mock(return_value=False)
+
+    # Default cursor behavior
+    cursor.fetchall.return_value = []
+    cursor.fetchone.return_value = None
+
+    return pool, conn, cursor
+
+
+@pytest.fixture
+def search_quality_config():
+    """Create a SearchQualityConfig for RAG testing."""
+    try:
+        from rag.search_config import SearchQualityConfig
+        return SearchQualityConfig()
+    except ImportError:
+        # Return a mock if the module isn't available
+        config = Mock()
+        config.enable_adaptive_threshold = True
+        config.enable_query_expansion = True
+        config.enable_bm25 = True
+        config.enable_mmr = True
+        config.vector_weight = 0.5
+        config.bm25_weight = 0.3
+        config.graph_weight = 0.2
+        config.mmr_lambda = 0.7
+        config.min_threshold = 0.2
+        config.max_threshold = 0.8
+        config.target_result_count = 5
+        return config
+
+
+@pytest.fixture
+def mock_embedding_manager():
+    """Create a mock embedding manager for RAG testing."""
+    manager = Mock()
+    manager.model = "text-embedding-ada-002"
+    manager.generate_embedding.return_value = [0.1] * 1536  # Standard embedding size
+    manager.generate_embeddings_batch.return_value = [[0.1] * 1536 for _ in range(5)]
+    return manager
+
+
+@pytest.fixture
+def mock_vector_store():
+    """Create a mock vector store for RAG testing."""
+    from unittest.mock import Mock
+
+    store = Mock()
+    store.health_check.return_value = True
+    store.get_stats.return_value = {"document_count": 100, "chunk_count": 500}
+    store.search.return_value = []
+    return store
+
+
+@pytest.fixture
+def sample_vector_search_results():
+    """Create sample vector search results for testing."""
+    # Using a simple dict-based approach for flexibility
+    return [
+        {
+            "document_id": "doc1",
+            "chunk_index": 0,
+            "chunk_text": "Hypertension management guidelines recommend BP < 140/90.",
+            "similarity_score": 0.85,
+            "metadata": {"filename": "guidelines.pdf", "created_at": "2024-01-15"}
+        },
+        {
+            "document_id": "doc2",
+            "chunk_index": 1,
+            "chunk_text": "Diabetes treatment with metformin as first-line therapy.",
+            "similarity_score": 0.72,
+            "metadata": {"filename": "diabetes.pdf", "created_at": "2024-02-20"}
+        }
+    ]
+
+
+# =========================================================================
+# Audio System Fixtures
+# =========================================================================
+
+@pytest.fixture
+def mock_audio_state_manager():
+    """Create a mock AudioStateManager for recording tests."""
+    from unittest.mock import Mock
+
+    state_manager = Mock()
+    state_manager.get_state.return_value = None  # Will be set per test
+    state_manager.is_recording.return_value = False
+    state_manager.is_paused.return_value = False
+    state_manager.has_audio.return_value = False
+    state_manager.get_recording_metadata.return_value = {
+        'recording_duration': 0.0,
+        'start_time': None,
+        'pause_duration': 0.0
+    }
+    state_manager.get_segment_stats.return_value = (0, 0, 0)
+    state_manager.get_combined_audio.return_value = None
+
+    return state_manager
+
+
+@pytest.fixture
+def mock_status_manager():
+    """Create a mock StatusManager for recording tests."""
+    status_manager = Mock()
+    status_manager.info = Mock()
+    status_manager.warning = Mock()
+    status_manager.error = Mock()
+    status_manager.update = Mock()
+    return status_manager
+
+
+# =========================================================================
+# Document Generator Fixtures
+# =========================================================================
+
+@pytest.fixture
+def mock_app_for_streaming():
+    """Create a mock app object for streaming mixin tests."""
+    app = Mock()
+    app.after = Mock(side_effect=lambda ms, func: func())  # Execute immediately
+    return app
+
+
+@pytest.fixture
+def mock_text_widget():
+    """Create a mock text widget for streaming tests."""
+    widget = Mock()
+    widget.configure = Mock()
+    widget.insert = Mock()
+    widget.see = Mock()
+    widget.delete = Mock()
+    widget.get.return_value = ""
+    return widget
 
 
 # Pytest hooks

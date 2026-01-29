@@ -122,7 +122,7 @@ class AzureDocumentProvider(BaseOCRProvider):
                     endpoint=self.endpoint,
                     credential=AzureKeyCredential(self.api_key),
                 )
-            except Exception as e:
+            except (ValueError, ImportError, OSError) as e:
                 self.logger.error(f"Failed to create Azure client: {e}")
                 return None
 
@@ -146,7 +146,7 @@ class AzureDocumentProvider(BaseOCRProvider):
         try:
             with open(file_path, "rb") as f:
                 image_bytes = f.read()
-        except Exception as e:
+        except (OSError, IOError) as e:
             return OCRResult.failure_result(f"Failed to read file: {e}")
 
         # Determine file type from extension
@@ -171,7 +171,7 @@ class AzureDocumentProvider(BaseOCRProvider):
             pil_image.save(buffer, format="PNG")
             image_bytes = buffer.getvalue()
             return self.extract_from_bytes(image_bytes, "png")
-        except Exception as e:
+        except (OSError, IOError, ValueError) as e:
             return OCRResult.failure_result(f"Failed to convert image: {e}")
 
     def extract_from_bytes(self, image_bytes: bytes, file_type: str = "png") -> OCRResult:
@@ -273,7 +273,7 @@ class AzureDocumentProvider(BaseOCRProvider):
                 metadata={"provider": self.provider_name, "error_type": "api_error"},
             )
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, ValueError) as e:
             self.logger.error(f"Unexpected Azure OCR error: {e}")
             return OCRResult.failure_result(
                 f"OCR failed: {e}",
@@ -407,6 +407,6 @@ class AzureDocumentProvider(BaseOCRProvider):
             self.logger.error(f"Azure connection test failed: {e}")
             return False
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             self.logger.error(f"Azure connection test failed: {e}")
             return False

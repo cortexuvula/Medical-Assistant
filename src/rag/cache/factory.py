@@ -4,13 +4,14 @@ Cache provider factory.
 Creates cache providers based on configuration and environment variables.
 """
 
-import logging
 import os
+
+from utils.structured_logging import get_logger
 from typing import Optional
 
 from rag.cache.base import BaseCacheProvider, CacheBackend, CacheConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Global singleton instance
 _cache_provider: Optional[BaseCacheProvider] = None

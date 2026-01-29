@@ -11,12 +11,12 @@ Parses advanced search syntax including:
 """
 
 import re
-import logging
+from utils.structured_logging import get_logger
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

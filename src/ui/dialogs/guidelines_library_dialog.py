@@ -8,12 +8,13 @@ stored in the remote Neon PostgreSQL database:
 - Refresh list
 """
 
-import logging
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class GuidelinesLibraryDialog(tk.Toplevel):
@@ -195,7 +196,25 @@ class GuidelinesLibraryDialog(tk.Toplevel):
         )
 
     def _load_guidelines(self):
-        """Load guidelines from the remote database."""
+        """Load guidelines from the remote database.
+
+        Uses cached data from background startup refresh if available,
+        providing instant display without a loading spinner.
+        """
+        # Check for cached guidelines from background startup refresh
+        app = self.master
+        # Walk up to the root app if needed
+        while app and not hasattr(app, 'guidelines_cache'):
+            app = getattr(app, 'master', None)
+        cached = getattr(app, 'guidelines_cache', None) if app else None
+
+        if cached is not None and isinstance(cached, list):
+            # Use cached data — instant display, no spinner
+            if app:
+                app.guidelines_cache = None  # Clear so Refresh button fetches fresh
+            self._on_guidelines_loaded(cached)
+            return
+
         import threading
 
         self.loading_label.pack(fill=tk.X, pady=5)
@@ -205,7 +224,7 @@ class GuidelinesLibraryDialog(tk.Toplevel):
                 if self.on_refresh:
                     guidelines = self.on_refresh()
                 else:
-                    from src.rag.guidelines_vector_store import get_guidelines_vector_store
+                    from rag.guidelines_vector_store import get_guidelines_vector_store
                     store = get_guidelines_vector_store()
                     guidelines = store.list_guidelines()
 
@@ -359,7 +378,7 @@ class GuidelinesLibraryDialog(tk.Toplevel):
             else:
                 # Default: use vector store directly
                 try:
-                    from src.rag.guidelines_vector_store import get_guidelines_vector_store
+                    from rag.guidelines_vector_store import get_guidelines_vector_store
                     store = get_guidelines_vector_store()
                     if store.delete_guideline_complete(gid):
                         deleted += 1

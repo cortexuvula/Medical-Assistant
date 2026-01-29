@@ -5,8 +5,9 @@ Provides parallel search execution with streaming callbacks
 for progressive result display. Supports cancellation.
 """
 
-import logging
 import time
+
+from utils.structured_logging import get_logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -28,7 +29,7 @@ from rag.streaming_models import (
     StreamingSearchState,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StreamingHybridRetriever:

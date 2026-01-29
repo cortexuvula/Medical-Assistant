@@ -6,6 +6,7 @@ Provides a clean interface for database interactions.
 """
 
 import os
+import sqlite3
 from datetime import datetime as dt
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
@@ -33,10 +34,11 @@ class DatabaseManager:
 
     def _ensure_database_exists(self) -> None:
         """Ensure database exists and is properly initialized."""
+        import sqlite3
         try:
             # Database class initializes tables via create_tables()
             self._db.create_tables()
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to initialize database: {e}")
 
     def save_soap_recording(self, recording_data: Dict[str, Any], app=None) -> Optional[int]:
@@ -80,7 +82,7 @@ class DatabaseManager:
 
             return recording_id
 
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             logger.error(f"Failed to save SOAP recording: {e}")
             return None
 
@@ -128,7 +130,7 @@ class DatabaseManager:
                 if analysis_id:
                     logger.info(f"Saved pending differential diagnosis (id={analysis_id}) for recording {recording_id}")
 
-        except Exception as e:
+        except (sqlite3.Error, KeyError, AttributeError) as e:
             logger.error(f"Failed to save pending analyses: {e}")
 
     def save_letter(self, letter_data: Dict[str, Any]) -> Optional[int]:
@@ -165,7 +167,7 @@ class DatabaseManager:
             logger.info(f"Letter saved to database with ID: {letter_id}")
             return letter_id
 
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             logger.error(f"Failed to save letter: {e}")
             return None
 
@@ -184,7 +186,7 @@ class DatabaseManager:
             # fetching all and slicing in Python
             return self._db.get_recordings_paginated(limit=limit, offset=offset)
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to get recordings: {e}")
             return []
 
@@ -199,7 +201,7 @@ class DatabaseManager:
                 cursor.execute("SELECT COUNT(*) FROM recordings")
                 result = cursor.fetchone()
                 return result[0] if result else 0
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to get recordings count: {e}")
             return 0
 
@@ -216,7 +218,7 @@ class DatabaseManager:
             # Use the Database class method which returns a dictionary
             return self._db.get_recording(recording_id)
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to get recording {recording_id}: {e}")
             return None
 
@@ -238,7 +240,7 @@ class DatabaseManager:
                 logger.info(f"Recording {recording_id} updated successfully")
             return result
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to update recording {recording_id}: {e}")
             return False
 
@@ -266,7 +268,7 @@ class DatabaseManager:
                         try:
                             os.remove(audio_path)
                             logger.info(f"Deleted audio file: {audio_path}")
-                        except Exception as e:
+                        except OSError as e:
                             logger.warning(f"Failed to delete audio file: {e}")
 
                     logger.info(f"Recording {recording_id} deleted successfully")
@@ -274,7 +276,7 @@ class DatabaseManager:
 
             return False
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to delete recording {recording_id}: {e}")
             return False
 
@@ -293,7 +295,7 @@ class DatabaseManager:
             # The Database.search_recordings method already handles all fields
             return self._db.search_recordings(query)
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to search recordings: {e}")
             return []
 
@@ -336,7 +338,7 @@ class DatabaseManager:
                     "latest_recording_date": latest_date
                 }
 
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to get statistics: {e}")
             return {
                 "total_recordings": 0,

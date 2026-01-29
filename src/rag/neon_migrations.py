@@ -9,10 +9,10 @@ Includes:
 - HNSW approximate nearest neighbor indexing (10-50x faster vector search)
 """
 
-import logging
+from utils.structured_logging import get_logger
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # HNSW index configuration defaults
 # These are optimized for 10K-100K documents

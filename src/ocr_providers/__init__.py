@@ -6,12 +6,12 @@ Azure Document Intelligence as the sole OCR provider.
 
 Usage:
     # Get the OCR provider
-    from src.ocr_providers import get_ocr_provider
+    from ocr_providers import get_ocr_provider
     provider = get_ocr_provider()
     result = provider.extract_from_image("scan.png")
 
     # Use the manager directly
-    from src.ocr_providers import OCRProviderManager
+    from ocr_providers import OCRProviderManager
     manager = OCRProviderManager()
     result = manager.extract_from_image("scan.png")
 """

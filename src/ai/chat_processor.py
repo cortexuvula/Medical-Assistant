@@ -24,7 +24,9 @@ Thread Safety:
     - Circuit breaker state is thread-safe
 """
 
+import sqlite3
 import threading
+import tkinter as tk
 
 from utils.structured_logging import get_logger
 
@@ -161,7 +163,7 @@ class ChatProcessor:
             else:
                 self.app.status_manager.error("Failed to get AI response")
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, ValueError, RuntimeError) as e:
             logger.error(f"Error processing chat message: {e}", exc_info=True)
             self.app.status_manager.error(f"Chat processing error: {str(e)}")
             # Hide typing indicator on error
@@ -203,8 +205,8 @@ class ChatProcessor:
                     # Truncate if too long
                     if len(content) > self.max_context_length:
                         context["content"] = content[:self.max_context_length] + "...[truncated]"
-                        
-        except Exception as e:
+
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error extracting context: {e}")
             
         return context
@@ -508,8 +510,8 @@ class ChatProcessor:
                 
                 # Show brief notification in status bar
                 self.app.status_manager.info("AI response processed and applied")
-                
-            except Exception as e:
+
+            except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error showing AI response notification: {e}")
                 
         # Show on main thread
@@ -583,8 +585,8 @@ class ChatProcessor:
                 else:
                     logger.warning(f"No content to apply or no active text widget. Content: {bool(content_to_apply)}, Widget: {hasattr(self.app, 'active_text_widget')}")
                     self.app.status_manager.warning("No content to apply to document")
-                        
-            except Exception as e:
+
+            except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error applying AI response to document: {e}", exc_info=True)
                 self.app.status_manager.error("Failed to apply changes")
                 
@@ -620,8 +622,8 @@ class ChatProcessor:
                         self.app.status_manager.info("Changes not applied")
                 else:
                     self.app.status_manager.warning("No content to apply to document")
-                        
-            except Exception as e:
+
+            except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error applying AI response to document: {e}")
                 self.app.status_manager.error("Failed to apply changes")
                 
@@ -803,7 +805,7 @@ class ChatProcessor:
                     
             return result[0]
             
-        except Exception as e:
+        except (tk.TclError, RuntimeError) as e:
             logger.error(f"Error showing tool confirmation: {e}")
             return False  # Deny on error
     
@@ -906,13 +908,13 @@ class ChatProcessor:
                         # Update database
                         if self.app.db.update_recording(self.app.current_recording_id, chat=full_chat):
                             logger.info(f"Updated recording {self.app.current_recording_id} with chat content")
-                    except Exception as e:
+                    except sqlite3.Error as e:
                         logger.error(f"Failed to save chat to database: {e}")
                 
                 # Update status
                 self.app.status_manager.success("Chat response added")
                 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error appending to chat tab: {e}")
                 self.app.status_manager.error("Failed to add chat response")
         
@@ -932,7 +934,7 @@ class ChatProcessor:
                     self.clear_history()
                     # Update status
                     self.app.status_manager.success("Chat history cleared")
-                except Exception as e:
+                except (tk.TclError, AttributeError) as e:
                     logger.error(f"Error clearing chat: {e}")
                     self.app.status_manager.error("Failed to clear chat")
             
@@ -967,7 +969,7 @@ class ChatProcessor:
                 # Start animation
                 self._animate_typing_indicator()
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error showing typing indicator: {e}")
 
         # Execute on main thread
@@ -994,7 +996,7 @@ class ChatProcessor:
                 # Schedule next animation
                 self._typing_animation_id = self.app.after(500, animate)
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error animating typing indicator: {e}")
 
         animate()
@@ -1007,7 +1009,7 @@ class ChatProcessor:
                 if self._typing_animation_id:
                     try:
                         self.app.after_cancel(self._typing_animation_id)
-                    except Exception as e:
+                    except (tk.TclError, ValueError) as e:
                         logger.debug(f"Failed to cancel typing animation: {e}")
                     self._typing_animation_id = None
 
@@ -1020,7 +1022,7 @@ class ChatProcessor:
 
                 self._typing_frame_index = 0
 
-            except Exception as e:
+            except (tk.TclError, AttributeError) as e:
                 logger.debug(f"Error hiding typing indicator: {e}")
 
         # Execute on main thread
@@ -1032,7 +1034,7 @@ class ChatProcessor:
             try:
                 import pyperclip
                 pyperclip.copy(text)
-            except Exception:
+            except ImportError:
                 self.app.clipboard_clear()
                 self.app.clipboard_append(text)
                 self.app.update()
@@ -1040,7 +1042,7 @@ class ChatProcessor:
             # Show brief success message
             self.app.status_manager.success("Response copied to clipboard")
             logger.info("Assistant response copied to clipboard")
-        except Exception as e:
+        except (tk.TclError, OSError) as e:
             logger.error(f"Failed to copy to clipboard: {e}")
             self.app.status_manager.error("Failed to copy response")
     
@@ -1067,7 +1069,7 @@ class ChatProcessor:
             finally:
                 context_menu.grab_release()
                 
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error showing context menu: {e}")
     
     def _select_response(self, event, start_idx, end_idx):
@@ -1084,7 +1086,7 @@ class ChatProcessor:
             # Set focus to enable keyboard shortcuts
             event.widget.focus_set()
             
-        except Exception as e:
+        except (tk.TclError, AttributeError) as e:
             logger.error(f"Error selecting response: {e}")
     
     def _initialize_mcp(self):
@@ -1107,7 +1109,7 @@ class ChatProcessor:
                 # Stop health monitor if MCP is disabled
                 health_monitor.stop()
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Error initializing MCP: {e}")
     
     def reload_mcp_tools(self):
@@ -1132,7 +1134,7 @@ class ChatProcessor:
             if self.use_tools:
                 self.chat_agent = ChatAgent(tool_executor=self.tool_executor)
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Error reloading MCP tools: {e}")
     
     def set_tools_enabled(self, enabled: bool):

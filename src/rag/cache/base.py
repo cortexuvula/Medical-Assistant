@@ -4,14 +4,15 @@ Base cache provider interface.
 Defines the abstract interface for embedding cache backends.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class CacheBackend(Enum):

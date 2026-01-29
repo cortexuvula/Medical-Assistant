@@ -32,10 +32,15 @@ class VocabularyManager:
     _instance = None
     _instance_lock = threading.Lock()
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the vocabulary manager."""
         self.logger = get_logger(__name__)
         self.corrector = VocabularyCorrector()
+        self._enabled: bool = True
+        self._default_specialty: str = "general"
+        self._categories: List[str] = []
+        self._specialties: List[str] = []
+        self._corrections: Dict[str, Dict] = {}
         self._load_settings()
 
     @classmethod
@@ -52,7 +57,7 @@ class VocabularyManager:
                     cls._instance = VocabularyManager()
         return cls._instance
 
-    def _load_settings(self):
+    def _load_settings(self) -> None:
         """Load vocabulary settings from SETTINGS."""
         vocab_settings = SETTINGS.get("custom_vocabulary", {})
         self._enabled = vocab_settings.get("enabled", True)
@@ -67,7 +72,7 @@ class VocabularyManager:
         ])
         self._corrections = vocab_settings.get("corrections", {})
 
-    def _save_settings(self):
+    def _save_settings(self) -> None:
         """Save vocabulary settings to SETTINGS."""
         SETTINGS["custom_vocabulary"] = {
             "enabled": self._enabled,
@@ -79,14 +84,14 @@ class VocabularyManager:
         save_settings(SETTINGS)
         self.logger.info("Vocabulary settings saved")
 
-    def save_settings(self):
+    def save_settings(self) -> None:
         """Public method to save vocabulary settings.
 
         Call this after making changes via the dialog.
         """
         self._save_settings()
 
-    def reload_settings(self):
+    def reload_settings(self) -> None:
         """Reload settings from SETTINGS dict.
 
         Call this after external changes to settings.
@@ -101,7 +106,7 @@ class VocabularyManager:
         return self._enabled
 
     @enabled.setter
-    def enabled(self, value: bool):
+    def enabled(self, value: bool) -> None:
         """Enable or disable vocabulary correction."""
         self._enabled = value
         self._save_settings()
@@ -112,7 +117,7 @@ class VocabularyManager:
         return self._default_specialty
 
     @default_specialty.setter
-    def default_specialty(self, value: str):
+    def default_specialty(self, value: str) -> None:
         """Set default specialty context."""
         self._default_specialty = value
         self._save_settings()
@@ -558,7 +563,7 @@ class VocabularyManager:
             "by_specialty": by_specialty
         }
 
-    def reset_to_defaults(self):
+    def reset_to_defaults(self) -> None:
         """Reset corrections to default set."""
         self._corrections = _get_default_corrections()
         self.corrector.clear_cache()

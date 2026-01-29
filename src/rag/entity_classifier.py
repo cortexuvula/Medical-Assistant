@@ -5,14 +5,14 @@ Provides embedding-based entity type classification with context awareness,
 replacing simple rule-based type detection with semantic understanding.
 """
 
-import logging
+from utils.structured_logging import get_logger
 from dataclasses import dataclass, field
 from typing import Optional
 
 from rag.graph_data_provider import EntityType
 from rag.exceptions import EmbeddingError, RAGError
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

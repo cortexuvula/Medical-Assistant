@@ -494,6 +494,9 @@ class AppInitializer:
         # Initialize RAG document manager (lazy initialization)
         self._initialize_rag_system()
 
+        # Initialize clinical guidelines system (background refresh)
+        self._initialize_guidelines_system()
+
         # Initialize processing queue
         self.app.processing_queue = ProcessingQueue(self.app)
         self.app.processing_queue.status_callback = self._on_queue_status_update
@@ -554,6 +557,54 @@ class AppInitializer:
                 logger.debug(f"Background RAG sync failed (non-critical): {e}")
 
         thread = threading.Thread(target=_sync, daemon=True, name="rag-bg-sync")
+        thread.start()
+
+    def _initialize_guidelines_system(self):
+        """Initialize the clinical guidelines system with background refresh.
+
+        Checks if a guidelines database is configured, then kicks off a
+        background thread to pre-warm the connection pool and cache the
+        guidelines list for instant dialog display.
+        """
+        # Check environment variable first, then settings fallback
+        conn_str = os.environ.get("CLINICAL_GUIDELINES_DATABASE_URL")
+        if not conn_str:
+            try:
+                guidelines_settings = SETTINGS.get("clinical_guidelines", {})
+                conn_str = guidelines_settings.get("database_url")
+            except Exception:
+                pass
+
+        if not conn_str:
+            logger.debug("Guidelines system not configured (CLINICAL_GUIDELINES_DATABASE_URL not set)")
+            self.app.guidelines_cache = None
+            return
+
+        self.app.guidelines_cache = None
+        self._refresh_guidelines_background()
+
+    def _refresh_guidelines_background(self):
+        """Refresh guidelines list in a background thread.
+
+        Pre-warms the database connection pool, runs any pending migrations,
+        and caches the guidelines list so the dialog opens instantly.
+
+        Non-blocking - failures are logged but don't prevent startup.
+        """
+        import threading
+
+        def _refresh():
+            try:
+                from rag.guidelines_vector_store import get_guidelines_vector_store
+                store = get_guidelines_vector_store()
+                guidelines = store.list_guidelines()
+                self.app.guidelines_cache = guidelines
+                logger.info(f"Background refresh: loaded {len(guidelines)} clinical guideline(s)")
+            except Exception as e:
+                logger.debug(f"Background guidelines refresh failed (non-critical): {e}")
+                self.app.guidelines_cache = None
+
+        thread = threading.Thread(target=_refresh, daemon=True, name="guidelines-bg-refresh")
         thread.start()
 
     def _setup_api_dependent_features(self):

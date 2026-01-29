@@ -20,14 +20,14 @@ from utils.structured_logging import get_logger
 
 # Try to import guidelines retriever
 try:
-    from src.rag.guidelines_retriever import get_guidelines_retriever
+    from rag.guidelines_retriever import get_guidelines_retriever
     GUIDELINES_AVAILABLE = True
 except ImportError:
     GUIDELINES_AVAILABLE = False
 
 # Try to import guidelines models
 try:
-    from src.rag.guidelines_models import (
+    from rag.guidelines_models import (
         GuidelineReference,
         ComplianceItem,
         ComplianceResult,

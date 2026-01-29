@@ -13,7 +13,7 @@ Indexes:
     - GIN index on search_vector for BM25 full-text search
 """
 
-import logging
+from utils.structured_logging import get_logger
 import os
 import pathlib
 from typing import Optional
@@ -45,7 +45,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Migration versions
@@ -396,7 +396,7 @@ def get_connection_string() -> Optional[str]:
         return conn_str
 
     try:
-        from src.settings.settings import SETTINGS
+        from settings.settings import SETTINGS
         guidelines_settings = SETTINGS.get("clinical_guidelines", {})
         return guidelines_settings.get("database_url")
     except Exception:

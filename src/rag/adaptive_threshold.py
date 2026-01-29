@@ -7,13 +7,13 @@ Dynamically adjusts the similarity threshold based on:
 - Target result count
 """
 
-import logging
+from utils.structured_logging import get_logger
 import statistics
 from typing import Optional
 
 from rag.search_config import SearchQualityConfig, get_search_quality_config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AdaptiveThresholdCalculator:

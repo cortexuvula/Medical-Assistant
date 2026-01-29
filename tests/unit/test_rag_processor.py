@@ -396,11 +396,12 @@ class TestCopyToClipboard:
 
     def test_copy_to_clipboard_handles_error(self):
         """Test error handling during clipboard copy."""
+        import tkinter as tk
         self.mock_app.status_manager = Mock()
 
-        with patch('pyperclip.copy', side_effect=Exception("Clipboard error")):
+        with patch('pyperclip.copy', side_effect=ImportError("Clipboard error")):
             # pyperclip fails, falls back to tkinter which also fails
-            self.mock_app.clipboard_clear.side_effect = Exception("Tk error")
+            self.mock_app.clipboard_clear.side_effect = tk.TclError("Tk error")
             # Should not raise
             self.processor._copy_to_clipboard("Test text")
 

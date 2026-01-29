@@ -141,7 +141,7 @@ class TestAudioHandlerErrorHandling:
         """Test get_input_devices exception handling."""
         # Create a mock soundcard module that raises an exception
         mock_soundcard = Mock()
-        mock_soundcard.all_microphones.side_effect = Exception("Device error")
+        mock_soundcard.all_microphones.side_effect = OSError("Device error")
 
         with patch('audio.audio.soundcard', mock_soundcard):
             with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
@@ -559,7 +559,7 @@ class TestProcessMonitor:
         }
         audio_handler._instance_streams.add('test_purpose')
 
-        with patch('sounddevice.stop', side_effect=Exception("Stop error")):
+        with patch('sounddevice.stop', side_effect=OSError("Stop error")):
             with caplog.at_level(logging.ERROR):
                 audio_handler.cleanup_resources()
 
@@ -574,7 +574,7 @@ class TestProcessMonitor:
         # Add a mock stream that raises on stop (now dict structure)
         # Must add to both class variable and instance tracking
         mock_stream = Mock()
-        mock_stream.stop.side_effect = Exception("Stream stop error")
+        mock_stream.stop.side_effect = OSError("Stream stop error")
         AudioHandler._active_streams['test_purpose'] = {
             'stream': mock_stream,
             'timestamp': time.time(),
@@ -613,20 +613,20 @@ class TestProcessMonitor:
         """Test audio callback flush functionality."""
         audio_handler.sample_rate = 48000
         audio_handler.callback_function = Mock()
-        
-        # Create callback and flush function
-        callback, flush_func = audio_handler._create_audio_callback(phrase_time_limit=2)
-        
+
+        # Create callback and flush function (now returns 3 values: callback, flush, mark_stopping)
+        callback, flush_func, _ = audio_handler._create_audio_callback(phrase_time_limit=2)
+
         # Add some data via callback (not enough to trigger automatic processing)
         test_data = np.random.uniform(-0.1, 0.1, 1000).astype(np.float32)
         callback(test_data, 1000, None, sd.CallbackFlags())
-        
+
         # Callback shouldn't have been called yet
         audio_handler.callback_function.assert_not_called()
-        
+
         # Now flush
         flush_func()
-        
+
         # Callback should have been called with accumulated data
         audio_handler.callback_function.assert_called_once()
     
@@ -635,8 +635,8 @@ class TestProcessMonitor:
         audio_handler.sample_rate = 48000
         audio_handler.callback_function = Mock()
 
-        # Create callback
-        callback, _ = audio_handler._create_audio_callback(phrase_time_limit=1)
+        # Create callback (now returns 3 values: callback, flush, mark_stopping)
+        callback, _, _ = audio_handler._create_audio_callback(phrase_time_limit=1)
 
         # Create clipping audio data
         clipping_data = np.ones((48000, 1), dtype=np.float32) * 0.99

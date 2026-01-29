@@ -25,7 +25,6 @@ Usage:
     print(f"Overall status: {report.overall_status}")
 """
 
-import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -33,7 +32,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Callable, Any
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # =============================================================================

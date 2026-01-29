@@ -5,7 +5,7 @@ Provides cross-document entity linking and deduplication using
 similarity matching (string similarity + embedding similarity).
 """
 
-import logging
+from utils.structured_logging import get_logger
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from rag.graph_data_provider import EntityType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

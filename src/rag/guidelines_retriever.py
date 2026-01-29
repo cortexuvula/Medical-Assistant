@@ -11,19 +11,19 @@ Architecture Note:
     This is intentional for data isolation and security.
 """
 
-import logging
 import time
 from typing import Any, Optional
 
-from src.rag.guidelines_models import (
+from rag.guidelines_models import (
     GuidelineSearchResult,
     GuidelineSearchQuery,
 )
-from src.rag.guidelines_vector_store import get_guidelines_vector_store
-from src.rag.guidelines_graphiti_client import get_guidelines_graphiti_client
+from rag.guidelines_vector_store import get_guidelines_vector_store
+from rag.guidelines_graphiti_client import get_guidelines_graphiti_client
 
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GuidelinesRetriever:
@@ -77,7 +77,7 @@ class GuidelinesRetriever:
             # Get API key
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
-                from src.managers.api_key_manager import get_api_key_manager
+                from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
                 api_key = manager.get_key("openai")
 

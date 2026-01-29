@@ -11,7 +11,7 @@ Features:
 - Singleton pattern for consistent state
 """
 
-import logging
+from utils.structured_logging import get_logger
 import os
 import pathlib
 import threading
@@ -22,7 +22,7 @@ from typing import Dict, Optional
 
 from dotenv import load_dotenv
 
-from src.utils.timeout_config import get_timeout
+from utils.timeout_config import get_timeout
 
 # Load environment variables from multiple possible locations
 def _load_env():
@@ -49,7 +49,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -99,7 +99,7 @@ class RAGHealthManager:
 
         # Load TTL from settings if available
         try:
-            from src.settings.settings import SETTINGS
+            from settings.settings import SETTINGS
             resilience_config = SETTINGS.get("rag_resilience", {})
             self._cache_ttl = resilience_config.get(
                 "health_check_cache_ttl", cache_ttl_seconds
@@ -173,7 +173,7 @@ class RAGHealthManager:
         # Check circuit breaker first (instant)
         circuit_state = "unknown"
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             circuit_state = cb.state.value
 
@@ -190,7 +190,7 @@ class RAGHealthManager:
         # Perform actual health check
         start_time = time.time()
         try:
-            from src.rag.graph_data_provider import GraphDataProvider
+            from rag.graph_data_provider import GraphDataProvider
             provider = GraphDataProvider()
             healthy = provider.health_check()
             latency_ms = (time.time() - start_time) * 1000
@@ -228,7 +228,7 @@ class RAGHealthManager:
         # Check circuit breaker first (instant)
         circuit_state = "unknown"
         try:
-            from src.rag.rag_resilience import get_neon_circuit_breaker
+            from rag.rag_resilience import get_neon_circuit_breaker
             cb = get_neon_circuit_breaker()
             circuit_state = cb.state.value
 
@@ -245,7 +245,7 @@ class RAGHealthManager:
         # Perform actual health check
         start_time = time.time()
         try:
-            from src.rag.neon_vector_store import get_vector_store
+            from rag.neon_vector_store import get_vector_store
             store = get_vector_store()
             if store:
                 healthy = store.health_check()
@@ -288,7 +288,7 @@ class RAGHealthManager:
         # Check circuit breaker first (instant)
         circuit_state = "unknown"
         try:
-            from src.rag.rag_resilience import get_openai_embedding_circuit_breaker
+            from rag.rag_resilience import get_openai_embedding_circuit_breaker
             cb = get_openai_embedding_circuit_breaker()
             circuit_state = cb.state.value
 
@@ -311,7 +311,7 @@ class RAGHealthManager:
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
                 try:
-                    from src.managers.api_key_manager import get_api_key_manager
+                    from managers.api_key_manager import get_api_key_manager
                     manager = get_api_key_manager()
                     api_key = manager.get_key("openai")
                 except Exception:

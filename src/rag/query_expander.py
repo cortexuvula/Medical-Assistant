@@ -7,14 +7,14 @@ Provides bidirectional expansion of:
 - Lay terms ↔ medical terminology
 """
 
-import logging
 import re
 from typing import Optional
 
 from rag.models import QueryExpansion
 from rag.search_config import SearchQualityConfig, get_search_quality_config
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Medical abbreviations dictionary (abbreviation -> expansions)

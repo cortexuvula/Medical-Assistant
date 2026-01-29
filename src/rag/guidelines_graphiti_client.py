@@ -11,7 +11,7 @@ Architecture Note:
 
 import asyncio
 import atexit
-import logging
+from utils.structured_logging import get_logger
 import os
 import pathlib
 import threading
@@ -20,8 +20,8 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 
-from src.rag.guidelines_models import GuidelineSearchResult
-from src.utils.timeout_config import get_timeout
+from rag.guidelines_models import GuidelineSearchResult
+from utils.timeout_config import get_timeout
 
 
 # Load environment variables
@@ -49,7 +49,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class _GuidelinesAsyncWorker:
@@ -179,7 +179,7 @@ class GuidelinesGraphitiClient:
         # Fall back to settings if not in env
         if not uri or not password:
             try:
-                from src.settings.settings import SETTINGS
+                from settings.settings import SETTINGS
                 guidelines_settings = SETTINGS.get("clinical_guidelines", {})
                 uri = uri or guidelines_settings.get("neo4j_uri")
                 user = user or guidelines_settings.get("neo4j_user", "neo4j")
@@ -190,7 +190,7 @@ class GuidelinesGraphitiClient:
         # Get OpenAI key from API key manager if not set
         if not openai_key:
             try:
-                from src.managers.api_key_manager import get_api_key_manager
+                from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
                 openai_key = manager.get_key("openai")
             except Exception:
@@ -508,7 +508,7 @@ def get_guidelines_graphiti_client() -> Optional[GuidelinesGraphitiClient]:
         uri = os.environ.get("CLINICAL_GUIDELINES_NEO4J_URI")
         if not uri:
             try:
-                from src.settings.settings import SETTINGS
+                from settings.settings import SETTINGS
                 guidelines_settings = SETTINGS.get("clinical_guidelines", {})
                 uri = guidelines_settings.get("neo4j_uri")
             except Exception:

@@ -8,7 +8,7 @@ Provides various notification styles based on user preferences.
 import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as ttk
-from typing import Optional, Callable, Dict, Any
+from typing import Any, Callable, Dict, List, Optional
 from datetime import datetime
 import threading
 from queue import Queue, Empty
@@ -23,16 +23,16 @@ logger = get_logger(__name__)
 class NotificationManager:
     """Manages notifications for background processing events."""
     
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         """Initialize the notification manager.
-        
+
         Args:
             app: The main application instance
         """
         self.app = app
-        self.notification_queue = Queue()
-        self.active_toasts = []
-        self.notification_history = []
+        self.notification_queue: Queue[Dict[str, Any]] = Queue()
+        self.active_toasts: List[tk.Toplevel] = []
+        self.notification_history: List[Dict[str, Any]] = []
         
         # Start notification processor thread
         self.processor_thread = threading.Thread(target=self._process_notifications, daemon=True)
@@ -108,7 +108,7 @@ class NotificationManager:
         if SETTINGS.get("show_progress_notifications", True):
             self.notification_queue.put(notification)
     
-    def _process_notifications(self):
+    def _process_notifications(self) -> None:
         """Process notifications in background thread."""
         while True:
             try:
@@ -123,7 +123,7 @@ class NotificationManager:
             except Exception as e:
                 logger.error(f"Error processing notification: {str(e)}")
     
-    def _display_notification(self, notification: Dict[str, Any]):
+    def _display_notification(self, notification: Dict[str, Any]) -> None:
         """Display notification based on user preferences."""
         style = SETTINGS.get("notification_style", "toast")
         
@@ -137,7 +137,7 @@ class NotificationManager:
             # Default to status bar
             self._show_statusbar_notification(notification)
     
-    def _show_toast_notification(self, notification: Dict[str, Any]):
+    def _show_toast_notification(self, notification: Dict[str, Any]) -> None:
         """Show toast-style notification."""
         # Create toast window
         toast = tk.Toplevel(self.app)
@@ -192,7 +192,7 @@ class NotificationManager:
         # Track active toast
         self.active_toasts.append(toast)
     
-    def _position_toast(self, toast: tk.Toplevel):
+    def _position_toast(self, toast: tk.Toplevel) -> None:
         """Position toast notification on screen."""
         # Update to get dimensions
         toast.update_idletasks()
@@ -218,14 +218,14 @@ class NotificationManager:
         toast.attributes("-alpha", 0.0)
         self._fade_in(toast)
     
-    def _fade_in(self, window: tk.Toplevel, alpha: float = 0.0):
+    def _fade_in(self, window: tk.Toplevel, alpha: float = 0.0) -> None:
         """Fade in animation for toast."""
         if alpha < 0.9:
             alpha += 0.1
             window.attributes("-alpha", alpha)
             window.after(20, lambda: self._fade_in(window, alpha))
     
-    def _hide_toast(self, toast: tk.Toplevel):
+    def _hide_toast(self, toast: tk.Toplevel) -> None:
         """Hide and destroy toast notification."""
         if toast in self.active_toasts:
             self.active_toasts.remove(toast)
@@ -233,7 +233,7 @@ class NotificationManager:
         # Fade out
         self._fade_out(toast)
     
-    def _fade_out(self, window: tk.Toplevel, alpha: float = 0.9):
+    def _fade_out(self, window: tk.Toplevel, alpha: float = 0.9) -> None:
         """Fade out animation for toast."""
         if alpha > 0.1:
             alpha -= 0.1
@@ -242,7 +242,7 @@ class NotificationManager:
         else:
             window.destroy()
     
-    def _show_statusbar_notification(self, notification: Dict[str, Any]):
+    def _show_statusbar_notification(self, notification: Dict[str, Any]) -> None:
         """Show notification in status bar."""
         if notification["type"] == "completion":
             message = f"✓ {notification['patient_name']} processed successfully"
@@ -254,7 +254,7 @@ class NotificationManager:
             message = f"Processing {notification['patient_name']}: {notification.get('progress', 0)}%"
             self.app.status_manager.info(message)
     
-    def _show_popup_notification(self, notification: Dict[str, Any]):
+    def _show_popup_notification(self, notification: Dict[str, Any]) -> None:
         """Show modal popup notification."""
         if notification["type"] == "completion":
             title = "Processing Complete"
@@ -267,7 +267,7 @@ class NotificationManager:
                      f"Error: {notification['error_message']}"
             messagebox.showerror(title, message, parent=self.app)
     
-    def get_notification_history(self, limit: int = 50) -> list:
+    def get_notification_history(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent notification history.
         
         Args:
@@ -278,12 +278,12 @@ class NotificationManager:
         """
         return self.notification_history[-limit:]
     
-    def clear_notification_history(self):
+    def clear_notification_history(self) -> None:
         """Clear notification history."""
         self.notification_history.clear()
         logger.info("Notification history cleared")
     
-    def show_queue_status(self, active_count: int, completed_count: int, failed_count: int):
+    def show_queue_status(self, active_count: int, completed_count: int, failed_count: int) -> None:
         """Show queue status summary notification."""
         if active_count > 0:
             message = f"Queue: {active_count} processing"
@@ -295,7 +295,7 @@ class NotificationManager:
             # Update status bar
             self.app.status_manager.info(message)
     
-    def _view_recording(self, recording_id: int, toast: tk.Toplevel):
+    def _view_recording(self, recording_id: int, toast: tk.Toplevel) -> None:
         """View a completed recording in the UI."""
         try:
             # Hide the toast
@@ -338,7 +338,7 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Error viewing recording: {str(e)}", exc_info=True)
     
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up notification manager resources."""
         # Clear any remaining toasts
         for toast in self.active_toasts:

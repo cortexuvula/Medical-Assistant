@@ -8,7 +8,6 @@ Provides multi-signal detection of follow-up questions using:
 - Intent classification
 """
 
-import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -16,7 +15,9 @@ from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class QueryIntent(str, Enum):

@@ -22,14 +22,14 @@ from utils.error_handling import OperationResult
 class TranslationManager:
     """Manages translation providers and handles translation operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the TranslationManager."""
         self.logger = get_logger(__name__)
         self.providers = {
             "deep_translator": DeepTranslatorProvider,
         }
-        self._current_provider = None
-        self._provider_instance = None
+        self._current_provider: Optional[str] = None
+        self._provider_instance: Optional[BaseTranslationProvider] = None
         self.security_manager = get_security_manager()
     
     def get_provider(self) -> BaseTranslationProvider:
@@ -59,9 +59,9 @@ class TranslationManager:
             self.logger.error(f"Failed to get translation provider: {e}")
             raise TranslationError(f"Failed to initialize translation provider: {str(e)}")
     
-    def _create_provider(self, provider_name: str, sub_provider: str = None):
+    def _create_provider(self, provider_name: str, sub_provider: Optional[str] = None) -> None:
         """Create a new provider instance.
-        
+
         Args:
             provider_name: Name of the provider
             sub_provider: Sub-provider for deep_translator (google, deepl, microsoft)
@@ -93,9 +93,9 @@ class TranslationManager:
     def translate(
         self,
         text: str,
-        source_lang: str = None,
-        target_lang: str = None,
-        refine_medical: bool = None
+        source_lang: Optional[str] = None,
+        target_lang: Optional[str] = None,
+        refine_medical: Optional[bool] = None
     ) -> str:
         """Translate text using the current provider.
 
@@ -167,7 +167,7 @@ class TranslationManager:
             self.logger.error(f"Translation failed: {e}")
             raise
 
-    def translate_safe(self, text: str, source_lang: str = None, target_lang: str = None) -> OperationResult[str]:
+    def translate_safe(self, text: str, source_lang: Optional[str] = None, target_lang: Optional[str] = None) -> OperationResult[str]:
         """Translate text using the current provider with OperationResult return type.
 
         This is the recommended method for new code as it provides structured
@@ -330,7 +330,7 @@ class TranslationManager:
                 exception=e
             )
     
-    def update_settings(self, settings: Dict[str, Any]):
+    def update_settings(self, settings: Dict[str, Any]) -> None:
         """Update translation settings.
 
         Args:

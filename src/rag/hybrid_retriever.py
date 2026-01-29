@@ -14,13 +14,12 @@ Enhanced with:
 - Advanced search syntax filtering
 """
 
-import logging
 import re
 import time
 from datetime import datetime
 from typing import Optional
 
-from utils.structured_logging import timed
+from utils.structured_logging import get_logger, timed
 
 from rag.models import (
     HybridSearchResult,
@@ -39,7 +38,7 @@ try:
 except ImportError:
     ParsedQuery = None  # type: ignore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HybridRetriever:

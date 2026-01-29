@@ -20,8 +20,8 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from utils.structured_logging import get_logger, timed
 
-from src.rag.models import VectorSearchQuery, VectorSearchResult
-from src.rag.exceptions import (
+from rag.models import VectorSearchQuery, VectorSearchResult
+from rag.exceptions import (
     VectorSearchError,
     RAGConnectionError,
     RAGConfigurationError,
@@ -91,7 +91,7 @@ class NeonVectorStore:
 
         # Try settings
         try:
-            from src.settings.settings import SETTINGS
+            from settings.settings import SETTINGS
             conn_str = SETTINGS.get("neon_database_url")
             if conn_str:
                 return conn_str

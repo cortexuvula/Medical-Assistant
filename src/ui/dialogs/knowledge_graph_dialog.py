@@ -5,16 +5,16 @@ Displays an interactive visualization of entities and relationships
 from the Neo4j knowledge graph using a custom canvas widget.
 """
 
-import logging
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from src.rag.graph_data_provider import EntityType, GraphData, GraphDataProvider, GraphNode
-from src.ui.components.graph_canvas import GraphCanvas
+from rag.graph_data_provider import EntityType, GraphData, GraphDataProvider, GraphNode
+from ui.components.graph_canvas import GraphCanvas
+from utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class KnowledgeGraphDialog(tk.Toplevel):

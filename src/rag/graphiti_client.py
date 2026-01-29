@@ -14,6 +14,8 @@ import asyncio
 import atexit
 import logging
 import os
+
+from utils.structured_logging import get_logger
 import pathlib
 import queue
 import threading
@@ -22,8 +24,8 @@ from typing import Any, Callable, Optional
 
 from dotenv import load_dotenv
 
-from src.rag.models import GraphSearchResult
-from src.utils.timeout_config import get_timeout
+from rag.models import GraphSearchResult
+from utils.timeout_config import get_timeout
 
 # Load environment variables from multiple possible locations
 def _load_env():
@@ -50,7 +52,7 @@ def _load_env():
 
 _load_env()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Suppress noisy Neo4j warnings about non-existent properties
 logging.getLogger("neo4j").setLevel(logging.ERROR)
@@ -202,7 +204,7 @@ class GraphitiClient:
 
         if not uri or not password:
             try:
-                from src.settings.settings import SETTINGS
+                from settings.settings import SETTINGS
                 uri = uri or SETTINGS.get("graphiti_neo4j_uri")
                 user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
                 password = password or SETTINGS.get("graphiti_neo4j_password")
@@ -211,7 +213,7 @@ class GraphitiClient:
 
         if not openai_key:
             try:
-                from src.managers.api_key_manager import get_api_key_manager
+                from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
                 openai_key = manager.get_key("openai")
             except Exception as e:
@@ -420,11 +422,11 @@ class GraphitiClient:
         """
         # Check circuit breaker first for fast fail
         try:
-            from src.rag.rag_resilience import (
+            from rag.rag_resilience import (
                 get_neo4j_circuit_breaker,
                 CircuitOpenError,
             )
-            from src.utils.resilience import CircuitState
+            from utils.resilience import CircuitState
 
             cb = get_neo4j_circuit_breaker()
             if cb.state == CircuitState.OPEN:
@@ -454,7 +456,7 @@ class GraphitiClient:
     def _record_success(self):
         """Record successful operation for circuit breaker."""
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_success()
         except Exception as e:
@@ -463,7 +465,7 @@ class GraphitiClient:
     def _record_failure(self):
         """Record failed operation for circuit breaker."""
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
+            from rag.rag_resilience import get_neo4j_circuit_breaker
             cb = get_neo4j_circuit_breaker()
             cb._on_failure()
         except Exception as e:
@@ -543,8 +545,8 @@ class GraphitiClient:
         """
         # Fast-fail if circuit breaker is open
         try:
-            from src.rag.rag_resilience import get_neo4j_circuit_breaker
-            from src.utils.resilience import CircuitState
+            from rag.rag_resilience import get_neo4j_circuit_breaker
+            from utils.resilience import CircuitState
 
             cb = get_neo4j_circuit_breaker()
             if cb.state == CircuitState.OPEN:
@@ -601,7 +603,7 @@ def get_graphiti_client() -> Optional[GraphitiClient]:
         uri = os.environ.get("NEO4J_URI")
         if not uri:
             try:
-                from src.settings.settings import SETTINGS
+                from settings.settings import SETTINGS
                 uri = SETTINGS.get("graphiti_neo4j_uri")
             except Exception as e:
                 logger.debug(f"Could not load graphiti_neo4j_uri from SETTINGS: {e}")
