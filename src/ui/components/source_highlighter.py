@@ -413,7 +413,7 @@ class SourceLegend:
 
     def _create_widgets(self):
         """Create legend widgets."""
-        self.frame = ttk.LabelFrame(self.parent, text="Sources", padding=5)
+        self.frame = ttk.LabelFrame(self.parent, text="Sources")
 
         self.items_frame = ttk.Frame(self.frame)
         self.items_frame.pack(fill=tk.X)
