@@ -78,11 +78,16 @@ jobs:
         brew install portaudio create-dmg
 
     - name: Import Apple Developer Certificate
-      if: ${{ runner.os == 'macOS' && secrets.MACOS_CERTIFICATE_P12 != '' }}
+      if: runner.os == 'macOS'
       env:
         MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
         MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       run: |
+        if [ -z "$MACOS_CERTIFICATE_P12" ]; then
+          echo "No signing certificate configured — skipping import."
+          exit 0
+        fi
+
         # Create a temporary keychain
         KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
         KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
@@ -144,7 +149,7 @@ jobs:
       run: ${{ matrix.build_script }}
 
     - name: Cleanup macOS keychain
-      if: ${{ always() && runner.os == 'macOS' }}
+      if: always() && runner.os == 'macOS'
       run: |
         if [ -n "$KEYCHAIN_PATH" ] && security list-keychains | grep -q "app-signing"; then
           security delete-keychain "$KEYCHAIN_PATH" || true
