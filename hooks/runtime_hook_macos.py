@@ -11,6 +11,11 @@ import os
 import sys
 import platform
 
+# Disable GameController discovery to prevent macOS Tahoe crash
+# in GameControllerUI during Tk event loop autorelease pool cleanup.
+# Must be set before AppKit/Tkinter initialization.
+os.environ.setdefault('GC_DISABLE_GAME_CONTROLLER_DISCOVERY', '1')
+
 if platform.system() == 'Darwin' and hasattr(sys, 'frozen'):
     # Add src directory to path for internal module imports
     if hasattr(sys, '_MEIPASS'):
