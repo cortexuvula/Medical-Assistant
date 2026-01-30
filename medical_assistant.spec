@@ -247,6 +247,8 @@ if sys.platform == 'darwin':
         bundle_identifier='com.medicalassistant.app',
         info_plist={
             'CFBundleIconFile': 'icon.icns',
+            'CFBundleVersion': os.environ.get('APP_VERSION', '0.0.0').lstrip('v'),
+            'CFBundleShortVersionString': os.environ.get('APP_VERSION', '0.0.0').lstrip('v'),
             'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
             # Prevent multiple instances and handle reopen events properly
             'LSMultipleInstancesProhibited': True,

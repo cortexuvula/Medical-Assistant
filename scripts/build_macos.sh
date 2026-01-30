@@ -15,6 +15,8 @@ else
     cd ..
 fi
 
+PROJECT_ROOT=$(pwd)
+
 # Clean previous builds
 rm -rf dist build
 
@@ -46,17 +48,128 @@ pyinstaller medical_assistant.spec --clean || {
 }
 
 # Verify the build output
-if [ -d "dist/MedicalAssistant.app" ]; then
-    echo ""
-    echo "Build complete! Application is in dist/MedicalAssistant.app"
-    echo "To run: open dist/MedicalAssistant.app"
-else
+if [ ! -d "dist/MedicalAssistant.app" ]; then
     echo "Error: Expected output dist/MedicalAssistant.app not found!"
     echo "Contents of dist directory:"
     ls -la dist/ || echo "dist directory does not exist"
     cd "$INITIAL_DIR"
     exit 1
 fi
+
+echo ""
+echo "Build complete! Application is in dist/MedicalAssistant.app"
+
+# ─── Code Signing & Notarization ───
+# Skip if MACOS_SIGNING_IDENTITY is not set (local dev builds)
+if [ -z "$MACOS_SIGNING_IDENTITY" ]; then
+    echo ""
+    echo "MACOS_SIGNING_IDENTITY not set — skipping code signing and notarization."
+    echo "Creating unsigned DMG..."
+    hdiutil create -volname "Medical Assistant" \
+        -srcfolder "dist/MedicalAssistant.app" \
+        -ov -format UDZO \
+        "dist/MedicalAssistant-macOS.dmg"
+    echo "Unsigned DMG created: dist/MedicalAssistant-macOS.dmg"
+    echo "To run: open dist/MedicalAssistant.app"
+    cd "$INITIAL_DIR"
+    exit 0
+fi
+
+echo ""
+echo "=== Code Signing ==="
+echo "Signing identity: $MACOS_SIGNING_IDENTITY"
+
+# Sign the .app bundle
+# PyInstaller one-file builds pack everything into a single Mach-O executable,
+# so --deep covers the entire bundle without needing to enumerate individual dylibs.
+codesign --force --deep --sign "$MACOS_SIGNING_IDENTITY" \
+    --options runtime \
+    --entitlements "$PROJECT_ROOT/entitlements.plist" \
+    --timestamp \
+    "dist/MedicalAssistant.app"
+
+echo "Signing complete."
+
+# Verify the signature
+echo ""
+echo "=== Verifying Signature ==="
+codesign --verify --deep --strict "dist/MedicalAssistant.app"
+echo "codesign --verify: OK"
+
+# spctl may fail in CI (no GUI session), so don't fail the build on it
+spctl --assess --type execute "dist/MedicalAssistant.app" 2>&1 && echo "spctl --assess: accepted" || echo "spctl --assess: skipped (expected in CI)"
+
+# ─── Create DMG ───
+echo ""
+echo "=== Creating DMG ==="
+
+DMG_NAME="MedicalAssistant-macOS.dmg"
+
+if command -v create-dmg &> /dev/null; then
+    echo "Using create-dmg for styled DMG..."
+    create-dmg \
+        --volname "Medical Assistant" \
+        --volicon "icon.icns" \
+        --window-pos 200 120 \
+        --window-size 600 400 \
+        --icon-size 100 \
+        --icon "MedicalAssistant.app" 150 190 \
+        --app-drop-link 450 190 \
+        --no-internet-enable \
+        "dist/$DMG_NAME" \
+        "dist/MedicalAssistant.app" || {
+            echo "create-dmg failed, falling back to hdiutil..."
+            hdiutil create -volname "Medical Assistant" \
+                -srcfolder "dist/MedicalAssistant.app" \
+                -ov -format UDZO \
+                "dist/$DMG_NAME"
+        }
+else
+    echo "create-dmg not found, using hdiutil..."
+    hdiutil create -volname "Medical Assistant" \
+        -srcfolder "dist/MedicalAssistant.app" \
+        -ov -format UDZO \
+        "dist/$DMG_NAME"
+fi
+
+echo "DMG created: dist/$DMG_NAME"
+
+# Sign the DMG
+echo ""
+echo "=== Signing DMG ==="
+codesign --force --sign "$MACOS_SIGNING_IDENTITY" --timestamp "dist/$DMG_NAME"
+echo "DMG signed."
+
+# ─── Notarization ───
+echo ""
+echo "=== Notarizing ==="
+
+if [ -z "$APPLE_ID" ] || [ -z "$APPLE_ID_PASSWORD" ] || [ -z "$MACOS_TEAM_ID" ]; then
+    echo "Notarization credentials not set — skipping notarization."
+    echo "Set APPLE_ID, APPLE_ID_PASSWORD, and MACOS_TEAM_ID to enable."
+    cd "$INITIAL_DIR"
+    exit 0
+fi
+
+xcrun notarytool submit "dist/$DMG_NAME" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_ID_PASSWORD" \
+    --team-id "$MACOS_TEAM_ID" \
+    --wait \
+    --timeout 30m
+
+echo "Notarization complete."
+
+# Staple the notarization ticket to the DMG
+echo ""
+echo "=== Stapling ==="
+xcrun stapler staple "dist/$DMG_NAME"
+xcrun stapler validate "dist/$DMG_NAME"
+echo "Stapling complete."
+
+echo ""
+echo "=== Done ==="
+echo "Signed and notarized DMG: dist/$DMG_NAME"
 
 # Return to initial directory
 cd "$INITIAL_DIR"

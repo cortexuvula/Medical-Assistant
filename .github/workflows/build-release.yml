@@ -34,7 +34,7 @@ jobs:
 
   build:
     needs: lint  # Build only runs if lint passes
-    timeout-minutes: 30  # Add timeout to prevent hanging builds
+    timeout-minutes: 45  # Increased for notarization (can take 2-15 min)
     strategy:
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
@@ -50,7 +50,7 @@ jobs:
           - os: macos-latest
             artifact_name: MedicalAssistant-macOS
             build_script: ./scripts/build_macos.sh
-            dist_path: dist/MedicalAssistant.app
+            dist_path: dist/MedicalAssistant-macOS.dmg
 
     runs-on: ${{ matrix.os }}
 
@@ -70,13 +70,47 @@ jobs:
         export NEEDRESTART_SUSPEND=1
         sudo -E apt-get update -qq -o=Dpkg::Use-Pty=0
         sudo -E apt-get install -y -qq -o=Dpkg::Use-Pty=0 -o=Dpkg::Options::="--force-confold" -o=Dpkg::Options::="--force-confdef" --no-install-recommends python3-tk portaudio19-dev
-    
+
     - name: Install system dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
         brew update
-        brew install portaudio
-        # python-tk is included with Python on macOS, no need to install separately
+        brew install portaudio create-dmg
+
+    - name: Import Apple Developer Certificate
+      if: runner.os == 'macOS' && secrets.MACOS_CERTIFICATE_P12 != ''
+      env:
+        MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+        MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      run: |
+        # Create a temporary keychain
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Decode and import the certificate
+        CERT_PATH=$RUNNER_TEMP/certificate.p12
+        echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+
+        security import "$CERT_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+        # Allow codesign to access the keychain
+        security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Add temporary keychain to the search list
+        security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+        # Export keychain path for cleanup step
+        echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
     - name: Make build script executable (Unix)
       if: runner.os != 'Windows'
@@ -87,44 +121,40 @@ jobs:
       shell: cmd
       env:
         PYTHON: python
-        SKIP_FFMPEG_DOWNLOAD: "1"  # Skip FFmpeg download in CI to avoid timeouts
+        SKIP_FFMPEG_DOWNLOAD: "1"
       run: ${{ matrix.build_script }}
-    
-    - name: Build application (Unix)
-      if: runner.os != 'Windows'
+
+    - name: Build application (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       env:
-        SKIP_FFMPEG_DOWNLOAD: "1"  # Skip FFmpeg download in CI to avoid timeouts
+        SKIP_FFMPEG_DOWNLOAD: "1"
       run: ${{ matrix.build_script }}
 
-    - name: Compress macOS app
+    - name: Build application (macOS)
       if: runner.os == 'macOS'
+      shell: bash
+      env:
+        SKIP_FFMPEG_DOWNLOAD: "1"
+        MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        APP_VERSION: ${{ github.ref_name }}
+      run: ${{ matrix.build_script }}
+
+    - name: Cleanup macOS keychain
+      if: always() && runner.os == 'macOS'
       run: |
-        if [ -d "dist/MedicalAssistant.app" ]; then
-          cd dist
-          zip -r ../MedicalAssistant-macOS.zip MedicalAssistant.app
-        else
-          echo "Error: dist/MedicalAssistant.app not found!"
-          echo "Contents of current directory:"
-          ls -la
-          echo "Contents of dist directory (if exists):"
-          ls -la dist/ || echo "dist directory does not exist"
-          exit 1
+        if [ -n "$KEYCHAIN_PATH" ] && security list-keychains | grep -q "app-signing"; then
+          security delete-keychain "$KEYCHAIN_PATH" || true
         fi
 
-    - name: Upload artifact (Windows/Linux)
-      if: runner.os != 'macOS'
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.dist_path }}
-
-    - name: Upload artifact (macOS)
-      if: runner.os == 'macOS'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: MedicalAssistant-macOS.zip
 
   release:
     needs: build
@@ -143,7 +173,7 @@ jobs:
         files: |
           artifacts/MedicalAssistant-Linux/MedicalAssistant
           artifacts/MedicalAssistant-Windows/MedicalAssistant.exe
-          artifacts/MedicalAssistant-macOS/MedicalAssistant-macOS.zip
+          artifacts/MedicalAssistant-macOS/MedicalAssistant-macOS.dmg
         draft: false
         prerelease: false
         fail_on_unmatched_files: false
