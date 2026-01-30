@@ -651,6 +651,7 @@ def reset_guidelines_database(
 
 if __name__ == "__main__":
     # Run migrations when executed directly
+    import logging
     import sys
 
     logging.basicConfig(level=logging.INFO)
