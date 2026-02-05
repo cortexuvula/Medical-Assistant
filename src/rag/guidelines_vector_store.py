@@ -124,6 +124,21 @@ class GuidelinesVectorStore:
 
             conn_str = self._get_connection_string()
 
+            # Add SSL parameters if not present (required for Neon)
+            if "sslmode=" not in conn_str:
+                conn_str += "?sslmode=require"
+
+            # Set connection parameters for better stability
+            # - connect_timeout: Faster failure detection
+            # - keepalives: Prevent idle connection drops
+            # - keepalives_idle: Start keepalive after 30s idle
+            if "connect_timeout=" not in conn_str:
+                separator = "&" if "?" in conn_str else "?"
+                conn_str += f"{separator}connect_timeout=10"
+            if "keepalives=" not in conn_str:
+                separator = "&" if "?" in conn_str else "?"
+                conn_str += f"{separator}keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5"
+
             # Run migrations before creating pool to ensure schema is up to date
             try:
                 from rag.guidelines_migrations import run_guidelines_migrations
@@ -131,11 +146,20 @@ class GuidelinesVectorStore:
             except Exception as e:
                 logger.warning(f"Could not run guidelines migrations: {e}")
 
+            # Create pool with connection factory to handle SSL properly
+            import psycopg
             self._pool = psycopg_pool.ConnectionPool(
                 conn_str,
                 min_size=1,
                 max_size=self._pool_size,
                 open=True,
+                timeout=30.0,  # Wait up to 30s for a connection from pool
+                max_waiting=10,  # Max clients waiting for connection
+                reconnect_timeout=10.0,  # Retry failed connections for 10s
+                kwargs={
+                    "autocommit": False,
+                    "prepare_threshold": None,  # Disable prepared statements (can cause issues with pgbouncer/Neon)
+                },
             )
             logger.info("Guidelines vector store connection pool created")
 
@@ -513,37 +537,54 @@ class GuidelinesVectorStore:
 
         Returns:
             List of GuidelineListItem objects from the guidelines table
+
+        Raises:
+            Exception: If connection fails or query execution fails
         """
         from rag.guidelines_models import GuidelineListItem, GuidelineUploadStatus
 
-        pool = self._get_pool()
+        try:
+            pool = self._get_pool()
+        except Exception as e:
+            logger.error(f"Failed to get connection pool for listing guidelines: {e}")
+            # Reset pool to force reconnection on next attempt
+            self._pool = None
+            raise
 
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        g.id,
-                        g.filename,
-                        g.title,
-                        g.specialty,
-                        g.source,
-                        g.version,
-                        g.effective_date,
-                        g.document_type,
-                        g.upload_status,
-                        g.neon_synced,
-                        g.neo4j_synced,
-                        g.created_at,
-                        COUNT(ge.id) as chunk_count
-                    FROM guidelines g
-                    LEFT JOIN guideline_embeddings ge ON ge.guideline_id = g.id
-                    GROUP BY g.id, g.filename, g.title, g.specialty, g.source,
-                             g.version, g.effective_date, g.document_type,
-                             g.upload_status, g.neon_synced, g.neo4j_synced,
-                             g.created_at
-                    ORDER BY g.created_at DESC
-                """)
-                rows = cur.fetchall()
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            g.id,
+                            g.filename,
+                            g.title,
+                            g.specialty,
+                            g.source,
+                            g.version,
+                            g.effective_date,
+                            g.document_type,
+                            g.upload_status,
+                            g.neon_synced,
+                            g.neo4j_synced,
+                            g.created_at,
+                            COUNT(ge.id) as chunk_count
+                        FROM guidelines g
+                        LEFT JOIN guideline_embeddings ge ON ge.guideline_id = g.id
+                        GROUP BY g.id, g.filename, g.title, g.specialty, g.source,
+                                 g.version, g.effective_date, g.document_type,
+                                 g.upload_status, g.neon_synced, g.neo4j_synced,
+                                 g.created_at
+                        ORDER BY g.created_at DESC
+                    """)
+                    rows = cur.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to list guidelines from database: {e}")
+            # Reset pool on connection errors to force fresh connection next time
+            if "SSL" in str(e) or "connection" in str(e).lower():
+                logger.info("Resetting connection pool due to connection error")
+                self._pool = None
+            raise
 
         results = []
         for row in rows:
