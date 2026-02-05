@@ -143,6 +143,7 @@ a = Analysis(
         ('hooks/suppress_console.py', '.'),
         ('icon.ico', '.'),
         ('icon256x256.ico', '.'),  # Include as backup
+        ('icon.icns', '.'),  # Include macOS icon for app bundle
         ('config', 'config'),  # Include config folder and its contents
         ('src', 'src'),  # Include entire src directory
     ] + soundcard_datas + internal_datas + psycopg_datas + whisper_datas,
@@ -240,6 +241,13 @@ exe = EXE(
 # For macOS, create an app bundle
 import sys
 if sys.platform == 'darwin':
+    # Verify icon file exists before bundling
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'icon.icns')
+    if not os.path.exists(icon_path):
+        print(f"WARNING: icon.icns not found at {icon_path}")
+    else:
+        print(f"Using icon: {icon_path}")
+
     app = BUNDLE(
         exe,
         name='MedicalAssistant.app',
@@ -247,6 +255,8 @@ if sys.platform == 'darwin':
         bundle_identifier='com.medicalassistant.app',
         info_plist={
             'CFBundleIconFile': 'icon.icns',
+            'CFBundleName': 'Medical Assistant',
+            'CFBundleDisplayName': 'Medical Assistant',
             'CFBundleVersion': os.environ.get('APP_VERSION', '0.0.0').lstrip('v'),
             'CFBundleShortVersionString': os.environ.get('APP_VERSION', '0.0.0').lstrip('v'),
             'NSMicrophoneUsageDescription': 'This app requires microphone access for voice input.',
@@ -258,5 +268,7 @@ if sys.platform == 'darwin':
             'LSMinimumSystemVersion': '10.15',
             # Enable high-resolution icon rendering
             'NSHighResolutionCapable': True,
+            # Ensure icon is visible in Dock
+            'LSApplicationCategoryType': 'public.app-category.healthcare-fitness',
         },
     )
