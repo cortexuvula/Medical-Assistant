@@ -768,8 +768,18 @@ class AppInitializer:
                     # Auto-run analyses to the side panels
                     logger.info(f"Scheduling auto-analysis for queued SOAP note ({len(soap_note)} chars)")
                     if hasattr(self.app, 'document_generators'):
-                        self.app.after(100, lambda sn=soap_note: self.app.document_generators._run_medication_to_panel(sn))
-                        self.app.after(200, lambda sn=soap_note: self.app.document_generators._run_diagnostic_to_panel(sn))
+                        # Use safe wrappers to catch and log errors from after() callbacks
+                        def _safe_run(name, method, sn):
+                            def wrapper():
+                                try:
+                                    method(sn)
+                                except Exception as e:
+                                    logger.error(f"Failed to run {name}: {e}", exc_info=True)
+                            return wrapper
+
+                        self.app.after(100, _safe_run("medication_analysis", self.app.document_generators._run_medication_to_panel, soap_note))
+                        self.app.after(200, _safe_run("diagnostic_analysis", self.app.document_generators._run_diagnostic_to_panel, soap_note))
+                        self.app.after(300, _safe_run("compliance_analysis", self.app.document_generators._run_compliance_to_panel, soap_note))
                 else:
                     skipped_updates.append('soap')
                     logger.info(f"Skipped SOAP update - user has modified content")
