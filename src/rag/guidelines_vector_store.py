@@ -542,17 +542,31 @@ class GuidelinesVectorStore:
             Exception: If connection fails or query execution fails
         """
         from rag.guidelines_models import GuidelineListItem, GuidelineUploadStatus
+        import psycopg
+
+        # Use direct connection instead of pool for this infrequent operation
+        # This avoids pool lifecycle issues and "cannot join current thread" errors
+        conn_str = self._get_connection_string()
+
+        # Add SSL parameters if not present (required for Neon)
+        if "sslmode=" not in conn_str:
+            conn_str += "?sslmode=require"
+
+        # Add connection timeout and TCP keepalives
+        if "connect_timeout=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}connect_timeout=10"
+        if "keepalives=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5"
 
         try:
-            pool = self._get_pool()
-        except Exception as e:
-            logger.error(f"Failed to get connection pool for listing guidelines: {e}")
-            # Reset pool to force reconnection on next attempt
-            self._pool = None
-            raise
-
-        try:
-            with pool.connection() as conn:
+            # Direct connection with explicit SSL and prepare_threshold=None
+            with psycopg.connect(
+                conn_str,
+                autocommit=False,
+                prepare_threshold=None,  # Disable prepared statements for Neon compatibility
+            ) as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT
@@ -580,10 +594,6 @@ class GuidelinesVectorStore:
                     rows = cur.fetchall()
         except Exception as e:
             logger.error(f"Failed to list guidelines from database: {e}")
-            # Reset pool on connection errors to force fresh connection next time
-            if "SSL" in str(e) or "connection" in str(e).lower():
-                logger.info("Resetting connection pool due to connection error")
-                self._pool = None
             raise
 
         results = []
@@ -633,9 +643,16 @@ class GuidelinesVectorStore:
         Returns:
             True if successfully deleted
         """
-        pool = self._get_pool()
+        import psycopg
 
-        with pool.connection() as conn:
+        conn_str = self._get_connection_string()
+        if "sslmode=" not in conn_str:
+            conn_str += "?sslmode=require"
+        if "connect_timeout=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}connect_timeout=10"
+
+        with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 # Delete embeddings first (foreign key)
                 cur.execute(
@@ -668,9 +685,16 @@ class GuidelinesVectorStore:
         Returns:
             Number of rows deleted
         """
-        pool = self._get_pool()
+        import psycopg
 
-        with pool.connection() as conn:
+        conn_str = self._get_connection_string()
+        if "sslmode=" not in conn_str:
+            conn_str += "?sslmode=require"
+        if "connect_timeout=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}connect_timeout=10"
+
+        with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM guideline_embeddings WHERE guideline_id = %s::uuid",
@@ -776,9 +800,17 @@ class GuidelinesVectorStore:
         Returns:
             True if healthy, False otherwise
         """
+        import psycopg
+
         try:
-            pool = self._get_pool()
-            with pool.connection() as conn:
+            conn_str = self._get_connection_string()
+            if "sslmode=" not in conn_str:
+                conn_str += "?sslmode=require"
+            if "connect_timeout=" not in conn_str:
+                separator = "&" if "?" in conn_str else "?"
+                conn_str += f"{separator}connect_timeout=10"
+
+            with psycopg.connect(conn_str, autocommit=True, prepare_threshold=None) as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
                     return cur.fetchone()[0] == 1
