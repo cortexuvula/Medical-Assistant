@@ -16,6 +16,7 @@ class AnalysisStorage:
     # Analysis type constants
     TYPE_MEDICATION = "medication"
     TYPE_DIFFERENTIAL = "differential"
+    TYPE_COMPLIANCE = "compliance"
 
     def __init__(self, db=None):
         """Initialize the analysis storage helper.
@@ -121,6 +122,50 @@ class AnalysisStorage:
             logger.error(f"Failed to save differential diagnosis: {e}")
             return None
 
+    def save_compliance_analysis(
+        self,
+        result_text: str,
+        recording_id: Optional[int] = None,
+        result_json: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        patient_context: Optional[Dict[str, Any]] = None,
+        source_type: Optional[str] = None,
+        source_text: Optional[str] = None,
+        analysis_subtype: str = "guidelines"
+    ) -> Optional[int]:
+        """Save a compliance analysis result to the database.
+
+        Args:
+            result_text: The compliance analysis result text
+            recording_id: Optional link to a recording
+            result_json: Optional structured JSON result
+            metadata: Optional metadata (overall_score, gap_count, etc.)
+            patient_context: Optional patient context used for the analysis
+            source_type: Source of analysis ('transcript', 'soap', 'custom')
+            source_text: The input text that was analyzed
+            analysis_subtype: Subtype of analysis (e.g., 'guidelines')
+
+        Returns:
+            ID of the created analysis result, or None on failure
+        """
+        try:
+            analysis_id = self.db.save_analysis_result(
+                analysis_type=self.TYPE_COMPLIANCE,
+                result_text=result_text,
+                recording_id=recording_id,
+                analysis_subtype=analysis_subtype,
+                result_json=result_json,
+                metadata=metadata,
+                patient_context=patient_context,
+                source_type=source_type,
+                source_text=source_text
+            )
+            logger.info(f"Saved compliance analysis (id={analysis_id}) for recording_id={recording_id}")
+            return analysis_id
+        except Exception as e:
+            logger.error(f"Failed to save compliance analysis: {e}")
+            return None
+
     def get_analyses_for_recording(
         self,
         recording_id: int
@@ -131,12 +176,13 @@ class AnalysisStorage:
             recording_id: The recording ID
 
         Returns:
-            Dictionary with 'medication' and 'differential' keys, each containing
-            the most recent analysis of that type, or None if not found.
+            Dictionary with 'medication', 'differential', and 'compliance' keys,
+            each containing the most recent analysis of that type, or None if not found.
         """
         result = {
             "medication": None,
-            "differential": None
+            "differential": None,
+            "compliance": None
         }
 
         try:
@@ -155,6 +201,14 @@ class AnalysisStorage:
             )
             if differential_analyses:
                 result["differential"] = differential_analyses[0]  # Most recent
+
+            # Get compliance analysis (most recent)
+            compliance_analyses = self.db.get_analysis_results_for_recording(
+                recording_id=recording_id,
+                analysis_type=self.TYPE_COMPLIANCE
+            )
+            if compliance_analyses:
+                result["compliance"] = compliance_analyses[0]  # Most recent
 
             return result
 
@@ -227,6 +281,39 @@ class AnalysisStorage:
             True if differential diagnosis exists, False otherwise
         """
         return self.get_differential_diagnosis(recording_id) is not None
+
+    def get_compliance_analysis(
+        self,
+        recording_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Get the most recent compliance analysis for a recording.
+
+        Args:
+            recording_id: The recording ID
+
+        Returns:
+            The most recent compliance analysis or None
+        """
+        try:
+            analyses = self.db.get_analysis_results_for_recording(
+                recording_id=recording_id,
+                analysis_type=self.TYPE_COMPLIANCE
+            )
+            return analyses[0] if analyses else None
+        except Exception as e:
+            logger.error(f"Failed to get compliance analysis for recording {recording_id}: {e}")
+            return None
+
+    def has_compliance_analysis(self, recording_id: int) -> bool:
+        """Check if a recording has a compliance analysis.
+
+        Args:
+            recording_id: The recording ID
+
+        Returns:
+            True if compliance analysis exists, False otherwise
+        """
+        return self.get_compliance_analysis(recording_id) is not None
 
     def get_recent_medication_analyses(
         self,

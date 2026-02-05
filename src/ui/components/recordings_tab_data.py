@@ -231,6 +231,7 @@ class RecordingsTabDataMixin:
 
             has_medication = analyses.get('medication') is not None
             has_differential = analyses.get('differential') is not None
+            has_compliance = analyses.get('compliance') is not None
 
             # Update analysis panels if UI components available
             if hasattr(self.parent, 'ui') and hasattr(self.parent.ui, 'notebook_tabs'):
@@ -241,22 +242,23 @@ class RecordingsTabDataMixin:
                     notebook_tabs.clear_analysis_panels()
 
                 # Load saved analyses into panels
-                if has_medication or has_differential:
+                if has_medication or has_differential or has_compliance:
                     if hasattr(notebook_tabs, 'load_saved_analyses'):
                         notebook_tabs.load_saved_analyses(recording_id)
 
             # Update sidebar indicators
-            self._update_soap_indicators(has_medication, has_differential)
+            self._update_soap_indicators(has_medication, has_differential, has_compliance)
 
         except Exception as e:
             logger.debug(f"Could not load saved analyses: {e}")
 
-    def _update_soap_indicators(self, has_medication: bool, has_differential: bool) -> None:
+    def _update_soap_indicators(self, has_medication: bool, has_differential: bool, has_compliance: bool = False) -> None:
         """Update sidebar SOAP sub-item indicators.
 
         Args:
             has_medication: Whether medication analysis exists
             has_differential: Whether differential diagnosis exists
+            has_compliance: Whether compliance analysis exists
         """
         try:
             if hasattr(self.parent, 'ui') and hasattr(self.parent.ui, 'sidebar_navigation'):
@@ -264,7 +266,8 @@ class RecordingsTabDataMixin:
                 if hasattr(sidebar_nav, 'update_soap_indicators'):
                     sidebar_nav.update_soap_indicators(
                         has_medication=has_medication,
-                        has_differential=has_differential
+                        has_differential=has_differential,
+                        has_compliance=has_compliance
                     )
         except Exception as e:
             logger.debug(f"Could not update SOAP indicators: {e}")
