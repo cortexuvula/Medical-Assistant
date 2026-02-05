@@ -623,13 +623,27 @@ class NeonVectorStore:
 
         with pool.connection() as conn:
             with conn.cursor() as cur:
+                # Use DISTINCT ON to get one metadata sample per document_id
+                # This avoids MIN() on JSONB which PostgreSQL doesn't support
                 cur.execute("""
+                    WITH doc_counts AS (
+                        SELECT document_id, COUNT(*) as chunk_count
+                        FROM document_embeddings
+                        GROUP BY document_id
+                    ),
+                    sample_metadata AS (
+                        SELECT DISTINCT ON (document_id)
+                            document_id,
+                            metadata
+                        FROM document_embeddings
+                        ORDER BY document_id, id
+                    )
                     SELECT
-                        document_id,
-                        COUNT(*) as chunk_count,
-                        MIN(metadata) as sample_metadata
-                    FROM document_embeddings
-                    GROUP BY document_id
+                        dc.document_id,
+                        dc.chunk_count,
+                        sm.metadata as sample_metadata
+                    FROM doc_counts dc
+                    LEFT JOIN sample_metadata sm ON dc.document_id = sm.document_id
                 """)
                 rows = cur.fetchall()
 
