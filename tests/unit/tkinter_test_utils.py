@@ -37,8 +37,15 @@ class TkinterTestCase:
         self.root = tk.Tk()
         self.root.withdraw()  # Hide window during tests
         self.widgets_to_destroy = []
-        # Apply a default theme
-        self.style = ttk.Style(self.root)
+
+        # Initialize ttkbootstrap properly if installed to avoid KeyError on themes
+        try:
+            import ttkbootstrap
+            # Create a ttkbootstrap Style to register themes
+            self.style = ttkbootstrap.Style(theme='litera')
+        except ImportError:
+            # Fall back to regular ttk style if ttkbootstrap not installed
+            self.style = ttk.Style(self.root)
         
     def teardown_method(self):
         """Clean up after each test."""

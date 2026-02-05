@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## General Rules
+
+Never declare a task complete or working without verifying the result. Run the relevant command, check the output, or ask the user to confirm before saying 'done'.
+
+## Refactoring
+
+After any find-and-replace or bulk refactoring operation, always run a grep to verify the replacements look correct before proceeding. Check for spacing issues, concatenated tokens, and malformed syntax.
+
+## Testing
+
+After modifying import paths or module structure, always run the full test suite AND check that patch paths in tests still match the new module locations.
+
 ## Medication Agent Implementation Summary
 
 The medication agent has been fully integrated into the Medical Assistant application. Key implementation details:
