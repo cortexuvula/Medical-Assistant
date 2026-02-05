@@ -191,23 +191,52 @@ class AgentManager:
                 sub_agents.append(sub_agent_config)
         
         # Create AgentConfig from settings
+        model = config_dict.get("model", "gpt-4")
+        provider = config_dict.get("provider")
+
+        # Fix provider/model mismatches (e.g., anthropic provider with gpt-4 model)
+        if provider and model:
+            is_openai_model = model.startswith(("gpt-", "o1", "o3", "o4"))
+            is_anthropic_model = model.startswith("claude")
+            provider_lower = provider.lower()
+
+            if provider_lower == "anthropic" and is_openai_model:
+                logger.warning(
+                    f"Agent {agent_type.value}: provider 'anthropic' incompatible with "
+                    f"model '{model}', switching provider to 'openai'"
+                )
+                provider = "openai"
+            elif provider_lower == "openai" and is_anthropic_model:
+                logger.warning(
+                    f"Agent {agent_type.value}: provider 'openai' incompatible with "
+                    f"model '{model}', switching provider to 'anthropic'"
+                )
+                provider = "anthropic"
+
         config = AgentConfig(
             name=agent_type.value,
             description=f"{agent_type.value.replace('_', ' ').title()} Agent",
             system_prompt=config_dict.get("system_prompt", ""),
-            model=config_dict.get("model", "gpt-4"),
+            model=model,
             temperature=config_dict.get("temperature", 0.7),
             max_tokens=config_dict.get("max_tokens"),
-            provider=config_dict.get("provider"),
+            provider=provider,
             advanced=advanced_config,
             sub_agents=sub_agents
         )
         
-        # For SynopsisAgent, merge with default config if system prompt is empty
-        if agent_type == AgentType.SYNOPSIS and not config.system_prompt:
-            # Import here to avoid circular imports
+        # For agents with detailed default prompts, use the default if settings
+        # prompt is empty or too generic (less than 100 chars)
+        if agent_type == AgentType.SYNOPSIS and (not config.system_prompt or len(config.system_prompt) < 100):
             from ai.agents.synopsis import SynopsisAgent
             config.system_prompt = SynopsisAgent.DEFAULT_CONFIG.system_prompt
+
+        if agent_type == AgentType.COMPLIANCE and (not config.system_prompt or len(config.system_prompt) < 100):
+            from ai.agents.compliance import ComplianceAgent
+            config.system_prompt = ComplianceAgent.DEFAULT_CONFIG.system_prompt
+            # Also use default temperature (low) for consistent compliance analysis
+            if config.temperature > 0.3:
+                config.temperature = ComplianceAgent.DEFAULT_CONFIG.temperature
 
         # Create agent instance with injected AI caller
         agent = agent_class(config, ai_caller=self._ai_caller)

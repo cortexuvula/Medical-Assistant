@@ -109,9 +109,19 @@ class SOAPGeneratorMixin:
                     # Each method submits work to thread pool, so they can safely run concurrently
                     logger.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
 
-                    self.app.after(0, lambda sn=soap_note: self._run_medication_to_panel(sn))
-                    self.app.after(0, lambda sn=soap_note: self._run_diagnostic_to_panel(sn))
-                    self.app.after(0, lambda sn=soap_note: self._run_compliance_to_panel(sn))
+                    # Use safe wrappers to catch and log errors from after() callbacks
+                    # (tkinter silently swallows exceptions in after callbacks)
+                    def _safe_run(name, method, sn):
+                        def wrapper():
+                            try:
+                                method(sn)
+                            except Exception as e:
+                                logger.error(f"Failed to run {name}: {e}", exc_info=True)
+                        return wrapper
+
+                    self.app.after(0, _safe_run("medication_analysis", self._run_medication_to_panel, soap_note))
+                    self.app.after(0, _safe_run("diagnostic_analysis", self._run_diagnostic_to_panel, soap_note))
+                    self.app.after(0, _safe_run("compliance_analysis", self._run_compliance_to_panel, soap_note))
 
                 self.app.after(0, finalize)
 
