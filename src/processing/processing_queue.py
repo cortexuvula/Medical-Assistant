@@ -82,15 +82,17 @@ if hasattr(threading, 'excepthook'):
 from processing.batch_processing_mixin import BatchProcessingMixin
 from processing.document_generation_mixin import DocumentGenerationMixin
 from processing.reprocessing_mixin import ReprocessingMixin
+from processing.guidelines_processing_mixin import GuidelinesProcessingMixin
 
 
-class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, ReprocessingMixin):
+class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, ReprocessingMixin, GuidelinesProcessingMixin):
     """Manages background processing of medical recordings.
 
     This class uses mixins to organize functionality:
     - BatchProcessingMixin: Batch operations (add_batch_recordings, cancel_batch, etc.)
     - DocumentGenerationMixin: Document generation (_generate_soap_note, etc.)
     - ReprocessingMixin: Retry and reprocess operations
+    - GuidelinesProcessingMixin: Background guideline upload operations
 
     Deduplication:
         The queue tracks active recordings by their recording_id to prevent
@@ -99,7 +101,8 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
     """
 
     # Maximum batch size to prevent resource exhaustion
-    MAX_BATCH_SIZE = 100
+    # Increased from 100 to support large guideline batches with parallel processing
+    MAX_BATCH_SIZE = 1000
 
     def __init__(self, app=None, max_workers: int = None):
         """Initialize the processing queue.
@@ -114,9 +117,19 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
         default_workers = min(os.cpu_count() - 1, 6) if os.cpu_count() else 4
         self.max_workers = max_workers or settings_manager.get("max_background_workers", default_workers)
 
+        # Separate executor for guideline uploads (I/O-bound tasks)
+        default_guideline_workers = min(os.cpu_count(), 8) if os.cpu_count() else 4
+        self.max_guideline_workers = settings_manager.get("max_guideline_workers", default_guideline_workers)
+
         # Core components
         self.queue = Queue()
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+
+        # Dedicated executor for guidelines to prevent blocking recordings
+        self.guideline_executor = ThreadPoolExecutor(
+            max_workers=self.max_guideline_workers,
+            thread_name_prefix="guideline-worker"
+        )
         self.active_tasks: Dict[str, Dict] = {}
         self.completed_tasks: Dict[str, Dict] = {}
         self.failed_tasks: Dict[str, Dict] = {}
@@ -148,11 +161,19 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             "processing_time_avg": 0
         }
 
+        # Guidelines processing (from GuidelinesProcessingMixin)
+        self.guideline_batches: Dict[str, Dict] = {}
+        self.guideline_progress_callback: Optional[Callable] = None
+
         # Start the queue processor
         self.processor_thread = Thread(target=self._process_queue, daemon=True)
         self.processor_thread.start()
 
-        logger.info("ProcessingQueue initialized", max_workers=self.max_workers)
+        logger.info(
+            "ProcessingQueue initialized",
+            recording_workers=self.max_workers,
+            guideline_workers=self.max_guideline_workers
+        )
     
     def add_recording(self, recording_data: Dict[str, Any]) -> Optional[str]:
         """Add a recording to the processing queue.
@@ -323,15 +344,25 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             try:
                 # Wait for items with timeout
                 priority, task_id, recording_data = self.queue.get(timeout=1.0)
-                
-                # Submit to executor
-                future = self.executor.submit(self._process_recording, task_id, recording_data)
+
+                # Route to appropriate executor based on task type
+                task_type = recording_data.get("task_type", "recording")
+                if task_type == "guideline_upload":
+                    executor = self.guideline_executor
+                    logger.debug("Submitting to guideline executor", task_id=task_id)
+                else:
+                    executor = self.executor
+                    logger.debug("Submitting to recording executor", task_id=task_id)
+
+                # Submit to appropriate executor
+                future = executor.submit(self._process_recording, task_id, recording_data)
 
                 # Track the future
                 with self.lock:
                     if task_id in self.active_tasks:
                         self.active_tasks[task_id]["future"] = future
                         self.active_tasks[task_id]["status"] = "processing"
+                        self.active_tasks[task_id]["executor_type"] = task_type  # Track which executor
 
                 # Mark queue task as done
                 self.queue.task_done()
@@ -360,10 +391,17 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                 time.sleep(0.1)  # Brief back-off to prevent tight error loops
     
     def _process_recording(self, task_id: str, recording_data: Dict[str, Any]):
-        """Process a single recording - runs in thread pool."""
+        """Process a single recording or guideline - runs in thread pool."""
+        # Check if this is a guideline upload task
+        task_type = recording_data.get("task_type", "recording")
+
+        if task_type == "guideline_upload":
+            return self._process_guideline_upload(task_id, recording_data)
+
+        # Normal recording processing
         start_time = time.time()
         recording_id = recording_data.get("recording_id")
-        
+
         try:
             logger.info("Starting processing for task", task_id=task_id, recording_id=recording_id)
             
@@ -912,13 +950,26 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
     def get_status(self) -> Dict[str, Any]:
         """Get current queue status and statistics."""
         with self.lock:
+            # Count active tasks by type
+            recording_tasks = sum(
+                1 for t in self.active_tasks.values()
+                if t.get("task_type", "recording") == "recording"
+            )
+            guideline_tasks = sum(
+                1 for t in self.active_tasks.values()
+                if t.get("task_type") == "guideline_upload"
+            )
+
             return {
                 "queue_size": self.queue.qsize(),
                 "active_tasks": len(self.active_tasks),
+                "active_recording_tasks": recording_tasks,
+                "active_guideline_tasks": guideline_tasks,
                 "completed_tasks": len(self.completed_tasks),
                 "failed_tasks": len(self.failed_tasks),
                 "stats": self.stats.copy(),
-                "workers": self.max_workers
+                "workers": self.max_workers,
+                "guideline_workers": self.max_guideline_workers
             }
     
     def get_task_status(self, task_id: str) -> Optional[Dict]:
@@ -1018,8 +1069,13 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
         if wait:
             self.processor_thread.join(timeout=5)
 
-        # Shutdown executor
+        # Shutdown both executors
+        logger.info("Shutting down recording executor", max_workers=self.max_workers)
         self.executor.shutdown(wait=wait)
+
+        # Shutdown guideline executor
+        logger.info("Shutting down guideline executor", max_workers=self.max_guideline_workers)
+        self.guideline_executor.shutdown(wait=wait)
 
         logger.info("Processing queue shutdown complete")
     

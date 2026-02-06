@@ -223,6 +223,7 @@ if PYDANTIC_AVAILABLE:
         # Feature flags
         quick_continue_mode: bool = True
         max_background_workers: int = Field(default=2, ge=1, le=10)
+        max_guideline_workers: int = Field(default=4, ge=1, le=16)
         show_processing_notifications: bool = True
         auto_retry_failed: bool = True
         auto_update_ui_on_completion: bool = True

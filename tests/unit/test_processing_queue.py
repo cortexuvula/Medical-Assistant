@@ -398,5 +398,147 @@ class TestStatistics(unittest.TestCase):
             self.assertIn(key, stats)
 
 
+class TestDedicatedExecutors(unittest.TestCase):
+    """Test dedicated executor for guidelines processing."""
+
+    def setUp(self):
+        """Set up a queue for testing."""
+        self.queue = ProcessingQueue(app=None)
+
+    def tearDown(self):
+        """Clean up."""
+        self.queue.shutdown(wait=True)
+
+    def test_separate_executors_created(self):
+        """Verify both executors are initialized."""
+        self.assertIsNotNone(self.queue.executor)
+        self.assertIsNotNone(self.queue.guideline_executor)
+        self.assertGreaterEqual(self.queue.max_workers, 1)
+        self.assertGreaterEqual(self.queue.max_guideline_workers, 1)
+
+    def test_guideline_tasks_route_to_guideline_executor(self):
+        """Verify guideline tasks use dedicated executor."""
+        # Mock both executors
+        original_executor_submit = self.queue.executor.submit
+        original_guideline_submit = self.queue.guideline_executor.submit
+
+        executor_called = []
+        guideline_called = []
+
+        def mock_executor_submit(*args, **kwargs):
+            executor_called.append(True)
+            return original_executor_submit(*args, **kwargs)
+
+        def mock_guideline_submit(*args, **kwargs):
+            guideline_called.append(True)
+            return original_guideline_submit(*args, **kwargs)
+
+        self.queue.executor.submit = mock_executor_submit
+        self.queue.guideline_executor.submit = mock_guideline_submit
+
+        # Add guideline task (using guideline upload structure)
+        task_data = {
+            "task_type": "guideline_upload",
+            "file_path": "/path/file.pdf",
+            "metadata": {}
+        }
+        task_id = self.queue.add_recording(task_data)
+        time.sleep(0.3)  # Wait for task routing
+
+        # Verify routed to guideline executor
+        self.assertTrue(len(guideline_called) > 0, "Guideline executor should be called")
+        self.assertEqual(len(executor_called), 0, "Recording executor should not be called")
+
+    def test_recording_tasks_route_to_recording_executor(self):
+        """Verify recording tasks use original executor."""
+        # Mock both executors
+        original_executor_submit = self.queue.executor.submit
+        original_guideline_submit = self.queue.guideline_executor.submit
+
+        executor_called = []
+        guideline_called = []
+
+        def mock_executor_submit(*args, **kwargs):
+            executor_called.append(True)
+            return original_executor_submit(*args, **kwargs)
+
+        def mock_guideline_submit(*args, **kwargs):
+            guideline_called.append(True)
+            return original_guideline_submit(*args, **kwargs)
+
+        self.queue.executor.submit = mock_executor_submit
+        self.queue.guideline_executor.submit = mock_guideline_submit
+
+        # Add recording task
+        task_data = {
+            "recording_id": 1,
+            "task_type": "recording",
+            "transcript": "Test transcript"
+        }
+        task_id = self.queue.add_recording(task_data)
+        time.sleep(0.3)  # Wait for task routing
+
+        # Verify routed to recording executor
+        self.assertTrue(len(executor_called) > 0, "Recording executor should be called")
+        self.assertEqual(len(guideline_called), 0, "Guideline executor should not be called")
+
+    def test_shutdown_closes_both_executors(self):
+        """Verify shutdown closes both executors."""
+        self.queue.shutdown(wait=True)
+
+        # Both should be shutdown
+        self.assertTrue(self.queue.executor._shutdown, "Recording executor should be shutdown")
+        self.assertTrue(self.queue.guideline_executor._shutdown, "Guideline executor should be shutdown")
+
+    def test_status_reports_separate_worker_counts(self):
+        """Verify status reports both worker pool sizes."""
+        status = self.queue.get_status()
+
+        self.assertIn("workers", status)
+        self.assertIn("guideline_workers", status)
+        self.assertIn("active_recording_tasks", status)
+        self.assertIn("active_guideline_tasks", status)
+
+        self.assertEqual(status["workers"], self.queue.max_workers)
+        self.assertEqual(status["guideline_workers"], self.queue.max_guideline_workers)
+
+    def test_task_executor_type_tracked(self):
+        """Verify executor type is tracked for tasks."""
+        # Add guideline task
+        guideline_task = {
+            "task_type": "guideline_upload",
+            "file_path": "/path/file.pdf"
+        }
+        guideline_id = self.queue.add_recording(guideline_task)
+        time.sleep(0.3)
+
+        # Check if executor_type is tracked (after routing)
+        with self.queue.lock:
+            # Task may have been processed and moved to completed/failed
+            if guideline_id in self.queue.active_tasks:
+                task = self.queue.active_tasks[guideline_id]
+                # Verify executor_type field exists
+                self.assertIn("executor_type", task)
+                self.assertEqual(task["executor_type"], "guideline_upload")
+
+        # Add recording task
+        recording_task = {
+            "recording_id": 2,
+            "task_type": "recording",
+            "transcript": "Test"
+        }
+        recording_id = self.queue.add_recording(recording_task)
+        time.sleep(0.3)
+
+        # Check if recording task has executor type tracked
+        with self.queue.lock:
+            # Task may have been processed and moved to completed/failed
+            if recording_id in self.queue.active_tasks:
+                task = self.queue.active_tasks[recording_id]
+                # Verify executor_type field exists
+                self.assertIn("executor_type", task)
+                self.assertEqual(task["executor_type"], "recording")
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

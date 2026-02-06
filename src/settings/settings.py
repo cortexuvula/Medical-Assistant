@@ -454,6 +454,7 @@ _DEFAULTS_TRANSLATION_TTS = {
 _DEFAULTS_FEATURES = {
     "quick_continue_mode": True,
     "max_background_workers": 2,
+    "max_guideline_workers": 4,
     "show_processing_notifications": True,
     "auto_retry_failed": True,
     "max_retry_attempts": 3,
