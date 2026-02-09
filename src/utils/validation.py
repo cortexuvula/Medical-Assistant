@@ -467,9 +467,9 @@ def sanitize_prompt(prompt: str, strict_mode: bool = False) -> str:
                     whitelisted_spans = {(m.start(), m.end()) for m in whitelisted_for_pattern}
 
                     # Replace only non-whitelisted matches
-                    def replacement_func(match):
+                    def replacement_func(match, _spans=whitelisted_spans):
                         nonlocal removed_count, whitelisted_count
-                        if (match.start(), match.end()) in whitelisted_spans:
+                        if (match.start(), match.end()) in _spans:
                             whitelisted_count += 1
                             return match.group(0)  # Preserve whitelisted match
                         else:
