@@ -20,6 +20,10 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
 
     dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x700")
 
+    # Button frame at the bottom of the dialog (always visible, not scrolled)
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(side="bottom", fill=tk.X, padx=20, pady=(5, 10))
+
     # Use scrollable canvas to ensure all content is accessible regardless of screen size
     canvas = tk.Canvas(dialog)
     scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
@@ -34,7 +38,7 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
 
-    # Pack the canvas and scrollbar
+    # Pack the canvas and scrollbar (after btn_frame so buttons stay at bottom)
     canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
     scrollbar.pack(side="right", fill="y", pady=10)
 
@@ -161,10 +165,6 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     keyterms_text.insert("1.0", ", ".join(current_keyterms))
     keyterms_text.grid(row=22, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=5)
 
-    # Buttons
-    btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=23, column=0, columnspan=2, pady=(20, 0), sticky="e")
-
     def save_elevenlabs_settings():
         try:
             num_speakers = None if not speakers_entry.get().strip() else int(speakers_entry.get())
@@ -247,8 +247,8 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
 
     dialog.protocol("WM_DELETE_WINDOW", close_dialog)
 
-    ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="left", padx=5)
-    ttk.Button(btn_frame, text="Save", command=save_elevenlabs_settings, bootstyle="success", width=10).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Cancel", command=cancel, width=10).pack(side="right", padx=5)
+    ttk.Button(btn_frame, text="Save", command=save_elevenlabs_settings, bootstyle="success", width=10).pack(side="right", padx=5)
 
 
 __all__ = ["show_elevenlabs_settings_dialog"]
