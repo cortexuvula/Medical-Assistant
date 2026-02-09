@@ -20,13 +20,17 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
 
     dialog = create_toplevel_dialog(parent, "ElevenLabs Settings", "700x700")
 
-    # Button frame at the bottom of the dialog (always visible, not scrolled)
+    # Separator and button frame at the bottom of the dialog (always visible, not scrolled)
+    ttk.Separator(dialog, orient="horizontal").pack(side="bottom", fill=tk.X, padx=10)
     btn_frame = ttk.Frame(dialog)
-    btn_frame.pack(side="bottom", fill=tk.X, padx=20, pady=(5, 10))
+    btn_frame.pack(side="bottom", fill=tk.X, padx=20, pady=10)
 
     # Use scrollable canvas to ensure all content is accessible regardless of screen size
-    canvas = tk.Canvas(dialog)
-    scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+    scroll_container = ttk.Frame(dialog)
+    scroll_container.pack(side="top", fill="both", expand=True)
+
+    canvas = tk.Canvas(scroll_container)
+    scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
 
     # Configure scrolling
@@ -38,9 +42,9 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
 
-    # Pack the canvas and scrollbar (after btn_frame so buttons stay at bottom)
-    canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+    # Pack scrollbar and canvas inside the container
     scrollbar.pack(side="right", fill="y", pady=10)
+    canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
     # Create the main frame with padding inside the scrollable frame
     frame = ttk.Frame(scrollable_frame, padding=20)
@@ -124,14 +128,14 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
               wraplength=400, foreground="gray").grid(row=15, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Diarization Tips
-    tips_frame = ttk.LabelFrame(frame, text="Diarization Tips", padding=10)
-    tips_frame.grid(row=16, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+    tips_frame = ttk.LabelFrame(frame, text="Diarization Tips")
+    tips_frame.grid(row=16, column=0, columnspan=2, sticky="ew", pady=(10, 5), padx=(0, 10))
     ttk.Label(tips_frame, text=(
         "For best multi-speaker detection:\n"
         "1. Leave 'Number of Speakers' empty to let the API auto-detect.\n"
         "2. Use 'Diarization Threshold' (e.g. 0.3-0.5) to fine-tune sensitivity.\n"
         "3. Setting a fixed number of speakers disables the threshold parameter."
-    ), wraplength=450, foreground="gray", justify="left").pack(anchor="w")
+    ), wraplength=450, foreground="gray", justify="left").pack(anchor="w", padx=10, pady=10)
 
     # Entity Detection
     ttk.Label(frame, text="Entity Detection:", font=("Segoe UI", 10, "bold")).grid(
