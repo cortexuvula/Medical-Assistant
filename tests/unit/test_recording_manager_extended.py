@@ -12,6 +12,7 @@ Tests cover:
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock, call
+import sys
 import time
 import threading
 import numpy as np
@@ -161,7 +162,9 @@ class TestDeviceCache:
         recording_manager._device_cache = old_devices
         recording_manager._device_cache_time = time.time() - (RecordingManager.DEVICE_CACHE_TTL + 1)
 
-        with patch('soundcard.all_microphones', return_value=[]):
+        mock_soundcard = MagicMock()
+        mock_soundcard.all_microphones.return_value = []
+        with patch.dict(sys.modules, {'soundcard': mock_soundcard}):
             result = recording_manager._get_available_devices()
 
         assert result != old_devices
@@ -172,10 +175,13 @@ class TestDeviceCache:
         recording_manager._device_cache = old_devices
         recording_manager._device_cache_time = time.time()
 
-        # Need to patch both soundcard and sounddevice as the code falls back to sounddevice
-        with patch('soundcard.all_microphones', return_value=[]):
-            with patch('sounddevice.query_devices', return_value=[]):
-                result = recording_manager._get_available_devices(force_refresh=True)
+        # Mock both soundcard and sounddevice modules to avoid importing real audio libraries
+        mock_soundcard = MagicMock()
+        mock_soundcard.all_microphones.return_value = []
+        mock_sounddevice = MagicMock()
+        mock_sounddevice.query_devices.return_value = []
+        with patch.dict(sys.modules, {'soundcard': mock_soundcard, 'sounddevice': mock_sounddevice}):
+            result = recording_manager._get_available_devices(force_refresh=True)
 
         assert result == []
 
