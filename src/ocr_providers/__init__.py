@@ -99,7 +99,7 @@ class OCRProviderManager:
         if not self.azure_provider.is_configured:
             return OCRResult.failure_result(
                 "Azure Document Intelligence not configured. "
-                "Please set AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY."
+                "Please set AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and AZURE_DOCUMENT_INTELLIGENCE_KEY."
             )
 
         logger.debug("Performing OCR with Azure Document Intelligence")
@@ -117,7 +117,7 @@ class OCRProviderManager:
         if not self.azure_provider.is_configured:
             return OCRResult.failure_result(
                 "Azure Document Intelligence not configured. "
-                "Please set AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY."
+                "Please set AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and AZURE_DOCUMENT_INTELLIGENCE_KEY."
             )
 
         logger.debug("Performing OCR with Azure Document Intelligence")

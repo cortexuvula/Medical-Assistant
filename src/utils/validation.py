@@ -70,14 +70,36 @@ DANGEROUS_PATTERNS = [
     re.compile(r'ignore\s+(all\s+)?(previous|prior|above)\s+instructions?', re.IGNORECASE),
     re.compile(r'disregard\s+(all\s+)?(previous|prior|above)', re.IGNORECASE),
     re.compile(r'forget\s+(everything|all|your)\s+(you|instructions?|context)', re.IGNORECASE),
-    re.compile(r'you\s+are\s+now\s+(a|an|the)', re.IGNORECASE),
+    re.compile(r'you\s+are\s+now\s+(a|an|the)', re.IGNORECASE),  # Index 9
     re.compile(r'new\s+(system\s+)?instructions?:', re.IGNORECASE),
     re.compile(r'override\s*(:|mode|instructions?)', re.IGNORECASE),
     re.compile(r'pretend\s+(to\s+be|you\s+are)', re.IGNORECASE),
-    re.compile(r'act\s+as\s+(if|a|an|the)', re.IGNORECASE),
+    re.compile(r'act\s+as\s+(if|a|an|the)', re.IGNORECASE),  # Index 13
     re.compile(r'jailbreak', re.IGNORECASE),
     re.compile(r'bypass\s+(safety|security|filter)', re.IGNORECASE),
 ]
+
+# Medical phrase whitelist for prompt injection patterns
+# Maps DANGEROUS_PATTERNS indices to medical phrases that should be allowed
+MEDICAL_PHRASE_WHITELIST = {
+    13: [  # Index 13: r'act\s+as\s+(if|a|an|the)' pattern
+        # Pharmacology - mechanism of action (must match pattern: "act as a/an/the")
+        r'\b(?:medication|drug|agent|compound|substance|treatment)\s+(?:can|may|should|will|does|might)\s+act\s+as\s+(?:a|an|the)\b',
+        r'\b(?:nitroglycerin|aspirin|warfarin|heparin|metformin|insulin|lisinopril|atorvastatin)\s+(?:can|may|should|will|does|might)\s+act\s+as\s+(?:a|an|the)\b',
+        # Therapeutic mechanisms
+        r'\b(?:can|may|should|will|does|might)\s+act\s+as\s+(?:a|an|the)\s+(?:vasodilator|bronchodilator|analgesic|anti-inflammatory|antihypertensive|inhibitor|blocker)\b',
+        r'\b(?:primary|secondary|alternative)\s+(?:treatment|therapy|medication)\b.*?\bact\s+as\s+(?:a|an|the)\b',
+    ],
+    9: [  # Index 9: r'you\s+are\s+now\s+(a|an|the)' pattern
+        # Post-treatment status (must match pattern: "you are now a/an/the")
+        r'\b(?:after|since|following)\s+(?:recovery|treatment|surgery|therapy|discharge)\s+you\s+are\s+now\s+(?:a|an|the)\b',
+        r'\byou\s+are\s+now\s+(?:a|an|the)\s+(?:suitable|eligible|qualified)\s+(?:donor|candidate|patient)\b',
+        r'\byou\s+are\s+now\s+(?:a|an|the)\s+(?:healthiest|strongest)\b',
+    ]
+}
+
+# Compiled whitelist patterns (built at module initialization)
+_COMPILED_MEDICAL_WHITELIST: dict = {}
 
 def validate_api_key(provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
     """Validate an API key for a specific provider (format validation only).
@@ -275,6 +297,88 @@ def sanitize_for_logging(text: str, max_length: int = 500) -> str:
     return sanitized
 
 
+def _build_medical_whitelist():
+    """Build compiled regex patterns from medical whitelist."""
+    global _COMPILED_MEDICAL_WHITELIST
+    for pattern_idx, phrases in MEDICAL_PHRASE_WHITELIST.items():
+        _COMPILED_MEDICAL_WHITELIST[pattern_idx] = [
+            re.compile(phrase, re.IGNORECASE) for phrase in phrases
+        ]
+
+
+# Initialize at module load
+_build_medical_whitelist()
+
+
+def _is_likely_medical_text(text: str) -> bool:
+    """Quick heuristic to detect if text is likely medical content.
+
+    Uses fast pattern matching on common medical indicators from
+    the medical_ner.py dictionaries (medications, conditions, units, vitals).
+
+    Args:
+        text: Input text to check
+
+    Returns:
+        True if text appears to contain medical terminology
+    """
+    # Quick check: look for medical indicators
+    medical_indicators = [
+        # Common medications from medical_ner.py (expanded)
+        r'\b(?:aspirin|lisinopril|metformin|atorvastatin|warfarin|insulin|nitroglycerin|heparin)\b',
+        # Common conditions
+        r'\b(?:hypertension|diabetes|asthma|copd|pneumonia|chf|cardiac)\b',
+        # Medical units and abbreviations
+        r'\b(?:mg|mcg|ml|bpm|mmHg|po|iv|bid|tid|qid)\b',
+        # Vital signs
+        r'\b(?:bp|hr|temp|spo2|glucose|weight)\b',
+        # Medical procedures
+        r'\b(?:ecg|ekg|mri|ct\s+scan|x-ray|surgery|treatment|therapy)\b',
+        # Medical roles and settings
+        r'\b(?:patient|donor|organ|recovery|cardiac|antihypertensive|vasodilator)\b',
+    ]
+
+    # Compile on first use (cached in function)
+    if not hasattr(_is_likely_medical_text, '_pattern'):
+        _is_likely_medical_text._pattern = re.compile(
+            '|'.join(medical_indicators),
+            re.IGNORECASE
+        )
+
+    return bool(_is_likely_medical_text._pattern.search(text))
+
+
+def _check_medical_whitelist(text: str, pattern_idx: int, match_obj: re.Match) -> bool:
+    """Check if a dangerous pattern match is actually a whitelisted medical phrase.
+
+    Args:
+        text: Full text being sanitized
+        pattern_idx: Index of the dangerous pattern in DANGEROUS_PATTERNS
+        match_obj: The regex match object
+
+    Returns:
+        True if match should be allowed (is whitelisted), False otherwise
+    """
+    # No whitelist for this pattern
+    if pattern_idx not in _COMPILED_MEDICAL_WHITELIST:
+        return False
+
+    # Get context around the match (±50 chars for efficiency)
+    start = max(0, match_obj.start() - 50)
+    end = min(len(text), match_obj.end() + 50)
+    context = text[start:end]
+
+    # Check each whitelisted phrase
+    for whitelist_pattern in _COMPILED_MEDICAL_WHITELIST[pattern_idx]:
+        if whitelist_pattern.search(context):
+            logger.debug(
+                f"Medical phrase whitelist: allowed pattern at position {match_obj.start()}"
+            )
+            return True
+
+    return False
+
+
 class PromptInjectionError(ValueError):
     """Raised when a prompt injection attempt is detected in strict mode."""
     pass
@@ -287,6 +391,7 @@ def sanitize_prompt(prompt: str, strict_mode: bool = False) -> str:
         prompt: The user's input prompt
         strict_mode: If True, reject prompts with dangerous content instead of sanitizing.
                      Use strict_mode=True for untrusted external input.
+                     Note: Medical whitelist is disabled in strict mode for security.
 
     Returns:
         Sanitized prompt safe for API calls
@@ -302,15 +407,34 @@ def sanitize_prompt(prompt: str, strict_mode: bool = False) -> str:
         logger.warning(f"Prompt truncated from {len(prompt)} to {MAX_PROMPT_LENGTH} characters")
         prompt = prompt[:MAX_PROMPT_LENGTH] + "..."
 
-    # Check for dangerous patterns
+    # Detect medical context for whitelist application (only in normal mode)
+    is_medical_context = False
+    if not strict_mode:
+        is_medical_context = _is_likely_medical_text(prompt)
+
+    # Check for dangerous patterns and build whitelist exceptions
     detected_patterns = []
-    for pattern in DANGEROUS_PATTERNS:
-        if pattern.search(prompt):
-            detected_patterns.append(pattern.pattern[:50])  # Truncate pattern for logging
+    whitelisted_matches = {}  # Maps pattern_idx -> list of Match objects to preserve
+
+    for pattern_idx, pattern in enumerate(DANGEROUS_PATTERNS):
+        matches = list(pattern.finditer(prompt))
+        if matches:
+            # Track detected pattern
+            detected_patterns.append(pattern.pattern[:50])
+
+            # Check whitelist for each match in medical context (normal mode only)
+            if is_medical_context and not strict_mode:
+                whitelisted = []
+                for match in matches:
+                    if _check_medical_whitelist(prompt, pattern_idx, match):
+                        whitelisted.append(match)
+
+                if whitelisted:
+                    whitelisted_matches[pattern_idx] = whitelisted
 
     if detected_patterns:
         if strict_mode:
-            # In strict mode, reject the entire prompt
+            # In strict mode, reject the entire prompt (no whitelist)
             logger.warning(
                 f"Prompt injection attempt blocked (strict mode): {len(detected_patterns)} patterns detected"
             )
@@ -331,12 +455,43 @@ def sanitize_prompt(prompt: str, strict_mode: bool = False) -> str:
             )
         else:
             # In normal mode, sanitize by removing dangerous patterns
-            original_prompt = prompt
-            for pattern in DANGEROUS_PATTERNS:
-                prompt = pattern.sub('', prompt)
-            logger.warning(
-                f"Potentially dangerous content removed from prompt: {len(detected_patterns)} patterns"
-            )
+            # but preserve whitelisted medical phrases
+            removed_count = 0
+            whitelisted_count = 0
+
+            for pattern_idx, pattern in enumerate(DANGEROUS_PATTERNS):
+                whitelisted_for_pattern = whitelisted_matches.get(pattern_idx, [])
+
+                if whitelisted_for_pattern:
+                    # Build a set of whitelisted spans to preserve
+                    whitelisted_spans = {(m.start(), m.end()) for m in whitelisted_for_pattern}
+
+                    # Replace only non-whitelisted matches
+                    def replacement_func(match):
+                        nonlocal removed_count, whitelisted_count
+                        if (match.start(), match.end()) in whitelisted_spans:
+                            whitelisted_count += 1
+                            return match.group(0)  # Preserve whitelisted match
+                        else:
+                            removed_count += 1
+                            return ''  # Remove non-whitelisted match
+
+                    prompt = pattern.sub(replacement_func, prompt)
+                else:
+                    # No whitelist for this pattern, remove all matches
+                    matches_found = len(pattern.findall(prompt))
+                    removed_count += matches_found
+                    prompt = pattern.sub('', prompt)
+
+            # Log sanitization results
+            if whitelisted_count > 0:
+                logger.info(
+                    f"Sanitization: removed {removed_count} patterns, whitelisted {whitelisted_count} medical phrases"
+                )
+            else:
+                logger.warning(
+                    f"Potentially dangerous content removed from prompt: {removed_count} patterns"
+                )
 
     # Remove excessive whitespace
     prompt = ' '.join(prompt.split())

@@ -115,19 +115,30 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     diar_thresh_entry = ttk.Entry(frame, width=30)
     diar_thresh_entry.insert(0, diar_thresh_str)
     diar_thresh_entry.grid(row=14, column=1, sticky="w", padx=(10, 0), pady=10)
-    ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-2.0).",
+    ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-2.0). "
+              "Only effective when Number of Speakers is left empty (auto-detect mode).",
               wraplength=400, foreground="gray").grid(row=15, column=0, columnspan=2, sticky="w", padx=(20, 0))
+
+    # Diarization Tips
+    tips_frame = ttk.LabelFrame(frame, text="Diarization Tips", padding=10)
+    tips_frame.grid(row=16, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+    ttk.Label(tips_frame, text=(
+        "For best multi-speaker detection:\n"
+        "1. Leave 'Number of Speakers' empty to let the API auto-detect.\n"
+        "2. Use 'Diarization Threshold' (e.g. 0.3-0.5) to fine-tune sensitivity.\n"
+        "3. Setting a fixed number of speakers disables the threshold parameter."
+    ), wraplength=450, foreground="gray", justify="left").pack(anchor="w")
 
     # Entity Detection
     ttk.Label(frame, text="Entity Detection:", font=("Segoe UI", 10, "bold")).grid(
-        row=16, column=0, columnspan=2, sticky="w", pady=(15, 5))
+        row=17, column=0, columnspan=2, sticky="w", pady=(15, 5))
     ttk.Label(frame, text="Detect sensitive entities in transcription (scribe_v2 only)",
-              wraplength=400, foreground="gray").grid(row=17, column=0, columnspan=2, sticky="w", padx=(20, 0))
+              wraplength=400, foreground="gray").grid(row=18, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     current_entities = elevenlabs_settings.get("entity_detection", default_settings.get("entity_detection", []))
 
     entity_frame = ttk.Frame(frame)
-    entity_frame.grid(row=18, column=0, columnspan=2, sticky="w", pady=5, padx=(20, 0))
+    entity_frame.grid(row=19, column=0, columnspan=2, sticky="w", pady=5, padx=(20, 0))
 
     phi_var = tk.BooleanVar(value="phi" in current_entities)
     pii_var = tk.BooleanVar(value="pii" in current_entities)
@@ -141,18 +152,18 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
 
     # Keyterms
     ttk.Label(frame, text="Keyterms:", font=("Segoe UI", 10, "bold")).grid(
-        row=19, column=0, columnspan=2, sticky="w", pady=(15, 5))
+        row=20, column=0, columnspan=2, sticky="w", pady=(15, 5))
     ttk.Label(frame, text="Medical terms to bias recognition (comma-separated, up to 100 terms)",
-              wraplength=400, foreground="gray").grid(row=20, column=0, columnspan=2, sticky="w", padx=(20, 0))
+              wraplength=400, foreground="gray").grid(row=21, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     current_keyterms = elevenlabs_settings.get("keyterms", default_settings.get("keyterms", []))
     keyterms_text = tk.Text(frame, width=50, height=3, wrap=tk.WORD)
     keyterms_text.insert("1.0", ", ".join(current_keyterms))
-    keyterms_text.grid(row=21, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=5)
+    keyterms_text.grid(row=22, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=5)
 
     # Buttons
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=22, column=0, columnspan=2, pady=(20, 0), sticky="e")
+    btn_frame.grid(row=23, column=0, columnspan=2, pady=(20, 0), sticky="e")
 
     def save_elevenlabs_settings():
         try:

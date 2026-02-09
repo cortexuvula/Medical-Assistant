@@ -171,7 +171,7 @@ class TestElevenLabsProvider:
         # Check that diarization parameters were sent
         call_args = mock_session.post.call_args
         assert call_args[1]["data"]["diarize"] == "true"
-        assert call_args[1]["data"]["num_speakers"] == 2
+        assert call_args[1]["data"]["num_speakers"] == "2"
         assert call_args[1]["data"]["language_code"] == "en-US"
         assert call_args[1]["data"]["timestamps_granularity"] == "word"
 
@@ -495,3 +495,93 @@ class TestElevenLabsProvider:
         # Check that default model is scribe_v2
         call_args = mock_session.post.call_args
         assert call_args[1]["data"]["model_id"] == "scribe_v2"
+
+    @patch('stt_providers.elevenlabs.settings_manager')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_num_speakers_omitted_when_none(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test that num_speakers is not sent when setting is None (auto-detect)."""
+        mock_settings.get.return_value = {
+            "diarize": True,
+            "num_speakers": None,
+            "model_id": "scribe_v2",
+            "tag_audio_events": True,
+            "timestamps_granularity": "word"
+        }
+
+        mock_response_data = {
+            "text": "Hello there Hi how are you",
+            "words": [
+                {"word": "Hello", "speaker_id": 0},
+                {"word": "there", "speaker_id": 0},
+                {"word": "Hi", "speaker_id": 1},
+                {"word": "how", "speaker_id": 1},
+                {"word": "are", "speaker_id": 1},
+                {"word": "you", "speaker_id": 1}
+            ]
+        }
+
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        # num_speakers should NOT be in the request data
+        call_args = mock_session.post.call_args
+        assert "num_speakers" not in call_args[1]["data"]
+        # Diarization should still work
+        assert call_args[1]["data"]["diarize"] == "true"
+
+    @patch('stt_providers.elevenlabs.settings_manager')
+    @patch('stt_providers.elevenlabs.get_http_client_manager')
+    def test_multipart_form_data_values_are_strings(self, mock_get_http_manager, mock_settings, provider, mock_audio_segment):
+        """Test that num_speakers and diarization_threshold are sent as strings for multipart form data."""
+        mock_settings.get.return_value = {
+            "diarize": True,
+            "num_speakers": 3,
+            "diarization_threshold": 0.5,
+            "model_id": "scribe_v2",
+            "tag_audio_events": True,
+            "timestamps_granularity": "word"
+        }
+
+        mock_response_data = {
+            "text": "Test multipart values",
+            "words": [
+                {"word": "Test", "speaker_id": 0},
+                {"word": "multipart", "speaker_id": 0},
+                {"word": "values", "speaker_id": 0}
+            ]
+        }
+
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "mock response text"
+        mock_response.json.return_value = mock_response_data
+        mock_session.post.return_value = mock_response
+
+        mock_manager = MagicMock()
+        mock_manager.get_requests_session.return_value = mock_session
+        mock_get_http_manager.return_value = mock_manager
+
+        result = provider.transcribe(mock_audio_segment)
+
+        call_args = mock_session.post.call_args
+        data = call_args[1]["data"]
+        # num_speakers should be a string
+        assert data["num_speakers"] == "3"
+        assert isinstance(data["num_speakers"], str)
+        # diarization_threshold should be a string
+        assert data["diarization_threshold"] == "0.5"
+        assert isinstance(data["diarization_threshold"], str)
+        # diarize should be a string
+        assert data["diarize"] == "true"
+        assert isinstance(data["diarize"], str)

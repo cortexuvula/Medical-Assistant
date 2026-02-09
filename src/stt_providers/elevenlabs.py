@@ -193,9 +193,9 @@ class ElevenLabsProvider(BaseSTTProvider):
                 # Get number of speakers setting
                 num_speakers = elevenlabs_settings.get("num_speakers", None)
                 if num_speakers is not None:
-                    data['num_speakers'] = num_speakers
-                else:
-                    data['num_speakers'] = 2  # Default to 2 speakers for diarization
+                    data['num_speakers'] = str(num_speakers)
+                # When num_speakers is None, omit it so API auto-detects
+                # and diarization_threshold takes effect
                     
                 # Setting additional parameters that might help with diarization
                 language_code = elevenlabs_settings.get("language_code", "")
@@ -207,9 +207,10 @@ class ElevenLabsProvider(BaseSTTProvider):
                     data['timestamps_granularity'] = timestamps_granularity
 
                 # Add diarization threshold if set (fine-tune speaker detection)
+                # Only effective when num_speakers is omitted (per ElevenLabs docs)
                 diarization_threshold = elevenlabs_settings.get("diarization_threshold")
                 if diarization_threshold is not None:
-                    data['diarization_threshold'] = diarization_threshold
+                    data['diarization_threshold'] = str(diarization_threshold)
 
             # Add audio event tagging setting (controls ambient sound descriptions)
             # When False, transcription won't include things like "[keyboard clicking]"
@@ -344,6 +345,18 @@ class ElevenLabsProvider(BaseSTTProvider):
                         f"Diarization result: {len(unique_speakers)} unique speakers detected "
                         f"(field: {speaker_field_name}, speakers: {unique_speakers})"
                     )
+                    # Console-visible diagnostic so user can see diarization results
+                    diag_parts = [
+                        f"[ElevenLabs Diarization] {len(unique_speakers)} speaker(s) detected",
+                        f"IDs: {sorted(unique_speakers)}",
+                    ]
+                    if 'num_speakers' in data:
+                        diag_parts.append(f"num_speakers sent: {data['num_speakers']}")
+                    else:
+                        diag_parts.append("num_speakers: auto-detect")
+                    if 'diarization_threshold' in data:
+                        diag_parts.append(f"threshold: {data['diarization_threshold']}")
+                    print(" | ".join(diag_parts))
 
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
@@ -374,12 +387,16 @@ class ElevenLabsProvider(BaseSTTProvider):
 
                 # Warn if diarization was enabled but only one speaker came through
                 if diarize and transcript and transcript.count("Speaker ") <= 1:
-                    self.logger.warning(
-                        "Diarization was enabled but only one speaker detected. "
-                        "This may indicate: (1) only one person is speaking, "
-                        "(2) audio quality insufficient for speaker separation, or "
-                        "(3) diarize parameter was not received by the API."
-                    )
+                    tips = [
+                        "Diarization was enabled but only one speaker detected.",
+                        "Tips: (1) Leave 'Number of Speakers' empty to let the API auto-detect.",
+                        "(2) Lower the 'Diarization Threshold' (e.g. 0.3) for more sensitive detection.",
+                        "(3) Ensure audio has clear speech from multiple speakers.",
+                        "(4) Check that 'num_speakers' is not being forced to a fixed value.",
+                    ]
+                    self.logger.warning(" ".join(tips))
+                    print(f"[ElevenLabs Diarization] WARNING: Only 1 speaker detected. "
+                          f"Try leaving 'Number of Speakers' empty in ElevenLabs Settings.")
 
             else:
                 error_msg = f"ElevenLabs API error: {response.status_code} - {response.text}"
@@ -455,8 +472,17 @@ class ElevenLabsProvider(BaseSTTProvider):
             data = {
                 'model_id': elevenlabs_settings.get("model_id", "scribe_v2"),
                 'diarize': str(elevenlabs_settings.get("diarize", True)).lower(),
-                'num_speakers': elevenlabs_settings.get("num_speakers", 2),
             }
+
+            # Only send num_speakers if explicitly set (omit for auto-detection)
+            num_speakers = elevenlabs_settings.get("num_speakers", None)
+            if num_speakers is not None:
+                data['num_speakers'] = str(num_speakers)
+
+            # Forward diarization_threshold (only effective when num_speakers omitted)
+            diarization_threshold = elevenlabs_settings.get("diarization_threshold")
+            if diarization_threshold is not None:
+                data['diarization_threshold'] = str(diarization_threshold)
 
             # Add entity detection if configured
             entity_detection = elevenlabs_settings.get("entity_detection", [])

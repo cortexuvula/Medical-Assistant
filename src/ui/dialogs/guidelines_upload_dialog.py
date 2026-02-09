@@ -17,7 +17,7 @@ import tkinter as tk
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 
 import ttkbootstrap as ttk
 from ttkbootstrap.dialogs import DatePickerDialog
@@ -38,6 +38,9 @@ SUPPORTED_EXTENSIONS = [
     ("Text Files", "*.txt *.md"),
     ("All Files", "*.*"),
 ]
+
+# Large batch warning threshold (warn at old hard limit)
+LARGE_BATCH_WARNING_THRESHOLD = 100
 
 
 class GuidelinesUploadDialog(tk.Toplevel):
@@ -67,9 +70,9 @@ class GuidelinesUploadDialog(tk.Toplevel):
         self._create_widgets()
         self._center_window()
 
-        # Make modal
+        # Non-modal - allow user to interact with main app
         self.transient(parent)
-        self.grab_set()
+        # REMOVED: self.grab_set()  # Don't grab focus - keep UI responsive
 
     def _center_window(self):
         """Center the dialog on screen."""
@@ -296,6 +299,17 @@ class GuidelinesUploadDialog(tk.Toplevel):
             variable=self.ocr_var,
         ).pack(side=tk.LEFT)
 
+        # Duplicate handling checkbox
+        check_frame3 = ttk.Frame(options_frame)
+        check_frame3.pack(fill=tk.X, pady=(10, 0))
+
+        self.skip_duplicates_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            check_frame3,
+            text="Skip duplicate guidelines (same title/source/version)",
+            variable=self.skip_duplicates_var,
+        ).pack(side=tk.LEFT)
+
         # Progress section (initially hidden)
         self.progress_frame = ttk.Labelframe(main_frame, text="Upload Progress", padding=10)
 
@@ -421,8 +435,14 @@ class GuidelinesUploadDialog(tk.Toplevel):
             self.selected_files.remove(f)
 
         count = len(self.selected_files)
+        batch_note = ""
+        if count > LARGE_BATCH_WARNING_THRESHOLD:
+            batch_note = " ⚠️ Large batch"
+        elif count >= LARGE_BATCH_WARNING_THRESHOLD // 2:  # >= 100 files
+            batch_note = " (medium batch)"
+
         self.file_count_label.config(
-            text=f"{count} file{'s' if count != 1 else ''} ({self._format_size(total_size)})"
+            text=f"{count} file{'s' if count != 1 else ''} ({self._format_size(total_size)}){batch_note}"
         )
 
         if count > 0 and not self.is_uploading:
@@ -505,6 +525,33 @@ class GuidelinesUploadDialog(tk.Toplevel):
                 self._update_file_list()
                 return
 
+        # Check for large batch and show warning
+        file_count = len(self.selected_files)
+        if file_count > LARGE_BATCH_WARNING_THRESHOLD:
+            # Calculate estimated time (rough estimate: 1-3 seconds per file average)
+            estimated_min = file_count // 60  # Conservative: 1 file per second
+            estimated_max = (file_count * 3) // 60  # Liberal: 3 seconds per file
+
+            warning_message = (
+                f"Large Batch Upload\n\n"
+                f"You are about to upload {file_count} guideline documents.\n\n"
+                f"Estimated processing time: {estimated_min}-{estimated_max} minutes\n"
+                f"(varies based on file sizes and system resources)\n\n"
+                f"The progress dialog can be minimized, and processing will\n"
+                f"continue in the background.\n\n"
+                f"Do you want to proceed?"
+            )
+
+            proceed = messagebox.askyesno(
+                "Large Batch Upload",
+                warning_message,
+                parent=self,
+                icon='warning'
+            )
+
+            if not proceed:
+                return  # User cancelled, don't start upload
+
         # Prepare options with guideline metadata
         options = {
             "specialty": self.specialty_var.get() or None,
@@ -516,6 +563,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
             "extract_recommendations": self.extract_recommendations_var.get(),
             "enable_graph": self.graph_var.get(),
             "enable_ocr": self.ocr_var.get(),
+            "skip_duplicates": self.skip_duplicates_var.get(),
         }
 
         # Show progress
@@ -526,6 +574,10 @@ class GuidelinesUploadDialog(tk.Toplevel):
         # Call upload callback
         if self.on_upload:
             self.on_upload(self.selected_files.copy(), options)
+
+        # Auto-close dialog now that upload is queued
+        # Progress dialog will show instead
+        self.after(100, self.destroy)  # Small delay to ensure callback completes
 
     def update_progress(
         self,
@@ -607,34 +659,41 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
     def __init__(
         self,
         parent: tk.Widget,
-        total_files: int,
+        batch_id: str,
+        queue_manager,
     ):
         """Initialize progress dialog.
 
         Args:
             parent: Parent widget
-            total_files: Total number of files to process
+            batch_id: Batch identifier from queue
+            queue_manager: ProcessingQueue instance
         """
         super().__init__(parent)
         self.title("Uploading Clinical Guidelines")
         self.geometry("550x350")
         self.resizable(False, False)
 
-        self.total_files = total_files
-        self.processed_files = 0
-        self.success_count = 0
-        self.fail_count = 0
+        self.batch_id = batch_id
+        self.queue_manager = queue_manager
         self.cancelled = False
+
+        # Get batch info
+        batch_info = queue_manager.get_guideline_batch_status(batch_id)
+        self.total_files = batch_info.get("total_files", 0) if batch_info else 0
+        self.processed_files = batch_info.get("processed", 0) if batch_info else 0
+        self.success_count = batch_info.get("successful", 0) if batch_info else 0
+        self.fail_count = batch_info.get("failed", 0) if batch_info else 0
 
         self._create_widgets()
         self._center_window()
 
-        # Make modal
+        # NON-MODAL: Don't grab focus, allow user to interact with main app
         self.transient(parent)
-        self.grab_set()
+        # REMOVED: self.grab_set()  # This made it modal
 
-        # Prevent closing
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Allow minimizing instead of closing
+        self.protocol("WM_DELETE_WINDOW", self._on_minimize)
 
     def _center_window(self):
         """Center the dialog."""
@@ -707,6 +766,50 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
             command=self._on_cancel,
         )
         self.cancel_button.pack(pady=(15, 0))
+
+    def update_batch_progress(self, batch_id: str, batch_info: Dict):
+        """Update overall batch progress from queue callback.
+
+        Args:
+            batch_id: Batch identifier
+            batch_info: Batch information dictionary
+        """
+        if not self.winfo_exists() or batch_id != self.batch_id:
+            return
+
+        processed = batch_info.get("processed", 0)
+        total = batch_info.get("total_files", 1)
+        successful = batch_info.get("successful", 0)
+        failed = batch_info.get("failed", 0)
+        skipped = batch_info.get("skipped", 0)
+
+        # Update overall progress
+        progress_pct = (processed / total * 100) if total > 0 else 0
+        self.overall_progress["value"] = progress_pct
+        self.overall_label.config(text=f"{processed} / {total} guidelines")
+
+        # Update stats
+        if skipped > 0:
+            self.stats_label.config(
+                text=f"Success: {successful}  |  Skipped: {skipped}  |  Failed: {failed}"
+            )
+        else:
+            self.stats_label.config(
+                text=f"Success: {successful}  |  Failed: {failed}"
+            )
+
+        # Update status
+        status = batch_info.get("status", "processing")
+        if status == "completed":
+            self.status_label.config(text="Upload Complete")
+            self.cancel_button.config(text="Close")
+        elif status == "cancelled":
+            self.status_label.config(text="Upload Cancelled")
+            self.cancel_button.config(text="Close")
+        else:
+            self.status_label.config(text=f"Processing {processed}/{total}...")
+
+        self.update_idletasks()
 
     def update_file_start(self, filename: str, file_index: int):
         """Called when starting a new file.
@@ -801,12 +904,32 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
 
         if messagebox.askyesno(
             "Cancel Upload",
-            "Are you sure you want to cancel the upload?",
+            "Are you sure you want to cancel the upload?\n\n"
+            "Note: Currently processing files will complete.",
             parent=self,
         ):
+            count = self.queue_manager.cancel_guideline_batch(self.batch_id)
+            self.status_label.config(text=f"Cancelling... ({count} tasks)")
             self.cancelled = True
-            self.destroy()
+            # Don't destroy - let user see final status
+            self.cancel_button.config(text="Close")
 
-    def _on_close(self):
-        """Handle window close."""
-        self._on_cancel()
+    def _on_minimize(self):
+        """Hide dialog instead of destroying it."""
+        self.withdraw()
+
+        # Show status in main app status bar if available
+        try:
+            batch = self.queue_manager.guideline_batches.get(self.batch_id)
+            if batch and hasattr(self.queue_manager.app, 'status_manager'):
+                self.queue_manager.app.status_manager.info(
+                    f"Guidelines upload: {batch['processed']}/{batch['total_files']} "
+                    f"(success: {batch['successful']}, failed: {batch['failed']})"
+                )
+        except Exception:
+            pass  # Silently ignore status bar update errors
+
+    def show(self):
+        """Show the dialog (deiconify if minimized)."""
+        self.deiconify()
+        self.lift()

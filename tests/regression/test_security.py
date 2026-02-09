@@ -277,12 +277,21 @@ class TestPromptInjectionDetection:
             "Patient presents with chest pain",
             "History of hypertension and diabetes",
             "Recommend follow-up in 2 weeks",
+            # Medical whitelist patterns
+            "Beta blocker acts as a cardiac depressant",
+            "ACE inhibitor acts as an antihypertensive agent",
+            "Heart rate you are now monitoring is 72 bpm",
         ]
 
         for text in medical_texts:
             sanitized = sanitize_prompt(text)
             # Normal medical text should pass through
             assert len(sanitized) > 0
+            # Medical phrases should be preserved
+            if "acts as" in text.lower():
+                assert "acts as" in sanitized.lower() or len(sanitized) > len(text) * 0.8
+            if "you are now" in text.lower():
+                assert "you are now" in sanitized.lower() or len(sanitized) > len(text) * 0.8
 
 
 class TestLoggingSanitization:

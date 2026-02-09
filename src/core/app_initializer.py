@@ -503,6 +503,40 @@ class AppInitializer:
         self.app.processing_queue.completion_callback = self._on_queue_completion
         self.app.processing_queue.error_callback = self._on_queue_error
 
+        # Register guideline progress callback
+        def on_guideline_progress(task_id, status, percent, error):
+            """Route guideline progress to active dialog."""
+            if hasattr(self.app, 'guideline_progress_dialogs'):
+                # Find batch_id for this task
+                with self.app.processing_queue.lock:
+                    for batch_id, batch_info in self.app.processing_queue.guideline_batches.items():
+                        if task_id in batch_info.get("task_ids", []):
+                            dialog = self.app.guideline_progress_dialogs.get(batch_id)
+                            if dialog and dialog.winfo_exists():
+                                # Update file progress
+                                dialog.update_file_progress(status, percent, error)
+
+                                # Update batch progress
+                                batch_status = self.app.processing_queue.get_guideline_batch_status(batch_id)
+                                if batch_status:
+                                    dialog.update_batch_progress(batch_id, batch_status)
+                            break
+
+        self.app.processing_queue.set_guideline_progress_callback(on_guideline_progress)
+
+        # Register batch progress callback (called after each task completes)
+        def on_batch_progress(batch_id, batch_info):
+            """Route batch progress updates to active dialog."""
+            if hasattr(self.app, 'guideline_progress_dialogs'):
+                dialog = self.app.guideline_progress_dialogs.get(batch_id)
+                if dialog and dialog.winfo_exists():
+                    dialog.update_batch_progress(batch_id, batch_info)
+
+        self.app.processing_queue.batch_callback = on_batch_progress
+
+        # Track active guideline progress dialogs
+        self.app.guideline_progress_dialogs = {}
+
         # Initialize notification manager
         self.app.notification_manager = NotificationManager(self.app)
 

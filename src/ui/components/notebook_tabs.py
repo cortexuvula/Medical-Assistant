@@ -1489,8 +1489,8 @@ class NotebookTabs:
 
             dialog = GuidelinesUploadDialog(self.parent, on_upload=on_upload)
             self._guidelines_dialog = dialog
-            dialog.wait_window()
-            self._guidelines_dialog = None
+            # REMOVED: dialog.wait_window()  # Don't block - let dialog be non-modal
+            # Dialog will auto-close when upload starts or user cancels
 
         except Exception as e:
             self._guidelines_dialog = None
@@ -1499,34 +1499,37 @@ class NotebookTabs:
                 self.parent.status_manager.error(f"Failed to open guidelines upload: {e}")
 
     def _process_guidelines_uploads(self, files: List[str], options: Dict[str, Any]) -> None:
-        """Process uploaded guideline files in background thread.
+        """Queue guidelines for background processing.
 
         Args:
             files: List of file paths to upload
             options: Upload options (specialty, source, version, etc.)
         """
-        import threading
+        try:
+            # Get processing queue
+            queue = self.parent.processing_queue
 
-        def upload_thread():
-            try:
-                from rag.guidelines_upload_manager import get_guidelines_upload_manager
+            if not queue:
+                from tkinter import messagebox
+                messagebox.showerror(
+                    "Processing Queue Unavailable",
+                    "Background processing is not available.",
+                    parent=self.parent
+                )
+                return
 
-                manager = get_guidelines_upload_manager()
+            # Add batch to queue (returns immediately)
+            batch_id = queue.add_guideline_batch(files, options)
 
-                # Show progress dialog
-                self.parent.after(0, lambda: self._show_guidelines_upload_progress(files, options, manager))
+            logger.info(f"Queued {len(files)} guidelines", batch_id=batch_id)
 
-            except ImportError:
-                # Manager not available - close the dialog first to release grab,
-                # then show info message
-                self.parent.after(0, self._dismiss_guidelines_dialog_and_notify)
-            except Exception as e:
-                logger.error(f"Error processing guidelines uploads: {e}")
-                error_msg = str(e)
-                self.parent.after(0, lambda msg=error_msg: self._show_upload_error(msg))
+            # Show non-modal progress dialog
+            self.parent.after(0, lambda: self._show_guideline_batch_progress(batch_id))
 
-        thread = threading.Thread(target=upload_thread, daemon=True)
-        thread.start()
+        except Exception as e:
+            logger.error(f"Failed to queue guidelines: {e}")
+            from tkinter import messagebox
+            messagebox.showerror("Upload Error", f"Failed to start upload: {e}", parent=self.parent)
 
     def _dismiss_guidelines_dialog_and_notify(self) -> None:
         """Safely dismiss the guidelines dialog before showing a notification.
@@ -1543,66 +1546,34 @@ class NotebookTabs:
             self._guidelines_dialog = None
         self._show_guidelines_not_implemented()
 
-    def _show_guidelines_upload_progress(self, files: List[str], options: Dict[str, Any], manager: Any) -> None:
-        """Show upload progress dialog and process guideline files.
+    def _show_guideline_batch_progress(self, batch_id: str) -> None:
+        """Show non-modal progress dialog for guideline batch.
 
         Args:
-            files: List of file paths
-            options: Upload options
-            manager: Guidelines upload manager instance
+            batch_id: Batch identifier from queue
         """
         from ui.dialogs.guidelines_upload_dialog import GuidelinesUploadProgressDialog
-        from rag.guidelines_models import GuidelineUploadStatus
 
-        progress_dialog = GuidelinesUploadProgressDialog(self.parent, len(files))
+        queue = self.parent.processing_queue
+        batch_info = queue.get_guideline_batch_status(batch_id)
 
-        def process_files():
-            success_count = 0
-            fail_count = 0
+        if not batch_info:
+            logger.error("Batch not found", batch_id=batch_id)
+            return
 
-            for i, file_path in enumerate(files):
-                if progress_dialog.cancelled:
-                    break
+        # Create non-modal progress dialog
+        dialog = GuidelinesUploadProgressDialog(
+            parent=self.parent,
+            batch_id=batch_id,
+            queue_manager=queue
+        )
 
-                import os
-                filename = os.path.basename(file_path)
-                self.parent.after(0, lambda f=filename, idx=i: progress_dialog.update_file_start(f, idx))
+        # Track dialog for "show progress" menu item
+        if not hasattr(self.parent, 'guideline_progress_dialogs'):
+            self.parent.guideline_progress_dialogs = {}
+        self.parent.guideline_progress_dialogs[batch_id] = dialog
 
-                try:
-                    def progress_callback(status, progress_pct, error=None):
-                        self.parent.after(0, lambda s=status, p=progress_pct, e=error:
-                            progress_dialog.update_file_progress(s, p, e))
-
-                    manager.upload_guideline(
-                        file_path=file_path,
-                        specialty=options.get("specialty"),
-                        source=options.get("source"),
-                        version=options.get("version"),
-                        effective_date=options.get("effective_date"),
-                        document_type=options.get("document_type"),
-                        title=options.get("title"),
-                        extract_recommendations=options.get("extract_recommendations", True),
-                        enable_graph=options.get("enable_graph", True),
-                        enable_ocr=options.get("enable_ocr", True),
-                        progress_callback=progress_callback,
-                    )
-                    success_count += 1
-                    self.parent.after(0, lambda: progress_dialog.update_file_complete(True))
-
-                except Exception as e:
-                    logger.error(f"Failed to upload guideline {filename}: {e}")
-                    fail_count += 1
-                    self.parent.after(0, lambda: progress_dialog.update_file_complete(False))
-
-            self.parent.after(0, progress_dialog.complete)
-
-            if success_count > 0 and hasattr(self.parent, 'status_manager'):
-                self.parent.after(0, lambda: self.parent.status_manager.success(
-                    f"Uploaded {success_count} guideline(s)"
-                ))
-
-        thread = threading.Thread(target=process_files, daemon=True)
-        thread.start()
+        dialog.show()
 
     def _show_guidelines_library_dialog(self) -> None:
         """Show the clinical guidelines library dialog."""

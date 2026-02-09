@@ -532,6 +532,61 @@ class GuidelinesVectorStore:
 
         return results
 
+    def find_duplicate_guideline(
+        self,
+        title: str,
+        source: Optional[str] = None,
+        version: Optional[str] = None
+    ) -> Optional[str]:
+        """Check if a guideline with the same title/source/version already exists.
+
+        Args:
+            title: Guideline title
+            source: Source organization (optional)
+            version: Version string (optional)
+
+        Returns:
+            guideline_id if duplicate found, None otherwise
+        """
+        import psycopg
+
+        conn_str = self._get_connection_string()
+        if "sslmode=" not in conn_str:
+            conn_str += "?sslmode=require"
+
+        try:
+            with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
+                with conn.cursor() as cur:
+                    # Build query based on what fields are provided
+                    if source and version:
+                        # Exact match: title + source + version
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE title = %s AND source = %s AND version = %s
+                            LIMIT 1
+                        """, (title, source, version))
+                    elif source:
+                        # Match: title + source
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE title = %s AND source = %s
+                            LIMIT 1
+                        """, (title, source))
+                    else:
+                        # Match: title only
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE title = %s
+                            LIMIT 1
+                        """, (title,))
+
+                    row = cur.fetchone()
+                    return row[0] if row else None
+
+        except Exception as e:
+            logger.warning(f"Error checking for duplicate guideline: {e}")
+            return None
+
     def list_guidelines(self) -> list:
         """List all guidelines from the remote guidelines table.
 

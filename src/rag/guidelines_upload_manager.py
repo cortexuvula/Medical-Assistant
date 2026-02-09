@@ -98,8 +98,9 @@ class GuidelinesUploadManager:
         extract_recommendations: bool = True,
         enable_graph: bool = True,
         enable_ocr: bool = True,
+        skip_duplicates: bool = True,
         progress_callback: Optional[Callable[[GuidelineUploadStatus, float, Optional[str]], None]] = None,
-    ) -> None:
+    ) -> Optional[str]:
         """Upload and process a single clinical guideline document.
 
         Args:
@@ -113,10 +114,36 @@ class GuidelinesUploadManager:
             extract_recommendations: Whether to tag recommendation sections
             enable_graph: Whether to sync to Neo4j knowledge graph
             enable_ocr: Whether to use OCR for scanned documents
+            skip_duplicates: Skip if guideline with same title/source/version exists
             progress_callback: Callback(status, progress_percent, error_message)
+
+        Returns:
+            guideline_id if uploaded, None if skipped as duplicate
         """
         file_path = str(Path(file_path).resolve())
         filename = os.path.basename(file_path)
+
+        # Generate title early for duplicate checking
+        if not title:
+            title = Path(file_path).stem
+
+        # Check for duplicates if requested
+        if skip_duplicates:
+            vector_store = self._get_vector_store()
+            existing_id = vector_store.find_duplicate_guideline(title, source, version)
+            if existing_id:
+                logger.info(
+                    f"Skipping duplicate guideline: '{title}' (source: {source}, version: {version})",
+                    existing_id=existing_id
+                )
+                if progress_callback:
+                    progress_callback(
+                        GuidelineUploadStatus.COMPLETED,
+                        100.0,
+                        "Skipped (duplicate)"
+                    )
+                return None
+
         guideline_id = str(uuid4())
 
         def report(status: GuidelineUploadStatus, progress: float, error: Optional[str] = None):
@@ -259,6 +286,7 @@ class GuidelinesUploadManager:
                 f"Successfully uploaded guideline: {filename} "
                 f"(id={guideline_id}, {chunk_count} chunks)"
             )
+            return guideline_id
 
         except Exception as e:
             error_msg = str(e)

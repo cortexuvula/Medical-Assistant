@@ -122,7 +122,7 @@ Real-time medical translation for multilingual patient consultations:
 | Provider | Model | Best For |
 |----------|-------|----------|
 | **Deepgram** | Nova-2 Medical | Medical terminology accuracy, HIPAA-eligible |
-| **ElevenLabs** | Scribe v1 | High accuracy, speaker diarization |
+| **ElevenLabs** | Scribe v2 | High accuracy, speaker diarization, entity detection, keyterm prompting |
 | **Groq** | Whisper Large v3 Turbo | Speed (216x real-time), cost-effective |
 | **Local Whisper** | Turbo | Offline capability, privacy |
 
@@ -666,6 +666,7 @@ The project uses GitHub Actions for continuous integration:
 | **API Connection Errors** | Verify API keys in Settings → API Keys. Check internet connection. |
 | **Audio Not Recording** | Check microphone permissions. Verify FFmpeg installation. Select correct input device. |
 | **Transcription Errors** | Try a different STT provider. Check audio quality. Ensure API key is valid. |
+| **Only One Speaker Detected** | In ElevenLabs Settings, leave "Number of Speakers" empty for auto-detection. Lower the "Diarization Threshold" (e.g. 0.3) for more sensitive speaker separation. |
 | **Ollama Timeouts** | Use smaller model variants. Check system resources. Increase timeout in settings. |
 | **Queue Stuck** | Check logs via Help → View Logs. Restart application if needed. |
 | **Theme Not Changing** | Restart application after theme change for full effect. |

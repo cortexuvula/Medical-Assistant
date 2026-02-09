@@ -59,7 +59,7 @@
     "alternatives": 1
   },
   "elevenlabs": {
-    "model_id": "scribe_v1",
+    "model_id": "scribe_v2",
     "language_code": "",
     "tag_audio_events": true,
     "num_speakers": null,
