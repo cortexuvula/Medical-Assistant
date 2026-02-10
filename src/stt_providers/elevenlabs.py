@@ -295,8 +295,8 @@ class ElevenLabsProvider(BaseSTTProvider):
                         self.logger.debug(f"Available fields in word entry: {list(result['words'][0].keys())}")
                 
                 # More detailed debug info for speaker diarization
+                self.logger.info(f"Diarization debug: requested={diarize}, response_keys={list(result.keys())}")
                 self.logger.debug("\n=== Diarization Debug ===")
-                self.logger.debug(f"Diarization requested: {diarize}")
                 
                 # Check for diarization data in different possible locations
                 has_speaker_info = False
@@ -315,19 +315,23 @@ class ElevenLabsProvider(BaseSTTProvider):
                     self.logger.debug(f"Found diarization data: {result['diarization']}")
                 
                 # Check word-level speaker information
+                # Scan multiple word entries (not just the first) because spacing/
+                # punctuation/audio_event entries may lack speaker_id
                 if 'words' in result and result['words']:
                     word_fields = set()
-                    for key in result['words'][0].keys():
-                        word_fields.add(key)
-                        if 'speaker' in key.lower():
-                            has_speaker_info = True
-                            # Prefer 'speaker_id' over other speaker-related fields
-                            # (e.g. 'speaker_confidence') to avoid picking a float
-                            if key == 'speaker_id' or diarization_location is None:
-                                diarization_location = f"words.{key}"
-                    
-                    self.logger.debug(f"Word-level fields: {word_fields}")
-                    
+                    sample_count = min(20, len(result['words']))
+                    for entry in result['words'][:sample_count]:
+                        for key in entry.keys():
+                            word_fields.add(key)
+                            if 'speaker' in key.lower():
+                                has_speaker_info = True
+                                # Prefer 'speaker_id' over other speaker-related fields
+                                # (e.g. 'speaker_confidence') to avoid picking a float
+                                if key == 'speaker_id' or diarization_location is None:
+                                    diarization_location = f"words.{key}"
+
+                    self.logger.debug(f"Word-level fields (from first {sample_count} entries): {word_fields}")
+
                     # Print first 3 words with full details
                     self.logger.debug("\nFirst 3 word entries (full details):")
                     for i, word in enumerate(result['words'][:3]):
@@ -383,7 +387,13 @@ class ElevenLabsProvider(BaseSTTProvider):
                 else:
                     # Use plain text if not diarized
                     transcript = result.get("text", "")
-                    self.logger.debug(f"\nUsing plain text transcript (no speaker information found)")
+                    self.logger.warning(
+                        f"No speaker information found in ElevenLabs response. "
+                        f"Diarize was {'enabled' if diarize else 'disabled'}. "
+                        f"Word count: {len(result.get('words', []))}. "
+                        f"Word fields: {set().union(*(w.keys() for w in result.get('words', [])[:5])) if result.get('words') else 'N/A'}. "
+                        f"Using plain text fallback."
+                    )
 
                 # Warn if diarization was enabled but only one speaker came through
                 if diarize and transcript and transcript.count("Speaker ") <= 1:
