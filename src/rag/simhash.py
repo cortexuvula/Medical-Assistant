@@ -57,11 +57,17 @@ def compute_simhash(text: str) -> Optional[int]:
         if v[i] > 0:
             fingerprint |= (1 << i)
 
+    # Convert to signed 64-bit to fit PostgreSQL BIGINT range
+    if fingerprint >= (1 << 63):
+        fingerprint -= (1 << 64)
+
     return fingerprint
 
 
 def hamming_distance(h1: int, h2: int) -> int:
     """Compute Hamming distance between two 64-bit SimHash values.
+
+    Handles both signed (from DB) and unsigned representations.
 
     Args:
         h1: First SimHash
@@ -70,7 +76,8 @@ def hamming_distance(h1: int, h2: int) -> int:
     Returns:
         Number of differing bits (0-64)
     """
-    return bin(h1 ^ h2).count('1')
+    # Mask to 64 bits to handle signed values from PostgreSQL
+    return bin((h1 ^ h2) & 0xFFFFFFFFFFFFFFFF).count('1')
 
 
 def are_near_duplicates(h1: int, h2: int, threshold: int = 3) -> bool:

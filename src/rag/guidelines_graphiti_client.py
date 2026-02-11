@@ -11,6 +11,8 @@ Architecture Note:
 
 import asyncio
 import atexit
+import logging
+import time
 from utils.structured_logging import get_logger
 import os
 import threading
@@ -24,6 +26,31 @@ from utils.timeout_config import get_timeout
 load_guidelines_env()
 
 logger = get_logger(__name__)
+
+
+# Suppress noisy graphiti-core / neo4j errors that are harmless:
+# - "EquivalentSchemaRuleAlreadyExists" from index creation on startup
+# - "property key does not exist" warnings for optional properties
+class _GraphitiNoiseFilter(logging.Filter):
+    """Filter harmless Neo4j/Graphiti log noise."""
+
+    _SUPPRESS = (
+        "EquivalentSchemaRuleAlreadyExists",
+        "equivalent index already exists",
+        "property key does not exist",
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(s in msg for s in self._SUPPRESS)
+
+
+for _logger_name in (
+    "graphiti_core.driver.neo4j_driver",
+    "graphiti_core.driver",
+    "neo4j",
+):
+    logging.getLogger(_logger_name).addFilter(_GraphitiNoiseFilter())
 
 
 class _GuidelinesAsyncWorker:
@@ -137,6 +164,9 @@ class GuidelinesGraphitiClient:
         self._neo4j_driver = None
         self._initialized = False
         self._init_lock = threading.Lock()
+        # Circuit breaker: skip operations for COOLDOWN seconds after a failure
+        self._circuit_open_until: float = 0.0
+        self._CIRCUIT_COOLDOWN = 120.0  # 2 minutes
 
     def _get_config(self):
         """Get configuration from environment or settings.
@@ -256,16 +286,39 @@ class GuidelinesGraphitiClient:
         except Exception as e:
             logger.warning(f"Failed to create Neo4j vector indexes: {e}")
 
+    def _check_circuit(self) -> bool:
+        """Check if the circuit breaker is open (Neo4j recently unreachable).
+
+        Returns True if operations should be skipped.
+        """
+        if self._circuit_open_until > 0 and time.monotonic() < self._circuit_open_until:
+            return True
+        return False
+
+    def _trip_circuit(self):
+        """Open the circuit breaker after a connection failure."""
+        self._circuit_open_until = time.monotonic() + self._CIRCUIT_COOLDOWN
+        logger.warning(
+            f"Neo4j circuit breaker tripped — skipping graph operations "
+            f"for {self._CIRCUIT_COOLDOWN:.0f}s"
+        )
+
     def initialize(self):
         """Initialize the guidelines knowledge graph schema (sync)."""
         with self._init_lock:
             if self._initialized:
                 return
+            if self._check_circuit():
+                raise ConnectionError("Neo4j circuit breaker is open")
 
-            worker = _get_guidelines_async_worker()
-            worker.run_coroutine(self._initialize_async())
-            self._ensure_vector_indexes()
-            self._initialized = True
+            try:
+                worker = _get_guidelines_async_worker()
+                worker.run_coroutine(self._initialize_async())
+                self._ensure_vector_indexes()
+                self._initialized = True
+            except Exception:
+                self._trip_circuit()
+                raise
 
     async def _add_guideline_episode_async(
         self,
@@ -335,15 +388,23 @@ class GuidelinesGraphitiClient:
         source_description: str = "clinical_guideline",
     ):
         """Add guideline as episode (sync)."""
+        if self._check_circuit():
+            logger.debug("Skipping graph episode add — circuit breaker open")
+            return
+
         if not self._initialized:
             self.initialize()
 
-        worker = _get_guidelines_async_worker()
-        worker.run_coroutine(
-            self._add_guideline_episode_async(
-                guideline_id, content, metadata, source_description
+        try:
+            worker = _get_guidelines_async_worker()
+            worker.run_coroutine(
+                self._add_guideline_episode_async(
+                    guideline_id, content, metadata, source_description
+                )
             )
-        )
+        except Exception:
+            self._trip_circuit()
+            raise
 
     async def _search_async(
         self,
@@ -398,6 +459,9 @@ class GuidelinesGraphitiClient:
         Returns:
             List of result dicts with entity_name, fact, guideline_id, etc.
         """
+        if self._check_circuit():
+            return []
+
         if not self._initialized:
             try:
                 self.initialize()
@@ -409,6 +473,7 @@ class GuidelinesGraphitiClient:
             worker = _get_guidelines_async_worker()
             return worker.run_coroutine(self._search_async(query, num_results))
         except Exception as e:
+            self._trip_circuit()
             logger.warning(f"Guidelines graph search failed: {e}")
             return []
 

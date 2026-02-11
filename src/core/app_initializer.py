@@ -504,28 +504,22 @@ class AppInitializer:
         self.app.processing_queue.error_callback = self._on_queue_error
 
         # Register guideline progress callback
-        def on_guideline_progress(task_id, status, percent, error):
-            """Route guideline progress to active dialog."""
+        def on_guideline_progress(task_id, status, percent, error,
+                                  batch_id=None, filename=None):
+            """Route guideline progress to active dialog.
+
+            IMPORTANT: This runs on the main thread (via after()).  It must
+            NOT acquire self.app.processing_queue.lock because worker threads
+            hold that lock while calling self.app.after() to schedule this
+            callback.  On macOS the Tcl interpreter mutex creates a deadlock
+            if the main thread blocks on self.lock while a worker holding
+            self.lock waits on the Tcl mutex.
+
+            batch_id and filename are passed directly by the mixin to avoid
+            needing the lock here.
+            """
             if not hasattr(self.app, 'guideline_progress_dialogs'):
                 return
-
-            # Look up batch_id and filename for this task (brief lock)
-            batch_id = None
-            filename = None
-            with self.app.processing_queue.lock:
-                for bid, binfo in self.app.processing_queue.guideline_batches.items():
-                    if task_id in binfo.get("task_ids", []):
-                        batch_id = bid
-                        break
-
-                # Get filename from active or completed tasks
-                task_data = (
-                    self.app.processing_queue.active_tasks.get(task_id)
-                    or self.app.processing_queue.completed_tasks.get(task_id)
-                    or self.app.processing_queue.failed_tasks.get(task_id)
-                )
-                if task_data:
-                    filename = task_data.get("filename")
 
             if not batch_id:
                 return
@@ -540,11 +534,6 @@ class AppInitializer:
 
             # Update file progress
             dialog.update_file_progress(status, percent, error)
-
-            # Update batch progress (lock acquired inside get_guideline_batch_status)
-            batch_status = self.app.processing_queue.get_guideline_batch_status(batch_id)
-            if batch_status:
-                dialog.update_batch_progress(batch_id, batch_status)
 
         self.app.processing_queue.set_guideline_progress_callback(on_guideline_progress)
 

@@ -254,7 +254,7 @@ class GuidelinesProcessingMixin:
     def set_guideline_progress_callback(self, callback: Optional[Callable]):
         """Register callback for guideline upload progress updates.
 
-        Callback signature: callback(task_id, status, percent, error)
+        Callback signature: callback(task_id, status, percent, error, batch_id, filename)
 
         Args:
             callback: Function to call on progress updates
@@ -373,23 +373,39 @@ class GuidelinesProcessingMixin:
             percent: Progress percentage (0-100)
             error: Optional error message
         """
-        # Update task state inside lock
+        # Update task state inside lock and extract batch_id/filename
+        # so the callback doesn't need to re-acquire the lock
+        batch_id = None
+        filename = None
         with self.lock:
             if task_id in self.active_tasks:
-                self.active_tasks[task_id]["progress_status"] = status
-                self.active_tasks[task_id]["progress_percent"] = percent
+                task = self.active_tasks[task_id]
+                task["progress_status"] = status
+                task["progress_percent"] = percent
                 if error:
-                    self.active_tasks[task_id]["error_message"] = error
+                    task["error_message"] = error
+                batch_id = task.get("batch_id")
+                filename = task.get("filename")
 
         # Call callback OUTSIDE lock to prevent deadlocks
+        # Pass batch_id and filename so the callback doesn't need the lock
         if hasattr(self, 'guideline_progress_callback') and self.guideline_progress_callback:
             try:
                 # Schedule callback on main thread
                 # self.app IS the root ttk.Window, so call .after() on it directly
                 if self.app:
+                    # Capture values for closure
+                    _tid = task_id
+                    _st = status
+                    _pct = percent
+                    _err = error
+                    _bid = batch_id
+                    _fn = filename
                     self.app.after(
                         0,
-                        lambda: self.guideline_progress_callback(task_id, status, percent, error)
+                        lambda: self.guideline_progress_callback(
+                            _tid, _st, _pct, _err, _bid, _fn
+                        )
                     )
             except Exception as e:
                 logger.error(f"Error calling guideline progress callback: {e}")
@@ -463,13 +479,14 @@ class GuidelinesProcessingMixin:
                                 "error_message": error or "Unknown error"
                             })
 
-                    # Store batch info copy for callback (inside lock)
-                    batch_info_for_callback = batch.copy()
-                    batch_id_for_callback = batch_id
-
                     # Check if batch is complete
                     if batch["processed"] >= batch["total_files"]:
                         self._complete_guideline_batch(batch_id)
+
+                    # Store batch info copy AFTER completion check so it
+                    # captures the "completed" status if applicable
+                    batch_info_for_callback = batch.copy()
+                    batch_id_for_callback = batch_id
 
         # Call batch progress callback OUTSIDE lock to prevent deadlocks
         if batch_info_for_callback and batch_id_for_callback:
@@ -487,6 +504,12 @@ class GuidelinesProcessingMixin:
 
     def _complete_guideline_batch(self, batch_id: str):
         """Mark a guideline batch as complete (must be called inside lock).
+
+        NOTE: This method does NOT fire callbacks. The caller
+        (_mark_guideline_task_complete) fires the batch callback AFTER
+        releasing the lock. Calling self.app.after() from a worker thread
+        while holding the lock caused deadlocks on macOS where the Tcl
+        interpreter mutex conflicted with self.lock.
 
         Args:
             batch_id: Batch identifier
@@ -510,18 +533,3 @@ class GuidelinesProcessingMixin:
             failed=batch["failed"],
             total=batch["total_files"]
         )
-
-        # Call batch completion callback if registered
-        # Pre-copy batch info while lock is held (this method runs inside lock)
-        # to avoid the lambda reading stale data when it executes on the main thread
-        if hasattr(self, 'batch_callback') and self.batch_callback:
-            batch_info_copy = batch.copy()
-            try:
-                # self.app IS the root ttk.Window, so call .after() on it directly
-                if self.app:
-                    self.app.after(
-                        0,
-                        lambda: self.batch_callback(batch_id, batch_info_copy)
-                    )
-            except Exception as e:
-                logger.error(f"Error calling batch completion callback: {e}")
