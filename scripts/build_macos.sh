@@ -146,7 +146,76 @@ codesign --verify --strict "dist/MedicalAssistant.app" && echo "codesign --verif
 # spctl may fail in CI (no GUI session), so don't fail the build on it
 spctl --assess --type execute "dist/MedicalAssistant.app" 2>&1 && echo "spctl --assess: accepted" || echo "spctl --assess: skipped (expected in CI)"
 
-# ─── Create DMG ───
+# ─── Notarization ───
+# Notarize the .app FIRST (as a zip), then staple the ticket to the .app,
+# THEN create the DMG. This ensures when users drag the .app out of the DMG,
+# the .app itself has a stapled notarization ticket and passes Gatekeeper.
+echo ""
+echo "=== Notarizing .app bundle ==="
+
+if [ -z "$APPLE_ID" ] || [ -z "$APPLE_ID_PASSWORD" ] || [ -z "$MACOS_TEAM_ID" ]; then
+    echo "Notarization credentials not set — skipping notarization."
+    echo "Set APPLE_ID, APPLE_ID_PASSWORD, and MACOS_TEAM_ID to enable."
+
+    echo ""
+    echo "Creating unsigned DMG..."
+    hdiutil create -volname "Medical Assistant" \
+        -srcfolder "dist/MedicalAssistant.app" \
+        -ov -format UDZO \
+        "dist/MedicalAssistant-macOS.dmg"
+    echo "Unsigned DMG created: dist/MedicalAssistant-macOS.dmg"
+    cd "$INITIAL_DIR"
+    exit 0
+fi
+
+# Create a zip of the .app for notarization submission
+echo "Creating zip for notarization submission..."
+ditto -c -k --keepParent "dist/MedicalAssistant.app" "dist/MedicalAssistant.app.zip"
+
+NOTARIZE_OUTPUT=$(xcrun notarytool submit "dist/MedicalAssistant.app.zip" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_ID_PASSWORD" \
+    --team-id "$MACOS_TEAM_ID" \
+    --wait \
+    --timeout 30m 2>&1)
+
+echo "$NOTARIZE_OUTPUT"
+
+# Check if notarization was accepted
+if echo "$NOTARIZE_OUTPUT" | grep -q "status: Accepted"; then
+    echo "Notarization accepted."
+
+    # Staple the ticket directly to the .app bundle
+    echo ""
+    echo "=== Stapling .app bundle ==="
+    xcrun stapler staple "dist/MedicalAssistant.app"
+    xcrun stapler validate "dist/MedicalAssistant.app"
+    echo ".app stapling complete."
+else
+    echo ""
+    echo "WARNING: Notarization was NOT accepted."
+    # Try to fetch the log for details
+    SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+    if [ -n "$SUBMISSION_ID" ]; then
+        echo "Fetching notarization log for submission $SUBMISSION_ID..."
+        xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$MACOS_TEAM_ID" \
+            notarization_log.json 2>&1 || true
+        if [ -f "notarization_log.json" ]; then
+            echo "=== Notarization Log ==="
+            cat notarization_log.json
+            echo ""
+        fi
+    fi
+    echo "Continuing without notarization — DMG will still work but may show Gatekeeper warning."
+fi
+
+# Clean up zip
+rm -f "dist/MedicalAssistant.app.zip"
+
+# ─── Create DMG (from the stapled .app) ───
 echo ""
 echo "=== Creating DMG ==="
 
@@ -186,57 +255,6 @@ echo ""
 echo "=== Signing DMG ==="
 codesign --force --sign "$MACOS_SIGNING_IDENTITY" --timestamp "dist/$DMG_NAME"
 echo "DMG signed."
-
-# ─── Notarization ───
-echo ""
-echo "=== Notarizing ==="
-
-if [ -z "$APPLE_ID" ] || [ -z "$APPLE_ID_PASSWORD" ] || [ -z "$MACOS_TEAM_ID" ]; then
-    echo "Notarization credentials not set — skipping notarization."
-    echo "Set APPLE_ID, APPLE_ID_PASSWORD, and MACOS_TEAM_ID to enable."
-    cd "$INITIAL_DIR"
-    exit 0
-fi
-
-NOTARIZE_OUTPUT=$(xcrun notarytool submit "dist/$DMG_NAME" \
-    --apple-id "$APPLE_ID" \
-    --password "$APPLE_ID_PASSWORD" \
-    --team-id "$MACOS_TEAM_ID" \
-    --wait \
-    --timeout 30m 2>&1)
-
-echo "$NOTARIZE_OUTPUT"
-
-# Check if notarization was accepted
-if echo "$NOTARIZE_OUTPUT" | grep -q "status: Accepted"; then
-    echo "Notarization accepted."
-else
-    echo ""
-    echo "WARNING: Notarization was NOT accepted."
-    # Try to fetch the log for details
-    SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
-    if [ -n "$SUBMISSION_ID" ]; then
-        echo "Fetching notarization log for submission $SUBMISSION_ID..."
-        xcrun notarytool log "$SUBMISSION_ID" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_ID_PASSWORD" \
-            --team-id "$MACOS_TEAM_ID" \
-            notarization_log.json 2>&1 || true
-        if [ -f "notarization_log.json" ]; then
-            echo "=== Notarization Log ==="
-            cat notarization_log.json
-            echo ""
-        fi
-    fi
-    echo "Continuing without notarization — DMG will still work but may show Gatekeeper warning."
-fi
-
-# Staple the notarization ticket to the DMG (only works if notarization succeeded)
-echo ""
-echo "=== Stapling ==="
-xcrun stapler staple "dist/$DMG_NAME" 2>&1 || echo "Stapling skipped (notarization may not have succeeded)."
-xcrun stapler validate "dist/$DMG_NAME" 2>&1 || echo "Staple validation skipped."
-echo "Stapling step complete."
 
 echo ""
 echo "=== Done ==="
