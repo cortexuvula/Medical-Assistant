@@ -59,6 +59,15 @@ fi
 echo ""
 echo "Build complete! Application is in dist/MedicalAssistant.app"
 
+# ─── Remove binaries incompatible with notarization ───
+# speech_recognition bundles flac-mac which was built with an SDK older than
+# 10.9. Apple refuses to notarize such binaries. We don't need FLAC encoding
+# on macOS (speech_recognition uses it as a fallback encoder only).
+if [ -f "dist/MedicalAssistant.app/Contents/Frameworks/speech_recognition/flac-mac" ]; then
+    echo "Removing flac-mac (built with SDK < 10.9, incompatible with notarization)..."
+    rm -f "dist/MedicalAssistant.app/Contents/Frameworks/speech_recognition/flac-mac"
+fi
+
 # ─── Code Signing & Notarization ───
 # Skip if MACOS_SIGNING_IDENTITY is not set (local dev builds)
 if [ -z "$MACOS_SIGNING_IDENTITY" ]; then
