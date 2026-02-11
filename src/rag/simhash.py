@@ -20,7 +20,7 @@ def _tokenize(text: str) -> list[str]:
 
 def _hash_token(token: str) -> int:
     """Hash a token to a 64-bit integer using MD5."""
-    digest = hashlib.md5(token.encode('utf-8')).hexdigest()
+    digest = hashlib.md5(token.encode('utf-8'), usedforsecurity=False).hexdigest()
     return int(digest[:16], 16)
 
 

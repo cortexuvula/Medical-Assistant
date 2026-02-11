@@ -210,7 +210,7 @@ class GuidelinesUploadManager:
                 raise ValueError("No text could be extracted from the file")
 
             # Compute content hash for deduplication (Issue 16)
-            content_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+            content_hash = hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
             # Compute SimHash for fuzzy deduplication (Fix 15)
             text_simhash = None
