@@ -42,11 +42,11 @@ jobs:
           - os: ubuntu-22.04
             artifact_name: MedicalAssistant-Linux
             build_script: ./scripts/build_linux.sh
-            dist_path: dist/MedicalAssistant
+            dist_path: dist/MedicalAssistant-Linux.tar.gz
           - os: windows-latest
             artifact_name: MedicalAssistant-Windows
             build_script: scripts/build_windows_ci.bat
-            dist_path: dist/MedicalAssistant.exe
+            dist_path: dist/MedicalAssistant-Windows.zip
           - os: macos-latest
             artifact_name: MedicalAssistant-macOS
             build_script: ./scripts/build_macos.sh
@@ -176,8 +176,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          artifacts/MedicalAssistant-Linux/MedicalAssistant
-          artifacts/MedicalAssistant-Windows/MedicalAssistant.exe
+          artifacts/MedicalAssistant-Linux/MedicalAssistant-Linux.tar.gz
+          artifacts/MedicalAssistant-Windows/MedicalAssistant-Windows.zip
           artifacts/MedicalAssistant-macOS/MedicalAssistant-macOS.dmg
         draft: false
         prerelease: false

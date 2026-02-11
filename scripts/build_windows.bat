@@ -48,13 +48,13 @@ if !errorlevel! neq 0 (
 )
 cd scripts
 
-REM Verify the build output
-if exist "dist\MedicalAssistant.exe" (
+REM Verify the build output (onedir mode: dist\MedicalAssistant\MedicalAssistant.exe)
+if exist "dist\MedicalAssistant\MedicalAssistant.exe" (
     echo.
-    echo Build complete! Executable is in dist\MedicalAssistant.exe
-    dir dist\MedicalAssistant.exe
+    echo Build complete! Executable is in dist\MedicalAssistant\MedicalAssistant.exe
+    dir dist\MedicalAssistant\MedicalAssistant.exe
 ) else (
-    echo Error: Expected output dist\MedicalAssistant.exe not found!
+    echo Error: Expected output dist\MedicalAssistant\MedicalAssistant.exe not found!
     if exist dist (
         echo Contents of dist directory:
         dir dist

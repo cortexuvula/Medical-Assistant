@@ -54,23 +54,29 @@ pyinstaller medical_assistant.spec --clean --log-level=INFO || {
     exit 1
 }
 
-# Verify the build output
-if [ -f "dist/MedicalAssistant" ]; then
-    # Copy the launcher script to dist
-    cp scripts/linux_launcher.sh dist/
-    chmod +x dist/linux_launcher.sh
-    
+# Verify the build output (onedir mode: dist/MedicalAssistant/MedicalAssistant)
+if [ -f "dist/MedicalAssistant/MedicalAssistant" ]; then
+    # Copy the launcher script into the app directory
+    cp scripts/linux_launcher.sh dist/MedicalAssistant/
+    chmod +x dist/MedicalAssistant/linux_launcher.sh
+    chmod +x dist/MedicalAssistant/MedicalAssistant
+
     echo ""
-    echo "Build complete! Executable is in dist/MedicalAssistant"
-    echo "Executable size: $(du -h dist/MedicalAssistant)"
+    echo "Build complete! Executable is in dist/MedicalAssistant/MedicalAssistant"
+    echo "Directory size: $(du -sh dist/MedicalAssistant)"
     echo ""
     echo "To run the application, use ONE of these methods:"
-    echo "1. Using the launcher (recommended): ./dist/linux_launcher.sh"
-    echo "2. Direct with cleared environment: unset LD_LIBRARY_PATH && ./dist/MedicalAssistant"
+    echo "1. Using the launcher (recommended): ./dist/MedicalAssistant/linux_launcher.sh"
+    echo "2. Direct with cleared environment: unset LD_LIBRARY_PATH && ./dist/MedicalAssistant/MedicalAssistant"
     echo ""
     echo "The launcher ensures system FFmpeg libraries are used correctly."
+
+    # Create tar.gz archive for release distribution
+    echo "Creating tar.gz archive..."
+    tar -czf dist/MedicalAssistant-Linux.tar.gz -C dist MedicalAssistant
+    echo "Archive created: dist/MedicalAssistant-Linux.tar.gz ($(du -h dist/MedicalAssistant-Linux.tar.gz | cut -f1))"
 else
-    echo "Error: Expected output dist/MedicalAssistant not found!"
+    echo "Error: Expected output dist/MedicalAssistant/MedicalAssistant not found!"
     echo "Contents of dist directory:"
     ls -la dist/ || echo "dist directory does not exist"
     cd "$INITIAL_DIR"

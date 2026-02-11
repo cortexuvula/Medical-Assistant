@@ -216,11 +216,13 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+# Use --onedir mode to reduce AV false positives.
+# Onefile mode shares the PyInstaller bootloader signature with real malware
+# (e.g. ThorseRAT), causing engines like Huorong to flag the binary.
+# Onedir avoids the self-extracting stub that triggers these heuristics.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
     name='MedicalAssistant',
     debug=False,
@@ -236,6 +238,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='icon.ico' if platform.system() == 'Windows' else ('icon.icns' if platform.system() == 'Darwin' else None),
+    exclude_binaries=True,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='MedicalAssistant',
 )
 
 # For macOS, create an app bundle
@@ -249,7 +262,7 @@ if sys.platform == 'darwin':
         print(f"Using icon: {icon_path}")
 
     app = BUNDLE(
-        exe,
+        coll,
         name='MedicalAssistant.app',
         icon='icon.icns',
         bundle_identifier='com.medicalassistant.app',

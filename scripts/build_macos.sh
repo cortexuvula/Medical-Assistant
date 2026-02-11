@@ -80,8 +80,8 @@ echo "=== Code Signing ==="
 echo "Signing identity: $MACOS_SIGNING_IDENTITY"
 
 # Sign the .app bundle
-# PyInstaller one-file builds pack everything into a single Mach-O executable,
-# so --deep covers the entire bundle without needing to enumerate individual dylibs.
+# PyInstaller onedir build produces the .app with dylibs in Frameworks/.
+# --deep recursively signs all nested code (dylibs, frameworks, helpers).
 codesign --force --deep --sign "$MACOS_SIGNING_IDENTITY" \
     --options runtime \
     --entitlements "$PROJECT_ROOT/entitlements.plist" \

@@ -69,10 +69,20 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-REM Check output
-if exist "dist\MedicalAssistant.exe" (
+REM Check output (onedir mode: dist\MedicalAssistant\MedicalAssistant.exe)
+if exist "dist\MedicalAssistant\MedicalAssistant.exe" (
     echo Build successful!
-    dir dist\MedicalAssistant.exe
+    dir dist\MedicalAssistant\MedicalAssistant.exe
+
+    REM Create zip archive for release distribution
+    echo Creating zip archive...
+    powershell -Command "Compress-Archive -Path 'dist\MedicalAssistant' -DestinationPath 'dist\MedicalAssistant-Windows.zip' -Force"
+    if exist "dist\MedicalAssistant-Windows.zip" (
+        echo Zip created: dist\MedicalAssistant-Windows.zip
+    ) else (
+        echo Warning: Failed to create zip archive
+    )
+
     cd /d "%INITIAL_DIR%"
     exit /b 0
 ) else (

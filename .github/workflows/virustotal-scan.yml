@@ -48,6 +48,6 @@ jobs:
           update_release_body: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
           files: |
-            assets/MedicalAssistant
-            assets/MedicalAssistant.exe
+            assets/MedicalAssistant-Linux.tar.gz
+            assets/MedicalAssistant-Windows.zip
             assets/MedicalAssistant-macOS.dmg

@@ -31,13 +31,17 @@ logger = get_logger(__name__)
 # Suppress noisy graphiti-core / neo4j errors that are harmless:
 # - "EquivalentSchemaRuleAlreadyExists" from index creation on startup
 # - "property key does not exist" warnings for optional properties
+# - "index or constraint already exists" INFO-level notifications (gql_status 00NA0)
+# - "Received notification from DBMS server" general notification noise
 class _GraphitiNoiseFilter(logging.Filter):
     """Filter harmless Neo4j/Graphiti log noise."""
 
     _SUPPRESS = (
         "EquivalentSchemaRuleAlreadyExists",
         "equivalent index already exists",
+        "index or constraint already exists",
         "property key does not exist",
+        "Received notification from DBMS server",
     )
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -49,6 +53,9 @@ for _logger_name in (
     "graphiti_core.driver.neo4j_driver",
     "graphiti_core.driver",
     "neo4j",
+    "neo4j.notifications",
+    "neo4j.io",
+    "neo4j.pool",
 ):
     logging.getLogger(_logger_name).addFilter(_GraphitiNoiseFilter())
 
