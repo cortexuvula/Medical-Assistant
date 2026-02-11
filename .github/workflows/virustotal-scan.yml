@@ -1,12 +1,15 @@
 name: VirusTotal Scan
 
 on:
-  release:
-    types: [published]
+  # Auto-trigger after Build Release completes successfully
+  workflow_run:
+    workflows: ["Build Release"]
+    types: [completed]
+  # Manual trigger as fallback
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to scan (e.g. v2.6.256)'
+        description: 'Release tag to scan (e.g. v2.6.258)'
         required: true
 
 permissions:
@@ -15,11 +18,26 @@ permissions:
 jobs:
   virustotal:
     runs-on: ubuntu-latest
+    # Only run if Build Release succeeded (skip on failure/cancellation)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
+      - name: Get release tag
+        id: get-tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # Extract tag from the Build Release run (triggered by tag push)
+            TAG="${{ github.event.workflow_run.head_branch }}"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download release assets
         uses: robinraju/release-downloader@v1
         with:
-          tag: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+          tag: ${{ steps.get-tag.outputs.tag }}
           fileName: '*'
           out-file-path: assets
 
