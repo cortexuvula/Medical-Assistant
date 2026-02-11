@@ -194,8 +194,21 @@ class GuidelinesUploadDialog(tk.Toplevel):
         )
         source_combo.pack(side=tk.LEFT, padx=(10, 0))
 
+        # Advanced options toggle (Fix 10)
+        self._advanced_visible = tk.BooleanVar(value=False)
+        advanced_toggle = ttk.Checkbutton(
+            info_frame,
+            text="Show Advanced Options",
+            variable=self._advanced_visible,
+            command=self._toggle_advanced_options,
+        )
+        advanced_toggle.pack(fill=tk.X, padx=5, pady=(10, 0))
+
+        # Advanced options frame (initially hidden)
+        self._advanced_frame = ttk.LabelFrame(info_frame, text="Advanced Options", padding=5)
+
         # Row 2: Version and Effective Date
-        row2 = ttk.Frame(info_frame)
+        row2 = ttk.Frame(self._advanced_frame)
         row2.pack(fill=tk.X, pady=(0, 10))
 
         # Version entry
@@ -239,7 +252,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
         ).pack(side=tk.LEFT, padx=(5, 0))
 
         # Row 2b: Expiration Date (Issue 14)
-        row2b = ttk.Frame(info_frame)
+        row2b = ttk.Frame(self._advanced_frame)
         row2b.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Label(row2b, text="Expiration Date:").pack(side=tk.LEFT)
@@ -273,7 +286,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
         ).pack(side=tk.LEFT, padx=(10, 0))
 
         # Row 3: Guideline Type
-        row3 = ttk.Frame(info_frame)
+        row3 = ttk.Frame(self._advanced_frame)
         row3.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Label(row3, text="Guideline Type:").pack(side=tk.LEFT)
@@ -289,7 +302,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
         type_combo.pack(side=tk.LEFT, padx=(10, 0))
 
         # Row 4: Custom Title (optional)
-        row4 = ttk.Frame(info_frame)
+        row4 = ttk.Frame(self._advanced_frame)
         row4.pack(fill=tk.X)
 
         ttk.Label(row4, text="Title (optional):").pack(side=tk.LEFT)
@@ -386,6 +399,9 @@ class GuidelinesUploadDialog(tk.Toplevel):
         )
         self.upload_button.pack(side=tk.RIGHT)
 
+        # Set up drag-and-drop file support (Fix 18)
+        self._setup_drag_and_drop()
+
     def _add_files(self):
         """Open file dialog to add files."""
         files = filedialog.askopenfilenames(
@@ -394,8 +410,16 @@ class GuidelinesUploadDialog(tk.Toplevel):
             filetypes=SUPPORTED_EXTENSIONS,
         )
 
-        for file_path in files:
-            if file_path not in self.selected_files:
+        self._add_files_to_list(list(files))
+
+    def _add_files_to_list(self, file_paths: list):
+        """Add file paths to the selected files list, skipping duplicates.
+
+        Args:
+            file_paths: List of absolute file paths to add
+        """
+        for file_path in file_paths:
+            if file_path and file_path not in self.selected_files:
                 self.selected_files.append(file_path)
 
         self._update_file_list()
@@ -542,6 +566,13 @@ class GuidelinesUploadDialog(tk.Toplevel):
         """Clear the effective date."""
         self.effective_date = None
         self.date_var.set("")
+
+    def _toggle_advanced_options(self):
+        """Toggle visibility of advanced metadata fields (Fix 10)."""
+        if self._advanced_visible.get():
+            self._advanced_frame.pack(fill=tk.X, padx=5, pady=5)
+        else:
+            self._advanced_frame.pack_forget()
 
     def _pick_expiration_date(self):
         """Open date picker for expiration date."""
@@ -783,6 +814,50 @@ class GuidelinesUploadDialog(tk.Toplevel):
             )
             self.upload_button.config(state=tk.NORMAL)
 
+    def _setup_drag_and_drop(self):
+        """Set up drag-and-drop file support (Fix 18).
+
+        Uses tkinterdnd2 if available, gracefully falls back if not installed.
+        """
+        try:
+            import tkinterdnd2
+
+            # Register the file listbox as a drop target
+            self.file_listbox.drop_target_register(tkinterdnd2.DND_FILES)
+            self.file_listbox.dnd_bind('<<Drop>>', self._on_drop)
+        except ImportError:
+            pass  # tkinterdnd2 not installed, drag-and-drop not available
+        except Exception:
+            pass  # Graceful fallback
+
+    def _on_drop(self, event):
+        """Handle dropped files (Fix 18)."""
+        import re as _re
+
+        # Parse dropped paths (handle brace-wrapped paths from tkinterdnd2)
+        data = event.data
+        files = []
+
+        if '{' in data:
+            # Brace-wrapped paths: {/path/with spaces/file.pdf} {/another/file.pdf}
+            files = _re.findall(r'\{([^}]+)\}', data)
+        else:
+            # Space-separated paths
+            files = data.split()
+
+        # Filter for supported extensions
+        supported = {'.pdf', '.docx', '.doc', '.txt', '.md'}
+        valid_files = []
+        for f in files:
+            f = f.strip()
+            if f:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in supported:
+                    valid_files.append(f)
+
+        if valid_files:
+            self._add_files_to_list(valid_files)
+
     def _on_cancel(self):
         """Handle cancel button."""
         if self.is_uploading:
@@ -814,12 +889,17 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
         """
         super().__init__(parent)
         self.title("Uploading Clinical Guidelines")
-        self.geometry("550x350")
+        self.geometry("550x380")
         self.resizable(False, False)
 
         self.batch_id = batch_id
         self.queue_manager = queue_manager
         self.cancelled = False
+
+        # ETA tracking (Fix 11)
+        import time as _time
+        self._start_time = _time.time()
+        self._eta_timer_id = None
 
         # Get batch info
         batch_info = queue_manager.get_guideline_batch_status(batch_id)
@@ -901,6 +981,15 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
             foreground="gray",
         )
         self.stats_label.pack(anchor=tk.W, pady=(10, 0))
+
+        # ETA display (Fix 11)
+        self._eta_label = ttk.Label(
+            main_frame,
+            text="Elapsed: 0s | ETA: calculating...",
+            foreground="gray",
+        )
+        self._eta_label.pack(anchor=tk.W, pady=(5, 0))
+        self._start_eta_timer()
 
         # Cancel button
         self.cancel_button = ttk.Button(
@@ -1032,16 +1121,89 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
         if not self.winfo_exists():
             return
 
+        # Cancel ETA timer (Fix 11)
+        if self._eta_timer_id:
+            self.after_cancel(self._eta_timer_id)
+            self._eta_timer_id = None
+
         self.status_label.config(text="Upload Complete")
         self.file_status_label.config(text="")
         self.file_progress["value"] = 100
         self.cancel_button.config(text="Close")
 
+        # Update ETA label to show final elapsed time (Fix 11)
+        import time as _time
+        elapsed = _time.time() - self._start_time
+        self._eta_label.configure(text=f"Elapsed: {self._format_duration(elapsed)} | Complete")
+
         self.update_idletasks()
+
+    def _start_eta_timer(self):
+        """Start the ETA update timer (Fix 11)."""
+        self._update_eta()
+
+    def _update_eta(self):
+        """Update elapsed time and ETA display (Fix 11)."""
+        import time as _time
+
+        if not self.winfo_exists():
+            return
+
+        elapsed = _time.time() - self._start_time
+        elapsed_str = self._format_duration(elapsed)
+
+        # Get current progress from batch info
+        try:
+            batch_info = self.queue_manager.get_guideline_batch_status(self.batch_id)
+            if batch_info:
+                processed = batch_info.get("processed", 0)
+                total = batch_info.get("total_files", 1)
+                status = batch_info.get("status", "processing")
+                if status in ("completed", "cancelled"):
+                    self._eta_label.configure(
+                        text=f"Elapsed: {elapsed_str} | Complete"
+                    )
+                    # Stop the timer
+                    self._eta_timer_id = None
+                    return
+                elif processed > 0 and processed < total:
+                    rate = elapsed / processed
+                    remaining = rate * (total - processed)
+                    eta_str = self._format_duration(remaining)
+                    self._eta_label.configure(
+                        text=f"Elapsed: {elapsed_str} | ETA: ~{eta_str}"
+                    )
+                else:
+                    self._eta_label.configure(
+                        text=f"Elapsed: {elapsed_str} | ETA: calculating..."
+                    )
+            else:
+                self._eta_label.configure(text=f"Elapsed: {elapsed_str}")
+        except Exception:
+            self._eta_label.configure(text=f"Elapsed: {elapsed_str}")
+
+        self._eta_timer_id = self.after(1000, self._update_eta)
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format duration in seconds to human-readable string (Fix 11)."""
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        minutes = seconds // 60
+        secs = seconds % 60
+        if minutes < 60:
+            return f"{minutes}m {secs}s"
+        hours = minutes // 60
+        mins = minutes % 60
+        return f"{hours}h {mins}m"
 
     def _on_cancel(self):
         """Handle cancel button."""
         if self.cancel_button.cget("text") == "Close":
+            if self._eta_timer_id:
+                self.after_cancel(self._eta_timer_id)
+                self._eta_timer_id = None
             self.destroy()
             return
 
@@ -1051,6 +1213,9 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
             "Note: Currently processing files will complete.",
             parent=self,
         ):
+            if self._eta_timer_id:
+                self.after_cancel(self._eta_timer_id)
+                self._eta_timer_id = None
             count = self.queue_manager.cancel_guideline_batch(self.batch_id)
             self.status_label.config(text=f"Cancelling... ({count} tasks)")
             self.cancelled = True

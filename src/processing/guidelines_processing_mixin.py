@@ -26,6 +26,27 @@ logger = get_logger(__name__)
 class GuidelinesProcessingMixin:
     """Mixin providing background guideline upload capabilities for ProcessingQueue."""
 
+    def _prune_old_batches(self, max_age_hours: float = 2.0):
+        """Remove completed/cancelled batch records older than max_age_hours.
+
+        Must be called INSIDE self.lock.
+        """
+        if not hasattr(self, 'guideline_batches'):
+            return
+
+        cutoff = datetime.now() - __import__('datetime').timedelta(hours=max_age_hours)
+        to_remove = [
+            bid for bid, batch in self.guideline_batches.items()
+            if batch.get("status") in ("completed", "cancelled")
+            and batch.get("completed_at") is not None
+            and batch["completed_at"] < cutoff
+        ]
+        for bid in to_remove:
+            del self.guideline_batches[bid]
+
+        if to_remove:
+            logger.debug(f"Pruned {len(to_remove)} old guideline batches")
+
     def add_guideline_batch(
         self,
         files: List[str],
@@ -67,6 +88,9 @@ class GuidelinesProcessingMixin:
             # Initialize batch tracking
             if not hasattr(self, 'guideline_batches'):
                 self.guideline_batches: Dict[str, Dict] = {}
+
+            # Prune old completed batches to prevent memory growth (Fix 17)
+            self._prune_old_batches()
 
             self.guideline_batches[batch_id] = {
                 "batch_id": batch_id,
@@ -361,8 +385,9 @@ class GuidelinesProcessingMixin:
         if hasattr(self, 'guideline_progress_callback') and self.guideline_progress_callback:
             try:
                 # Schedule callback on main thread
-                if hasattr(self.app, 'parent') and self.app.parent:
-                    self.app.parent.after(
+                # self.app IS the root ttk.Window, so call .after() on it directly
+                if self.app:
+                    self.app.after(
                         0,
                         lambda: self.guideline_progress_callback(task_id, status, percent, error)
                     )
@@ -451,8 +476,9 @@ class GuidelinesProcessingMixin:
             if hasattr(self, 'batch_callback') and self.batch_callback:
                 try:
                     # Schedule callback on main thread
-                    if hasattr(self.app, 'parent') and self.app.parent:
-                        self.app.parent.after(
+                    # self.app IS the root ttk.Window, so call .after() on it directly
+                    if self.app:
+                        self.app.after(
                             0,
                             lambda: self.batch_callback(batch_id_for_callback, batch_info_for_callback)
                         )
@@ -486,12 +512,16 @@ class GuidelinesProcessingMixin:
         )
 
         # Call batch completion callback if registered
+        # Pre-copy batch info while lock is held (this method runs inside lock)
+        # to avoid the lambda reading stale data when it executes on the main thread
         if hasattr(self, 'batch_callback') and self.batch_callback:
+            batch_info_copy = batch.copy()
             try:
-                if hasattr(self.app, 'parent') and self.app.parent:
-                    self.app.parent.after(
+                # self.app IS the root ttk.Window, so call .after() on it directly
+                if self.app:
+                    self.app.after(
                         0,
-                        lambda: self.batch_callback(batch_id, batch.copy())
+                        lambda: self.batch_callback(batch_id, batch_info_copy)
                     )
             except Exception as e:
                 logger.error(f"Error calling batch completion callback: {e}")

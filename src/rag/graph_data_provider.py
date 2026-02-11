@@ -561,6 +561,16 @@ class GraphDataProvider:
                         entity_type=EntityType.from_string(entity_type_str),
                         properties=props,
                     )
+
+                    # Enrich with medical codes (Fix 13 - best effort)
+                    try:
+                        from rag.medical_code_lookup import enrich_entity_codes
+                        codes = enrich_entity_codes(node.name, node.entity_type.value)
+                        if codes:
+                            node.properties.update(codes)
+                    except Exception:
+                        pass  # Non-blocking enrichment
+
                     nodes.append(node)
                     node_ids.add(node_id)
 
@@ -600,6 +610,16 @@ class GraphDataProvider:
                             entity_type=EntityType.from_string(entity_type_str),
                             properties=props,
                         )
+
+                        # Enrich with medical codes (Fix 13 - best effort)
+                        try:
+                            from rag.medical_code_lookup import enrich_entity_codes
+                            codes = enrich_entity_codes(node.name, node.entity_type.value)
+                            if codes:
+                                node.properties.update(codes)
+                        except Exception:
+                            pass  # Non-blocking enrichment
+
                         nodes.append(node)
                         node_ids.add(node_id)
 
@@ -674,6 +694,97 @@ class GraphDataProvider:
             logger.debug(f"Graph health check failed: {e}")
             self._record_failure()
             return False
+
+    def check_guideline_compliance(
+        self,
+        conditions: list[str],
+        medications: list[str],
+    ) -> list[dict]:
+        """Check guideline compliance by traversing condition -> recommendation relationships.
+
+        Args:
+            conditions: List of patient conditions
+            medications: List of current medications
+
+        Returns:
+            List of dicts with condition, recommendation, fact, source
+        """
+        try:
+            driver = self._get_neo4j_driver()
+        except Exception:
+            return []
+
+        results = []
+        try:
+            with driver.session() as session:
+                for condition in conditions:
+                    query_result = session.run("""
+                        MATCH (c:Entity)-[r:RELATES_TO]->(rec:Entity)
+                        WHERE toLower(c.name) CONTAINS toLower($condition)
+                        RETURN c.name as condition,
+                               rec.name as recommendation,
+                               r.fact as fact,
+                               r.source_description as source
+                        LIMIT 20
+                    """, condition=condition)
+
+                    for record in query_result:
+                        results.append({
+                            "condition": record["condition"],
+                            "recommendation": record["recommendation"],
+                            "fact": record["fact"] or "",
+                            "source": record["source"] or "",
+                            "matched_condition": condition,
+                        })
+
+        except Exception as e:
+            logger.warning(f"Compliance query failed: {e}")
+
+        return results
+
+    def get_applicable_guidelines(self, condition: str) -> list[dict]:
+        """Find guideline recommendations applicable to a given condition.
+
+        Args:
+            condition: Medical condition to look up
+
+        Returns:
+            List of dicts with recommendation details
+        """
+        try:
+            driver = self._get_neo4j_driver()
+        except Exception:
+            return []
+
+        results = []
+        try:
+            with driver.session() as session:
+                query_result = session.run("""
+                    MATCH (c:Entity)-[r:RELATES_TO]->(rec:Entity)
+                    WHERE toLower(c.name) CONTAINS toLower($condition)
+                    WITH rec, r, c
+                    OPTIONAL MATCH (rec)-[r2:RELATES_TO]->(detail:Entity)
+                    RETURN c.name as condition,
+                           rec.name as recommendation,
+                           r.fact as fact,
+                           r.source_description as source,
+                           collect(DISTINCT {name: detail.name, fact: r2.fact})[..5] as details
+                    LIMIT 10
+                """, condition=condition)
+
+                for record in query_result:
+                    results.append({
+                        "condition": record["condition"],
+                        "recommendation": record["recommendation"],
+                        "fact": record["fact"] or "",
+                        "source": record["source"] or "",
+                        "details": record["details"] or [],
+                    })
+
+        except Exception as e:
+            logger.warning(f"Applicable guidelines query failed: {e}")
+
+        return results
 
     def close(self):
         """Close the Neo4j driver."""

@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 
 
 # Migration versions
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 # SQL migrations by version
 MIGRATIONS = {
@@ -383,6 +383,63 @@ MIGRATIONS = {
     -- Record this migration
     INSERT INTO guideline_migrations (version, description)
     VALUES (3, 'Add content_hash column for duplicate detection')
+    ON CONFLICT (version) DO NOTHING;
+    """,
+
+    4: """
+    -- Migration 4: Add versioning/supersession columns and simhash for fuzzy dedup
+
+    -- Add superseded_by column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'superseded_by'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN superseded_by UUID REFERENCES guidelines(id);
+        END IF;
+    END $$;
+
+    -- Add is_superseded column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'is_superseded'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN is_superseded BOOLEAN DEFAULT FALSE;
+        END IF;
+    END $$;
+
+    -- Add simhash column for fuzzy deduplication
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'simhash'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN simhash BIGINT;
+        END IF;
+    END $$;
+
+    -- Index for supersession queries
+    CREATE INDEX IF NOT EXISTS idx_guidelines_superseded_by
+    ON guidelines (superseded_by)
+    WHERE superseded_by IS NOT NULL;
+
+    -- Index for filtering active guidelines
+    CREATE INDEX IF NOT EXISTS idx_guidelines_is_superseded
+    ON guidelines (is_superseded)
+    WHERE is_superseded = TRUE;
+
+    -- Index for simhash lookups
+    CREATE INDEX IF NOT EXISTS idx_guidelines_simhash
+    ON guidelines (simhash)
+    WHERE simhash IS NOT NULL;
+
+    -- Record this migration
+    INSERT INTO guideline_migrations (version, description)
+    VALUES (4, 'Add versioning/supersession columns and simhash')
     ON CONFLICT (version) DO NOTHING;
     """,
 }

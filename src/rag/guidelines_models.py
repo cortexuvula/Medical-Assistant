@@ -171,6 +171,7 @@ class GuidelineMetadata(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     conditions_covered: list[str] = Field(default_factory=list)
     medications_covered: list[str] = Field(default_factory=list)
+    superseded_by: Optional[str] = None
 
 
 class GuidelineChunk(BaseModel):
@@ -200,6 +201,7 @@ class GuidelineDocument(BaseModel):
     neon_synced: bool = False
     neo4j_synced: bool = False
     error_message: Optional[str] = None
+    superseded_by: Optional[str] = None
     metadata: GuidelineMetadata = Field(default_factory=GuidelineMetadata)
     chunks: list[GuidelineChunk] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
@@ -236,6 +238,7 @@ class GuidelineSearchResult(BaseModel):
     specialty: Optional[str] = None
     effective_date: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
+    is_superseded: bool = False
 
 
 class GuidelineUploadRequest(BaseModel):
@@ -275,6 +278,8 @@ class GuidelineListItem(BaseModel):
     upload_status: GuidelineUploadStatus
     neon_synced: bool
     neo4j_synced: bool
+    is_superseded: bool = False
+    superseded_by: Optional[str] = None
     created_at: datetime
 
 
@@ -308,7 +313,7 @@ class GuidelinesSettings(BaseModel):
     """Settings for clinical guidelines system configuration."""
     # Database settings
     guidelines_database_url: Optional[str] = None
-    guidelines_pool_size: int = 3
+    guidelines_pool_size: int = 8
 
     # Neo4j settings
     neo4j_uri: Optional[str] = None
@@ -320,13 +325,14 @@ class GuidelinesSettings(BaseModel):
     embedding_dimensions: int = 1536
 
     # Chunking settings (smaller chunks for guidelines)
-    chunk_size_tokens: int = 300
-    chunk_overlap_tokens: int = 50
+    chunk_size_tokens: int = 500
+    chunk_overlap_tokens: int = 100
     max_chunks_per_guideline: int = 500
 
     # Search settings
     default_top_k: int = 10
     default_similarity_threshold: float = 0.6
+    hnsw_ef_search: int = 100
 
     # Compliance settings
     enable_auto_compliance_check: bool = True

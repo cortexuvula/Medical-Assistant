@@ -173,7 +173,7 @@ class GuidelinesRetriever:
             try:
                 expander = self._get_query_expander()
                 if expander:
-                    expansion = expander.expand(query)
+                    expansion = expander.expand_query(query)
                     if expansion and hasattr(expansion, 'expanded_query'):
                         expanded_query = expansion.expanded_query
                         logger.debug(f"Query expanded: '{query}' -> '{expanded_query}'")
@@ -214,6 +214,7 @@ class GuidelinesRetriever:
                 filter_sources=sources,
                 filter_recommendation_class=recommendation_class,
                 filter_evidence_level=evidence_level,
+                exclude_superseded=True,
             )
 
             for result in vector_results:
@@ -233,7 +234,7 @@ class GuidelinesRetriever:
             try:
                 vector_store = get_guidelines_vector_store()
                 bm25_results = vector_store.search_bm25(
-                    query=query,
+                    query=expanded_query,
                     top_k=top_k * 2,
                     filter_specialties=specialties,
                     filter_sources=sources,

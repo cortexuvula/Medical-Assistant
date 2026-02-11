@@ -19,8 +19,8 @@ from utils.structured_logging import get_logger
 logger = get_logger(__name__)
 
 # Default chunk size in tokens (approx 4 chars per token)
-DEFAULT_MAX_CHUNK_TOKENS = 300
-DEFAULT_OVERLAP_TOKENS = 50
+DEFAULT_MAX_CHUNK_TOKENS = 500
+DEFAULT_OVERLAP_TOKENS = 100
 
 # Patterns for detecting section boundaries
 HEADING_PATTERNS = [

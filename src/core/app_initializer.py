@@ -506,21 +506,45 @@ class AppInitializer:
         # Register guideline progress callback
         def on_guideline_progress(task_id, status, percent, error):
             """Route guideline progress to active dialog."""
-            if hasattr(self.app, 'guideline_progress_dialogs'):
-                # Find batch_id for this task
-                with self.app.processing_queue.lock:
-                    for batch_id, batch_info in self.app.processing_queue.guideline_batches.items():
-                        if task_id in batch_info.get("task_ids", []):
-                            dialog = self.app.guideline_progress_dialogs.get(batch_id)
-                            if dialog and dialog.winfo_exists():
-                                # Update file progress
-                                dialog.update_file_progress(status, percent, error)
+            if not hasattr(self.app, 'guideline_progress_dialogs'):
+                return
 
-                                # Update batch progress
-                                batch_status = self.app.processing_queue.get_guideline_batch_status(batch_id)
-                                if batch_status:
-                                    dialog.update_batch_progress(batch_id, batch_status)
-                            break
+            # Look up batch_id and filename for this task (brief lock)
+            batch_id = None
+            filename = None
+            with self.app.processing_queue.lock:
+                for bid, binfo in self.app.processing_queue.guideline_batches.items():
+                    if task_id in binfo.get("task_ids", []):
+                        batch_id = bid
+                        break
+
+                # Get filename from active or completed tasks
+                task_data = (
+                    self.app.processing_queue.active_tasks.get(task_id)
+                    or self.app.processing_queue.completed_tasks.get(task_id)
+                    or self.app.processing_queue.failed_tasks.get(task_id)
+                )
+                if task_data:
+                    filename = task_data.get("filename")
+
+            if not batch_id:
+                return
+
+            dialog = self.app.guideline_progress_dialogs.get(batch_id)
+            if not dialog or not dialog.winfo_exists():
+                return
+
+            # Show which file is being processed (on first progress report)
+            if filename and percent <= 5:
+                dialog.update_file_start(filename, 0)
+
+            # Update file progress
+            dialog.update_file_progress(status, percent, error)
+
+            # Update batch progress (lock acquired inside get_guideline_batch_status)
+            batch_status = self.app.processing_queue.get_guideline_batch_status(batch_id)
+            if batch_status:
+                dialog.update_batch_progress(batch_id, batch_status)
 
         self.app.processing_queue.set_guideline_progress_callback(on_guideline_progress)
 
@@ -531,6 +555,70 @@ class AppInitializer:
                 dialog = self.app.guideline_progress_dialogs.get(batch_id)
                 if dialog and dialog.winfo_exists():
                     dialog.update_batch_progress(batch_id, batch_info)
+
+            # Show batch results dialog if batch completed with failures (Fix 9)
+            if batch_info.get("status") == "completed" and batch_info.get("failed", 0) > 0:
+                try:
+                    from ui.dialogs.guidelines_batch_results_dialog import GuidelinesBatchResultsDialog
+
+                    # Build results list from batch info
+                    results = []
+                    # Add successful files
+                    for fp in batch_info.get("file_paths", []):
+                        fname = os.path.basename(fp)
+                        # Check if this file is in errors or skipped
+                        is_error = any(
+                            e.get("file_path") == fp or e.get("filename") == fname
+                            for e in batch_info.get("errors", [])
+                        )
+                        is_skipped = fname in batch_info.get("skipped_files", [])
+                        if is_error:
+                            error_msg = next(
+                                (e.get("error_message", "Unknown error")
+                                 for e in batch_info.get("errors", [])
+                                 if e.get("file_path") == fp or e.get("filename") == fname),
+                                "Unknown error"
+                            )
+                            results.append({
+                                "filename": fname,
+                                "file_path": fp,
+                                "status": "failed",
+                                "error": error_msg,
+                            })
+                        elif is_skipped:
+                            results.append({
+                                "filename": fname,
+                                "file_path": fp,
+                                "status": "skipped",
+                                "error": "Duplicate",
+                            })
+                        else:
+                            results.append({
+                                "filename": fname,
+                                "file_path": fp,
+                                "status": "success",
+                                "error": "",
+                            })
+
+                    def retry_failed_callback(failed_paths):
+                        """Retry failed guideline uploads."""
+                        try:
+                            notebook_tabs = getattr(self.app, '_notebook_tabs', None)
+                            if notebook_tabs and hasattr(notebook_tabs, '_process_guidelines_uploads'):
+                                notebook_tabs._process_guidelines_uploads(
+                                    failed_paths, batch_info.get("options", {})
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to retry uploads: {e}")
+
+                    if hasattr(self.app, 'parent'):
+                        GuidelinesBatchResultsDialog(
+                            self.app.parent if hasattr(self.app, 'parent') else self.app,
+                            results=results,
+                            on_retry=retry_failed_callback,
+                        )
+                except Exception as e:
+                    logger.debug(f"Could not show batch results dialog: {e}")
 
         self.app.processing_queue.batch_callback = on_batch_progress
 

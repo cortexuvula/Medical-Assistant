@@ -1575,6 +1575,65 @@ class NotebookTabs:
 
         dialog.show()
 
+    def _show_guideline_batch_results(self, batch_info: dict) -> None:
+        """Show batch results dialog for guideline uploads (Fix 9).
+
+        Args:
+            batch_info: Batch status dictionary from processing queue
+        """
+        try:
+            from ui.dialogs.guidelines_batch_results_dialog import GuidelinesBatchResultsDialog
+
+            # Build results list from batch info
+            results = []
+            for fp in batch_info.get("file_paths", []):
+                import os
+                fname = os.path.basename(fp)
+                is_error = any(
+                    e.get("file_path") == fp or e.get("filename") == fname
+                    for e in batch_info.get("errors", [])
+                )
+                is_skipped = fname in batch_info.get("skipped_files", [])
+                if is_error:
+                    error_msg = next(
+                        (e.get("error_message", "Unknown error")
+                         for e in batch_info.get("errors", [])
+                         if e.get("file_path") == fp or e.get("filename") == fname),
+                        "Unknown error"
+                    )
+                    results.append({
+                        "filename": fname,
+                        "file_path": fp,
+                        "status": "failed",
+                        "error": error_msg,
+                    })
+                elif is_skipped:
+                    results.append({
+                        "filename": fname,
+                        "file_path": fp,
+                        "status": "skipped",
+                        "error": "Duplicate",
+                    })
+                else:
+                    results.append({
+                        "filename": fname,
+                        "file_path": fp,
+                        "status": "success",
+                        "error": "",
+                    })
+
+            def retry_failed(failed_paths):
+                if failed_paths:
+                    self._process_guidelines_uploads(failed_paths, batch_info.get("options", {}))
+
+            GuidelinesBatchResultsDialog(
+                self.parent,
+                results=results,
+                on_retry=retry_failed,
+            )
+        except Exception as e:
+            logger.error(f"Failed to show batch results: {e}")
+
     def _show_guidelines_library_dialog(self) -> None:
         """Show the clinical guidelines library dialog."""
         try:

@@ -13,6 +13,7 @@ Architecture Note:
 
 import json
 import os
+import threading
 from typing import Any, Optional
 
 from utils.structured_logging import get_logger, timed
@@ -24,8 +25,8 @@ load_guidelines_env()
 
 logger = get_logger(__name__)
 
-# Default HNSW search parameter for guidelines (can be lower than main RAG)
-DEFAULT_HNSW_EF_SEARCH = 40
+# Default HNSW search parameter for guidelines (higher = better recall at cost of speed)
+DEFAULT_HNSW_EF_SEARCH = 100
 
 
 class GuidelinesVectorStore:
@@ -38,17 +39,18 @@ class GuidelinesVectorStore:
     def __init__(
         self,
         connection_string: Optional[str] = None,
-        pool_size: int = 3,
+        pool_size: int = 8,
     ):
         """Initialize Guidelines vector store.
 
         Args:
             connection_string: PostgreSQL connection string for guidelines DB
-            pool_size: Connection pool size (smaller than main RAG)
+            pool_size: Connection pool size (matches worker thread count)
         """
         self._connection_string = connection_string
         self._pool_size = pool_size
         self._pool = None
+        self._pool_lock = threading.Lock()
 
     def _get_connection_string(self) -> str:
         """Get connection string from config or environment."""
@@ -100,8 +102,15 @@ class GuidelinesVectorStore:
         return conn_str
 
     def _get_pool(self):
-        """Get or create connection pool."""
-        if self._pool is None:
+        """Get or create connection pool (thread-safe with double-checked locking)."""
+        if self._pool is not None:
+            return self._pool
+
+        with self._pool_lock:
+            # Double-check after acquiring lock
+            if self._pool is not None:
+                return self._pool
+
             try:
                 import psycopg
                 logger.debug(f"psycopg loaded from: {psycopg.__file__}")
@@ -299,6 +308,7 @@ class GuidelinesVectorStore:
         filter_evidence_level: Optional[str] = None,
         ef_search: Optional[int] = None,
         include_expired: bool = False,
+        exclude_superseded: bool = True,
     ) -> list[GuidelineSearchResult]:
         """Search for similar guideline embeddings using cosine similarity.
 
@@ -354,6 +364,10 @@ class GuidelinesVectorStore:
                 # Apply expiration filter
                 if not include_expired:
                     query += " AND (g.expiration_date IS NULL OR g.expiration_date >= CURRENT_DATE)"
+
+                # Apply supersession filter
+                if exclude_superseded:
+                    query += " AND (g.is_superseded IS NULL OR g.is_superseded = FALSE)"
 
                 # Apply filters
                 if filter_specialties:
@@ -529,13 +543,15 @@ class GuidelinesVectorStore:
         version: Optional[str] = None,
         filename: Optional[str] = None,
         content_hash: Optional[str] = None,
+        simhash: Optional[int] = None,
     ) -> Optional[str]:
-        """Check if a guideline with the same content hash, filename, or title already exists.
+        """Check if a guideline with the same content hash, SimHash, filename, or title already exists.
 
         Check order:
         1. content_hash (fastest, exact content match)
-        2. filename (catches exact re-uploads)
-        3. title/source/version (case-insensitive metadata matching)
+        2. simhash (fuzzy content match via Hamming distance <= 3) (Fix 15)
+        3. filename (catches exact re-uploads)
+        4. title/source/version (case-insensitive metadata matching)
 
         Args:
             title: Guideline title
@@ -543,6 +559,7 @@ class GuidelinesVectorStore:
             version: Version string (optional)
             filename: Original filename (optional)
             content_hash: MD5 hash of extracted text (optional)
+            simhash: 64-bit SimHash fingerprint for fuzzy dedup (optional)
 
         Returns:
             guideline_id if duplicate found, None otherwise
@@ -562,6 +579,21 @@ class GuidelinesVectorStore:
                         row = cur.fetchone()
                         if row:
                             return row[0]
+
+                    # Check SimHash for fuzzy content match (Fix 15)
+                    if simhash is not None:
+                        try:
+                            from rag.simhash import hamming_distance
+                            cur.execute("""
+                                SELECT id, simhash FROM guidelines
+                                WHERE simhash IS NOT NULL
+                            """)
+                            for sim_row in cur.fetchall():
+                                existing_simhash = sim_row[1]
+                                if existing_simhash is not None and hamming_distance(simhash, existing_simhash) <= 3:
+                                    return sim_row[0]
+                        except Exception as e:
+                            logger.debug(f"SimHash check failed: {e}")
 
                     # Check filename (catches exact re-uploads)
                     if filename:
@@ -604,6 +636,89 @@ class GuidelinesVectorStore:
             logger.warning(f"Error checking for duplicate guideline: {e}")
             return None
 
+    def find_older_version(
+        self,
+        title: str,
+        source: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> Optional[str]:
+        """Find an existing guideline with the same title+source but different version.
+
+        Used to detect older versions that should be superseded when a new version is uploaded.
+
+        Args:
+            title: Guideline title
+            source: Source organization
+            version: New version string (to exclude from matches)
+
+        Returns:
+            guideline_id of older version if found, None otherwise
+        """
+        pool = self._get_pool()
+
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    if source and version:
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE LOWER(title) = LOWER(%s)
+                              AND LOWER(source) = LOWER(%s)
+                              AND (version IS NULL OR LOWER(version) != LOWER(%s))
+                              AND (is_superseded IS NULL OR is_superseded = FALSE)
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        """, (title, source, version))
+                    elif source:
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE LOWER(title) = LOWER(%s)
+                              AND LOWER(source) = LOWER(%s)
+                              AND (is_superseded IS NULL OR is_superseded = FALSE)
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        """, (title, source))
+                    else:
+                        return None  # Need at least title + source for version matching
+
+                    row = cur.fetchone()
+                    return row[0] if row else None
+        except Exception as e:
+            logger.warning(f"Error finding older guideline version: {e}")
+            return None
+
+    def supersede_guideline(self, old_id: str, new_id: str) -> bool:
+        """Mark an older guideline as superseded by a newer version.
+
+        Args:
+            old_id: UUID of the guideline being superseded
+            new_id: UUID of the new guideline that supersedes it
+
+        Returns:
+            True if successfully updated
+        """
+        pool = self._get_pool()
+
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE guidelines
+                        SET superseded_by = %s::uuid,
+                            is_superseded = TRUE,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                    """, (new_id, old_id))
+                    conn.commit()
+                    updated = cur.rowcount > 0
+
+            if updated:
+                logger.info(f"Guideline {old_id} superseded by {new_id}")
+            return updated
+        except Exception as e:
+            logger.warning(f"Error superseding guideline {old_id}: {e}")
+            return False
+
     def list_guidelines(self) -> list:
         """List all guidelines from the remote guidelines table.
 
@@ -642,13 +757,15 @@ class GuidelinesVectorStore:
                             g.neon_synced,
                             g.neo4j_synced,
                             g.created_at,
-                            COUNT(ge.id) as chunk_count
+                            COUNT(ge.id) as chunk_count,
+                            g.is_superseded,
+                            g.superseded_by
                         FROM guidelines g
                         LEFT JOIN guideline_embeddings ge ON ge.guideline_id = g.id
                         GROUP BY g.id, g.filename, g.title, g.specialty, g.source,
                                  g.version, g.effective_date, g.document_type,
                                  g.upload_status, g.neon_synced, g.neo4j_synced,
-                                 g.created_at
+                                 g.created_at, g.is_superseded, g.superseded_by
                         ORDER BY g.created_at DESC
                     """)
                     rows = cur.fetchall()
@@ -660,7 +777,8 @@ class GuidelinesVectorStore:
         for row in rows:
             (gid, filename, title, specialty, source, version,
              effective_date, document_type, upload_status,
-             neon_synced, neo4j_synced, created_at, chunk_count) = row
+             neon_synced, neo4j_synced, created_at, chunk_count,
+             is_superseded, superseded_by) = row
 
             try:
                 status = GuidelineUploadStatus(upload_status) if upload_status else GuidelineUploadStatus.COMPLETED
@@ -689,6 +807,8 @@ class GuidelinesVectorStore:
                 upload_status=status,
                 neon_synced=bool(neon_synced) if neon_synced is not None else True,
                 neo4j_synced=bool(neo4j_synced) if neo4j_synced is not None else False,
+                is_superseded=bool(is_superseded) if is_superseded is not None else False,
+                superseded_by=str(superseded_by) if superseded_by else None,
                 created_at=created_at,
             ))
 
@@ -873,23 +993,37 @@ class GuidelinesVectorStore:
 
 # Singleton instance
 _guidelines_store: Optional[GuidelinesVectorStore] = None
+_guidelines_store_lock = threading.Lock()
 
 
-def get_guidelines_vector_store() -> GuidelinesVectorStore:
-    """Get the global guidelines vector store instance.
+def get_guidelines_vector_store(instance: Optional[GuidelinesVectorStore] = None) -> GuidelinesVectorStore:
+    """Get the global guidelines vector store instance (thread-safe).
+
+    Args:
+        instance: Optional instance to set as the global store (for testing)
 
     Returns:
         GuidelinesVectorStore instance
     """
     global _guidelines_store
-    if _guidelines_store is None:
-        _guidelines_store = GuidelinesVectorStore()
+    if instance is not None:
+        with _guidelines_store_lock:
+            _guidelines_store = instance
+        return _guidelines_store
+
+    if _guidelines_store is not None:
+        return _guidelines_store
+
+    with _guidelines_store_lock:
+        if _guidelines_store is None:
+            _guidelines_store = GuidelinesVectorStore()
     return _guidelines_store
 
 
 def reset_guidelines_vector_store():
     """Reset the global guidelines vector store instance."""
     global _guidelines_store
-    if _guidelines_store:
-        _guidelines_store.close()
-        _guidelines_store = None
+    with _guidelines_store_lock:
+        if _guidelines_store:
+            _guidelines_store.close()
+            _guidelines_store = None

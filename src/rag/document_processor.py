@@ -345,6 +345,121 @@ class DocumentProcessor:
 
         return "", metadata, 1, False
 
+    def extract_text_with_layout(
+        self, file_path: str, enable_ocr: bool = True
+    ) -> tuple[str, DocumentMetadata, int, bool]:
+        """Extract text using Azure Document Intelligence prebuilt-layout model.
+
+        Sends the full PDF to Azure (not page-by-page) and preserves table
+        structures as markdown. Falls back to standard extract_text() if Azure
+        is not configured.
+
+        Args:
+            file_path: Path to the document (PDF recommended)
+            enable_ocr: Whether to use OCR
+
+        Returns:
+            Tuple of (extracted_text, metadata, page_count, ocr_was_used)
+        """
+        if not enable_ocr:
+            return self.extract_text(file_path, enable_ocr=False)
+
+        try:
+            from azure.ai.documentintelligence import DocumentIntelligenceClient
+            from azure.core.credentials import AzureKeyCredential
+        except ImportError:
+            logger.debug("Azure Document Intelligence SDK not installed, falling back to standard extraction")
+            return self.extract_text(file_path, enable_ocr=enable_ocr)
+
+        endpoint = os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
+        key = os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_KEY")
+
+        if not endpoint or not key:
+            logger.debug("Azure Document Intelligence not configured, falling back to standard extraction")
+            return self.extract_text(file_path, enable_ocr=enable_ocr)
+
+        try:
+            client = DocumentIntelligenceClient(
+                endpoint=endpoint, credential=AzureKeyCredential(key)
+            )
+
+            with open(file_path, "rb") as f:
+                poller = client.begin_analyze_document(
+                    "prebuilt-layout", body=f, content_type="application/octet-stream"
+                )
+            result = poller.result()
+
+            metadata = DocumentMetadata()
+            page_count = len(result.pages) if result.pages else 1
+
+            # Build text content with table injection
+            text_parts = []
+            tables_by_page = {}
+            if result.tables:
+                for table in result.tables:
+                    page_num = 1
+                    if table.bounding_regions:
+                        page_num = table.bounding_regions[0].page_number
+                    tables_by_page.setdefault(page_num, []).append(table)
+
+            if result.pages:
+                for page in result.pages:
+                    page_num = page.page_number
+                    page_lines = []
+                    if page.lines:
+                        for line in page.lines:
+                            page_lines.append(line.content)
+                    page_text = "\n".join(page_lines)
+
+                    # Inject markdown tables for this page
+                    if page_num in tables_by_page:
+                        for table in tables_by_page[page_num]:
+                            md_table = self._inject_markdown_tables(table)
+                            if md_table:
+                                page_text += "\n\n" + md_table
+
+                    text_parts.append(f"[Page {page_num}]\n{page_text}")
+
+            full_text = "\n\n".join(text_parts)
+            logger.info(
+                f"Azure layout extraction: {page_count} pages, "
+                f"{len(result.tables or [])} tables"
+            )
+            return full_text, metadata, page_count, True
+
+        except Exception as e:
+            logger.warning(f"Azure layout extraction failed, falling back: {e}")
+            return self.extract_text(file_path, enable_ocr=enable_ocr)
+
+    @staticmethod
+    def _inject_markdown_tables(table) -> str:
+        """Convert an Azure table to markdown format.
+
+        Args:
+            table: Azure DocumentTable object
+
+        Returns:
+            Markdown-formatted table string
+        """
+        if not table.cells:
+            return ""
+
+        max_row = max(c.row_index for c in table.cells) + 1
+        max_col = max(c.column_index for c in table.cells) + 1
+
+        grid = [["" for _ in range(max_col)] for _ in range(max_row)]
+        for cell in table.cells:
+            content = cell.content.replace("\n", " ").strip()
+            grid[cell.row_index][cell.column_index] = content
+
+        lines = []
+        for i, row in enumerate(grid):
+            lines.append("| " + " | ".join(row) + " |")
+            if i == 0:
+                lines.append("| " + " | ".join(["---"] * max_col) + " |")
+
+        return "\n".join(lines)
+
     def chunk_text(
         self,
         text: str,

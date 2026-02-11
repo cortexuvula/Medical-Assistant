@@ -292,15 +292,40 @@ class GuidelinesGraphitiClient:
                 description = f"{description} ({metadata['source']})"
             if "version" in metadata:
                 description = f"{description} v{metadata['version']}"
+            if "specialty" in metadata and metadata["specialty"]:
+                description = f"{description} [specialty: {metadata['specialty']}]"
+
+        reference_time = self._extract_reference_time(metadata)
 
         await client.add_episode(
             name=episode_name,
             episode_body=content,
             source=EpisodeType.text,
             source_description=description,
-            reference_time=datetime.now(),
+            reference_time=reference_time,
         )
         logger.info(f"Added guideline {guideline_id} to knowledge graph")
+
+    @staticmethod
+    def _extract_reference_time(metadata: Optional[dict]) -> datetime:
+        """Extract reference_time from metadata effective_date, falling back to now().
+
+        Supports date, datetime, or ISO-format string values.
+        """
+        if metadata and "effective_date" in metadata and metadata["effective_date"]:
+            ed = metadata["effective_date"]
+            if isinstance(ed, datetime):
+                return ed
+            if hasattr(ed, 'year'):  # date object
+                return datetime(ed.year, ed.month, ed.day)
+            if isinstance(ed, str):
+                try:
+                    from datetime import date as date_type
+                    parsed = date_type.fromisoformat(ed)
+                    return datetime(parsed.year, parsed.month, parsed.day)
+                except (ValueError, TypeError):
+                    pass
+        return datetime.now()
 
     def add_guideline_episode_sync(
         self,

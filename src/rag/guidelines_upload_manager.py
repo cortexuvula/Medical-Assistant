@@ -32,8 +32,8 @@ logger = get_logger(__name__)
 MAX_FILE_SIZE = 50 * 1024 * 1024
 
 # Guidelines use smaller chunks than general RAG documents
-GUIDELINES_CHUNK_SIZE = 300
-GUIDELINES_CHUNK_OVERLAP = 50
+GUIDELINES_CHUNK_SIZE = 500
+GUIDELINES_CHUNK_OVERLAP = 100
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
@@ -46,45 +46,63 @@ class GuidelinesUploadManager:
     but targets the separate guidelines database infrastructure.
     """
 
-    def __init__(self):
-        self._document_processor = None
-        self._embedding_manager = None
-        self._vector_store = None
-        self._graphiti_client = None
+    def __init__(
+        self,
+        vector_store=None,
+        document_processor=None,
+        embedding_manager=None,
+        graphiti_client=None,
+    ):
+        self._document_processor = document_processor
+        self._embedding_manager = embedding_manager
+        self._vector_store = vector_store
+        self._graphiti_client = graphiti_client
         self._processing_lock = threading.Lock()
 
     def _get_document_processor(self):
         """Get document processor configured for guidelines (smaller chunks)."""
-        if self._document_processor is None:
-            from rag.document_processor import DocumentProcessor
-            self._document_processor = DocumentProcessor(
-                chunk_size_tokens=GUIDELINES_CHUNK_SIZE,
-                chunk_overlap_tokens=GUIDELINES_CHUNK_OVERLAP,
-            )
+        if self._document_processor is not None:
+            return self._document_processor
+        with self._processing_lock:
+            if self._document_processor is None:
+                from rag.document_processor import DocumentProcessor
+                self._document_processor = DocumentProcessor(
+                    chunk_size_tokens=GUIDELINES_CHUNK_SIZE,
+                    chunk_overlap_tokens=GUIDELINES_CHUNK_OVERLAP,
+                )
         return self._document_processor
 
     def _get_embedding_manager(self):
         """Get embedding manager (reuses CachedEmbeddingManager)."""
-        if self._embedding_manager is None:
-            from rag.embedding_manager import CachedEmbeddingManager
-            self._embedding_manager = CachedEmbeddingManager()
+        if self._embedding_manager is not None:
+            return self._embedding_manager
+        with self._processing_lock:
+            if self._embedding_manager is None:
+                from rag.embedding_manager import CachedEmbeddingManager
+                self._embedding_manager = CachedEmbeddingManager()
         return self._embedding_manager
 
     def _get_vector_store(self):
         """Get guidelines vector store (separate from main RAG)."""
-        if self._vector_store is None:
-            from rag.guidelines_vector_store import get_guidelines_vector_store
-            self._vector_store = get_guidelines_vector_store()
+        if self._vector_store is not None:
+            return self._vector_store
+        with self._processing_lock:
+            if self._vector_store is None:
+                from rag.guidelines_vector_store import get_guidelines_vector_store
+                self._vector_store = get_guidelines_vector_store()
         return self._vector_store
 
     def _get_graphiti_client(self):
         """Get guidelines Graphiti client (separate Neo4j instance)."""
-        if self._graphiti_client is None:
-            try:
-                from rag.guidelines_graphiti_client import get_guidelines_graphiti_client
-                self._graphiti_client = get_guidelines_graphiti_client()
-            except Exception:
-                return None
+        if self._graphiti_client is not None:
+            return self._graphiti_client
+        with self._processing_lock:
+            if self._graphiti_client is None:
+                try:
+                    from rag.guidelines_graphiti_client import get_guidelines_graphiti_client
+                    self._graphiti_client = get_guidelines_graphiti_client()
+                except Exception:
+                    return None
         return self._graphiti_client
 
     def upload_guideline(
@@ -177,9 +195,16 @@ class GuidelinesUploadManager:
             report(GuidelineUploadStatus.EXTRACTING, 5)
 
             processor = self._get_document_processor()
-            text, metadata, page_count, ocr_used = processor.extract_text(
-                file_path, enable_ocr=enable_ocr
-            )
+
+            # Prefer layout extraction for PDFs (preserves tables)
+            if ext == '.pdf' and enable_ocr:
+                text, metadata, page_count, ocr_used = processor.extract_text_with_layout(
+                    file_path, enable_ocr=enable_ocr
+                )
+            else:
+                text, metadata, page_count, ocr_used = processor.extract_text(
+                    file_path, enable_ocr=enable_ocr
+                )
 
             if not text or not text.strip():
                 raise ValueError("No text could be extracted from the file")
@@ -187,11 +212,20 @@ class GuidelinesUploadManager:
             # Compute content hash for deduplication (Issue 16)
             content_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
 
+            # Compute SimHash for fuzzy deduplication (Fix 15)
+            text_simhash = None
+            try:
+                from rag.simhash import compute_simhash
+                text_simhash = compute_simhash(text)
+            except Exception:
+                pass
+
             # Post-extraction duplicate check by content hash
             if skip_duplicates:
                 vector_store = self._get_vector_store()
                 existing_id = vector_store.find_duplicate_guideline(
-                    title, source, version, content_hash=content_hash
+                    title, source, version, content_hash=content_hash,
+                    simhash=text_simhash,
                 )
                 if existing_id:
                     logger.info(
@@ -218,6 +252,20 @@ class GuidelinesUploadManager:
                 title = metadata.title
             if not title:
                 title = Path(file_path).stem
+
+            # Check for older version to supersede (Fix 3)
+            older_version_id = None
+            if version and source:
+                try:
+                    vector_store = self._get_vector_store()
+                    older_version_id = vector_store.find_older_version(title, source, version)
+                    if older_version_id:
+                        logger.info(
+                            f"Found older version to supersede: {older_version_id}",
+                            new_title=title, new_version=version
+                        )
+                except Exception as e:
+                    logger.debug(f"Older version check failed: {e}")
 
             report(GuidelineUploadStatus.EXTRACTING, 25)
 
@@ -290,22 +338,6 @@ class GuidelinesUploadManager:
             if content_warning:
                 guideline_metadata["content_warning"] = content_warning
 
-            self._insert_guideline_metadata(
-                vector_store=vector_store,
-                guideline_id=guideline_id,
-                title=title,
-                filename=filename,
-                specialty=specialty or "general",
-                source=source or "OTHER",
-                version=version,
-                effective_date=effective_date,
-                expiration_date=expiration_date,
-                document_type=document_type,
-                file_path=file_path,
-                content_hash=content_hash,
-                metadata=guideline_metadata,
-            )
-
             report(GuidelineUploadStatus.SYNCING, 82)
 
             # 4b: Upsert chunk embeddings
@@ -359,19 +391,31 @@ class GuidelinesUploadManager:
                     chunk_metadata,          # metadata
                 ))
 
-            # Upsert embeddings with cleanup on failure (Issue 4/7)
-            try:
-                vector_store.upsert_embeddings_batch(guideline_id, batch_data)
-            except Exception as embed_error:
-                logger.error(f"Embedding upsert failed for '{filename}', cleaning up metadata")
-                try:
-                    vector_store.delete_guideline_complete(guideline_id)
-                except Exception as cleanup_err:
-                    logger.warning(f"Cleanup after embedding failure also failed: {cleanup_err}")
-                raise embed_error
+            # Atomic transaction: metadata + embeddings in single transaction (Fix 8)
+            self._atomic_neon_sync(
+                vector_store=vector_store,
+                guideline_id=guideline_id,
+                title=title,
+                filename=filename,
+                specialty=specialty or "general",
+                source=source or "OTHER",
+                version=version,
+                effective_date=effective_date,
+                expiration_date=expiration_date,
+                document_type=document_type,
+                file_path=file_path,
+                content_hash=content_hash,
+                simhash=text_simhash,
+                metadata=guideline_metadata,
+                batch_data=batch_data,
+            )
 
-            # Mark neon_synced after successful embedding upsert (Issue 3)
-            self._update_sync_status(vector_store, guideline_id, neon_synced=True)
+            # Supersede older version if found (Fix 3)
+            if older_version_id:
+                try:
+                    vector_store.supersede_guideline(older_version_id, guideline_id)
+                except Exception as e:
+                    logger.warning(f"Failed to supersede old version {older_version_id}: {e}")
 
             report(GuidelineUploadStatus.SYNCING, 90)
 
@@ -381,6 +425,17 @@ class GuidelinesUploadManager:
                 if graphiti:
                     try:
                         report(GuidelineUploadStatus.SYNCING, 92)
+                        # Build enriched source description with entity hints (Fix 12)
+                        source_desc = f"clinical_guideline: {title}"
+                        if specialty:
+                            source_desc += f" [specialty: {specialty}]"
+                        if metadata and hasattr(metadata, 'conditions_covered') and metadata.conditions_covered:
+                            conditions_str = ", ".join(metadata.conditions_covered[:5])
+                            source_desc += f" [conditions: {conditions_str}]"
+                        if metadata and hasattr(metadata, 'medications_covered') and metadata.medications_covered:
+                            meds_str = ", ".join(metadata.medications_covered[:5])
+                            source_desc += f" [medications: {meds_str}]"
+
                         graphiti.add_guideline_episode_sync(
                             guideline_id=guideline_id,
                             content=text,
@@ -390,8 +445,9 @@ class GuidelinesUploadManager:
                                 "version": version,
                                 "specialty": specialty,
                                 "document_type": document_type,
+                                "effective_date": str(effective_date) if effective_date else None,
                             },
-                            source_description="clinical_guideline",
+                            source_description=source_desc,
                         )
                         # Mark neo4j_synced after successful graph sync (Issue 3)
                         self._update_sync_status(vector_store, guideline_id, neo4j_synced=True)
@@ -413,6 +469,105 @@ class GuidelinesUploadManager:
             logger.error(f"Failed to upload guideline '{filename}': {error_msg}")
             report(GuidelineUploadStatus.FAILED, 0, error_msg)
             raise
+
+    def _atomic_neon_sync(
+        self,
+        vector_store,
+        guideline_id: str,
+        title: str,
+        filename: str,
+        specialty: str,
+        source: str,
+        version: Optional[str],
+        effective_date: Optional[date],
+        expiration_date: Optional[date],
+        document_type: Optional[str],
+        file_path: Optional[str],
+        content_hash: Optional[str],
+        simhash: Optional[int] = None,
+        metadata: Optional[dict] = None,
+        batch_data: list = None,
+    ) -> None:
+        """Atomically insert metadata and embeddings in a single transaction (Fix 8).
+
+        If any step fails, the entire transaction is rolled back - no orphaned rows.
+        """
+        pool = vector_store._get_pool()
+
+        with pool.connection() as conn:
+            vector_store._ensure_pgvector(conn)
+
+            try:
+                with conn.cursor() as cur:
+                    # Insert guideline metadata
+                    cur.execute(
+                        """
+                        INSERT INTO guidelines
+                        (id, title, filename, specialty, source, version,
+                         effective_date, expiration_date, document_type,
+                         file_path, content_hash, simhash, metadata, neon_synced, upload_status)
+                        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, 'completed')
+                        ON CONFLICT (id) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            filename = EXCLUDED.filename,
+                            specialty = EXCLUDED.specialty,
+                            source = EXCLUDED.source,
+                            version = EXCLUDED.version,
+                            effective_date = EXCLUDED.effective_date,
+                            expiration_date = EXCLUDED.expiration_date,
+                            document_type = EXCLUDED.document_type,
+                            file_path = EXCLUDED.file_path,
+                            content_hash = EXCLUDED.content_hash,
+                            simhash = EXCLUDED.simhash,
+                            metadata = EXCLUDED.metadata,
+                            neon_synced = TRUE,
+                            upload_status = 'completed',
+                            updated_at = NOW()
+                        """,
+                        (
+                            guideline_id, title, filename, specialty, source,
+                            version, effective_date, expiration_date,
+                            document_type, file_path, content_hash, simhash,
+                            json.dumps(metadata) if metadata else None,
+                        ),
+                    )
+
+                    # Upsert all chunk embeddings
+                    for chunk in batch_data:
+                        (chunk_index, chunk_text, embedding, section_type,
+                         recommendation_class, evidence_level, chunk_metadata) = chunk
+
+                        cur.execute(
+                            """
+                            INSERT INTO guideline_embeddings
+                            (guideline_id, chunk_index, chunk_text, embedding,
+                             section_type, recommendation_class, evidence_level, metadata)
+                            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (guideline_id, chunk_index)
+                            DO UPDATE SET
+                                chunk_text = EXCLUDED.chunk_text,
+                                embedding = EXCLUDED.embedding,
+                                section_type = EXCLUDED.section_type,
+                                recommendation_class = EXCLUDED.recommendation_class,
+                                evidence_level = EXCLUDED.evidence_level,
+                                metadata = EXCLUDED.metadata,
+                                updated_at = NOW()
+                            """,
+                            (
+                                guideline_id, chunk_index, chunk_text, embedding,
+                                section_type, recommendation_class, evidence_level,
+                                json.dumps(chunk_metadata) if chunk_metadata else None,
+                            ),
+                        )
+
+                    # Both succeeded - commit the transaction
+                    conn.commit()
+                    logger.debug(f"Atomic Neon sync complete for {guideline_id}")
+
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Atomic Neon sync failed for '{filename}': {e}")
+                raise
 
     def _insert_guideline_metadata(
         self,
@@ -552,21 +707,27 @@ class GuidelinesUploadManager:
 
 # Singleton instance
 _guidelines_upload_manager: Optional[GuidelinesUploadManager] = None
+_guidelines_upload_manager_lock = threading.Lock()
 
 
 def get_guidelines_upload_manager() -> GuidelinesUploadManager:
-    """Get the global guidelines upload manager instance.
+    """Get the global guidelines upload manager instance (thread-safe).
 
     Returns:
         GuidelinesUploadManager instance
     """
     global _guidelines_upload_manager
-    if _guidelines_upload_manager is None:
-        _guidelines_upload_manager = GuidelinesUploadManager()
+    if _guidelines_upload_manager is not None:
+        return _guidelines_upload_manager
+
+    with _guidelines_upload_manager_lock:
+        if _guidelines_upload_manager is None:
+            _guidelines_upload_manager = GuidelinesUploadManager()
     return _guidelines_upload_manager
 
 
 def reset_guidelines_upload_manager():
     """Reset the global guidelines upload manager instance."""
     global _guidelines_upload_manager
-    _guidelines_upload_manager = None
+    with _guidelines_upload_manager_lock:
+        _guidelines_upload_manager = None
