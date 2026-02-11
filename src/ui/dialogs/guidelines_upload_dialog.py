@@ -1015,6 +1015,12 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
         failed = batch_info.get("failed", 0)
         skipped = batch_info.get("skipped", 0)
 
+        # Keep local state in sync for ETA timer (avoids lock re-acquisition)
+        self.processed_files = processed
+        self.total_files = total
+        self.success_count = successful
+        self.fail_count = failed
+
         # Update overall progress
         progress_pct = (processed / total * 100) if total > 0 else 0
         self.overall_progress["value"] = progress_pct
@@ -1143,7 +1149,13 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
         self._update_eta()
 
     def _update_eta(self):
-        """Update elapsed time and ETA display (Fix 11)."""
+        """Update elapsed time and ETA display (Fix 11).
+
+        IMPORTANT: This runs on the main thread via after(). It must NOT
+        call into the queue_manager (which acquires locks) to avoid deadlocks
+        with worker threads that hold locks and schedule UI updates.
+        Uses only local state updated by progress callbacks instead.
+        """
         import time as _time
 
         if not self.winfo_exists():
@@ -1152,35 +1164,27 @@ class GuidelinesUploadProgressDialog(tk.Toplevel):
         elapsed = _time.time() - self._start_time
         elapsed_str = self._format_duration(elapsed)
 
-        # Get current progress from batch info
-        try:
-            batch_info = self.queue_manager.get_guideline_batch_status(self.batch_id)
-            if batch_info:
-                processed = batch_info.get("processed", 0)
-                total = batch_info.get("total_files", 1)
-                status = batch_info.get("status", "processing")
-                if status in ("completed", "cancelled"):
-                    self._eta_label.configure(
-                        text=f"Elapsed: {elapsed_str} | Complete"
-                    )
-                    # Stop the timer
-                    self._eta_timer_id = None
-                    return
-                elif processed > 0 and processed < total:
-                    rate = elapsed / processed
-                    remaining = rate * (total - processed)
-                    eta_str = self._format_duration(remaining)
-                    self._eta_label.configure(
-                        text=f"Elapsed: {elapsed_str} | ETA: ~{eta_str}"
-                    )
-                else:
-                    self._eta_label.configure(
-                        text=f"Elapsed: {elapsed_str} | ETA: calculating..."
-                    )
-            else:
-                self._eta_label.configure(text=f"Elapsed: {elapsed_str}")
-        except Exception:
-            self._eta_label.configure(text=f"Elapsed: {elapsed_str}")
+        # Use local state (updated by callbacks) — no lock acquisition needed
+        processed = self.processed_files
+        total = self.total_files
+
+        if processed > 0 and processed < total:
+            rate = elapsed / processed
+            remaining = rate * (total - processed)
+            eta_str = self._format_duration(remaining)
+            self._eta_label.configure(
+                text=f"Elapsed: {elapsed_str} | ETA: ~{eta_str}"
+            )
+        elif processed >= total and total > 0:
+            self._eta_label.configure(
+                text=f"Elapsed: {elapsed_str} | Complete"
+            )
+            self._eta_timer_id = None
+            return
+        else:
+            self._eta_label.configure(
+                text=f"Elapsed: {elapsed_str} | ETA: calculating..."
+            )
 
         self._eta_timer_id = self.after(1000, self._update_eta)
 
