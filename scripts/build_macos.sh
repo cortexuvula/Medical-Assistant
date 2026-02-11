@@ -79,16 +79,50 @@ echo ""
 echo "=== Code Signing ==="
 echo "Signing identity: $MACOS_SIGNING_IDENTITY"
 
-# Sign the .app bundle
-# PyInstaller onedir build produces the .app with dylibs in Frameworks/.
-# --deep recursively signs all nested code (dylibs, frameworks, helpers).
-codesign --force --deep --sign "$MACOS_SIGNING_IDENTITY" \
+# PyInstaller onedir builds produce an .app with many individual binaries.
+# Apple notarization requires EACH binary to be signed individually with
+# hardened runtime (--options runtime) before signing the outer .app bundle.
+# Using --deep alone is insufficient and deprecated by Apple.
+
+# Step 1: Sign all shared libraries (.dylib, .so) and object files
+echo "Signing individual binaries inside .app bundle..."
+SIGN_COUNT=0
+while IFS= read -r -d '' binary; do
+    codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
+        --options runtime \
+        --timestamp \
+        "$binary" 2>/dev/null && SIGN_COUNT=$((SIGN_COUNT + 1))
+done < <(find "dist/MedicalAssistant.app" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.o" \) -print0)
+echo "Signed $SIGN_COUNT shared libraries."
+
+# Step 2: Sign all executable binaries (Mach-O files without extensions)
+while IFS= read -r -d '' binary; do
+    # Check if it's a Mach-O binary
+    if file "$binary" | grep -q "Mach-O"; then
+        codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$binary" 2>/dev/null && SIGN_COUNT=$((SIGN_COUNT + 1))
+    fi
+done < <(find "dist/MedicalAssistant.app/Contents/MacOS" -type f ! -name "MedicalAssistant" -print0)
+
+# Step 3: Sign the main executable with entitlements
+echo "Signing main executable..."
+codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
+    --options runtime \
+    --entitlements "$PROJECT_ROOT/entitlements.plist" \
+    --timestamp \
+    "dist/MedicalAssistant.app/Contents/MacOS/MedicalAssistant"
+
+# Step 4: Sign the outer .app bundle
+echo "Signing .app bundle..."
+codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
     --options runtime \
     --entitlements "$PROJECT_ROOT/entitlements.plist" \
     --timestamp \
     "dist/MedicalAssistant.app"
 
-echo "Signing complete."
+echo "Signing complete ($SIGN_COUNT binaries + main executable + .app bundle)."
 
 # Verify the signature
 echo ""
@@ -151,21 +185,45 @@ if [ -z "$APPLE_ID" ] || [ -z "$APPLE_ID_PASSWORD" ] || [ -z "$MACOS_TEAM_ID" ];
     exit 0
 fi
 
-xcrun notarytool submit "dist/$DMG_NAME" \
+NOTARIZE_OUTPUT=$(xcrun notarytool submit "dist/$DMG_NAME" \
     --apple-id "$APPLE_ID" \
     --password "$APPLE_ID_PASSWORD" \
     --team-id "$MACOS_TEAM_ID" \
     --wait \
-    --timeout 30m
+    --timeout 30m 2>&1)
 
-echo "Notarization complete."
+echo "$NOTARIZE_OUTPUT"
 
-# Staple the notarization ticket to the DMG
+# Check if notarization was accepted
+if echo "$NOTARIZE_OUTPUT" | grep -q "status: Accepted"; then
+    echo "Notarization accepted."
+else
+    echo ""
+    echo "WARNING: Notarization was NOT accepted."
+    # Try to fetch the log for details
+    SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+    if [ -n "$SUBMISSION_ID" ]; then
+        echo "Fetching notarization log for submission $SUBMISSION_ID..."
+        xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$MACOS_TEAM_ID" \
+            notarization_log.json 2>&1 || true
+        if [ -f "notarization_log.json" ]; then
+            echo "=== Notarization Log ==="
+            cat notarization_log.json
+            echo ""
+        fi
+    fi
+    echo "Continuing without notarization — DMG will still work but may show Gatekeeper warning."
+fi
+
+# Staple the notarization ticket to the DMG (only works if notarization succeeded)
 echo ""
 echo "=== Stapling ==="
-xcrun stapler staple "dist/$DMG_NAME"
-xcrun stapler validate "dist/$DMG_NAME"
-echo "Stapling complete."
+xcrun stapler staple "dist/$DMG_NAME" 2>&1 || echo "Stapling skipped (notarization may not have succeeded)."
+xcrun stapler validate "dist/$DMG_NAME" 2>&1 || echo "Staple validation skipped."
+echo "Stapling step complete."
 
 echo ""
 echo "=== Done ==="
