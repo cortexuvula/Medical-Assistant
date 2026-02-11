@@ -12,41 +12,16 @@ Enhanced with:
 """
 
 import os
-import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from dotenv import load_dotenv
-
+from rag.guidelines_env import load_guidelines_env
 from utils.structured_logging import get_logger
 from utils.timeout_config import get_timeout
 
-# Load environment variables from multiple possible locations
-def _load_env():
-    """Load .env from multiple possible locations."""
-    paths = []
-    try:
-        from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
-    except Exception:
-        pass
-    paths.extend([
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path.cwd() / '.env',  # Current working directory
-    ])
-
-    for p in paths:
-        try:
-            if p.exists():
-                load_dotenv(dotenv_path=str(p))
-                return
-        except Exception:
-            pass
-    load_dotenv()  # Try default search
-
-_load_env()
+load_guidelines_env()
 
 logger = get_logger(__name__)
 
@@ -433,14 +408,18 @@ class GraphDataProvider:
     Enhanced with circuit breaker for resilience.
     """
 
-    def __init__(self, graphiti_client=None):
+    def __init__(self, graphiti_client=None, env_prefix: str = ""):
         """Initialize the provider.
 
         Args:
             graphiti_client: Optional GraphitiClient instance
+            env_prefix: Environment variable prefix for Neo4j credentials.
+                        E.g. "CLINICAL_GUIDELINES_" looks for
+                        CLINICAL_GUIDELINES_NEO4J_URI, etc.
         """
         self._client = graphiti_client
         self._driver = None
+        self._env_prefix = env_prefix
 
     def _get_neo4j_driver(self):
         """Get or create Neo4j driver with connection timeout."""
@@ -456,9 +435,10 @@ class GraphDataProvider:
             )
 
         # Get config from environment or settings
-        uri = os.environ.get("NEO4J_URI")
-        user = os.environ.get("NEO4J_USER", "neo4j")
-        password = os.environ.get("NEO4J_PASSWORD")
+        prefix = self._env_prefix
+        uri = os.environ.get(f"{prefix}NEO4J_URI")
+        user = os.environ.get(f"{prefix}NEO4J_USER", "neo4j")
+        password = os.environ.get(f"{prefix}NEO4J_PASSWORD")
 
         if not uri or not password:
             try:

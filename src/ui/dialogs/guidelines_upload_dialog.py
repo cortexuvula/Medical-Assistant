@@ -66,6 +66,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
         self.selected_files: list[str] = []
         self.is_uploading = False
         self.effective_date: Optional[date] = None
+        self.expiration_date: Optional[date] = None
 
         self._create_widgets()
         self._center_window()
@@ -236,6 +237,40 @@ class GuidelinesUploadDialog(tk.Toplevel):
             command=self._clear_date,
             width=5,
         ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # Row 2b: Expiration Date (Issue 14)
+        row2b = ttk.Frame(info_frame)
+        row2b.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(row2b, text="Expiration Date:").pack(side=tk.LEFT)
+        self.expiration_date_var = tk.StringVar()
+        self.expiration_date_entry = ttk.Entry(
+            row2b,
+            textvariable=self.expiration_date_var,
+            width=12,
+            state="readonly",
+        )
+        self.expiration_date_entry.pack(side=tk.LEFT, padx=(10, 5))
+
+        ttk.Button(
+            row2b,
+            text="...",
+            command=self._pick_expiration_date,
+            width=3,
+        ).pack(side=tk.LEFT)
+
+        ttk.Button(
+            row2b,
+            text="Clear",
+            command=self._clear_expiration_date,
+            width=5,
+        ).pack(side=tk.LEFT, padx=(5, 0))
+
+        ttk.Label(
+            row2b,
+            text="(optional - expired guidelines excluded from search)",
+            foreground="gray",
+        ).pack(side=tk.LEFT, padx=(10, 0))
 
         # Row 3: Guideline Type
         row3 = ttk.Frame(info_frame)
@@ -426,7 +461,20 @@ class GuidelinesUploadDialog(tk.Toplevel):
                 size = os.path.getsize(file_path)
                 total_size += size
                 size_str = self._format_size(size)
-                self.file_listbox.insert(tk.END, f"{filename}  ({size_str})")
+
+                # Infer metadata from filename (Issue 10)
+                inferred = self._infer_metadata_from_filename(filename)
+                suffix = ""
+                if inferred:
+                    parts = []
+                    if "source" in inferred:
+                        parts.append(inferred["source"])
+                    if "version" in inferred:
+                        parts.append(f"v{inferred['version']}")
+                    if parts:
+                        suffix = f"  [{', '.join(parts)}]"
+
+                self.file_listbox.insert(tk.END, f"{filename}  ({size_str}){suffix}")
             except OSError:
                 stale_files.append(file_path)
 
@@ -495,6 +543,100 @@ class GuidelinesUploadDialog(tk.Toplevel):
         self.effective_date = None
         self.date_var.set("")
 
+    def _pick_expiration_date(self):
+        """Open date picker for expiration date."""
+        try:
+            dialog = DatePickerDialog(
+                parent=self,
+                title="Select Expiration Date",
+            )
+            selected_date = dialog.date_selected
+            if selected_date:
+                self.expiration_date = selected_date
+                self.expiration_date_var.set(selected_date.strftime("%Y-%m-%d"))
+        except Exception:
+            from tkinter import simpledialog
+            date_str = simpledialog.askstring(
+                "Expiration Date",
+                "Enter date (YYYY-MM-DD):",
+                parent=self,
+            )
+            if date_str:
+                try:
+                    from datetime import datetime
+                    self.expiration_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    self.expiration_date_var.set(date_str)
+                except ValueError:
+                    messagebox.showerror(
+                        "Invalid Date",
+                        "Please enter date in YYYY-MM-DD format.",
+                        parent=self,
+                    )
+
+    def _clear_expiration_date(self):
+        """Clear the expiration date."""
+        self.expiration_date = None
+        self.expiration_date_var.set("")
+
+    @staticmethod
+    def _infer_metadata_from_filename(filename: str) -> dict:
+        """Infer guideline metadata from filename patterns (Issue 10).
+
+        Recognizes patterns like:
+        - AHA_Heart_Failure_2024_v2.1.pdf -> source=AHA, version=v2.1, year
+        - NICE_CG181_Lipid_Modification.pdf -> source=NICE
+        - ACC-AHA_Hypertension_2023.pdf -> source=AHA/ACC
+
+        Args:
+            filename: Original filename
+
+        Returns:
+            Dict with inferred metadata (source, version, year)
+        """
+        import re
+
+        result = {}
+        stem = Path(filename).stem
+
+        # Try to detect source organization from known prefixes
+        source_patterns = {
+            r'^AHA[_/-]ACC|^ACC[_/-]AHA': 'AHA/ACC',
+            r'^AHA': 'AHA',
+            r'^ACC': 'ACC',
+            r'^ADA': 'ADA',
+            r'^GOLD': 'GOLD',
+            r'^NICE': 'NICE',
+            r'^HFSA': 'HFSA',
+            r'^USPSTF': 'USPSTF',
+            r'^IDSA': 'IDSA',
+            r'^ACR': 'ACR',
+            r'^ASCO': 'ASCO',
+            r'^AAN': 'AAN',
+            r'^APA': 'APA',
+            r'^ACOG': 'ACOG',
+            r'^AAP': 'AAP',
+            r'^AGS': 'AGS',
+        }
+
+        for pattern, source in source_patterns.items():
+            if re.search(pattern, stem, re.IGNORECASE):
+                result['source'] = source
+                break
+
+        # Try to detect version (v1.0, v2.1, etc.)
+        version_match = re.search(r'[_\s-]v?(\d+\.\d+)', stem)
+        if version_match:
+            result['version'] = version_match.group(1)
+
+        # Try to detect year (4-digit year 2000-2099)
+        year_match = re.search(r'[_\s-](20\d{2})[_\s.-]?', stem)
+        if year_match:
+            result['year'] = year_match.group(1)
+            if 'version' not in result:
+                result['version'] = year_match.group(1)
+
+        return result
+
     def _start_upload(self):
         """Start the upload process."""
         if not self.selected_files:
@@ -558,6 +700,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
             "source": self.source_var.get() or None,
             "version": self.version_var.get() or None,
             "effective_date": self.effective_date,
+            "expiration_date": self.expiration_date,
             "document_type": self.type_var.get() or None,
             "title": self.title_var.get() or None,
             "extract_recommendations": self.extract_recommendations_var.get(),

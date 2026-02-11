@@ -13,39 +13,14 @@ Architecture Note:
 
 import json
 import os
-import pathlib
 from typing import Any, Optional
 
-from dotenv import load_dotenv
 from utils.structured_logging import get_logger, timed
 
+from rag.guidelines_env import load_guidelines_env
 from rag.guidelines_models import GuidelineSearchResult
 
-
-# Load environment variables from multiple possible locations
-def _load_env():
-    """Load .env from multiple possible locations."""
-    paths = []
-    try:
-        from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
-    except Exception:
-        pass
-    paths.extend([
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path.cwd() / '.env',  # Current working directory
-    ])
-
-    for p in paths:
-        try:
-            if p.exists():
-                load_dotenv(dotenv_path=str(p))
-                return
-        except Exception:
-            pass
-    load_dotenv()  # Try default search
-
-_load_env()
+load_guidelines_env()
 
 logger = get_logger(__name__)
 
@@ -100,6 +75,30 @@ class GuidelinesVectorStore:
             "Set CLINICAL_GUIDELINES_DATABASE_URL environment variable or configure in settings."
         )
 
+    @staticmethod
+    def _prepare_connection_string(conn_str: str) -> str:
+        """Prepare a connection string with SSL and stability parameters.
+
+        Adds sslmode=require, connect_timeout, and TCP keepalives if not
+        already present. Centralizes logic that was previously duplicated
+        across multiple methods.
+
+        Args:
+            conn_str: Raw PostgreSQL connection string
+
+        Returns:
+            Connection string with SSL and stability parameters added
+        """
+        if "sslmode=" not in conn_str:
+            conn_str += "?sslmode=require"
+        if "connect_timeout=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}connect_timeout=10"
+        if "keepalives=" not in conn_str:
+            separator = "&" if "?" in conn_str else "?"
+            conn_str += f"{separator}keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5"
+        return conn_str
+
     def _get_pool(self):
         """Get or create connection pool."""
         if self._pool is None:
@@ -122,22 +121,7 @@ class GuidelinesVectorStore:
                     f"Install with: pip install 'psycopg[binary]'. Error: {e}"
                 )
 
-            conn_str = self._get_connection_string()
-
-            # Add SSL parameters if not present (required for Neon)
-            if "sslmode=" not in conn_str:
-                conn_str += "?sslmode=require"
-
-            # Set connection parameters for better stability
-            # - connect_timeout: Faster failure detection
-            # - keepalives: Prevent idle connection drops
-            # - keepalives_idle: Start keepalive after 30s idle
-            if "connect_timeout=" not in conn_str:
-                separator = "&" if "?" in conn_str else "?"
-                conn_str += f"{separator}connect_timeout=10"
-            if "keepalives=" not in conn_str:
-                separator = "&" if "?" in conn_str else "?"
-                conn_str += f"{separator}keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5"
+            conn_str = self._prepare_connection_string(self._get_connection_string())
 
             # Run migrations before creating pool to ensure schema is up to date
             try:
@@ -314,6 +298,7 @@ class GuidelinesVectorStore:
         filter_recommendation_class: Optional[str] = None,
         filter_evidence_level: Optional[str] = None,
         ef_search: Optional[int] = None,
+        include_expired: bool = False,
     ) -> list[GuidelineSearchResult]:
         """Search for similar guideline embeddings using cosine similarity.
 
@@ -326,6 +311,7 @@ class GuidelinesVectorStore:
             filter_recommendation_class: Filter by recommendation class
             filter_evidence_level: Filter by evidence level
             ef_search: HNSW ef_search parameter for quality/speed tradeoff
+            include_expired: If False (default), exclude guidelines past expiration_date
 
         Returns:
             List of GuidelineSearchResult objects with similarity scores
@@ -364,6 +350,10 @@ class GuidelinesVectorStore:
                     WHERE 1=1
                 """
                 params = [embedding_str]
+
+                # Apply expiration filter
+                if not include_expired:
+                    query += " AND (g.expiration_date IS NULL OR g.expiration_date >= CURRENT_DATE)"
 
                 # Apply filters
                 if filter_specialties:
@@ -536,47 +526,74 @@ class GuidelinesVectorStore:
         self,
         title: str,
         source: Optional[str] = None,
-        version: Optional[str] = None
+        version: Optional[str] = None,
+        filename: Optional[str] = None,
+        content_hash: Optional[str] = None,
     ) -> Optional[str]:
-        """Check if a guideline with the same title/source/version already exists.
+        """Check if a guideline with the same content hash, filename, or title already exists.
+
+        Check order:
+        1. content_hash (fastest, exact content match)
+        2. filename (catches exact re-uploads)
+        3. title/source/version (case-insensitive metadata matching)
 
         Args:
             title: Guideline title
             source: Source organization (optional)
             version: Version string (optional)
+            filename: Original filename (optional)
+            content_hash: MD5 hash of extracted text (optional)
 
         Returns:
             guideline_id if duplicate found, None otherwise
         """
-        import psycopg
-
-        conn_str = self._get_connection_string()
-        if "sslmode=" not in conn_str:
-            conn_str += "?sslmode=require"
+        pool = self._get_pool()
 
         try:
-            with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
+            with pool.connection() as conn:
                 with conn.cursor() as cur:
-                    # Build query based on what fields are provided
-                    if source and version:
-                        # Exact match: title + source + version
+                    # Check content_hash first (exact content match)
+                    if content_hash:
                         cur.execute("""
                             SELECT id FROM guidelines
-                            WHERE title = %s AND source = %s AND version = %s
+                            WHERE content_hash = %s
+                            LIMIT 1
+                        """, (content_hash,))
+                        row = cur.fetchone()
+                        if row:
+                            return row[0]
+
+                    # Check filename (catches exact re-uploads)
+                    if filename:
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE filename = %s
+                            LIMIT 1
+                        """, (filename,))
+                        row = cur.fetchone()
+                        if row:
+                            return row[0]
+
+                    # Fall back to case-insensitive title/source/version matching
+                    if source and version:
+                        cur.execute("""
+                            SELECT id FROM guidelines
+                            WHERE LOWER(title) = LOWER(%s)
+                              AND LOWER(source) = LOWER(%s)
+                              AND LOWER(version) = LOWER(%s)
                             LIMIT 1
                         """, (title, source, version))
                     elif source:
-                        # Match: title + source
                         cur.execute("""
                             SELECT id FROM guidelines
-                            WHERE title = %s AND source = %s
+                            WHERE LOWER(title) = LOWER(%s)
+                              AND LOWER(source) = LOWER(%s)
                             LIMIT 1
                         """, (title, source))
                     else:
-                        # Match: title only
                         cur.execute("""
                             SELECT id FROM guidelines
-                            WHERE title = %s
+                            WHERE LOWER(title) = LOWER(%s)
                             LIMIT 1
                         """, (title,))
 
@@ -601,19 +618,7 @@ class GuidelinesVectorStore:
 
         # Use direct connection instead of pool for this infrequent operation
         # This avoids pool lifecycle issues and "cannot join current thread" errors
-        conn_str = self._get_connection_string()
-
-        # Add SSL parameters if not present (required for Neon)
-        if "sslmode=" not in conn_str:
-            conn_str += "?sslmode=require"
-
-        # Add connection timeout and TCP keepalives
-        if "connect_timeout=" not in conn_str:
-            separator = "&" if "?" in conn_str else "?"
-            conn_str += f"{separator}connect_timeout=10"
-        if "keepalives=" not in conn_str:
-            separator = "&" if "?" in conn_str else "?"
-            conn_str += f"{separator}keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5"
+        conn_str = self._prepare_connection_string(self._get_connection_string())
 
         try:
             # Direct connection with explicit SSL and prepare_threshold=None
@@ -700,12 +705,7 @@ class GuidelinesVectorStore:
         """
         import psycopg
 
-        conn_str = self._get_connection_string()
-        if "sslmode=" not in conn_str:
-            conn_str += "?sslmode=require"
-        if "connect_timeout=" not in conn_str:
-            separator = "&" if "?" in conn_str else "?"
-            conn_str += f"{separator}connect_timeout=10"
+        conn_str = self._prepare_connection_string(self._get_connection_string())
 
         with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
@@ -742,12 +742,7 @@ class GuidelinesVectorStore:
         """
         import psycopg
 
-        conn_str = self._get_connection_string()
-        if "sslmode=" not in conn_str:
-            conn_str += "?sslmode=require"
-        if "connect_timeout=" not in conn_str:
-            separator = "&" if "?" in conn_str else "?"
-            conn_str += f"{separator}connect_timeout=10"
+        conn_str = self._prepare_connection_string(self._get_connection_string())
 
         with psycopg.connect(conn_str, autocommit=False, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
@@ -858,12 +853,7 @@ class GuidelinesVectorStore:
         import psycopg
 
         try:
-            conn_str = self._get_connection_string()
-            if "sslmode=" not in conn_str:
-                conn_str += "?sslmode=require"
-            if "connect_timeout=" not in conn_str:
-                separator = "&" if "?" in conn_str else "?"
-                conn_str += f"{separator}connect_timeout=10"
+            conn_str = self._prepare_connection_string(self._get_connection_string())
 
             with psycopg.connect(conn_str, autocommit=True, prepare_threshold=None) as conn:
                 with conn.cursor() as cur:

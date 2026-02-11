@@ -14,6 +14,7 @@ Uses SEPARATE infrastructure from the main RAG system:
 - CLINICAL_GUIDELINES_NEO4J_* for Neo4j knowledge graph
 """
 
+import hashlib
 import json
 import os
 import threading
@@ -93,6 +94,7 @@ class GuidelinesUploadManager:
         source: Optional[str] = None,
         version: Optional[str] = None,
         effective_date: Optional[date] = None,
+        expiration_date: Optional[date] = None,
         document_type: Optional[str] = None,
         title: Optional[str] = None,
         extract_recommendations: bool = True,
@@ -109,6 +111,7 @@ class GuidelinesUploadManager:
             source: Source organization (e.g. "AHA/ACC")
             version: Guideline version string
             effective_date: When the guideline became effective
+            expiration_date: When the guideline expires (optional)
             document_type: Type of guideline (e.g. "treatment_protocol")
             title: Human-readable title for the guideline
             extract_recommendations: Whether to tag recommendation sections
@@ -127,13 +130,16 @@ class GuidelinesUploadManager:
         if not title:
             title = Path(file_path).stem
 
-        # Check for duplicates if requested
+        # Pre-upload duplicate check (by filename/title/source/version - no content hash yet)
         if skip_duplicates:
             vector_store = self._get_vector_store()
-            existing_id = vector_store.find_duplicate_guideline(title, source, version)
+            existing_id = vector_store.find_duplicate_guideline(
+                title, source, version, filename=filename
+            )
             if existing_id:
                 logger.info(
-                    f"Skipping duplicate guideline: '{title}' (source: {source}, version: {version})",
+                    f"Skipping duplicate guideline: '{title}' "
+                    f"(filename: {filename}, source: {source}, version: {version})",
                     existing_id=existing_id
                 )
                 if progress_callback:
@@ -178,6 +184,35 @@ class GuidelinesUploadManager:
             if not text or not text.strip():
                 raise ValueError("No text could be extracted from the file")
 
+            # Compute content hash for deduplication (Issue 16)
+            content_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+
+            # Post-extraction duplicate check by content hash
+            if skip_duplicates:
+                vector_store = self._get_vector_store()
+                existing_id = vector_store.find_duplicate_guideline(
+                    title, source, version, content_hash=content_hash
+                )
+                if existing_id:
+                    logger.info(
+                        f"Skipping duplicate guideline (content hash match): '{title}'",
+                        existing_id=existing_id
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            GuidelineUploadStatus.COMPLETED,
+                            100.0,
+                            "Skipped (duplicate content)"
+                        )
+                    return None
+
+            # Content validation: warn if text doesn't look medical (Issue 12)
+            content_warning = None
+            try:
+                content_warning = self._validate_medical_content(text[:5000])
+            except Exception:
+                pass  # Non-blocking
+
             # Use extracted metadata title as fallback
             if not title and metadata.title:
                 title = metadata.title
@@ -189,20 +224,51 @@ class GuidelinesUploadManager:
             # --- Step 2: Chunk text (25-50%) ---
             report(GuidelineUploadStatus.CHUNKING, 30)
 
-            chunks = processor.chunk_text(text)
+            # Try structure-aware chunking first, fall back to flat chunking
+            guideline_chunks = None
+            try:
+                from rag.guidelines_chunker import GuidelinesChunker
+                chunker = GuidelinesChunker(
+                    max_chunk_tokens=GUIDELINES_CHUNK_SIZE,
+                    overlap_tokens=GUIDELINES_CHUNK_OVERLAP,
+                )
+                guideline_chunks = chunker.chunk_text(text)
+            except Exception as e:
+                logger.debug(f"Structure-aware chunking not available, using fallback: {e}")
+
+            if guideline_chunks:
+                chunks = guideline_chunks
+                use_structured_chunks = True
+            else:
+                chunks = processor.chunk_text(text)
+                use_structured_chunks = False
+
             chunk_count = len(chunks)
 
             if chunk_count == 0:
                 raise ValueError("Text chunking produced no chunks")
 
-            logger.info(f"Guideline '{filename}' chunked into {chunk_count} pieces")
+            logger.info(f"Guideline '{filename}' chunked into {chunk_count} pieces"
+                        f" (structured={use_structured_chunks})")
             report(GuidelineUploadStatus.CHUNKING, 50)
+
+            # --- Step 2b: Extract recommendation metadata (Issue 9) ---
+            rec_extractor = None
+            if extract_recommendations:
+                try:
+                    from rag.recommendation_extractor import RecommendationExtractor
+                    rec_extractor = RecommendationExtractor()
+                except Exception as e:
+                    logger.debug(f"Recommendation extractor not available: {e}")
 
             # --- Step 3: Generate embeddings (50-75%) ---
             report(GuidelineUploadStatus.EMBEDDING, 55)
 
             embedding_manager = self._get_embedding_manager()
-            chunk_texts = [c.chunk_text for c in chunks]
+            if use_structured_chunks:
+                chunk_texts = [c.chunk_text for c in chunks]
+            else:
+                chunk_texts = [c.chunk_text for c in chunks]
             embedding_response = embedding_manager.generate_embeddings(chunk_texts)
 
             report(GuidelineUploadStatus.EMBEDDING, 75)
@@ -213,24 +279,31 @@ class GuidelinesUploadManager:
             vector_store = self._get_vector_store()
 
             # 4a: Insert guideline metadata row
+            guideline_metadata = {
+                "file_size_bytes": file_size,
+                "page_count": page_count,
+                "chunk_count": chunk_count,
+                "ocr_used": ocr_used,
+                "extract_recommendations": extract_recommendations,
+                "structured_chunking": use_structured_chunks,
+            }
+            if content_warning:
+                guideline_metadata["content_warning"] = content_warning
+
             self._insert_guideline_metadata(
                 vector_store=vector_store,
                 guideline_id=guideline_id,
                 title=title,
+                filename=filename,
                 specialty=specialty or "general",
                 source=source or "OTHER",
                 version=version,
                 effective_date=effective_date,
+                expiration_date=expiration_date,
                 document_type=document_type,
                 file_path=file_path,
-                metadata={
-                    "filename": filename,
-                    "file_size_bytes": file_size,
-                    "page_count": page_count,
-                    "chunk_count": chunk_count,
-                    "ocr_used": ocr_used,
-                    "extract_recommendations": extract_recommendations,
-                },
+                content_hash=content_hash,
+                metadata=guideline_metadata,
             )
 
             report(GuidelineUploadStatus.SYNCING, 82)
@@ -238,22 +311,67 @@ class GuidelinesUploadManager:
             # 4b: Upsert chunk embeddings
             batch_data = []
             for chunk, embedding in zip(chunks, embedding_response.embeddings):
+                chunk_text = chunk.chunk_text
+                chunk_idx = chunk.chunk_index
+                token_count = getattr(chunk, 'token_count', len(chunk_text) // 4)
+
+                # Extract recommendation metadata per chunk (Issue 9)
+                section_type = "recommendation"
+                recommendation_class = None
+                evidence_level = None
+
+                if rec_extractor:
+                    try:
+                        extraction = rec_extractor.extract(chunk_text)
+                        section_type = extraction.section_type
+                        recommendation_class = extraction.recommendation_class
+                        evidence_level = extraction.evidence_level
+                    except Exception:
+                        pass
+
+                # Use structured chunk metadata if available
+                if use_structured_chunks and hasattr(chunk, 'section_heading'):
+                    section_heading = chunk.section_heading
+                    is_rec = getattr(chunk, 'is_recommendation', False)
+                else:
+                    section_heading = None
+                    is_rec = False
+
                 chunk_metadata = {
                     "filename": filename,
-                    "chunk_index": chunk.chunk_index,
-                    "token_count": chunk.token_count,
+                    "chunk_index": chunk_idx,
+                    "token_count": token_count,
                 }
+                if section_heading:
+                    chunk_metadata["section_heading"] = section_heading
+                if is_rec:
+                    chunk_metadata["is_recommendation"] = True
+                if content_warning:
+                    chunk_metadata["content_warning"] = content_warning
+
                 batch_data.append((
-                    chunk.chunk_index,       # chunk_index
-                    chunk.chunk_text,        # chunk_text
+                    chunk_idx,               # chunk_index
+                    chunk_text,              # chunk_text
                     embedding,               # embedding
-                    "recommendation",        # section_type
-                    None,                    # recommendation_class
-                    None,                    # evidence_level
+                    section_type,            # section_type
+                    recommendation_class,    # recommendation_class
+                    evidence_level,          # evidence_level
                     chunk_metadata,          # metadata
                 ))
 
-            vector_store.upsert_embeddings_batch(guideline_id, batch_data)
+            # Upsert embeddings with cleanup on failure (Issue 4/7)
+            try:
+                vector_store.upsert_embeddings_batch(guideline_id, batch_data)
+            except Exception as embed_error:
+                logger.error(f"Embedding upsert failed for '{filename}', cleaning up metadata")
+                try:
+                    vector_store.delete_guideline_complete(guideline_id)
+                except Exception as cleanup_err:
+                    logger.warning(f"Cleanup after embedding failure also failed: {cleanup_err}")
+                raise embed_error
+
+            # Mark neon_synced after successful embedding upsert (Issue 3)
+            self._update_sync_status(vector_store, guideline_id, neon_synced=True)
 
             report(GuidelineUploadStatus.SYNCING, 90)
 
@@ -275,6 +393,8 @@ class GuidelinesUploadManager:
                             },
                             source_description="clinical_guideline",
                         )
+                        # Mark neo4j_synced after successful graph sync (Issue 3)
+                        self._update_sync_status(vector_store, guideline_id, neo4j_synced=True)
                         logger.info(f"Synced guideline '{filename}' to knowledge graph")
                     except Exception as e:
                         logger.warning(f"Knowledge graph sync failed for '{filename}': {e}")
@@ -299,13 +419,16 @@ class GuidelinesUploadManager:
         vector_store,
         guideline_id: str,
         title: str,
+        filename: str,
         specialty: str,
         source: str,
         version: Optional[str],
         effective_date: Optional[date],
-        document_type: Optional[str],
-        file_path: Optional[str],
-        metadata: Optional[dict],
+        expiration_date: Optional[date] = None,
+        document_type: Optional[str] = None,
+        file_path: Optional[str] = None,
+        content_hash: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> None:
         """Insert a row into the guidelines metadata table via the vector store's pool.
 
@@ -319,35 +442,112 @@ class GuidelinesUploadManager:
                 cur.execute(
                     """
                     INSERT INTO guidelines
-                    (id, title, specialty, source, version, effective_date,
-                     document_type, file_path, metadata)
-                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, title, filename, specialty, source, version,
+                     effective_date, expiration_date, document_type,
+                     file_path, content_hash, metadata)
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         title = EXCLUDED.title,
+                        filename = EXCLUDED.filename,
                         specialty = EXCLUDED.specialty,
                         source = EXCLUDED.source,
                         version = EXCLUDED.version,
                         effective_date = EXCLUDED.effective_date,
+                        expiration_date = EXCLUDED.expiration_date,
                         document_type = EXCLUDED.document_type,
                         file_path = EXCLUDED.file_path,
+                        content_hash = EXCLUDED.content_hash,
                         metadata = EXCLUDED.metadata,
                         updated_at = NOW()
                     """,
                     (
                         guideline_id,
                         title,
+                        filename,
                         specialty,
                         source,
                         version,
                         effective_date,
+                        expiration_date,
                         document_type,
                         file_path,
+                        content_hash,
                         json.dumps(metadata) if metadata else None,
                     ),
                 )
                 conn.commit()
 
         logger.debug(f"Inserted guideline metadata for {guideline_id}")
+
+    def _update_sync_status(
+        self,
+        vector_store,
+        guideline_id: str,
+        neon_synced: Optional[bool] = None,
+        neo4j_synced: Optional[bool] = None,
+    ) -> None:
+        """Update sync status flags for a guideline (Issue 3).
+
+        Args:
+            vector_store: GuidelinesVectorStore instance
+            guideline_id: UUID of the guideline
+            neon_synced: Set neon_synced flag (True after embedding upsert succeeds)
+            neo4j_synced: Set neo4j_synced flag (True after graph sync succeeds)
+        """
+        set_clauses = []
+        params = []
+
+        if neon_synced is not None:
+            set_clauses.append("neon_synced = %s")
+            params.append(neon_synced)
+        if neo4j_synced is not None:
+            set_clauses.append("neo4j_synced = %s")
+            params.append(neo4j_synced)
+
+        if not set_clauses:
+            return
+
+        set_clauses.append("updated_at = NOW()")
+        params.append(guideline_id)
+
+        pool = vector_store._get_pool()
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE guidelines SET {', '.join(set_clauses)} WHERE id = %s::uuid",
+                        params,
+                    )
+                    conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to update sync status for {guideline_id}: {e}")
+
+    def _validate_medical_content(self, text: str) -> Optional[str]:
+        """Validate that text appears to contain medical content (Issue 12).
+
+        Uses simple heuristic: check for common medical terms.
+        Returns a warning message if content doesn't look medical, None otherwise.
+        Non-blocking - returns warning only, doesn't prevent upload.
+        """
+        medical_terms = {
+            "patient", "treatment", "diagnosis", "clinical", "therapy",
+            "medication", "drug", "dose", "symptom", "disease",
+            "guideline", "recommendation", "evidence", "study",
+            "risk", "benefit", "protocol", "management", "assessment",
+            "blood", "heart", "lung", "kidney", "liver",
+        }
+
+        text_lower = text.lower()
+        found = sum(1 for term in medical_terms if term in text_lower)
+
+        if found < 3:
+            warning = (
+                f"Low medical content score ({found} medical terms found in first 5000 chars). "
+                "This file may not be a clinical guideline."
+            )
+            logger.warning(warning)
+            return warning
+        return None
 
 
 # Singleton instance

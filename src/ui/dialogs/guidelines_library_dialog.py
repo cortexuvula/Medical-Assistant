@@ -47,9 +47,8 @@ class GuidelinesLibraryDialog(tk.Toplevel):
         self._center_window()
         self._load_guidelines()
 
-        # Make modal
+        # Non-modal - allow interaction with main app
         self.transient(parent)
-        self.grab_set()
 
     def _center_window(self):
         """Center the dialog on screen."""
@@ -161,8 +160,9 @@ class GuidelinesLibraryDialog(tk.Toplevel):
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-        # Bind selection
+        # Bind selection and double-click for chunk browser (Issue 13)
         self.tree.bind("<<TreeviewSelect>>", self._on_selection_change)
+        self.tree.bind("<Double-1>", self._on_double_click)
 
         # Button frame
         button_frame = ttk.Frame(main_frame)
@@ -395,6 +395,172 @@ class GuidelinesLibraryDialog(tk.Toplevel):
             parent=self,
         )
 
+    def _on_double_click(self, event=None):
+        """Handle double-click on a guideline to show chunk browser (Issue 13)."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        guideline_id = selection[0]
+
+        # Find the guideline title for the dialog title
+        guideline_title = "Guideline Chunks"
+        for g in self.guidelines:
+            if g.guideline_id == guideline_id:
+                guideline_title = g.title or g.filename or "Guideline"
+                break
+
+        # Load chunks in background thread
+        import threading
+
+        def _fetch_chunks():
+            try:
+                from rag.guidelines_vector_store import get_guidelines_vector_store
+                store = get_guidelines_vector_store()
+                chunks = store.get_guideline_chunks(guideline_id)
+                self.after(0, lambda c=chunks: self._show_chunk_browser(
+                    guideline_title, c
+                ))
+            except Exception as e:
+                logger.error(f"Failed to load chunks for {guideline_id}: {e}")
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror(
+                    "Error", f"Failed to load chunks: {msg}", parent=self
+                ))
+
+        thread = threading.Thread(target=_fetch_chunks, daemon=True)
+        thread.start()
+
+    def _show_chunk_browser(self, title: str, chunks: list):
+        """Show chunk browser dialog for a guideline."""
+        if not chunks:
+            messagebox.showinfo(
+                "No Chunks",
+                "No chunks found for this guideline.",
+                parent=self,
+            )
+            return
+
+        _GuidelineChunkBrowserDialog(self, title, chunks)
+
     def _refresh_list(self):
         """Refresh the guideline list."""
         self._load_guidelines()
+
+
+class _GuidelineChunkBrowserDialog(tk.Toplevel):
+    """Dialog for browsing chunks of a guideline (Issue 13)."""
+
+    def __init__(self, parent: tk.Widget, title: str, chunks: list):
+        super().__init__(parent)
+        self.title(f"Chunks: {title}")
+        self.geometry("800x600")
+        self.minsize(600, 400)
+
+        self.chunks = chunks
+        self._create_widgets()
+        self._center_window()
+        self.transient(parent)
+
+    def _center_window(self):
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (w // 2)
+        y = (self.winfo_screenheight() // 2) - (h // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _create_widgets(self):
+        main_frame = ttk.Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Chunk list
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("index", "section_type", "rec_class", "evidence", "preview")
+        self.tree = ttk.Treeview(
+            list_frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+        )
+
+        self.tree.heading("index", text="#")
+        self.tree.heading("section_type", text="Section Type")
+        self.tree.heading("rec_class", text="Rec. Class")
+        self.tree.heading("evidence", text="Evidence")
+        self.tree.heading("preview", text="Text Preview")
+
+        self.tree.column("index", width=40, minwidth=30)
+        self.tree.column("section_type", width=120, minwidth=80)
+        self.tree.column("rec_class", width=80, minwidth=60)
+        self.tree.column("evidence", width=80, minwidth=60)
+        self.tree.column("preview", width=400, minwidth=200)
+
+        vsb = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
+
+        # Bind selection for full text display
+        self.tree.bind("<<TreeviewSelect>>", self._on_chunk_select)
+
+        # Full text display
+        ttk.Label(main_frame, text="Full Chunk Text:", font=("TkDefaultFont", 10, "bold")).pack(
+            anchor=tk.W, pady=(10, 5)
+        )
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.text_widget = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            height=8,
+            state=tk.DISABLED,
+            font=("TkDefaultFont", 9),
+        )
+        text_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.text_widget.yview)
+        self.text_widget.configure(yscrollcommand=text_scrollbar.set)
+        self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Populate
+        self._populate_chunks()
+
+        # Close button
+        ttk.Button(main_frame, text="Close", command=self.destroy).pack(
+            pady=(10, 0), anchor=tk.E
+        )
+
+    def _populate_chunks(self):
+        for chunk in self.chunks:
+            idx = chunk.get("chunk_index", 0)
+            section_type = chunk.get("section_type", "recommendation") or ""
+            rec_class = chunk.get("recommendation_class", "") or ""
+            evidence = chunk.get("evidence_level", "") or ""
+            text = chunk.get("chunk_text", "")
+            preview = text[:80].replace("\n", " ") + ("..." if len(text) > 80 else "")
+
+            self.tree.insert(
+                "",
+                tk.END,
+                iid=str(idx),
+                values=(idx, section_type, rec_class, evidence, preview),
+            )
+
+    def _on_chunk_select(self, event=None):
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        chunk_idx = int(selection[0])
+        for chunk in self.chunks:
+            if chunk.get("chunk_index") == chunk_idx:
+                self.text_widget.config(state=tk.NORMAL)
+                self.text_widget.delete("1.0", tk.END)
+                self.text_widget.insert("1.0", chunk.get("chunk_text", ""))
+                self.text_widget.config(state=tk.DISABLED)
+                break

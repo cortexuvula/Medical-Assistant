@@ -40,6 +40,7 @@ class KnowledgeGraphDialog(tk.Toplevel):
         self._data_provider: Optional[GraphDataProvider] = None
         self._graph_data: Optional[GraphData] = None
         self._loading = False
+        self._data_source = "patient"  # "patient" or "guidelines"
 
         self._create_widgets()
         self._center_window()
@@ -124,6 +125,22 @@ class KnowledgeGraphDialog(tk.Toplevel):
         )
         filter_combo.pack(side=tk.LEFT, padx=(5, 15))
         filter_combo.bind("<<ComboboxSelected>>", self._on_filter_change)
+
+        # Separator
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        # Data Source selector
+        ttk.Label(toolbar, text="Source:").pack(side=tk.LEFT)
+        self.data_source_var = tk.StringVar(value="Patient")
+        data_source_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.data_source_var,
+            values=["Patient", "Guidelines"],
+            state="readonly",
+            width=12,
+        )
+        data_source_combo.pack(side=tk.LEFT, padx=(5, 15))
+        data_source_combo.bind("<<ComboboxSelected>>", self._on_data_source_change)
 
         # Separator
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
@@ -293,7 +310,10 @@ class KnowledgeGraphDialog(tk.Toplevel):
 
         def load_thread():
             try:
-                self._data_provider = GraphDataProvider(self.graphiti_client)
+                env_prefix = "CLINICAL_GUIDELINES_" if self._data_source == "guidelines" else ""
+                self._data_provider = GraphDataProvider(
+                    self.graphiti_client, env_prefix=env_prefix
+                )
 
                 # Check health first
                 if not self._data_provider.health_check():
@@ -565,6 +585,26 @@ class KnowledgeGraphDialog(tk.Toplevel):
                 self.stats_label.config(
                     text=f"Filtered: {filtered_data.node_count} nodes  |  {filtered_data.edge_count} edges"
                 )
+
+    def _on_data_source_change(self, event=None) -> None:
+        """Handle data source change between Patient and Guidelines graphs."""
+        source = self.data_source_var.get()
+        new_source = "guidelines" if source == "Guidelines" else "patient"
+
+        if new_source == self._data_source:
+            return
+
+        self._data_source = new_source
+
+        # Close existing provider
+        if self._data_provider:
+            try:
+                self._data_provider.close()
+            except Exception:
+                pass
+            self._data_provider = None
+
+        self._refresh_data()
 
     def _zoom_in(self) -> None:
         """Zoom in on the graph."""

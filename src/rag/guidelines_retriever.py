@@ -44,6 +44,9 @@ class GuidelinesRetriever:
         graph_weight: float = 0.2,
         enable_bm25: bool = True,
         enable_graph: bool = True,
+        enable_query_expansion: bool = True,
+        enable_adaptive_threshold: bool = True,
+        enable_mmr: bool = True,
     ):
         """Initialize the guidelines retriever.
 
@@ -53,13 +56,54 @@ class GuidelinesRetriever:
             graph_weight: Weight for knowledge graph results (0-1)
             enable_bm25: Whether to enable BM25 keyword search
             enable_graph: Whether to enable knowledge graph search
+            enable_query_expansion: Whether to expand medical terms
+            enable_adaptive_threshold: Whether to use adaptive threshold
+            enable_mmr: Whether to use MMR reranking for diversity
         """
         self._vector_weight = vector_weight
         self._bm25_weight = bm25_weight
         self._graph_weight = graph_weight
         self._enable_bm25 = enable_bm25
         self._enable_graph = enable_graph
+        self._enable_query_expansion = enable_query_expansion
+        self._enable_adaptive_threshold = enable_adaptive_threshold
+        self._enable_mmr = enable_mmr
         self._embedding_model = "text-embedding-3-small"
+
+        # Lazy-initialized search quality components
+        self._query_expander = None
+        self._threshold_calculator = None
+        self._mmr_reranker = None
+
+    def _get_query_expander(self):
+        """Get or create medical query expander."""
+        if self._query_expander is None:
+            try:
+                from rag.query_expander import MedicalQueryExpander
+                self._query_expander = MedicalQueryExpander()
+            except Exception as e:
+                logger.debug(f"Query expander not available: {e}")
+        return self._query_expander
+
+    def _get_threshold_calculator(self):
+        """Get or create adaptive threshold calculator."""
+        if self._threshold_calculator is None:
+            try:
+                from rag.adaptive_threshold import AdaptiveThresholdCalculator
+                self._threshold_calculator = AdaptiveThresholdCalculator()
+            except Exception as e:
+                logger.debug(f"Adaptive threshold not available: {e}")
+        return self._threshold_calculator
+
+    def _get_mmr_reranker(self):
+        """Get or create MMR reranker."""
+        if self._mmr_reranker is None:
+            try:
+                from rag.mmr_reranker import MMRReranker
+                self._mmr_reranker = MMRReranker()
+            except Exception as e:
+                logger.debug(f"MMR reranker not available: {e}")
+        return self._mmr_reranker
 
     def _get_embedding(self, text: str) -> list[float]:
         """Get embedding for query text.
@@ -123,12 +167,39 @@ class GuidelinesRetriever:
         """
         start_time = time.time()
 
-        # Get embedding for query
+        # Step 0: Query expansion (expand medical abbreviations/synonyms)
+        expanded_query = query
+        if self._enable_query_expansion:
+            try:
+                expander = self._get_query_expander()
+                if expander:
+                    expansion = expander.expand(query)
+                    if expansion and hasattr(expansion, 'expanded_query'):
+                        expanded_query = expansion.expanded_query
+                        logger.debug(f"Query expanded: '{query}' -> '{expanded_query}'")
+            except Exception as e:
+                logger.debug(f"Query expansion failed, using original: {e}")
+
+        # Get embedding for (potentially expanded) query
         try:
-            query_embedding = self._get_embedding(query)
+            query_embedding = self._get_embedding(expanded_query)
         except Exception as e:
             logger.error(f"Failed to get query embedding: {e}")
             return []
+
+        # Determine effective threshold
+        effective_threshold = similarity_threshold
+        if self._enable_adaptive_threshold:
+            try:
+                calc = self._get_threshold_calculator()
+                if calc:
+                    effective_threshold = calc.calculate(
+                        query_length=len(query.split()),
+                        target_count=top_k,
+                    )
+                    logger.debug(f"Adaptive threshold: {effective_threshold:.3f}")
+            except Exception as e:
+                logger.debug(f"Adaptive threshold failed, using default: {e}")
 
         results_map: dict[str, GuidelineSearchResult] = {}
 
@@ -138,7 +209,7 @@ class GuidelinesRetriever:
             vector_results = vector_store.search(
                 query_embedding=query_embedding,
                 top_k=top_k * 2,  # Get more for merging
-                similarity_threshold=similarity_threshold,
+                similarity_threshold=effective_threshold,
                 filter_specialties=specialties,
                 filter_sources=sources,
                 filter_recommendation_class=recommendation_class,
@@ -211,12 +282,34 @@ class GuidelinesRetriever:
             except Exception as e:
                 logger.debug(f"Graph search failed or not available: {e}")
 
-        # Sort by combined score and limit results
+        # Sort by combined score
         sorted_results = sorted(
             results_map.values(),
             key=lambda x: x.similarity_score,
             reverse=True,
-        )[:top_k]
+        )
+
+        # Step 4: MMR reranking for diversity
+        if self._enable_mmr and len(sorted_results) > top_k:
+            try:
+                reranker = self._get_mmr_reranker()
+                if reranker:
+                    texts = [r.chunk_text for r in sorted_results]
+                    scores = [r.similarity_score for r in sorted_results]
+                    selected_indices = reranker.rerank(
+                        texts=texts,
+                        scores=scores,
+                        top_k=top_k,
+                    )
+                    sorted_results = [sorted_results[i] for i in selected_indices]
+                    logger.debug(f"MMR reranked to {len(sorted_results)} diverse results")
+                else:
+                    sorted_results = sorted_results[:top_k]
+            except Exception as e:
+                logger.debug(f"MMR reranking failed, using score-based: {e}")
+                sorted_results = sorted_results[:top_k]
+        else:
+            sorted_results = sorted_results[:top_k]
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(

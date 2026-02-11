@@ -15,41 +15,17 @@ Indexes:
 
 from utils.structured_logging import get_logger
 import os
-import pathlib
 from typing import Optional
 
-from dotenv import load_dotenv
+from rag.guidelines_env import load_guidelines_env
 
-# Load environment variables
-def _load_env():
-    """Load .env from multiple possible locations."""
-    paths = []
-    try:
-        from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
-    except Exception:
-        pass
-    paths.extend([
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path.cwd() / '.env',  # Current working directory
-    ])
-
-    for p in paths:
-        try:
-            if p.exists():
-                load_dotenv(dotenv_path=str(p))
-                return
-        except Exception:
-            pass
-    load_dotenv()
-
-_load_env()
+load_guidelines_env()
 
 logger = get_logger(__name__)
 
 
 # Migration versions
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 # SQL migrations by version
 MIGRATIONS = {
@@ -381,6 +357,32 @@ MIGRATIONS = {
     -- Record this migration
     INSERT INTO guideline_migrations (version, description)
     VALUES (2, 'Add missing columns for old schema compatibility')
+    ON CONFLICT (version) DO NOTHING;
+    """,
+
+    3: """
+    -- Migration 3: Add content_hash column for duplicate detection by content
+    -- Also adds index for fast lookups
+
+    -- Add content_hash column if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'guidelines' AND column_name = 'content_hash'
+        ) THEN
+            ALTER TABLE guidelines ADD COLUMN content_hash VARCHAR(32);
+        END IF;
+    END $$;
+
+    -- Create index on content_hash for fast duplicate detection
+    CREATE INDEX IF NOT EXISTS idx_guidelines_content_hash
+    ON guidelines (content_hash)
+    WHERE content_hash IS NOT NULL;
+
+    -- Record this migration
+    INSERT INTO guideline_migrations (version, description)
+    VALUES (3, 'Add content_hash column for duplicate detection')
     ON CONFLICT (version) DO NOTHING;
     """,
 }

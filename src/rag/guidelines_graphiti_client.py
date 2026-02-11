@@ -13,41 +13,15 @@ import asyncio
 import atexit
 from utils.structured_logging import get_logger
 import os
-import pathlib
 import threading
 from datetime import datetime
 from typing import Any, Optional
 
-from dotenv import load_dotenv
-
+from rag.guidelines_env import load_guidelines_env
 from rag.guidelines_models import GuidelineSearchResult
 from utils.timeout_config import get_timeout
 
-
-# Load environment variables
-def _load_env():
-    """Load .env from multiple possible locations."""
-    paths = []
-    try:
-        from managers.data_folder_manager import data_folder_manager
-        paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
-    except Exception:
-        pass
-    paths.extend([
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path.cwd() / '.env',  # Current working directory
-    ])
-
-    for p in paths:
-        try:
-            if p.exists():
-                load_dotenv(dotenv_path=str(p))
-                return
-        except Exception:
-            pass
-    load_dotenv()
-
-_load_env()
+load_guidelines_env()
 
 logger = get_logger(__name__)
 
@@ -364,10 +338,15 @@ class GuidelinesGraphitiClient:
                 fact = getattr(result, "fact", getattr(result, "content", ""))
                 source_desc = getattr(result, "source_description", None)
 
-                # Extract guideline ID from source description
+                # Extract guideline ID from episode name (format: "guideline_{uuid}")
+                # Note: source_description contains title text, not the ID
                 guideline_id = None
-                if source_desc and source_desc.startswith("guideline_"):
-                    guideline_id = source_desc[10:]
+                episode_name = getattr(result, "name", "") or ""
+                if episode_name.startswith("guideline_"):
+                    guideline_id = episode_name[len("guideline_"):]
+                elif source_desc and source_desc.startswith("guideline_"):
+                    # Fallback to source_description for older episodes
+                    guideline_id = source_desc[len("guideline_"):]
 
                 graph_results.append({
                     "entity_name": entity_name,
