@@ -55,10 +55,11 @@ jobs:
 
     - name: Check if executable was created
       run: |
-        if [ -f "dist/MedicalAssistant" ]; then
+        if [ -f "dist/MedicalAssistant/MedicalAssistant" ]; then
           echo "Build successful!"
-          ls -la dist/
+          ls -la dist/MedicalAssistant/
         else
           echo "Build failed!"
+          ls -la dist/ || echo "dist directory does not exist"
           exit 1
         fi
