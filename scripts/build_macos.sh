@@ -257,6 +257,41 @@ codesign --force --sign "$MACOS_SIGNING_IDENTITY" --timestamp "dist/$DMG_NAME"
 echo "DMG signed."
 
 echo ""
+echo "=== Notarizing DMG ==="
+DMG_NOTARIZE_OUTPUT=$(xcrun notarytool submit "dist/$DMG_NAME" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_ID_PASSWORD" \
+    --team-id "$MACOS_TEAM_ID" \
+    --wait \
+    --timeout 30m 2>&1)
+
+echo "$DMG_NOTARIZE_OUTPUT"
+
+if echo "$DMG_NOTARIZE_OUTPUT" | grep -q "status: Accepted"; then
+    echo "DMG notarization accepted."
+    xcrun stapler staple "dist/$DMG_NAME"
+    xcrun stapler validate "dist/$DMG_NAME"
+    echo "DMG stapling complete."
+else
+    echo "WARNING: DMG notarization was NOT accepted."
+    DMG_SUBMISSION_ID=$(echo "$DMG_NOTARIZE_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+    if [ -n "$DMG_SUBMISSION_ID" ]; then
+        echo "Fetching DMG notarization log..."
+        xcrun notarytool log "$DMG_SUBMISSION_ID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$MACOS_TEAM_ID" \
+            dmg_notarization_log.json 2>&1 || true
+        if [ -f "dmg_notarization_log.json" ]; then
+            echo "=== DMG Notarization Log ==="
+            cat dmg_notarization_log.json
+            echo ""
+        fi
+    fi
+    echo "Continuing without DMG notarization."
+fi
+
+echo ""
 echo "=== Done ==="
 echo "Signed and notarized DMG: dist/$DMG_NAME"
 
