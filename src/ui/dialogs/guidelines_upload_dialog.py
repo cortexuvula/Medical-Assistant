@@ -205,7 +205,7 @@ class GuidelinesUploadDialog(tk.Toplevel):
         advanced_toggle.pack(fill=tk.X, padx=5, pady=(10, 0))
 
         # Advanced options frame (initially hidden)
-        self._advanced_frame = ttk.LabelFrame(info_frame, text="Advanced Options", padding=5)
+        self._advanced_frame = ttk.LabelFrame(info_frame, text="Advanced Options", padx=5, pady=5)
 
         # Row 2: Version and Effective Date
         row2 = ttk.Frame(self._advanced_frame)
