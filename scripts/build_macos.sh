@@ -84,29 +84,30 @@ echo "Signing identity: $MACOS_SIGNING_IDENTITY"
 # hardened runtime (--options runtime) before signing the outer .app bundle.
 # Using --deep alone is insufficient and deprecated by Apple.
 
-# Step 1: Sign all shared libraries (.dylib, .so) and object files
-echo "Signing individual binaries inside .app bundle..."
+# Step 1: Sign ALL Mach-O binaries inside the .app bundle.
+# This catches dylibs, .so files, AND standalone executables like:
+# - Python.framework/Versions/3.12/Python
+# - speech_recognition/flac-mac
+# - torch/bin/protoc, torch/bin/torch_shm_manager
+# All must be signed with hardened runtime + timestamp for notarization.
+echo "Signing all Mach-O binaries inside .app bundle..."
 SIGN_COUNT=0
 while IFS= read -r -d '' binary; do
-    codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
-        --options runtime \
-        --timestamp \
-        "$binary" 2>/dev/null && SIGN_COUNT=$((SIGN_COUNT + 1))
-done < <(find "dist/MedicalAssistant.app" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.o" \) -print0)
-echo "Signed $SIGN_COUNT shared libraries."
-
-# Step 2: Sign all executable binaries (Mach-O files without extensions)
-while IFS= read -r -d '' binary; do
-    # Check if it's a Mach-O binary
+    # Skip the main executable (signed separately with entitlements)
+    if [ "$binary" = "dist/MedicalAssistant.app/Contents/MacOS/MedicalAssistant" ]; then
+        continue
+    fi
+    # Check if it's a Mach-O binary (dylib, executable, or bundle)
     if file "$binary" | grep -q "Mach-O"; then
         codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
             --options runtime \
             --timestamp \
             "$binary" 2>/dev/null && SIGN_COUNT=$((SIGN_COUNT + 1))
     fi
-done < <(find "dist/MedicalAssistant.app/Contents/MacOS" -type f ! -name "MedicalAssistant" -print0)
+done < <(find "dist/MedicalAssistant.app" -type f -print0)
+echo "Signed $SIGN_COUNT Mach-O binaries."
 
-# Step 3: Sign the main executable with entitlements
+# Step 2: Sign the main executable with entitlements
 echo "Signing main executable..."
 codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
     --options runtime \
@@ -114,7 +115,7 @@ codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
     --timestamp \
     "dist/MedicalAssistant.app/Contents/MacOS/MedicalAssistant"
 
-# Step 4: Sign the outer .app bundle
+# Step 3: Sign the outer .app bundle
 echo "Signing .app bundle..."
 codesign --force --sign "$MACOS_SIGNING_IDENTITY" \
     --options runtime \
