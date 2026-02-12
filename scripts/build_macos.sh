@@ -216,37 +216,67 @@ fi
 rm -f "dist/MedicalAssistant.app.zip"
 
 # ─── Create DMG (from the stapled .app) ───
+# IMPORTANT: We use ditto (not cp or hdiutil -srcfolder) to copy the .app
+# into the DMG because ditto preserves extended attributes, which is where
+# the notarization staple ticket lives. Without ditto, the .app inside the
+# DMG loses its staple and Gatekeeper cannot verify it offline.
 echo ""
 echo "=== Creating DMG ==="
 
 DMG_NAME="MedicalAssistant-macOS.dmg"
+DMG_TEMP="dist/tmp_dmg.dmg"
+DMG_MOUNT="/Volumes/Medical Assistant"
 
-if command -v create-dmg &> /dev/null; then
-    echo "Using create-dmg for styled DMG..."
-    create-dmg \
-        --volname "Medical Assistant" \
-        --volicon "icon.icns" \
-        --window-pos 200 120 \
-        --window-size 600 400 \
-        --icon-size 100 \
-        --icon "MedicalAssistant.app" 150 190 \
-        --app-drop-link 450 190 \
-        --no-internet-enable \
-        "dist/$DMG_NAME" \
-        "dist/MedicalAssistant.app" || {
-            echo "create-dmg failed, falling back to hdiutil..."
-            hdiutil create -volname "Medical Assistant" \
-                -srcfolder "dist/MedicalAssistant.app" \
-                -ov -format UDZO \
-                "dist/$DMG_NAME"
-        }
-else
-    echo "create-dmg not found, using hdiutil..."
-    hdiutil create -volname "Medical Assistant" \
-        -srcfolder "dist/MedicalAssistant.app" \
-        -ov -format UDZO \
-        "dist/$DMG_NAME"
+# Step 1: Create a writable disk image (large enough for the .app)
+APP_SIZE_KB=$(du -sk "dist/MedicalAssistant.app" | cut -f1)
+DMG_SIZE_KB=$((APP_SIZE_KB + 20480))  # Add 20MB headroom for DMG overhead + styling
+echo "Creating writable disk image (${DMG_SIZE_KB}KB)..."
+hdiutil create -size "${DMG_SIZE_KB}k" \
+    -volname "Medical Assistant" \
+    -fs HFS+ \
+    -type SPARSE \
+    "$DMG_TEMP"
+
+# Step 2: Mount the writable image
+echo "Mounting writable image..."
+hdiutil attach "${DMG_TEMP}.sparseimage" -mountpoint "$DMG_MOUNT" -nobrowse
+
+# Step 3: Copy .app using ditto (preserves xattrs including notarization staple)
+echo "Copying .app with ditto (preserves notarization staple)..."
+ditto "dist/MedicalAssistant.app" "$DMG_MOUNT/MedicalAssistant.app"
+
+# Step 4: Create Applications symlink for drag-to-install
+ln -s /Applications "$DMG_MOUNT/Applications"
+
+# Step 5: Set volume icon if available
+if [ -f "icon.icns" ]; then
+    cp "icon.icns" "$DMG_MOUNT/.VolumeIcon.icns"
+    SetFile -c icnC "$DMG_MOUNT/.VolumeIcon.icns" 2>/dev/null || true
+    SetFile -a C "$DMG_MOUNT" 2>/dev/null || true
 fi
+
+# Step 6: Verify the .app staple survived the copy
+echo "Verifying .app staple inside DMG..."
+if xcrun stapler validate "$DMG_MOUNT/MedicalAssistant.app" 2>&1 | grep -q "worked"; then
+    echo ".app staple preserved inside DMG!"
+else
+    echo "WARNING: .app staple was NOT preserved. Re-stapling inside DMG..."
+    xcrun stapler staple "$DMG_MOUNT/MedicalAssistant.app" || echo "Re-staple failed (will rely on DMG-level staple + online check)"
+fi
+
+# Step 7: Unmount
+echo "Unmounting..."
+hdiutil detach "$DMG_MOUNT" -force
+
+# Step 8: Convert to compressed read-only DMG
+echo "Converting to compressed read-only DMG..."
+rm -f "dist/$DMG_NAME"
+hdiutil convert "${DMG_TEMP}.sparseimage" \
+    -format UDZO \
+    -o "dist/$DMG_NAME"
+
+# Clean up temp image
+rm -f "${DMG_TEMP}.sparseimage"
 
 echo "DMG created: dist/$DMG_NAME"
 
