@@ -231,7 +231,7 @@ echo "Creating writable disk image (${DMG_SIZE_KB}KB)..."
 hdiutil create -size "${DMG_SIZE_KB}k" \
     -volname "Medical Assistant" \
     -fs HFS+ \
-    -format UDRW \
+    -ov \
     "$DMG_TEMP"
 
 # Step 2: Mount the writable image (capture actual mount point)
