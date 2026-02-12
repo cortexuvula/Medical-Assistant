@@ -216,36 +216,36 @@ fi
 rm -f "dist/MedicalAssistant.app.zip"
 
 # ─── Create DMG (from the stapled .app) ───
-# IMPORTANT: We use ditto (not cp or hdiutil -srcfolder) to copy the .app
-# into the DMG because ditto preserves extended attributes, which is where
-# the notarization staple ticket lives. Without ditto, the .app inside the
-# DMG loses its staple and Gatekeeper cannot verify it offline.
+# We create a writable DMG, copy the .app with ditto (preserves xattrs),
+# explicitly staple inside the writable image, then convert to read-only.
 echo ""
 echo "=== Creating DMG ==="
 
 DMG_NAME="MedicalAssistant-macOS.dmg"
-DMG_TEMP="dist/tmp_dmg.dmg"
-DMG_MOUNT="/Volumes/Medical Assistant"
+DMG_TEMP="dist/tmp_rw.dmg"
 
-# Step 1: Create a writable disk image (large enough for the .app)
+# Step 1: Create a writable disk image
 APP_SIZE_KB=$(du -sk "dist/MedicalAssistant.app" | cut -f1)
-DMG_SIZE_KB=$((APP_SIZE_KB + 20480))  # Add 20MB headroom for DMG overhead + styling
+DMG_SIZE_KB=$((APP_SIZE_KB + 20480))  # Add 20MB headroom
 echo "Creating writable disk image (${DMG_SIZE_KB}KB)..."
 hdiutil create -size "${DMG_SIZE_KB}k" \
     -volname "Medical Assistant" \
     -fs HFS+ \
-    -type SPARSE \
+    -format UDRW \
     "$DMG_TEMP"
 
-# Step 2: Mount the writable image
+# Step 2: Mount the writable image (capture actual mount point)
 echo "Mounting writable image..."
-hdiutil attach "${DMG_TEMP}.sparseimage" -mountpoint "$DMG_MOUNT" -nobrowse
+MOUNT_OUTPUT=$(hdiutil attach "$DMG_TEMP" -nobrowse -readwrite 2>&1)
+echo "$MOUNT_OUTPUT"
+DMG_MOUNT=$(echo "$MOUNT_OUTPUT" | grep "Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
+echo "Mount point: $DMG_MOUNT"
 
-# Step 3: Copy .app using ditto (preserves xattrs including notarization staple)
-echo "Copying .app with ditto (preserves notarization staple)..."
+# Step 3: Copy .app using ditto (preserves xattrs)
+echo "Copying .app with ditto..."
 ditto "dist/MedicalAssistant.app" "$DMG_MOUNT/MedicalAssistant.app"
 
-# Step 4: Create Applications symlink for drag-to-install
+# Step 4: Create Applications symlink
 ln -s /Applications "$DMG_MOUNT/Applications"
 
 # Step 5: Set volume icon if available
@@ -255,28 +255,46 @@ if [ -f "icon.icns" ]; then
     SetFile -a C "$DMG_MOUNT" 2>/dev/null || true
 fi
 
-# Step 6: Verify the .app staple survived the copy
-echo "Verifying .app staple inside DMG..."
-if xcrun stapler validate "$DMG_MOUNT/MedicalAssistant.app" 2>&1 | grep -q "worked"; then
-    echo ".app staple preserved inside DMG!"
-else
-    echo "WARNING: .app staple was NOT preserved. Re-stapling inside DMG..."
-    xcrun stapler staple "$DMG_MOUNT/MedicalAssistant.app" || echo "Re-staple failed (will rely on DMG-level staple + online check)"
-fi
+# Step 6: Staple the .app INSIDE the writable DMG
+# Even though the source .app was stapled, the ticket may not survive
+# filesystem copies. Re-stapling inside the writable image guarantees it.
+echo ""
+echo "=== Stapling .app inside writable DMG ==="
+xcrun stapler staple "$DMG_MOUNT/MedicalAssistant.app"
+xcrun stapler validate "$DMG_MOUNT/MedicalAssistant.app"
+echo "Staple status of .app inside writable DMG: verified."
+
+# Diagnostic: show xattrs on .app inside DMG
+echo "Extended attributes on .app inside DMG:"
+xattr "$DMG_MOUNT/MedicalAssistant.app" 2>&1 || echo "(none)"
 
 # Step 7: Unmount
-echo "Unmounting..."
+echo "Unmounting writable image..."
 hdiutil detach "$DMG_MOUNT" -force
 
-# Step 8: Convert to compressed read-only DMG
+# Step 8: Convert to compressed read-only UDZO
 echo "Converting to compressed read-only DMG..."
 rm -f "dist/$DMG_NAME"
-hdiutil convert "${DMG_TEMP}.sparseimage" \
+hdiutil convert "$DMG_TEMP" \
     -format UDZO \
     -o "dist/$DMG_NAME"
 
+# Step 9: Verify staple survived the UDZO conversion
+echo ""
+echo "=== Post-conversion staple verification ==="
+VERIFY_MOUNT=$(hdiutil attach "dist/$DMG_NAME" -nobrowse -readonly 2>&1 | grep "Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
+echo "Verify mount: $VERIFY_MOUNT"
+xcrun stapler validate "$VERIFY_MOUNT/MedicalAssistant.app" 2>&1
+STAPLE_CHECK=$?
+ls -la "$VERIFY_MOUNT/"
+hdiutil detach "$VERIFY_MOUNT" -force
+if [ $STAPLE_CHECK -ne 0 ]; then
+    echo "WARNING: .app staple did NOT survive UDZO conversion."
+    echo "The DMG-level notarization will still protect the .app via online Gatekeeper check."
+fi
+
 # Clean up temp image
-rm -f "${DMG_TEMP}.sparseimage"
+rm -f "$DMG_TEMP"
 
 echo "DMG created: dist/$DMG_NAME"
 
