@@ -68,6 +68,23 @@ if [ -f "dist/MedicalAssistant.app/Contents/Frameworks/speech_recognition/flac-m
     rm -f "dist/MedicalAssistant.app/Contents/Frameworks/speech_recognition/flac-mac"
 fi
 
+# ─── Remove broken symlinks ───
+# PyInstaller may create symlinks whose targets don't exist inside the bundle.
+# Broken symlinks cause codesign --verify to report "No such file or directory"
+# and spctl --assess to reject the app ("invalid destination for symbolic link
+# in bundle"), which triggers a Gatekeeper malware warning on the end user's Mac
+# even when the app is notarized.
+echo "Scanning for broken symlinks in .app bundle..."
+BROKEN_COUNT=0
+while IFS= read -r -d '' link; do
+    if [ ! -e "$link" ]; then
+        echo "  Removing broken symlink: $link -> $(readlink "$link")"
+        rm -f "$link"
+        BROKEN_COUNT=$((BROKEN_COUNT + 1))
+    fi
+done < <(find "dist/MedicalAssistant.app" -type l -print0)
+echo "Removed $BROKEN_COUNT broken symlink(s)."
+
 # ─── Code Signing & Notarization ───
 # Skip if MACOS_SIGNING_IDENTITY is not set (local dev builds)
 if [ -z "$MACOS_SIGNING_IDENTITY" ]; then
@@ -282,7 +299,9 @@ hdiutil convert "$DMG_TEMP" \
 # Step 9: Verify staple survived the UDZO conversion
 echo ""
 echo "=== Post-conversion staple verification ==="
-VERIFY_MOUNT=$(hdiutil attach "dist/$DMG_NAME" -nobrowse -readonly 2>/dev/null | grep "Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
+# Use grep for lines starting with /dev/ to avoid matching hdiutil's
+# UDZO verification progress lines (which also contain "Apple_HFS").
+VERIFY_MOUNT=$(hdiutil attach "dist/$DMG_NAME" -nobrowse -readonly 2>/dev/null | grep "^/dev/.*Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
 echo "Verify mount: $VERIFY_MOUNT"
 if [ -z "$VERIFY_MOUNT" ] || [ ! -d "$VERIFY_MOUNT" ]; then
     echo "WARNING: Could not determine mount point from hdiutil attach."
