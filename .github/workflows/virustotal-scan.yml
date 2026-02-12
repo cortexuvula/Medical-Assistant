@@ -42,12 +42,50 @@ jobs:
           out-file-path: assets
 
       - name: VirusTotal Scan
+        id: vt-scan
         uses: crazy-max/ghaction-virustotal@v4
         with:
           vt_api_key: ${{ secrets.VT_API_KEY }}
-          update_release_body: true
+          update_release_body: false
           github_token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             assets/MedicalAssistant-Linux.tar.gz
             assets/MedicalAssistant-Windows.zip
             assets/MedicalAssistant-macOS.dmg
+
+      - name: Update release body with VirusTotal results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.get-tag.outputs.tag }}
+          VT_ANALYSIS: ${{ steps.vt-scan.outputs.analysis }}
+        run: |
+          # Get the current release body
+          CURRENT_BODY=$(gh release view "$TAG" --json body -q '.body' 2>/dev/null || echo "")
+
+          # Strip any previous VirusTotal section
+          CLEAN_BODY=$(echo "$CURRENT_BODY" | sed '/^## VirusTotal Analysis/,$d' | sed -e :a -e '/^\n*$/{$d;N;ba}')
+
+          # Build the VirusTotal results section from the analysis output
+          # Format: file=url,file=url,...
+          VT_SECTION="## VirusTotal Analysis"
+          VT_SECTION="$VT_SECTION"$'\n\n'"| File | VirusTotal Results |"
+          VT_SECTION="$VT_SECTION"$'\n'"| --- | --- |"
+
+          IFS=',' read -ra ENTRIES <<< "$VT_ANALYSIS"
+          for entry in "${ENTRIES[@]}"; do
+            FILE=$(echo "$entry" | cut -d'=' -f1 | xargs basename 2>/dev/null || echo "$entry")
+            URL=$(echo "$entry" | cut -d'=' -f2-)
+            if [ -n "$URL" ]; then
+              VT_SECTION="$VT_SECTION"$'\n'"| $FILE | [View Results]($URL) |"
+            fi
+          done
+
+          # Combine and update
+          if [ -n "$CLEAN_BODY" ]; then
+            NEW_BODY="$CLEAN_BODY"$'\n\n'"$VT_SECTION"
+          else
+            NEW_BODY="$VT_SECTION"
+          fi
+
+          gh release edit "$TAG" --notes "$NEW_BODY"
+          echo "Release $TAG updated with VirusTotal results"
