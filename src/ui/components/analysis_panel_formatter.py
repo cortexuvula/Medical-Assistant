@@ -556,6 +556,210 @@ class AnalysisPanelFormatter:
             return True
         return False
 
+    def format_compliance_panel(
+        self,
+        result: str,
+        metadata: Optional[Dict] = None
+    ) -> None:
+        """Format compliance analysis for the panel.
+
+        Displays a condition summary strip, score, and disclaimer.
+
+        Args:
+            result: The analysis result text (string or dict)
+            metadata: Metadata with conditions, score, disclaimer
+        """
+        self.widget.config(state='normal')
+        self.widget.delete('1.0', 'end')
+
+        # Configure compliance-specific tags
+        font_family = "Segoe UI"
+        self.widget.tag_configure(
+            "compliance_aligned",
+            background="#28a745",
+            foreground="white",
+            font=(font_family, 9, "bold"),
+            spacing1=2,
+            spacing3=2,
+        )
+        self.widget.tag_configure(
+            "compliance_gap",
+            background="#fd7e14",
+            foreground="black",
+            font=(font_family, 9, "bold"),
+            spacing1=2,
+            spacing3=2,
+        )
+        self.widget.tag_configure(
+            "compliance_review",
+            background="#17a2b8",
+            foreground="white",
+            font=(font_family, 9, "bold"),
+            spacing1=2,
+            spacing3=2,
+        )
+        self.widget.tag_configure(
+            "disclaimer",
+            font=(font_family, 8, "italic"),
+            foreground="#6c757d",
+            spacing1=5,
+        )
+        self.widget.tag_configure(
+            "score_text",
+            font=(font_family, 9, "bold"),
+            foreground="#0d6efd",
+        )
+        self.widget.tag_configure(
+            "condition_strip",
+            font=(font_family, 9),
+            spacing1=3,
+            spacing3=3,
+        )
+
+        if not metadata:
+            # No metadata — just show plain text
+            self.widget.insert('end', result, "normal")
+            self.widget.config(state='disabled')
+            return
+
+        has_sufficient = metadata.get('has_sufficient_data', True)
+
+        if not has_sufficient:
+            self.widget.insert('end', "Insufficient data\n", "header")
+            self.widget.insert('end', result + "\n", "normal")
+            disclaimer = metadata.get('disclaimer', '')
+            if disclaimer:
+                self.widget.insert('end', f"\n{disclaimer}\n", "disclaimer")
+            self.widget.config(state='disabled')
+            return
+
+        # Condition strip with inline status icons
+        conditions = metadata.get('conditions', [])
+        if conditions:
+            parts = []
+            for cond in conditions:
+                name = cond.get('condition', 'Unknown')
+                status = cond.get('status', 'REVIEW')
+                icon = {
+                    'ALIGNED': '\u2713', 'GAP': '\u2717', 'REVIEW': '?'
+                }.get(status, '?')
+                parts.append(f"{name} {icon}")
+
+            strip_text = "Conditions:  " + "  |  ".join(parts) + "\n"
+
+            # Insert each condition segment with appropriate tag
+            self.widget.insert('end', "Conditions:  ", "condition_strip")
+            for i, cond in enumerate(conditions):
+                name = cond.get('condition', 'Unknown')
+                status = cond.get('status', 'REVIEW')
+                icon = {
+                    'ALIGNED': '\u2713', 'GAP': '\u2717', 'REVIEW': '?'
+                }.get(status, '?')
+                tag = {
+                    'ALIGNED': 'compliance_aligned',
+                    'GAP': 'compliance_gap',
+                    'REVIEW': 'compliance_review',
+                }.get(status, 'normal')
+
+                self.widget.insert('end', f" {name} {icon} ", tag)
+                if i < len(conditions) - 1:
+                    self.widget.insert('end', "  |  ", "condition_strip")
+            self.widget.insert('end', "\n")
+
+        # Score line
+        overall_score = metadata.get('overall_score', 0.0)
+        conditions_count = metadata.get('conditions_count', len(conditions))
+        score_pct = int(overall_score * 100)
+        self.widget.insert(
+            'end',
+            f"\nScore: {score_pct}% aligned  |  {conditions_count} conditions analyzed\n",
+            "score_text",
+        )
+        self.widget.insert('end', "-" * 45 + "\n", "separator")
+
+        # Insert the readable result text with formatting
+        if isinstance(result, str) and result:
+            self._format_compliance_content(result)
+
+        # Disclaimer at bottom
+        disclaimer = metadata.get('disclaimer', '')
+        if disclaimer:
+            self.widget.insert('end', f"\n{disclaimer}\n", "disclaimer")
+
+        self.widget.config(state='disabled')
+
+    def _format_compliance_content(self, text: str) -> None:
+        """Parse and format compliance analysis content.
+
+        Args:
+            text: The compliance analysis text to format
+        """
+        if not text:
+            return
+
+        lines = text.split('\n')
+        in_findings = False
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                self.widget.insert('end', '\n')
+                continue
+
+            # Skip the summary header lines (already displayed above)
+            if stripped.startswith('COMPLIANCE ANALYSIS SUMMARY'):
+                continue
+            if stripped.startswith('Overall Alignment Score:'):
+                continue
+            if stripped.startswith('Conditions Analyzed:'):
+                continue
+            if stripped.startswith('Guidelines Searched:'):
+                continue
+            if stripped.startswith('Conditions:') and '\u2713' in stripped:
+                continue
+            if stripped.startswith('Note:') and 'AI-assisted' in stripped:
+                continue
+
+            # Section headers
+            if stripped in ('DETAILED FINDINGS', 'INSUFFICIENT DATA'):
+                self.widget.insert('end', stripped + '\n', "header")
+                in_findings = True
+                continue
+
+            # Condition section headers
+            if stripped.startswith('---') and stripped.endswith('---'):
+                self.widget.insert('end', stripped + '\n', "header")
+                continue
+
+            # Score/guidelines line under condition header
+            if stripped.startswith('Score:') and 'Guidelines matched:' in stripped:
+                self.widget.insert('end', stripped + '\n', "summary")
+                continue
+
+            # Status findings
+            if '[ALIGNED]' in stripped:
+                self.widget.insert('end', stripped + '\n', "compliance_aligned")
+                continue
+            if '[GAP]' in stripped:
+                self.widget.insert('end', stripped + '\n', "compliance_gap")
+                continue
+            if '[REVIEW]' in stripped:
+                self.widget.insert('end', stripped + '\n', "compliance_review")
+                continue
+
+            # Guideline references
+            if stripped.startswith('Guideline'):
+                self.widget.insert('end', stripped + '\n', "detail")
+                continue
+
+            # Recommendations
+            if stripped.startswith('Recommendation:'):
+                self.widget.insert('end', stripped + '\n', "recommendation")
+                continue
+
+            # Default
+            self.widget.insert('end', stripped + '\n', "normal")
+
     def _is_recommendation(self, line: str) -> bool:
         """Check if line is a recommendation.
 

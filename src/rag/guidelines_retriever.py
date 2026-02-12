@@ -397,6 +397,59 @@ class GuidelinesRetriever:
             reverse=True,
         )
 
+    def get_guidelines_for_conditions(
+        self,
+        conditions: list[dict],
+        top_k_per_condition: int = 5,
+    ) -> dict[str, list]:
+        """Retrieve guidelines for each extracted condition.
+
+        Uses existing search_for_conditions() and search_for_medications()
+        methods which leverage conditions_covered[] and medications_covered[]
+        GIN-indexed arrays in the database.
+
+        Args:
+            conditions: List of dicts with 'condition' and optional 'medications' keys
+            top_k_per_condition: Max guidelines per condition
+
+        Returns:
+            Dict mapping condition name to list of matching GuidelineSearchResult
+        """
+        results = {}
+        for item in conditions:
+            name = item.get("condition", "")
+            if not name:
+                continue
+
+            meds = item.get("medications", [])
+
+            # Search by condition using existing method
+            condition_results = self.search_for_conditions(
+                [name], top_k=top_k_per_condition
+            )
+
+            # Search by medications using existing method
+            med_results = (
+                self.search_for_medications(meds, top_k=3) if meds else []
+            )
+
+            # Merge and deduplicate
+            merged = {
+                f"{r.guideline_id}_{r.chunk_index}": r for r in condition_results
+            }
+            for r in med_results:
+                key = f"{r.guideline_id}_{r.chunk_index}"
+                if key not in merged:
+                    merged[key] = r
+
+            results[name] = sorted(
+                merged.values(),
+                key=lambda x: x.similarity_score,
+                reverse=True,
+            )[:top_k_per_condition]
+
+        return results
+
     def get_guideline_context(
         self,
         soap_note: str,

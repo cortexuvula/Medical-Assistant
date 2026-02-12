@@ -143,17 +143,23 @@ class ComplianceGeneratorMixin:
             pass
 
         # Build status message from metadata
-        guidelines_checked = metadata.get('guidelines_checked', 0)
-        compliant_count = metadata.get('compliant_count', 0)
+        has_sufficient = metadata.get('has_sufficient_data', True)
+        overall_score = metadata.get('overall_score', 0.0)
         gap_count = metadata.get('gap_count', 0)
         warning_count = metadata.get('warning_count', 0)
-        overall_score = metadata.get('overall_score', 0.0)
+        conditions_count = metadata.get('conditions_count', 0)
 
-        status_msg = f"Compliance check complete: {int(overall_score * 100)}% score"
+        if not has_sufficient:
+            self.app.status_manager.info("Compliance: insufficient guideline data")
+            return
+
+        status_msg = f"Compliance: {int(overall_score * 100)}% aligned"
+        if conditions_count > 0:
+            status_msg += f", {conditions_count} conditions"
         if gap_count > 0:
-            status_msg += f", {gap_count} gaps identified"
+            status_msg += f", {gap_count} gaps"
         if warning_count > 0:
-            status_msg += f", {warning_count} warnings"
+            status_msg += f", {warning_count} review"
 
         self.app.status_manager.success(status_msg)
 
@@ -272,6 +278,17 @@ class ComplianceGeneratorMixin:
                 logger.warning("Compliance text widget not found")
                 return
 
+            # Check insufficient data state
+            has_sufficient = metadata.get('has_sufficient_data', True)
+            if not has_sufficient:
+                disclaimer = metadata.get('disclaimer', '')
+                msg = result or "Insufficient data for compliance analysis."
+                if disclaimer:
+                    msg += f"\n\n{disclaimer}"
+                self._update_analysis_panel(compliance_text, msg)
+                self.app.status_manager.info("Compliance: insufficient guideline data")
+                return
+
             try:
                 from ui.components.analysis_panel_formatter import AnalysisPanelFormatter
                 formatter = AnalysisPanelFormatter(compliance_text)
@@ -294,12 +311,15 @@ class ComplianceGeneratorMixin:
             overall_score = metadata.get('overall_score', 0.0)
             gap_count = metadata.get('gap_count', 0)
             warning_count = metadata.get('warning_count', 0)
+            conditions_count = metadata.get('conditions_count', 0)
 
-            status_parts = [f"Compliance: {int(overall_score * 100)}%"]
+            status_parts = [f"Compliance: {int(overall_score * 100)}% aligned"]
+            if conditions_count > 0:
+                status_parts.append(f"{conditions_count} conditions")
             if gap_count > 0:
                 status_parts.append(f"{gap_count} gaps")
             if warning_count > 0:
-                status_parts.append(f"{warning_count} warnings")
+                status_parts.append(f"{warning_count} review")
 
             self.app.status_manager.success(" | ".join(status_parts))
 

@@ -154,6 +154,39 @@ class ComplianceResult:
     specialties_analyzed: list = field(default_factory=list)  # List[str]
 
 
+@dataclass
+class ConditionFinding:
+    """A single compliance finding for a condition."""
+    status: str  # ALIGNED | GAP | REVIEW
+    finding: str
+    guideline_reference: str
+    recommendation: str = ""  # empty for ALIGNED
+    citation_verified: bool = False
+
+
+@dataclass
+class ConditionCompliance:
+    """Compliance results for a single condition."""
+    condition: str
+    status: str  # ALIGNED | GAP | REVIEW (worst finding)
+    findings: list = field(default_factory=list)  # List[ConditionFinding]
+    score: float = 0.0
+    guidelines_matched: int = 0
+
+
+@dataclass
+class ComplianceAnalysisResult:
+    """Complete condition-centric compliance result."""
+    conditions: list = field(default_factory=list)  # List[ConditionCompliance]
+    overall_score: float = 0.0
+    has_sufficient_data: bool = False
+    guidelines_searched: int = 0
+    disclaimer: str = (
+        "AI-assisted analysis for clinical decision support. "
+        "Verify findings against current clinical guidelines."
+    )
+
+
 # ============================================================================
 # Pydantic models for database and API
 # ============================================================================
