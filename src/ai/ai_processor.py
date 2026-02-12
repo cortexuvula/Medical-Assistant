@@ -27,6 +27,7 @@ Usage:
         handle_error(result.error)
 """
 
+import os
 from typing import Dict, Any, Optional
 from utils.structured_logging import get_logger
 from utils.security import get_security_manager
@@ -563,7 +564,14 @@ class AIProcessor:
         if ai_provider == PROVIDER_OPENAI:
             model = analysis_settings.get("model", "gpt-4")
         elif ai_provider == PROVIDER_OLLAMA:
-            model = analysis_settings.get("ollama_model", "llama3")
+            model = analysis_settings.get("ollama_model", "")
+            if not model:
+                # Auto-detect from Ollama if no task-specific model configured
+                from ai.providers.ollama_provider import _get_first_available_model
+                from utils.http_client_manager import get_http_client_manager
+                _session = get_http_client_manager().get_requests_session("ollama")
+                _base = os.getenv("OLLAMA_API_URL", "http://localhost:11434").rstrip("/")
+                model = _get_first_available_model(_session, _base) or "llama3"
         elif ai_provider == PROVIDER_ANTHROPIC:
             model = analysis_settings.get("anthropic_model", "claude-sonnet-4-20250514")
         elif ai_provider == PROVIDER_GEMINI:

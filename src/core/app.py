@@ -549,6 +549,7 @@ class MedicalDictationApp(
                 ("openai", "OpenAI"),
                 ("anthropic", "Anthropic"),
                 ("gemini", "Gemini"),
+                ("ollama", "Ollama"),
             ],
             "stt": [
                 ("groq", "GROQ"),
@@ -562,6 +563,11 @@ class MedicalDictationApp(
         display_names = []
 
         for provider_key, display_name in all_providers:
+            if provider_key == "ollama":
+                # Ollama uses a URL, not an API key — it defaults to localhost:11434
+                available.append(provider_key)
+                display_names.append(display_name)
+                continue
             api_key = security_mgr.get_api_key(provider_key)
             if api_key:
                 available.append(provider_key)

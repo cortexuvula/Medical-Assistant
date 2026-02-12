@@ -48,7 +48,7 @@ from ai.providers.router import call_ai, call_ai_streaming
 # Re-export individual provider functions
 from ai.providers.openai_provider import call_openai, call_openai_streaming
 from ai.providers.anthropic_provider import call_anthropic, call_anthropic_streaming
-from ai.providers.ollama_provider import call_ollama, fallback_ollama_chat
+from ai.providers.ollama_provider import call_ollama, fallback_ollama_generate
 from ai.providers.gemini_provider import call_gemini
 
 # Re-export base utilities
@@ -80,7 +80,7 @@ __all__ = [
     'call_anthropic',
     'call_anthropic_streaming',
     'call_ollama',
-    'fallback_ollama_chat',
+    'fallback_ollama_generate',
     'call_gemini',
     # Utilities
     'get_model_key_for_task',

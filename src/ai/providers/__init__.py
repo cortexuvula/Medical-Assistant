@@ -14,7 +14,7 @@ from ai.providers.anthropic_provider import (
 )
 from ai.providers.ollama_provider import (
     call_ollama,
-    fallback_ollama_chat,
+    fallback_ollama_generate,
 )
 from ai.providers.gemini_provider import call_gemini
 from ai.providers.router import call_ai, call_ai_streaming
@@ -23,7 +23,7 @@ __all__ = [
     'get_model_key_for_task',
     'call_openai', 'call_openai_streaming',
     'call_anthropic', 'call_anthropic_streaming',
-    'call_ollama', 'fallback_ollama_chat',
+    'call_ollama', 'fallback_ollama_generate',
     'call_gemini',
     'call_ai', 'call_ai_streaming',
 ]
