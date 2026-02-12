@@ -282,15 +282,22 @@ hdiutil convert "$DMG_TEMP" \
 # Step 9: Verify staple survived the UDZO conversion
 echo ""
 echo "=== Post-conversion staple verification ==="
-VERIFY_MOUNT=$(hdiutil attach "dist/$DMG_NAME" -nobrowse -readonly 2>&1 | grep "Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
+VERIFY_MOUNT=$(hdiutil attach "dist/$DMG_NAME" -nobrowse -readonly 2>/dev/null | grep "Apple_HFS" | sed 's/.*Apple_HFS[[:space:]]*//')
 echo "Verify mount: $VERIFY_MOUNT"
-xcrun stapler validate "$VERIFY_MOUNT/MedicalAssistant.app" 2>&1
-STAPLE_CHECK=$?
-ls -la "$VERIFY_MOUNT/"
-hdiutil detach "$VERIFY_MOUNT" -force
-if [ $STAPLE_CHECK -ne 0 ]; then
-    echo "WARNING: .app staple did NOT survive UDZO conversion."
-    echo "The DMG-level notarization will still protect the .app via online Gatekeeper check."
+if [ -z "$VERIFY_MOUNT" ] || [ ! -d "$VERIFY_MOUNT" ]; then
+    echo "WARNING: Could not determine mount point from hdiutil attach."
+    echo "Skipping post-conversion staple verification."
+    # Try to detach any mounted volume
+    hdiutil detach "/Volumes/Medical Assistant" -force 2>/dev/null || true
+else
+    xcrun stapler validate "$VERIFY_MOUNT/MedicalAssistant.app" 2>&1
+    STAPLE_CHECK=$?
+    ls -la "$VERIFY_MOUNT/"
+    hdiutil detach "$VERIFY_MOUNT" -force
+    if [ $STAPLE_CHECK -ne 0 ]; then
+        echo "WARNING: .app staple did NOT survive UDZO conversion."
+        echo "The DMG-level notarization will still protect the .app via online Gatekeeper check."
+    fi
 fi
 
 # Clean up temp image
