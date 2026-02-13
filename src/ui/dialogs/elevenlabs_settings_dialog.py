@@ -124,7 +124,8 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     diar_thresh_entry.insert(0, diar_thresh_str)
     diar_thresh_entry.grid(row=14, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="Optional. Confidence threshold for speaker detection (0.0-2.0). "
-              "Only effective when Number of Speakers is left empty (auto-detect mode).",
+              "Only effective when Number of Speakers is left empty (auto-detect mode). "
+              "Code default: 0.1 when empty. API native default: 0.22.",
               wraplength=400, foreground="gray").grid(row=15, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
     # Diarization Tips
@@ -132,9 +133,11 @@ def show_elevenlabs_settings_dialog(parent: tk.Tk) -> None:
     tips_frame.grid(row=16, column=0, columnspan=2, sticky="ew", pady=(10, 5), padx=(0, 10))
     ttk.Label(tips_frame, text=(
         "For best multi-speaker detection:\n"
-        "1. Leave 'Number of Speakers' empty to let the API auto-detect.\n"
-        "2. Use 'Diarization Threshold' (e.g. 0.3-0.5) to fine-tune sensitivity.\n"
-        "3. Setting a fixed number of speakers disables the threshold parameter."
+        "1. For doctor-patient conversations, set 'Number of Speakers' to 2.\n"
+        "2. OR leave it empty and lower 'Diarization Threshold' (e.g. 0.05-0.15).\n"
+        "   Note: threshold only works when Number of Speakers is empty.\n"
+        "3. Set 'Timestamps Granularity' to 'word' for best diarization accuracy.\n"
+        "4. API default threshold is 0.22 — lower = more speakers detected."
     ), wraplength=450, foreground="gray", justify="left").pack(anchor="w", padx=10, pady=10)
 
     # Entity Detection

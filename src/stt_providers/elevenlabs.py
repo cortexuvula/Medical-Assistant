@@ -23,6 +23,14 @@ ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 class ElevenLabsProvider(BaseSTTProvider):
     """Implementation of the ElevenLabs STT provider."""
 
+    @staticmethod
+    def _clean_speaker_label(speaker_id) -> str:
+        """Convert speaker_id like 'speaker_0' to clean label '0'."""
+        sid = str(speaker_id)
+        if sid.startswith("speaker_"):
+            return sid[len("speaker_"):]
+        return sid
+
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
@@ -184,33 +192,39 @@ class ElevenLabsProvider(BaseSTTProvider):
             # Add diarization parameters
             diarize = elevenlabs_settings.get("diarize", True)
             
+            # Language code and timestamps are general transcription parameters
+            language_code = elevenlabs_settings.get("language_code", "")
+            if language_code:
+                data['language_code'] = language_code
+
+            timestamps_granularity = elevenlabs_settings.get("timestamps_granularity", "word")
+            if timestamps_granularity:
+                data['timestamps_granularity'] = timestamps_granularity
+
             if diarize:
                 # ElevenLabs API expects lowercase "true"/"false" in multipart form data;
                 # Python's requests library sends bool True as "True" (capital T) which
                 # the API may silently ignore.
                 data['diarize'] = 'true'
-                
+
                 # Get number of speakers setting
                 num_speakers = elevenlabs_settings.get("num_speakers", None)
                 if num_speakers is not None:
                     data['num_speakers'] = str(num_speakers)
                 # When num_speakers is None, omit it so API auto-detects
                 # and diarization_threshold takes effect
-                    
-                # Setting additional parameters that might help with diarization
-                language_code = elevenlabs_settings.get("language_code", "")
-                if language_code:
-                    data['language_code'] = language_code
-                    
-                timestamps_granularity = elevenlabs_settings.get("timestamps_granularity", "word")
-                if timestamps_granularity:
-                    data['timestamps_granularity'] = timestamps_granularity
 
                 # Add diarization threshold if set (fine-tune speaker detection)
                 # Only effective when num_speakers is omitted (per ElevenLabs docs)
                 diarization_threshold = elevenlabs_settings.get("diarization_threshold")
                 if diarization_threshold is not None:
                     data['diarization_threshold'] = str(diarization_threshold)
+
+                # When neither num_speakers nor diarization_threshold is configured,
+                # apply a more aggressive default threshold (0.1) than the API default
+                # (0.22) to improve detection of multiple speakers in medical consultations
+                if num_speakers is None and diarization_threshold is None:
+                    data['diarization_threshold'] = '0.1'
 
             # Add audio event tagging setting (controls ambient sound descriptions)
             # When False, transcription won't include things like "[keyboard clicking]"
@@ -361,6 +375,15 @@ class ElevenLabsProvider(BaseSTTProvider):
                     if 'diarization_threshold' in data:
                         diag_parts.append(f"threshold: {data['diarization_threshold']}")
                     print(" | ".join(diag_parts))
+
+                    # Per-speaker word count for diagnostics
+                    speaker_counts = {}
+                    for w in result['words']:
+                        sid = w.get(speaker_field_name)
+                        if sid is not None:
+                            speaker_counts[sid] = speaker_counts.get(sid, 0) + 1
+                    for sid, count in sorted(speaker_counts.items()):
+                        print(f"  {sid}: {count} words")
 
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
@@ -586,23 +609,23 @@ class ElevenLabsProvider(BaseSTTProvider):
             if speaker != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
-                    speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+                    speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
                     result.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
-                
+
                 current_speaker = speaker
-            
+
             # Add word to current text
             # Add space before word if needed
             if current_text and not word.startswith(("'", ".", ",", "!", "?", ":", ";")):
                 current_text.append(" ")
             current_text.append(word)
-        
+
         # Add the last paragraph
         if current_text:
-            speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+            speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
             result.append(f"{speaker_label}{''.join(current_text)}")
-        
+
         return "\n\n".join(result)
 
     def _format_diarized_transcript_with_field(self, words: list, speaker_field: str) -> str:
@@ -645,23 +668,23 @@ class ElevenLabsProvider(BaseSTTProvider):
             if speaker != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
-                    speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+                    speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
                     result.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
-                
+
                 current_speaker = speaker
-            
+
             # Add word to current text
             # Add space before word if needed
             if current_text and not word.startswith(("'", ".", ",", "!", "?", ":", ";")):
                 current_text.append(" ")
             current_text.append(word)
-        
+
         # Add the last paragraph
         if current_text:
-            speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+            speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
             result.append(f"{speaker_label}{''.join(current_text)}")
-        
+
         return "\n\n".join(result)
 
     def _format_diarized_transcript_from_segments(self, result: dict) -> str:
@@ -705,20 +728,20 @@ class ElevenLabsProvider(BaseSTTProvider):
             if speaker != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
-                    speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+                    speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
                     result.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
-                
+
                 current_speaker = speaker
-            
+
             # Add segment to current text
             current_text.append(text)
-        
+
         # Add the last paragraph
         if current_text:
-            speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+            speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
             result.append(f"{speaker_label}{''.join(current_text)}")
-        
+
         return "\n\n".join(result)
 
     def _format_diarized_transcript_from_speakers(self, result: dict) -> str:
@@ -756,20 +779,20 @@ class ElevenLabsProvider(BaseSTTProvider):
             if speaker_id != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
-                    speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+                    speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
                     result.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
-                
+
                 current_speaker = speaker_id
-            
+
             # Add segments to current text
             for segment in segments:
                 text = segment.get("text", "")
                 current_text.append(text)
-        
+
         # Add the last paragraph
         if current_text:
-            speaker_label = f"Speaker {current_speaker}: " if current_speaker is not None else ""
+            speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
             result.append(f"{speaker_label}{''.join(current_text)}")
         
         return "\n\n".join(result)
