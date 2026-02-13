@@ -217,10 +217,14 @@ class ComplianceGeneratorMixin:
 
                 if response and response.success:
                     # Store analysis for View Details functionality
-                    self.app._last_compliance_analysis = {
+                    analysis_data = {
                         'result': response.result,
                         'metadata': response.metadata or {}
                     }
+                    self.app._last_compliance_analysis = analysis_data
+                    # Also store on WorkflowUI so notebook_tabs can access it
+                    if hasattr(self.app, 'ui'):
+                        self.app.ui._last_compliance_analysis = analysis_data
                     logger.debug(f"Stored compliance analysis on app (result length: {len(response.result)})")
 
                     # Update panel with formatted results

@@ -277,13 +277,16 @@ class MedicationGeneratorMixin:
 
                 if response and response.success:
                     # Store analysis for View Details functionality
-                    self.app._last_medication_analysis = {
+                    analysis_data = {
                         'result': response.result,
                         'analysis_type': 'comprehensive',
                         'metadata': response.metadata or {}
                     }
-                    logger.info(f"Stored medication analysis on app id={id(self.app)} (result length: {len(response.result)})")
-                    logger.info(f"self.app type: {type(self.app)}")
+                    self.app._last_medication_analysis = analysis_data
+                    # Also store on WorkflowUI so notebook_tabs can access it
+                    if hasattr(self.app, 'ui'):
+                        self.app.ui._last_medication_analysis = analysis_data
+                    logger.info(f"Stored medication analysis on app (result length: {len(response.result)})")
 
                     # Update panel with formatted results
                     self.app.after(0, lambda: self._update_medication_panel_formatted(

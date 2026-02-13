@@ -1000,12 +1000,15 @@ class NotebookTabs:
             logger.info(f"self.parent type: {type(self.parent)}, id: {id(self.parent)}")
 
             # Check if analysis exists and has content
+            # Try WorkflowUI first, then fall back to main app
             analysis = getattr(self.parent, '_last_medication_analysis', None)
-            logger.info(f"_last_medication_analysis found: {analysis is not None}")
+            if not analysis:
+                main_app = getattr(self.parent, 'parent', None)
+                if main_app:
+                    analysis = getattr(main_app, '_last_medication_analysis', None)
 
             if not analysis:
-                logger.warning("No medication analysis available on parent")
-                logger.info(f"Parent attributes starting with '_last': {[a for a in dir(self.parent) if a.startswith('_last')]}")
+                logger.warning("No medication analysis available on parent or main app")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No medication analysis available. Generate a SOAP note first.")
                 return
@@ -1042,17 +1045,20 @@ class NotebookTabs:
             logger.debug("View Details button clicked - opening diagnostic details")
 
             # Check if analysis exists and has content
+            # Try WorkflowUI first, then fall back to main app
             analysis = getattr(self.parent, '_last_diagnostic_analysis', None)
             if not analysis:
-                logger.warning("No diagnostic analysis available on parent")
+                main_app = getattr(self.parent, 'parent', None)
+                if main_app:
+                    analysis = getattr(main_app, '_last_diagnostic_analysis', None)
+            if not analysis:
+                logger.warning("No diagnostic analysis available on parent or main app")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No diagnostic analysis available. Generate a SOAP note first.")
                 return
 
             # Simple inline dialog (DiagnosticResultsDialog available for full-featured display)
             from tkinter import messagebox
-
-            analysis = self.parent._last_diagnostic_analysis
             result = analysis.get('result', 'No analysis available')
 
             # Create a simple dialog to display the result
@@ -1385,9 +1391,15 @@ class NotebookTabs:
             logger.debug("View Details button clicked - opening compliance details")
 
             # Check if analysis exists and has content
+            # Try WorkflowUI first, then fall back to main app
             analysis = getattr(self.parent, '_last_compliance_analysis', None)
             if not analysis:
-                logger.warning("No compliance analysis available on parent")
+                # Compliance generator stores on the main app (self.parent.parent)
+                main_app = getattr(self.parent, 'parent', None)
+                if main_app:
+                    analysis = getattr(main_app, '_last_compliance_analysis', None)
+            if not analysis:
+                logger.warning("No compliance analysis available on parent or main app")
                 if hasattr(self.parent, 'status_manager'):
                     self.parent.status_manager.warning("No compliance analysis available. Generate a SOAP note first.")
                 return
