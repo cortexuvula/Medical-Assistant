@@ -8,6 +8,7 @@ transcription, and SOAP note generation.
 import os
 import concurrent.futures
 
+from pydub import AudioSegment
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -148,9 +149,20 @@ class SOAPProcessor:
                 
                 # Try transcription with the unified transcribe_audio method that handles prefix audio
                 self.app.after(0, lambda: self.status_manager.progress("Transcribing SOAP audio with prefix..."))
-                
+
+                # Re-load from the saved MP3 file for transcription.
+                # The MP3 encode/decode cycle normalizes the audio and removes
+                # concatenation artifacts from live recording's 3-second chunking,
+                # producing diarization results identical to the "upload audio file" path.
+                if save_result and os.path.exists(audio_path):
+                    transcription_segment = AudioSegment.from_file(audio_path, format="mp3")
+                    logger.info(f"Re-loaded saved audio for transcription: {len(transcription_segment)}ms")
+                else:
+                    transcription_segment = audio_segment  # Fallback to in-memory
+                    logger.warning("Could not re-load saved audio, using in-memory segment")
+
                 # Use the transcribe_audio method which already handles prefix audio and fallbacks
-                transcript = self.audio_handler.transcribe_audio(audio_segment)
+                transcript = self.audio_handler.transcribe_audio(transcription_segment)
                 
                 # Log the result
                 if transcript:
@@ -322,8 +334,16 @@ class SOAPProcessor:
                 logger.error(f"[Async] Audio save reported success but file not found: {audio_path}")
                 raise ValueError("Audio file not found after save")
             
+            # Re-load from the saved MP3 for transcription (same fix as sync path).
+            if os.path.exists(audio_path):
+                transcription_segment = AudioSegment.from_file(audio_path, format="mp3")
+                logger.info(f"[Async] Re-loaded saved audio for transcription: {len(transcription_segment)}ms")
+            else:
+                transcription_segment = audio_segment
+                logger.warning("[Async] Could not re-load saved audio, using in-memory segment")
+
             # Transcribe audio
-            transcript = self.audio_handler.transcribe_audio(audio_segment)
+            transcript = self.audio_handler.transcribe_audio(transcription_segment)
             if not transcript:
                 raise ValueError("Transcription failed - no text recognized")
             

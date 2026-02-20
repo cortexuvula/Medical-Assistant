@@ -971,13 +971,13 @@ class AudioHandler:
                 # Make a copy to avoid issues with buffer overwriting
                 audio_data_copy = indata.copy()
 
-                # Check for clipping and normalize if needed
+                # Log clipping but do NOT normalize per-chunk — per-chunk scaling
+                # creates volume discontinuities that break ElevenLabs diarization.
+                # The MP3 encode/decode cycle before transcription handles any clipping.
                 max_val = np.abs(audio_data_copy).max()
                 if max_val >= 0.99:
-                    # Audio is clipping, normalize it
-                    audio_data_copy = audio_data_copy * 0.8
                     if len(accumulated_data) <= 3:
-                        logger.warning(f"Audio callback {len(accumulated_data) + 1}: CLIPPING DETECTED AND NORMALIZED! Original max={max_val:.6f}")
+                        logger.warning(f"Audio callback {len(accumulated_data) + 1}: clipping detected (max={max_val:.6f}), not normalizing to preserve diarization")
 
                 # Add to accumulated buffer
                 accumulated_data.append(audio_data_copy)
