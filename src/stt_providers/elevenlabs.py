@@ -580,6 +580,195 @@ class ElevenLabsProvider(BaseSTTProvider):
                 except Exception:
                     pass
 
+    def _build_api_params(self) -> dict:
+        """Build the common API request parameters for ElevenLabs STT.
+
+        Returns:
+            Dictionary of form-data parameters for the API request.
+        """
+        elevenlabs_settings = settings_manager.get("elevenlabs", {})
+
+        data = {
+            'model_id': elevenlabs_settings.get("model_id", "scribe_v2")
+        }
+
+        temperature = elevenlabs_settings.get("temperature")
+        if temperature is not None:
+            data['temperature'] = temperature
+
+        diarize = elevenlabs_settings.get("diarize", True)
+
+        language_code = elevenlabs_settings.get("language_code", "")
+        if language_code:
+            data['language_code'] = language_code
+
+        timestamps_granularity = elevenlabs_settings.get("timestamps_granularity", "word")
+        if timestamps_granularity:
+            data['timestamps_granularity'] = timestamps_granularity
+
+        if diarize:
+            data['diarize'] = 'true'
+            num_speakers = elevenlabs_settings.get("num_speakers", None)
+            if num_speakers is not None:
+                data['num_speakers'] = str(num_speakers)
+            diarization_threshold = elevenlabs_settings.get("diarization_threshold")
+            if diarization_threshold is not None:
+                data['diarization_threshold'] = str(diarization_threshold)
+            if num_speakers is None and diarization_threshold is None:
+                data['diarization_threshold'] = '0.1'
+
+        tag_audio_events = elevenlabs_settings.get("tag_audio_events", True)
+        data['tag_audio_events'] = str(tag_audio_events).lower()
+
+        entity_detection = elevenlabs_settings.get("entity_detection", [])
+        if entity_detection:
+            data['entity_detection'] = entity_detection
+
+        keyterms = elevenlabs_settings.get("keyterms", [])
+        if keyterms:
+            data['keyterms'] = keyterms
+
+        return data
+
+    def _extract_transcript_from_response(self, result: dict, diarize: bool) -> str:
+        """Extract and format transcript from an ElevenLabs API response.
+
+        Handles speaker diarization detection and formatting.
+
+        Args:
+            result: Parsed JSON response from the API.
+            diarize: Whether diarization was requested.
+
+        Returns:
+            Formatted transcript string.
+        """
+        has_speaker_info = False
+        diarization_location = None
+
+        if 'speakers' in result:
+            has_speaker_info = True
+            diarization_location = "root.speakers"
+
+        if 'diarization' in result:
+            has_speaker_info = True
+            diarization_location = "root.diarization"
+
+        if 'words' in result and result['words']:
+            for entry in result['words']:
+                for key in entry.keys():
+                    if 'speaker' in key.lower():
+                        has_speaker_info = True
+                        if key == 'speaker_id' or diarization_location is None:
+                            diarization_location = f"words.{key}"
+
+            # Log unique speakers
+            if has_speaker_info and diarization_location and diarization_location.startswith("words."):
+                speaker_field_name = diarization_location.split('.')[1]
+                unique_speakers = set()
+                for w in result['words']:
+                    sid = w.get(speaker_field_name)
+                    if sid is not None:
+                        unique_speakers.add(sid)
+                self.logger.info(
+                    f"Diarization result: {len(unique_speakers)} unique speakers "
+                    f"(field: {speaker_field_name}, speakers: {unique_speakers})"
+                )
+                speaker_counts = {}
+                for w in result['words']:
+                    sid = w.get(speaker_field_name)
+                    if sid is not None:
+                        speaker_counts[sid] = speaker_counts.get(sid, 0) + 1
+                for sid, count in sorted(speaker_counts.items()):
+                    print(f"  {sid}: {count} words")
+
+        if has_speaker_info:
+            if diarization_location and diarization_location.startswith("words."):
+                speaker_field = diarization_location.split('.')[1]
+                return self._format_diarized_transcript_with_field(result['words'], speaker_field)
+            elif diarization_location == "root.diarization" and 'diarization' in result:
+                return self._format_diarized_transcript_from_segments(result)
+            elif diarization_location == "root.speakers" and 'speakers' in result:
+                return self._format_diarized_transcript_from_speakers(result)
+            else:
+                return self._format_diarized_transcript(result['words'])
+        else:
+            self.logger.warning("No speaker info found, using plain text fallback.")
+            return result.get("text", "")
+
+    def transcribe_file(self, file_path: str) -> str:
+        """Transcribe audio directly from a file without AudioSegment conversion.
+
+        Sends the file directly to the ElevenLabs API, bypassing WAV conversion.
+        This produces results identical to uploading through the ElevenLabs web
+        interface and avoids any audio manipulation that could degrade diarization.
+
+        Args:
+            file_path: Path to an audio file (MP3, WAV, etc.)
+
+        Returns:
+            Transcription text or empty string on failure.
+        """
+        if not self._check_api_key():
+            return ""
+
+        transcript = ""
+        try:
+            ext = os.path.splitext(file_path)[1].lower()
+            content_types = {
+                '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+                '.m4a': 'audio/mp4', '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+            }
+            content_type = content_types.get(ext, 'audio/mpeg')
+            filename = os.path.basename(file_path)
+
+            file_size = os.path.getsize(file_path)
+            file_size_kb = file_size / 1024
+            timeout_seconds = max(60, int(file_size_kb / 500) * 60)
+
+            self.logger.info(
+                f"transcribe_file: sending {filename} directly to API "
+                f"({file_size_kb:.1f}KB, {content_type})"
+            )
+
+            data = self._build_api_params()
+            diarize = data.get('diarize') == 'true'
+
+            self.logger.info(f"transcribe_file request params: {data}")
+
+            url = ELEVENLABS_STT_URL
+            headers = {'xi-api-key': self.api_key}
+
+            with open(file_path, 'rb') as audio_file:
+                files = {'file': (filename, audio_file, content_type)}
+                try:
+                    response = self._make_api_call(
+                        url, headers=headers, files=files,
+                        data=data, timeout=timeout_seconds,
+                    )
+                except (APIError, RateLimitError, ServiceUnavailableError) as e:
+                    self.logger.error(f"transcribe_file API call failed: {e}")
+                    raise TranscriptionError(f"ElevenLabs transcribe_file failed: {e}")
+
+            if response.status_code == 200:
+                result = response.json()
+                self.logger.info(
+                    f"transcribe_file response: {len(result.get('words', []))} words, "
+                    f"keys={list(result.keys())}"
+                )
+                transcript = self._extract_transcript_from_response(result, diarize)
+            else:
+                self.logger.error(
+                    f"transcribe_file error: {response.status_code} - {response.text}"
+                )
+
+        except TranscriptionError:
+            raise
+        except Exception as e:
+            self.logger.error(f"transcribe_file error: {e}", exc_info=True)
+
+        return transcript
+
     def _format_diarized_transcript(self, words: list) -> str:
         """Format diarized words from ElevenLabs into a readable transcript with speaker labels.
         

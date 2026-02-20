@@ -8,7 +8,6 @@ transcription, and SOAP note generation.
 import os
 import concurrent.futures
 
-from pydub import AudioSegment
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -147,28 +146,37 @@ class SOAPProcessor:
                     self.app.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
                 
-                # Try transcription with the unified transcribe_audio method that handles prefix audio
-                self.app.after(0, lambda: self.status_manager.progress("Transcribing SOAP audio with prefix..."))
+                # Transcribe by sending the saved MP3 file directly to the
+                # ElevenLabs API — bypassing AudioSegment→WAV conversion, prefix
+                # audio concatenation, and all intermediate audio manipulation.
+                # This is the exact same thing that happens when the user uploads
+                # an audio file, which produces correct multi-speaker diarization.
+                self.app.after(0, lambda: self.status_manager.progress("Transcribing SOAP audio..."))
 
-                # Re-load from the saved MP3 file for transcription.
-                # The MP3 encode/decode cycle normalizes the audio and removes
-                # concatenation artifacts from live recording's 3-second chunking,
-                # producing diarization results identical to the "upload audio file" path.
+                transcript = None
                 if save_result and os.path.exists(audio_path):
-                    transcription_segment = AudioSegment.from_file(audio_path, format="mp3")
-                    logger.info(f"Re-loaded saved audio for transcription: {len(transcription_segment)}ms")
-                else:
-                    transcription_segment = audio_segment  # Fallback to in-memory
-                    logger.warning("Could not re-load saved audio, using in-memory segment")
+                    try:
+                        elevenlabs = self.audio_handler.elevenlabs_provider
+                        if elevenlabs and hasattr(elevenlabs, 'transcribe_file'):
+                            logger.info(f"Using transcribe_file (direct MP3→API) for: {audio_path}")
+                            transcript = elevenlabs.transcribe_file(audio_path)
+                            if transcript:
+                                # Apply vocabulary corrections (normally done by transcribe_audio)
+                                from managers.vocabulary_manager import vocabulary_manager
+                                transcript = vocabulary_manager.correct_transcript(transcript)
+                                logger.info(f"transcribe_file succeeded: {len(transcript)} chars")
+                    except Exception as e:
+                        logger.warning(f"transcribe_file failed, falling back: {e}")
+                        transcript = None
 
-                # Use the transcribe_audio method which already handles prefix audio and fallbacks
-                transcript = self.audio_handler.transcribe_audio(transcription_segment)
-                
-                # Log the result
-                if transcript:
-                    logger.info("Successfully transcribed SOAP audio with prefix")
-                else:
-                    logger.warning("Failed to transcribe SOAP audio with any provider")
+                # Fallback: standard transcribe_audio path
+                if not transcript:
+                    logger.info("Using standard transcribe_audio fallback")
+                    transcript = self.audio_handler.transcribe_audio(audio_segment)
+                    if transcript:
+                        logger.info("Fallback transcribe_audio succeeded")
+                    else:
+                        logger.warning("Fallback transcribe_audio also failed")
                 # If all transcription methods failed
                 if not transcript:
                     raise ValueError("All transcription methods failed - no text recognized")
@@ -334,16 +342,24 @@ class SOAPProcessor:
                 logger.error(f"[Async] Audio save reported success but file not found: {audio_path}")
                 raise ValueError("Audio file not found after save")
             
-            # Re-load from the saved MP3 for transcription (same fix as sync path).
-            if os.path.exists(audio_path):
-                transcription_segment = AudioSegment.from_file(audio_path, format="mp3")
-                logger.info(f"[Async] Re-loaded saved audio for transcription: {len(transcription_segment)}ms")
-            else:
-                transcription_segment = audio_segment
-                logger.warning("[Async] Could not re-load saved audio, using in-memory segment")
+            # Send saved MP3 directly to ElevenLabs API (same as sync path).
+            transcript = None
+            try:
+                elevenlabs = self.audio_handler.elevenlabs_provider
+                if elevenlabs and hasattr(elevenlabs, 'transcribe_file'):
+                    logger.info(f"[Async] Using transcribe_file for: {audio_path}")
+                    transcript = elevenlabs.transcribe_file(audio_path)
+                    if transcript:
+                        from managers.vocabulary_manager import vocabulary_manager
+                        transcript = vocabulary_manager.correct_transcript(transcript)
+                        logger.info(f"[Async] transcribe_file succeeded: {len(transcript)} chars")
+            except Exception as e:
+                logger.warning(f"[Async] transcribe_file failed, falling back: {e}")
+                transcript = None
 
-            # Transcribe audio
-            transcript = self.audio_handler.transcribe_audio(transcription_segment)
+            if not transcript:
+                logger.info("[Async] Using standard transcribe_audio fallback")
+                transcript = self.audio_handler.transcribe_audio(audio_segment)
             if not transcript:
                 raise ValueError("Transcription failed - no text recognized")
             
