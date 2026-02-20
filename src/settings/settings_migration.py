@@ -57,9 +57,13 @@ class SettingsMigrator:
                     ai_task.provider_models["anthropic"] = task_settings["anthropic_model"]
                 if "gemini_model" in task_settings:
                     ai_task.provider_models["gemini"] = task_settings["gemini_model"]
+                if "groq_model" in task_settings:
+                    ai_task.provider_models["groq"] = task_settings["groq_model"]
+                if "cerebras_model" in task_settings:
+                    ai_task.provider_models["cerebras"] = task_settings["cerebras_model"]
 
                 # Update provider-specific temperatures
-                for provider in ["openai", "anthropic", "ollama", "gemini"]:
+                for provider in ["openai", "anthropic", "ollama", "gemini", "groq", "cerebras"]:
                     temp_key = f"{provider}_temperature"
                     if temp_key in task_settings:
                         ai_task.provider_temperatures[provider] = task_settings[temp_key]

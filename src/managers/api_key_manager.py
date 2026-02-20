@@ -25,6 +25,7 @@ class APIKeyManager:
         'elevenlabs': 'ELEVENLABS_API_KEY',
         'groq': 'GROQ_API_KEY',
         'gemini': 'GEMINI_API_KEY',
+        'cerebras': 'CEREBRAS_API_KEY',
     }
 
     def __init__(self):
@@ -48,7 +49,7 @@ class APIKeyManager:
         security_mgr = self._get_security_manager()
 
         # Check for AI provider keys
-        ai_providers = ['openai', 'anthropic', 'gemini']
+        ai_providers = ['openai', 'anthropic', 'gemini', 'groq', 'cerebras']
         has_ai_key = any(security_mgr.get_api_key(p) for p in ai_providers)
 
         # Check for STT provider keys
@@ -164,7 +165,12 @@ class APIKeyManager:
         tk.Label(keys_frame, text="GROQ API Key:").grid(row=5, column=0, sticky="w", pady=5)
         groq_entry = tk.Entry(keys_frame, width=40)
         groq_entry.grid(row=5, column=1, sticky="ew", pady=5)
-        
+
+        # Cerebras API Key field
+        tk.Label(keys_frame, text="Cerebras API Key:").grid(row=6, column=0, sticky="w", pady=5)
+        cerebras_entry = tk.Entry(keys_frame, width=40)
+        cerebras_entry.grid(row=6, column=1, sticky="ew", pady=5)
+
         # Add info about where to find the keys
         info_text = ("Get your API keys at:\n"
                     "• OpenAI: https://platform.openai.com/account/api-keys\n"
@@ -172,9 +178,10 @@ class APIKeyManager:
                     "• Gemini: https://aistudio.google.com/app/apikey\n"
                     "• Deepgram: https://console.deepgram.com/signup\n"
                     "• ElevenLabs: https://elevenlabs.io/app/speech-to-text\n"
-                    "• GROQ: https://groq.com/")
+                    "• GROQ: https://groq.com/\n"
+                    "• Cerebras: https://cloud.cerebras.ai/")
         tk.Label(keys_frame, text=info_text, justify="left", wraplength=450).grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=10)
+            row=7, column=0, columnspan=2, sticky="w", pady=10)
         
         error_var = tk.StringVar()
         error_label = tk.Label(api_root, textvariable=error_var, foreground="red", wraplength=450)
@@ -188,9 +195,10 @@ class APIKeyManager:
             gemini_key = gemini_entry.get().strip()
             elevenlabs_key = elevenlabs_entry.get().strip()
             groq_key = groq_entry.get().strip()
+            cerebras_key = cerebras_entry.get().strip()
 
             # Check if at least one AI provider key is provided
-            if not (openai_key or anthropic_key or gemini_key):
+            if not (openai_key or anthropic_key or gemini_key or groq_key or cerebras_key):
                 error_var.set("Error: At least one of OpenAI, Anthropic, or Gemini API keys is required.")
                 return
 
@@ -207,6 +215,7 @@ class APIKeyManager:
                 'gemini': gemini_key,
                 'elevenlabs': elevenlabs_key,
                 'groq': groq_key,
+                'cerebras': cerebras_key,
             }
 
             stored_count = 0

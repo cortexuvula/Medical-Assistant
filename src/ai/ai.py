@@ -50,6 +50,8 @@ from ai.providers.openai_provider import call_openai, call_openai_streaming
 from ai.providers.anthropic_provider import call_anthropic, call_anthropic_streaming
 from ai.providers.ollama_provider import call_ollama, fallback_ollama_generate
 from ai.providers.gemini_provider import call_gemini
+from ai.providers.groq_provider import call_groq, call_groq_streaming
+from ai.providers.cerebras_provider import call_cerebras, call_cerebras_streaming
 
 # Re-export base utilities
 from ai.providers.base import get_model_key_for_task
@@ -82,6 +84,10 @@ __all__ = [
     'call_ollama',
     'fallback_ollama_generate',
     'call_gemini',
+    'call_groq',
+    'call_groq_streaming',
+    'call_cerebras',
+    'call_cerebras_streaming',
     # Utilities
     'get_model_key_for_task',
 ]

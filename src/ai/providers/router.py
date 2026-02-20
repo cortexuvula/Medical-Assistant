@@ -35,10 +35,13 @@ from ai.providers.openai_provider import call_openai, call_openai_streaming
 from ai.providers.anthropic_provider import call_anthropic, call_anthropic_streaming
 from ai.providers.ollama_provider import call_ollama
 from ai.providers.gemini_provider import call_gemini
+from ai.providers.groq_provider import call_groq, call_groq_streaming
+from ai.providers.cerebras_provider import call_cerebras, call_cerebras_streaming
 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC,
-    PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS
 )
 from utils.exceptions import AIResult
 
@@ -68,16 +71,21 @@ def call_ai_streaming(
     from settings.settings import load_settings
     current_settings = load_settings()
 
-    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_ANTHROPIC}
+    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GROQ, PROVIDER_CEREBRAS}
     provider = current_settings.get("ai_provider", "openai")
 
-    # Only OpenAI and Anthropic support streaming currently
+    model_key = get_model_key_for_task(system_message, prompt)
+
     if provider == PROVIDER_ANTHROPIC:
-        model_key = get_model_key_for_task(system_message, prompt)
         actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
         return call_anthropic_streaming(actual_model, system_message, prompt, temperature, on_chunk)
+    elif provider == PROVIDER_GROQ:
+        actual_model = current_settings.get(model_key, {}).get("groq_model", "llama-3.3-70b-versatile")
+        return call_groq_streaming(actual_model, system_message, prompt, temperature, on_chunk)
+    elif provider == PROVIDER_CEREBRAS:
+        actual_model = current_settings.get(model_key, {}).get("cerebras_model", "llama-3.3-70b")
+        return call_cerebras_streaming(actual_model, system_message, prompt, temperature, on_chunk)
     elif provider == PROVIDER_OPENAI:
-        model_key = get_model_key_for_task(system_message, prompt)
         actual_model = current_settings.get(model_key, {}).get("model", model)
         return call_openai_streaming(actual_model, system_message, prompt, temperature, on_chunk)
     else:
@@ -135,7 +143,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
     current_settings = load_settings()
 
     # Validate provider against allowed list to prevent arbitrary key access
-    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI}
+    VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS}
 
     # Track if provider was explicitly passed (affects model selection)
     provider_explicitly_set = provider is not None and provider != ""
@@ -183,8 +191,21 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         else:
             actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
         logger.info(f"Using provider: Gemini with model: {actual_model}")
-        # Debug logging will happen in the actual API call
         return call_gemini(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_GROQ:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("groq_model", "llama-3.3-70b-versatile")
+        logger.info(f"Using provider: Groq with model: {actual_model}")
+        return call_groq(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_CEREBRAS:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("cerebras_model", "llama-3.3-70b")
+        logger.info(f"Using provider: Cerebras with model: {actual_model}")
+        return call_cerebras(actual_model, system_message, prompt, temperature)
     else:  # OpenAI is the default
         if provider_explicitly_set and model:
             actual_model = model

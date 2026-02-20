@@ -35,7 +35,9 @@ class AppSettingsMixin:
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["refine_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", REFINE_SYSTEM_MESSAGE),
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["refine_text"].get("anthropic_model", "claude-sonnet-4-20250514")),
-            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["refine_text"].get("gemini_model", "gemini-1.5-flash"))
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["refine_text"].get("gemini_model", "gemini-1.5-flash")),
+            current_groq=cfg.get("groq_model", _DEFAULT_SETTINGS["refine_text"].get("groq_model", "llama-3.3-70b-versatile")),
+            current_cerebras=cfg.get("cerebras_model", _DEFAULT_SETTINGS["refine_text"].get("cerebras_model", "llama-3.3-70b"))
         )
 
     def show_improve_settings_dialog(self) -> None:
@@ -56,7 +58,9 @@ class AppSettingsMixin:
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["improve_text"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", IMPROVE_SYSTEM_MESSAGE),
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["improve_text"].get("anthropic_model", "claude-sonnet-4-20250514")),
-            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["improve_text"].get("gemini_model", "gemini-1.5-flash"))
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["improve_text"].get("gemini_model", "gemini-1.5-flash")),
+            current_groq=cfg.get("groq_model", _DEFAULT_SETTINGS["improve_text"].get("groq_model", "llama-3.3-70b-versatile")),
+            current_cerebras=cfg.get("cerebras_model", _DEFAULT_SETTINGS["improve_text"].get("cerebras_model", "llama-3.3-70b"))
         )
 
     def show_soap_settings_dialog(self) -> None:
@@ -89,7 +93,9 @@ class AppSettingsMixin:
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["soap_note"].get("gemini_model", "gemini-1.5-flash")),
             current_icd_version=cfg.get("icd_code_version", "ICD-9"),
             is_soap_settings=True,
-            provider_messages=provider_messages
+            provider_messages=provider_messages,
+            current_groq=cfg.get("groq_model", _DEFAULT_SETTINGS["soap_note"].get("groq_model", "llama-3.3-70b-versatile")),
+            current_cerebras=cfg.get("cerebras_model", _DEFAULT_SETTINGS["soap_note"].get("cerebras_model", "llama-3.3-70b"))
         )
 
     def show_referral_settings_dialog(self) -> None:
@@ -112,7 +118,9 @@ class AppSettingsMixin:
             current_ollama=cfg.get("ollama_model", _DEFAULT_SETTINGS["referral"].get("ollama_model", "llama3")),
             current_system_prompt=cfg.get("system_message", default_system_prompt),
             current_anthropic=cfg.get("anthropic_model", _DEFAULT_SETTINGS["referral"].get("anthropic_model", "claude-sonnet-4-20250514")),
-            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["referral"].get("gemini_model", "gemini-1.5-flash"))
+            current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["referral"].get("gemini_model", "gemini-1.5-flash")),
+            current_groq=cfg.get("groq_model", _DEFAULT_SETTINGS["referral"].get("groq_model", "llama-3.3-70b-versatile")),
+            current_cerebras=cfg.get("cerebras_model", _DEFAULT_SETTINGS["referral"].get("cerebras_model", "llama-3.3-70b"))
         )
 
     def show_advanced_analysis_settings_dialog(self) -> None:
@@ -138,7 +146,9 @@ class AppSettingsMixin:
             current_gemini=cfg.get("gemini_model", _DEFAULT_SETTINGS["advanced_analysis"].get("gemini_model", "gemini-1.5-flash")),
             current_provider=cfg.get("provider", ""),
             is_advanced_analysis=True,
-            current_specialty=cfg.get("specialty", "general")
+            current_specialty=cfg.get("specialty", "general"),
+            current_groq=cfg.get("groq_model", _DEFAULT_SETTINGS["advanced_analysis"].get("groq_model", "llama-3.3-70b-versatile")),
+            current_cerebras=cfg.get("cerebras_model", _DEFAULT_SETTINGS["advanced_analysis"].get("cerebras_model", "llama-3.3-70b"))
         )
 
     def show_temperature_settings(self) -> None:
@@ -212,7 +222,8 @@ class AppSettingsMixin:
 
     def save_refine_settings(self, prompt: str, openai_model: str,
                              ollama_model: str, system_prompt: str,
-                             anthropic_model: str, gemini_model: str = "") -> None:
+                             anthropic_model: str, gemini_model: str = "",
+                             groq_model: str = "", cerebras_model: str = "") -> None:
         """Save refine text settings."""
         settings_manager.set_model_config("refine_text", {
             "prompt": prompt,
@@ -220,13 +231,16 @@ class AppSettingsMixin:
             "model": openai_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
-            "gemini_model": gemini_model
+            "gemini_model": gemini_model,
+            "groq_model": groq_model,
+            "cerebras_model": cerebras_model
         })
         self.status_manager.success("Refine text settings saved successfully")
 
     def save_improve_settings(self, prompt: str, openai_model: str,
                               ollama_model: str, system_prompt: str,
-                              anthropic_model: str, gemini_model: str = "") -> None:
+                              anthropic_model: str, gemini_model: str = "",
+                              groq_model: str = "", cerebras_model: str = "") -> None:
         """Save improve text settings."""
         settings_manager.set_model_config("improve_text", {
             "prompt": prompt,
@@ -234,13 +248,16 @@ class AppSettingsMixin:
             "model": openai_model,
             "ollama_model": ollama_model,
             "anthropic_model": anthropic_model,
-            "gemini_model": gemini_model
+            "gemini_model": gemini_model,
+            "groq_model": groq_model,
+            "cerebras_model": cerebras_model
         })
         self.status_manager.success("Improve text settings saved successfully")
 
     def save_soap_settings(self, prompt: str, openai_model: str,
                            ollama_model: str,
                            anthropic_model: str, gemini_model: str = "",
+                           groq_model: str = "", cerebras_model: str = "",
                            icd_code_version: str = "ICD-9",
                            provider_messages: Optional[Dict[str, Any]] = None) -> None:
         """Save SOAP note settings with per-provider system messages.
@@ -251,6 +268,8 @@ class AppSettingsMixin:
             ollama_model: Ollama model name
             anthropic_model: Anthropic model name
             gemini_model: Gemini model name
+            groq_model: Groq model name
+            cerebras_model: Cerebras model name
             icd_code_version: ICD code version (ICD-9, ICD-10, or both)
             provider_messages: Dict mapping provider_system_message keys to values
         """
@@ -260,6 +279,8 @@ class AppSettingsMixin:
         settings_manager.set_nested("soap_note.ollama_model", ollama_model, auto_save=False)
         settings_manager.set_nested("soap_note.anthropic_model", anthropic_model, auto_save=False)
         settings_manager.set_nested("soap_note.gemini_model", gemini_model, auto_save=False)
+        settings_manager.set_nested("soap_note.groq_model", groq_model, auto_save=False)
+        settings_manager.set_nested("soap_note.cerebras_model", cerebras_model, auto_save=False)
         settings_manager.set_nested("soap_note.icd_code_version", icd_code_version, auto_save=False)
 
         # Save per-provider system messages
@@ -275,7 +296,8 @@ class AppSettingsMixin:
 
     def save_referral_settings(self, prompt: str, openai_model: str,
                                ollama_model: str, system_prompt: str,
-                               anthropic_model: str, gemini_model: str = "") -> None:
+                               anthropic_model: str, gemini_model: str = "",
+                               groq_model: str = "", cerebras_model: str = "") -> None:
         """Save referral settings."""
         # Preserve existing temperature settings by using set_nested for each field
         settings_manager.set_nested("referral.prompt", prompt, auto_save=False)
@@ -284,12 +306,15 @@ class AppSettingsMixin:
         settings_manager.set_nested("referral.ollama_model", ollama_model, auto_save=False)
         settings_manager.set_nested("referral.anthropic_model", anthropic_model, auto_save=False)
         settings_manager.set_nested("referral.gemini_model", gemini_model, auto_save=False)
+        settings_manager.set_nested("referral.groq_model", groq_model, auto_save=False)
+        settings_manager.set_nested("referral.cerebras_model", cerebras_model, auto_save=False)
         settings_manager.save()
         self.status_manager.success("Referral settings saved successfully")
 
     def save_advanced_analysis_settings(self, prompt: str, openai_model: str,
                                         ollama_model: str, system_prompt: str,
                                         anthropic_model: str, gemini_model: str = "",
+                                        groq_model: str = "", cerebras_model: str = "",
                                         provider: str = "", specialty: str = "general") -> None:
         """Save advanced analysis settings.
 
@@ -300,6 +325,8 @@ class AppSettingsMixin:
             system_prompt: System message for the AI
             anthropic_model: Anthropic model to use
             gemini_model: Gemini model to use
+            groq_model: Groq model to use
+            cerebras_model: Cerebras model to use
             provider: AI provider to use (empty = use global setting)
             specialty: Clinical specialty focus (e.g., "general", "emergency", "cardiology")
         """
@@ -310,6 +337,8 @@ class AppSettingsMixin:
         settings_manager.set_nested("advanced_analysis.ollama_model", ollama_model, auto_save=False)
         settings_manager.set_nested("advanced_analysis.anthropic_model", anthropic_model, auto_save=False)
         settings_manager.set_nested("advanced_analysis.gemini_model", gemini_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.groq_model", groq_model, auto_save=False)
+        settings_manager.set_nested("advanced_analysis.cerebras_model", cerebras_model, auto_save=False)
         settings_manager.set_nested("advanced_analysis.provider", provider, auto_save=False)
         settings_manager.set_nested("advanced_analysis.specialty", specialty, auto_save=False)
         settings_manager.save()

@@ -18,7 +18,8 @@ from anthropic import Anthropic
 from utils.security import get_security_manager
 from settings.settings import SETTINGS
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS
 )
 
 # Optional import for Google Gemini SDK
@@ -195,6 +196,18 @@ class ModelProvider:
             "gemini-2.0-pro-exp",
             "gemini-2.0-flash-thinking-exp",
             "gemini-2.0-flash-exp"
+        ],
+        PROVIDER_GROQ: [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ],
+        PROVIDER_CEREBRAS: [
+            "llama-3.3-70b",
+            "llama3.1-8b",
+            "qwen-3-32b"
         ]
     }
     
@@ -257,6 +270,10 @@ class ModelProvider:
                 return self._fetch_ollama_models()
             elif provider == PROVIDER_GEMINI:
                 return self._fetch_gemini_models()
+            elif provider == PROVIDER_GROQ:
+                return self._fetch_groq_models()
+            elif provider == PROVIDER_CEREBRAS:
+                return self._fetch_cerebras_models()
             else:
                 logger.warning(f"Unknown provider: {provider}")
                 return None
@@ -365,6 +382,54 @@ class ModelProvider:
 
         except Exception as e:
             logger.error(f"Error fetching Gemini models: {e}")
+            return None
+
+    def _fetch_groq_models(self) -> Optional[List[str]]:
+        """Fetch available models from Groq via OpenAI-compatible API."""
+        try:
+            api_key = self._security_manager.get_api_key("groq")
+            if not api_key:
+                return None
+
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            models_response = client.models.list()
+
+            models = []
+            for model in models_response.data:
+                models.append(model.id)
+
+            models.sort()
+            return models if models else None
+
+        except Exception as e:
+            logger.error(f"Error fetching Groq models: {e}")
+            return None
+
+    def _fetch_cerebras_models(self) -> Optional[List[str]]:
+        """Fetch available models from Cerebras via OpenAI-compatible API."""
+        try:
+            api_key = self._security_manager.get_api_key("cerebras")
+            if not api_key:
+                return None
+
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.cerebras.ai/v1"
+            )
+            models_response = client.models.list()
+
+            models = []
+            for model in models_response.data:
+                models.append(model.id)
+
+            models.sort()
+            return models if models else None
+
+        except Exception as e:
+            logger.error(f"Error fetching Cerebras models: {e}")
             return None
 
     def clear_cache(self, provider: Optional[str] = None):

@@ -17,6 +17,8 @@ from ai.providers.ollama_provider import (
     fallback_ollama_generate,
 )
 from ai.providers.gemini_provider import call_gemini
+from ai.providers.groq_provider import call_groq, call_groq_streaming
+from ai.providers.cerebras_provider import call_cerebras, call_cerebras_streaming
 from ai.providers.router import call_ai, call_ai_streaming
 
 __all__ = [
@@ -25,5 +27,7 @@ __all__ = [
     'call_anthropic', 'call_anthropic_streaming',
     'call_ollama', 'fallback_ollama_generate',
     'call_gemini',
+    'call_groq', 'call_groq_streaming',
+    'call_cerebras', 'call_cerebras_streaming',
     'call_ai', 'call_ai_streaming',
 ]

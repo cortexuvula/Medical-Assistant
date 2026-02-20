@@ -96,7 +96,9 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         "openai": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
         "anthropic": ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-4-20250514"],
         "ollama": ["llama3", "mistral", "codellama"],
-        "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"]
+        "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"],
+        "groq": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+        "cerebras": ["llama-3.3-70b", "llama3.1-8b", "qwen-3-32b"]
     }
     
     def __init__(self, parent):

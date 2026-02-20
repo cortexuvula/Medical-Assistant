@@ -150,6 +150,7 @@ class UnifiedSettingsDialog:
             ("openai", "OpenAI API Key:", "OPENAI_API_KEY", "API key from platform.openai.com"),
             ("anthropic", "Anthropic API Key:", "ANTHROPIC_API_KEY", "API key from console.anthropic.com"),
             ("gemini", "Google Gemini API Key:", "GEMINI_API_KEY", "API key from Google AI Studio"),
+            ("cerebras", "Cerebras API Key:", "CEREBRAS_API_KEY", "API key from cloud.cerebras.ai - Ultra-fast inference (no HIPAA BAA)"),
         ]
 
         for key_id, label, env_var, tooltip in api_keys_config:

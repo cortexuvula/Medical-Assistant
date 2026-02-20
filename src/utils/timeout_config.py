@@ -21,7 +21,8 @@ Usage:
 from typing import Dict, Optional
 from settings.settings import SETTINGS
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS
 )
 from utils.structured_logging import get_logger
 
@@ -35,6 +36,8 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     PROVIDER_ANTHROPIC: 90.0,    # Anthropic/Claude API calls (can be slower)
     PROVIDER_OLLAMA: 180.0,      # Ollama (local, can be very slow depending on model)
     PROVIDER_GEMINI: 90.0,       # Google Gemini API calls
+    PROVIDER_GROQ: 60.0,        # Groq LLM API calls (fast inference)
+    PROVIDER_CEREBRAS: 30.0,    # Cerebras LLM API calls (ultra-fast inference)
 
     # STT Provider timeouts (for transcription)
     "deepgram": 120.0,        # Deepgram STT (long audio files)

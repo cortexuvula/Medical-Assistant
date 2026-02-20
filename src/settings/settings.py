@@ -47,6 +47,8 @@ def _make_provider_model_config(
     ollama_model: str = "llama3",
     anthropic_model: str = "claude-sonnet-4-20250514",
     gemini_model: str = "gemini-2.0-flash",
+    groq_model: str = "llama-3.3-70b-versatile",
+    cerebras_model: str = "llama-3.3-70b",
     temperature: float = 0.7
 ) -> Dict[str, Any]:
     """Generate provider-specific model and temperature configuration.
@@ -58,6 +60,8 @@ def _make_provider_model_config(
         ollama_model: Ollama model name
         anthropic_model: Anthropic model name
         gemini_model: Gemini model name
+        groq_model: Groq model name
+        cerebras_model: Cerebras model name
         temperature: Default temperature for all providers
 
     Returns:
@@ -68,11 +72,15 @@ def _make_provider_model_config(
         "ollama_model": ollama_model,
         "anthropic_model": anthropic_model,
         "gemini_model": gemini_model,
+        "groq_model": groq_model,
+        "cerebras_model": cerebras_model,
         "temperature": temperature,
         "openai_temperature": temperature,
         "ollama_temperature": temperature,
         "anthropic_temperature": temperature,
         "gemini_temperature": temperature,
+        "groq_temperature": temperature,
+        "cerebras_temperature": temperature,
     }
 
 
@@ -223,6 +231,8 @@ _DEFAULTS_SOAP_NOTE = {
     "anthropic_system_message": "",
     "ollama_system_message": "",
     "gemini_system_message": "",
+    "groq_system_message": "",
+    "cerebras_system_message": "",
     "icd_code_version": "ICD-9",  # Options: "ICD-9", "ICD-10", "both"
     **_make_provider_model_config(
         openai_model="gpt-3.5-turbo",
@@ -495,7 +505,10 @@ _DEFAULTS_RSVP = {
         "auto_start": False,
         "dark_theme": True,
         "audio_cue": False,
-        "show_context": False
+        "show_context": False,
+        "section_mode": "all",
+        "selected_sections": [],
+        "remember_section_selection": False
     }
 }
 

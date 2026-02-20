@@ -264,3 +264,101 @@ def get_fallback_gemini_models() -> List[str]:
         "gemini-1.5-flash-8b",         # Smaller, faster variant
         "gemini-pro"                   # Original Gemini Pro
     ]
+
+
+def get_groq_models() -> List[str]:
+    """Fetch available models from Groq API via OpenAI-compatible endpoint."""
+    cache_key = "groq_models"
+    if cache_key in _model_cache:
+        cached_time, cached_models = _model_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logger.info("Using cached Groq models")
+            return cached_models
+
+    try:
+        from utils.security import get_security_manager
+
+        security_manager = get_security_manager()
+        api_key = security_manager.get_api_key("groq")
+
+        if api_key:
+            logger.info("Attempting to fetch Groq models from API")
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            models_response = client.models.list()
+
+            models = [model.id for model in models_response.data]
+            models.sort()
+
+            if models:
+                logger.info(f"Successfully fetched {len(models)} Groq models from API")
+                _model_cache[cache_key] = (time.time(), models)
+                return models
+
+        return get_fallback_groq_models()
+
+    except Exception as e:
+        logger.error(f"Error fetching Groq models from API: {e}")
+        return get_fallback_groq_models()
+
+
+def get_fallback_groq_models() -> List[str]:
+    """Return a fallback list of Groq models."""
+    logger.info("Using fallback list of Groq models")
+    return [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it"
+    ]
+
+
+def get_cerebras_models() -> List[str]:
+    """Fetch available models from Cerebras API via OpenAI-compatible endpoint."""
+    cache_key = "cerebras_models"
+    if cache_key in _model_cache:
+        cached_time, cached_models = _model_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logger.info("Using cached Cerebras models")
+            return cached_models
+
+    try:
+        from utils.security import get_security_manager
+
+        security_manager = get_security_manager()
+        api_key = security_manager.get_api_key("cerebras")
+
+        if api_key:
+            logger.info("Attempting to fetch Cerebras models from API")
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.cerebras.ai/v1"
+            )
+            models_response = client.models.list()
+
+            models = [model.id for model in models_response.data]
+            models.sort()
+
+            if models:
+                logger.info(f"Successfully fetched {len(models)} Cerebras models from API")
+                _model_cache[cache_key] = (time.time(), models)
+                return models
+
+        return get_fallback_cerebras_models()
+
+    except Exception as e:
+        logger.error(f"Error fetching Cerebras models from API: {e}")
+        return get_fallback_cerebras_models()
+
+
+def get_fallback_cerebras_models() -> List[str]:
+    """Return a fallback list of Cerebras models."""
+    logger.info("Using fallback list of Cerebras models")
+    return [
+        "llama-3.3-70b",
+        "llama3.1-8b",
+        "qwen-3-32b"
+    ]

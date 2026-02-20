@@ -96,6 +96,8 @@ class AIProvider(BaseProvider):
     ANTHROPIC = "anthropic"
     OLLAMA = "ollama"
     GEMINI = "gemini"
+    GROQ = "groq"
+    CEREBRAS = "cerebras"
 
     @classmethod
     def get_display_name(cls, provider: 'AIProvider') -> str:
@@ -112,6 +114,8 @@ class AIProvider(BaseProvider):
             cls.ANTHROPIC: "Anthropic (Claude)",
             cls.OLLAMA: "Ollama (Local)",
             cls.GEMINI: "Google Gemini",
+            cls.GROQ: "Groq (Fast)",
+            cls.CEREBRAS: "Cerebras (Ultra-fast)",
         }
         return display_names.get(provider, provider.value.title())
 
@@ -218,6 +222,8 @@ PROVIDER_OPENAI = AIProvider.OPENAI.value
 PROVIDER_ANTHROPIC = AIProvider.ANTHROPIC.value
 PROVIDER_OLLAMA = AIProvider.OLLAMA.value
 PROVIDER_GEMINI = AIProvider.GEMINI.value
+PROVIDER_GROQ = AIProvider.GROQ.value
+PROVIDER_CEREBRAS = AIProvider.CEREBRAS.value
 
 # STT Providers
 STT_DEEPGRAM = STTProvider.DEEPGRAM.value

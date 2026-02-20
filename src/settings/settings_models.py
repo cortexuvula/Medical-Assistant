@@ -118,17 +118,23 @@ if PYDANTIC_AVAILABLE:
         ollama_model: str = "llama3"
         anthropic_model: str = "claude-sonnet-4-20250514"
         gemini_model: str = "gemini-2.0-flash"
+        groq_model: str = "llama-3.3-70b-versatile"
+        cerebras_model: str = "llama-3.3-70b"
         temperature: float = Field(default=0.4, ge=0.0, le=2.0)
         openai_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
         ollama_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
         anthropic_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
         gemini_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
+        groq_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
+        cerebras_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
         icd_code_version: Literal["ICD-9", "ICD-10", "both"] = "ICD-9"
         system_message: str = ""
         openai_system_message: str = ""
         anthropic_system_message: str = ""
         ollama_system_message: str = ""
         gemini_system_message: str = ""
+        groq_system_message: str = ""
+        cerebras_system_message: str = ""
 
     class AgentSettings(BaseModel):
         """Settings for an individual agent."""
@@ -285,7 +291,7 @@ if PYDANTIC_AVAILABLE:
         @classmethod
         def validate_ai_provider(cls, v):
             """Validate AI provider is a known value."""
-            known_providers = {"openai", "anthropic", "ollama", "gemini", "grok", "deepseek"}
+            known_providers = {"openai", "anthropic", "ollama", "gemini", "grok", "deepseek", "groq", "cerebras"}
             if v.lower() not in known_providers:
                 # Warning but don't fail - might be a new provider
                 pass

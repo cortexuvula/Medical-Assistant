@@ -63,6 +63,8 @@ class ConfigController:
             ("openai", "OpenAI"),
             ("anthropic", "Anthropic"),
             ("gemini", "Gemini"),
+            ("groq", "Groq"),
+            ("cerebras", "Cerebras"),
         ]
 
         available = []
@@ -157,12 +159,27 @@ class ConfigController:
         Args:
             event: Tkinter event (unused but required for binding)
         """
+        from tkinter import messagebox
+
         selected_index = self.app.provider_combobox.current()
 
         # Use the dynamic available providers list
         if 0 <= selected_index < len(self.app._available_ai_providers):
             selected_provider = self.app._available_ai_providers[selected_index]
             display_name = self.app._ai_display_names[selected_index]
+
+            # Show HIPAA warning for Cerebras (no BAA available)
+            if selected_provider == "cerebras":
+                if not getattr(self, '_cerebras_hipaa_acknowledged', False):
+                    messagebox.showwarning(
+                        "HIPAA Notice - Cerebras",
+                        "Cerebras does not currently offer a HIPAA Business Associate "
+                        "Agreement (BAA). Patient health information (PHI) should not "
+                        "be sent to Cerebras.\n\n"
+                        "Use this provider only for non-PHI workflows or at your own risk."
+                    )
+                    self._cerebras_hipaa_acknowledged = True
+
             settings_manager.set_ai_provider(selected_provider)
             self.app.update_status(f"AI Provider set to {display_name}")
 

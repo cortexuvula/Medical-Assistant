@@ -16,6 +16,8 @@ from ui.dialogs.model_providers import (
     get_ollama_models,
     get_anthropic_models,
     get_gemini_models,
+    get_groq_models,
+    get_cerebras_models,
 )
 
 
@@ -153,7 +155,8 @@ def _create_soap_prompts_tab(parent: ttk.Frame, current_prompt: str,
 
 def _create_models_tab(parent: ttk.Frame, current_model: str,
                       current_ollama: str, current_anthropic: str,
-                      current_gemini: str = "") -> Dict[str, tk.StringVar]:
+                      current_gemini: str = "", current_groq: str = "",
+                      current_cerebras: str = "") -> Dict[str, tk.StringVar]:
     """Create the models tab content.
 
     Args:
@@ -162,6 +165,8 @@ def _create_models_tab(parent: ttk.Frame, current_model: str,
         current_ollama: Current Ollama model
         current_anthropic: Current Anthropic model
         current_gemini: Current Gemini model
+        current_groq: Current Groq model
+        current_cerebras: Current Cerebras model
 
     Returns:
         Dictionary of model StringVars
@@ -187,10 +192,22 @@ def _create_models_tab(parent: ttk.Frame, current_model: str,
     create_model_selector(parent, parent, anthropic_model_var, "Anthropic", get_anthropic_models, row=2)
 
     # Gemini Model
-    ttk.Label(parent, text="Gemini Model:").grid(row=3, column=0, sticky="nw", pady=(5, 10))
+    ttk.Label(parent, text="Gemini Model:").grid(row=3, column=0, sticky="nw", pady=(5, 5))
     gemini_model_var = tk.StringVar(value=current_gemini)
     model_vars['gemini'] = gemini_model_var
     create_model_selector(parent, parent, gemini_model_var, "Gemini", get_gemini_models, row=3)
+
+    # Groq Model
+    ttk.Label(parent, text="Groq Model:").grid(row=4, column=0, sticky="nw", pady=(5, 5))
+    groq_model_var = tk.StringVar(value=current_groq)
+    model_vars['groq'] = groq_model_var
+    create_model_selector(parent, parent, groq_model_var, "Groq", get_groq_models, row=4)
+
+    # Cerebras Model
+    ttk.Label(parent, text="Cerebras Model:").grid(row=5, column=0, sticky="nw", pady=(5, 10))
+    cerebras_model_var = tk.StringVar(value=current_cerebras)
+    model_vars['cerebras'] = cerebras_model_var
+    create_model_selector(parent, parent, cerebras_model_var, "Cerebras", get_cerebras_models, row=5)
 
     return model_vars
 
@@ -249,7 +266,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                          current_icd_version: str = "ICD-9", is_soap_settings: bool = False,
                          current_provider: str = "", is_advanced_analysis: bool = False,
                          provider_messages: Dict[str, str] = None,
-                         current_specialty: str = "general") -> None:
+                         current_specialty: str = "general",
+                         current_groq: str = "", current_cerebras: str = "") -> None:
     """Show settings dialog for configuring prompt and model.
 
     Args:
@@ -288,6 +306,7 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     x = (screen_width // 2) - (dialog_width // 2)
     y = (screen_height // 2) - (dialog_height // 2)
     dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+    dialog.minsize(dialog_width, dialog_height)
 
     # Grab focus after window is visible
     dialog.deiconify()
@@ -312,7 +331,9 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             ("openai", "OpenAI"),
             ("anthropic", "Anthropic"),
             ("ollama", "Ollama"),
-            ("gemini", "Gemini")
+            ("gemini", "Gemini"),
+            ("groq", "Groq"),
+            ("cerebras", "Cerebras")
         ]
 
         # Create combobox with display names
@@ -412,6 +433,10 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
 
         specialty_combo.bind("<<ComboboxSelected>>", lambda e: [on_specialty_change(e), update_description(e)])
 
+    # Create button frame FIRST so it gets space priority at bottom
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+
     # Create notebook for tabs
     notebook = ttk.Notebook(dialog)
     notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -472,16 +497,13 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
     else:
         prompt_text, system_prompt_text = _create_prompt_tab(prompts_tab, current_prompt, current_system_prompt)
 
-    model_vars = _create_models_tab(models_tab, current_model, current_ollama, current_anthropic, current_gemini)
+    model_vars = _create_models_tab(models_tab, current_model, current_ollama, current_anthropic, current_gemini, current_groq, current_cerebras)
 
     # Get temperature from config
     current_temp = config.get("temperature", default.get("temperature", 0.7))
     default_temp = default.get("temperature", 0.7)
     temp_scale, temp_value_var = _create_temperature_tab(temperature_tab, current_temp, default_temp)
 
-    # Create button frame
-    btn_frame = ttk.Frame(dialog)
-    btn_frame.pack(fill=tk.X, padx=10, pady=10)
     # Define reset function
     def reset_fields():
         # Import default prompts directly from prompts.py
@@ -531,6 +553,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
         model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
         model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-sonnet-4-20250514")))
         model_vars['gemini'].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
+        model_vars['groq'].set(config.get("groq_model", default.get("groq_model", "llama-3.3-70b-versatile")))
+        model_vars['cerebras'].set(config.get("cerebras_model", default.get("cerebras_model", "llama-3.3-70b")))
 
         # Reset temperature
         temp_scale.set(default_temp)
@@ -570,6 +594,8 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                 model_vars['ollama'].get().strip(),
                 model_vars['anthropic'].get().strip(),
                 model_vars['gemini'].get().strip(),
+                model_vars['groq'].get().strip(),
+                model_vars['cerebras'].get().strip(),
                 icd_version_var.get(),
                 provider_msgs  # Dict of per-provider system messages
             ]
@@ -581,7 +607,9 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                 model_vars['ollama'].get().strip(),
                 system_prompt_text.get("1.0", tk.END).strip() if system_prompt_text else "",
                 model_vars['anthropic'].get().strip(),
-                model_vars['gemini'].get().strip()
+                model_vars['gemini'].get().strip(),
+                model_vars['groq'].get().strip(),
+                model_vars['cerebras'].get().strip()
             ]
 
             # Add ICD version for SOAP settings (backward compat for non per-provider mode)

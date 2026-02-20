@@ -42,6 +42,7 @@ class HTTPClientManager:
         "elevenlabs": {"max_connections": 5, "max_keepalive": 3},
         "deepgram": {"max_connections": 5, "max_keepalive": 3},
         "groq": {"max_connections": 5, "max_keepalive": 3},
+        "cerebras": {"max_connections": 5, "max_keepalive": 3},
         "rag": {"max_connections": 3, "max_keepalive": 2},
     }
 
@@ -54,6 +55,7 @@ class HTTPClientManager:
         "elevenlabs": (5.0, 90.0),  # TTS can be slower
         "deepgram": (5.0, 120.0),  # Long audio transcription
         "groq": (5.0, 60.0),
+        "cerebras": (5.0, 30.0),
         "rag": (5.0, 30.0),
     }
 

@@ -22,7 +22,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Callable, Dict, Any, Protocol, runtime_checkable
 
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS
 )
 from utils.structured_logging import get_logger
 
@@ -130,6 +131,8 @@ class DefaultAICaller(BaseAICaller):
         self._call_anthropic = None
         self._call_ollama = None
         self._call_gemini = None
+        self._call_groq = None
+        self._call_cerebras = None
         self._initialized = False
 
     def _ensure_initialized(self) -> None:
@@ -147,7 +150,9 @@ class DefaultAICaller(BaseAICaller):
             call_openai,
             call_anthropic,
             call_ollama,
-            call_gemini
+            call_gemini,
+            call_groq,
+            call_cerebras
         )
 
         self._call_ai = call_ai
@@ -155,6 +160,8 @@ class DefaultAICaller(BaseAICaller):
         self._call_anthropic = call_anthropic
         self._call_ollama = call_ollama
         self._call_gemini = call_gemini
+        self._call_groq = call_groq
+        self._call_cerebras = call_cerebras
         self._initialized = True
 
     def call(
@@ -225,6 +232,10 @@ class DefaultAICaller(BaseAICaller):
             result = self._call_ollama(system_message, prompt, temperature)
         elif provider_lower == PROVIDER_GEMINI:
             result = self._call_gemini(model, system_message, prompt, temperature)
+        elif provider_lower == PROVIDER_GROQ:
+            result = self._call_groq(model, system_message, prompt, temperature)
+        elif provider_lower == PROVIDER_CEREBRAS:
+            result = self._call_cerebras(model, system_message, prompt, temperature)
         else:
             # Fallback to generic call_ai
             logger.warning(f"Unknown provider '{provider}', falling back to default routing")
