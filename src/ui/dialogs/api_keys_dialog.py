@@ -47,6 +47,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     groq_key = security_mgr.get_api_key("groq") or os.getenv("GROQ_API_KEY", "")
     anthropic_key = security_mgr.get_api_key("anthropic") or os.getenv("ANTHROPIC_API_KEY", "")
     gemini_key = security_mgr.get_api_key("gemini") or os.getenv("GEMINI_API_KEY", "")
+    cerebras_key = security_mgr.get_api_key("cerebras") or os.getenv("CEREBRAS_API_KEY", "")
 
     # Create entry fields with password masking - add more vertical spacing
     row_offset = 1  # Start at row 1 since header is at row 0
@@ -67,6 +68,12 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     gemini_entry = ttk.Entry(frame, width=50, show="•")
     gemini_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
     gemini_entry.insert(0, gemini_key)
+    row_offset += 1
+
+    ttk.Label(frame, text="Cerebras API Key:").grid(row=row_offset, column=0, sticky="w", pady=15)
+    cerebras_entry = ttk.Entry(frame, width=50, show="•")
+    cerebras_entry.grid(row=row_offset, column=1, sticky="ew", padx=(10, 5), pady=15)
+    cerebras_entry.insert(0, cerebras_key)
     row_offset += 1
 
     ttk.Label(frame, text="Ollama API URL:").grid(row=row_offset, column=0, sticky="w", pady=15)
@@ -131,10 +138,11 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
     create_toggle_button(frame, openai_entry, row=1)
     create_toggle_button(frame, anthropic_entry, row=2)
     create_toggle_button(frame, gemini_entry, row=3)
+    create_toggle_button(frame, cerebras_entry, row=4)
     # Ollama URL doesn't need a show/hide button as it's not a key
 
     # Calculate eye button positions for STT API keys based on deepgram's row
-    deepgram_row = 8  # Based on the row_offset after separator and STT label
+    deepgram_row = 9  # Based on the row_offset after separator and STT label
     create_toggle_button(frame, deepgram_entry, row=deepgram_row)
     create_toggle_button(frame, elevenlabs_entry, row=deepgram_row+1)
     create_toggle_button(frame, groq_entry, row=deepgram_row+2)
@@ -155,6 +163,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
         new_groq = groq_entry.get().strip()
         new_anthropic = anthropic_entry.get().strip()
         new_gemini = gemini_entry.get().strip()
+        new_cerebras = cerebras_entry.get().strip()
 
         from utils.validation import validate_api_key
 
@@ -191,13 +200,18 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             if not is_valid:
                 validation_errors.append(f"Gemini: {error}")
 
+        if new_cerebras:
+            is_valid, error = validate_api_key("cerebras", new_cerebras)
+            if not is_valid:
+                validation_errors.append(f"Cerebras: {error}")
+
         if validation_errors:
             error_var.set("Validation errors:\n" + "\n".join(validation_errors))
             return
 
         # Check if at least one LLM provider is provided
-        if not (new_openai or new_anthropic or new_gemini or new_ollama_url):
-            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Anthropic, Gemini, or Ollama).")
+        if not (new_openai or new_anthropic or new_gemini or new_cerebras or new_ollama_url):
+            error_var.set("Error: At least one LLM provider API key is required (OpenAI, Anthropic, Gemini, Cerebras, or Ollama).")
             return
 
         # Check if at least one STT provider (Groq, Deepgram, or ElevenLabs) is provided
@@ -249,6 +263,9 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 elif "GEMINI_API_KEY=" in line:
                     updated_lines.append(f"GEMINI_API_KEY={new_gemini}")
                     keys_updated.add("GEMINI_API_KEY")
+                elif "CEREBRAS_API_KEY=" in line:
+                    updated_lines.append(f"CEREBRAS_API_KEY={new_cerebras}")
+                    keys_updated.add("CEREBRAS_API_KEY")
                 else:
                     updated_lines.append(line)
 
@@ -267,6 +284,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 updated_lines.append(f"ANTHROPIC_API_KEY={new_anthropic}")
             if "GEMINI_API_KEY" not in keys_updated and new_gemini:
                 updated_lines.append(f"GEMINI_API_KEY={new_gemini}")
+            if "CEREBRAS_API_KEY" not in keys_updated and new_cerebras:
+                updated_lines.append(f"CEREBRAS_API_KEY={new_cerebras}")
 
             # Make sure we have the RECOGNITION_LANGUAGE line
             if not any("RECOGNITION_LANGUAGE=" in line for line in updated_lines):
@@ -288,6 +307,7 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 'groq': new_groq,
                 'anthropic': new_anthropic,
                 'gemini': new_gemini,
+                'cerebras': new_cerebras,
             }
 
             for provider, key in keys_to_store.items():
@@ -312,6 +332,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 os.environ["ANTHROPIC_API_KEY"] = new_anthropic
             if new_gemini:
                 os.environ["GEMINI_API_KEY"] = new_gemini
+            if new_cerebras:
+                os.environ["CEREBRAS_API_KEY"] = new_cerebras
 
             # Store results before showing message
             result["keys"] = {
@@ -321,7 +343,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
                 "ollama_url": new_ollama_url,
                 "groq": new_groq,
                 "anthropic": new_anthropic,
-                "gemini": new_gemini
+                "gemini": new_gemini,
+                "cerebras": new_cerebras,
             }
 
             # Success message and close dialog
