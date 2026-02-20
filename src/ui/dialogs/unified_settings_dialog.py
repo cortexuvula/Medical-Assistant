@@ -342,6 +342,46 @@ class UnifiedSettingsDialog:
         keyterms_entry = ttk.Entry(frame, textvariable=keyterms_var, width=40)
         keyterms_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
         ToolTip(keyterms_entry, "Comma-separated medical terms (e.g., 'hypertension, metformin, COPD')")
+        row += 1
+
+        # --- Diarization section separator ---
+        sep_label = ttk.Label(frame, text="Diarization (Speaker Detection)", font=("", 10, "bold"))
+        sep_label.grid(row=row, column=0, columnspan=2, sticky="w", pady=(15, 5))
+        row += 1
+
+        # Diarize checkbox
+        diarize_label = ttk.Label(frame, text="Enable Diarization:")
+        diarize_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(diarize_label, "Detect and label different speakers in the transcript")
+        diarize_var = tk.BooleanVar(value=elevenlabs_settings.get("diarize", defaults.get("diarize", True)))
+        self.widgets['audio_stt']['elevenlabs']['diarize'] = diarize_var
+        diarize_check = ttk.Checkbutton(frame, variable=diarize_var)
+        diarize_check.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(diarize_check, "When enabled, the transcript will include Speaker 1, Speaker 2, etc.")
+        row += 1
+
+        # Number of Speakers
+        num_speakers_label = ttk.Label(frame, text="Number of Speakers:")
+        num_speakers_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(num_speakers_label, "Expected number of speakers (leave empty for auto-detection)")
+        current_num_speakers = elevenlabs_settings.get("num_speakers", defaults.get("num_speakers", None))
+        num_speakers_var = tk.StringVar(value=str(current_num_speakers) if current_num_speakers is not None else "")
+        self.widgets['audio_stt']['elevenlabs']['num_speakers'] = num_speakers_var
+        num_speakers_entry = ttk.Entry(frame, textvariable=num_speakers_var, width=10)
+        num_speakers_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(num_speakers_entry, "Leave empty for auto-detection (recommended). Set 2 for doctor-patient consultations.")
+        row += 1
+
+        # Diarization Threshold
+        threshold_label = ttk.Label(frame, text="Diarization Threshold:")
+        threshold_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(threshold_label, "Sensitivity for speaker separation (0.0-1.0, lower = more sensitive)")
+        current_threshold = elevenlabs_settings.get("diarization_threshold", defaults.get("diarization_threshold", None))
+        threshold_var = tk.StringVar(value=str(current_threshold) if current_threshold is not None else "")
+        self.widgets['audio_stt']['elevenlabs']['diarization_threshold'] = threshold_var
+        threshold_entry = ttk.Entry(frame, textvariable=threshold_var, width=10)
+        threshold_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(threshold_entry, "0.0-1.0. Lower values detect more speakers. Leave empty to use API default. Try 0.3 for medical consultations.")
 
         frame.columnconfigure(1, weight=1)
 
@@ -1098,9 +1138,31 @@ class UnifiedSettingsDialog:
                 keyterms = [t.strip() for t in keyterms_str.split(',') if t.strip()]
                 settings_manager.set_nested('elevenlabs.keyterms', keyterms[:100], auto_save=False)
 
+                # Handle num_speakers (string -> int or None)
+                num_speakers_str = el_widgets.get('num_speakers', tk.StringVar()).get().strip()
+                if num_speakers_str:
+                    try:
+                        settings_manager.set_nested('elevenlabs.num_speakers', int(num_speakers_str), auto_save=False)
+                    except ValueError:
+                        settings_manager.set_nested('elevenlabs.num_speakers', None, auto_save=False)
+                else:
+                    settings_manager.set_nested('elevenlabs.num_speakers', None, auto_save=False)
+
+                # Handle diarization_threshold (string -> float or None)
+                threshold_str = el_widgets.get('diarization_threshold', tk.StringVar()).get().strip()
+                if threshold_str:
+                    try:
+                        settings_manager.set_nested('elevenlabs.diarization_threshold', float(threshold_str), auto_save=False)
+                    except ValueError:
+                        settings_manager.set_nested('elevenlabs.diarization_threshold', None, auto_save=False)
+                else:
+                    settings_manager.set_nested('elevenlabs.diarization_threshold', None, auto_save=False)
+
                 # Handle regular settings
+                special_keys = {'entity_phi', 'entity_pii', 'entity_pci', 'entity_offensive',
+                                'keyterms', 'num_speakers', 'diarization_threshold'}
                 for key, var in el_widgets.items():
-                    if key.startswith('entity_') or key == 'keyterms':
+                    if key in special_keys or key.startswith('entity_'):
                         continue  # Already handled above
                     settings_manager.set_nested(f'elevenlabs.{key}', var.get(), auto_save=False)
 

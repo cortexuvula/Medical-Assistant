@@ -188,30 +188,19 @@ class RecordingMixin:
                             settings_manager.set("stt_provider", selected_provider, auto_save=False)
                             self.logger.info(f"Using STT provider: {selected_provider}")
 
-                        # Disable diarization for Translation Assistant
-                        original_deepgram_diarize = settings_manager.get_nested("deepgram.diarize", False)
-                        original_elevenlabs_diarize = settings_manager.get_nested("elevenlabs.diarize", True)
-                        settings_manager.set_nested("deepgram.diarize", False)
-                        settings_manager.set_nested("elevenlabs.diarize", False)
-
-                        # Disable audio event tagging
-                        original_tag_audio_events = settings_manager.get_nested("elevenlabs.tag_audio_events", True)
-                        settings_manager.set_nested("elevenlabs.tag_audio_events", False)
-
                         try:
-                            # Transcribe without prefix
-                            logger.info("Calling transcribe_audio_without_prefix")
-                            transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                            # Transcribe without prefix, passing diarize_override=False
+                            # to avoid mutating global settings (which caused race conditions
+                            # with concurrent SOAP transcriptions)
+                            logger.info("Calling transcribe_audio_without_prefix (diarize_override=False)")
+                            transcript = self.audio_handler.transcribe_audio_without_prefix(
+                                combined, diarize_override=False
+                            )
                             logger.info(f"Transcription result: '{transcript[:100] if transcript else '(empty)'}...'")
                         finally:
                             # Restore original provider
                             if selected_provider:
                                 settings_manager.set("stt_provider", original_provider, auto_save=False)
-                            # Restore original diarization settings
-                            settings_manager.set_nested("deepgram.diarize", original_deepgram_diarize)
-                            settings_manager.set_nested("elevenlabs.diarize", original_elevenlabs_diarize)
-                            # Restore audio event tagging setting
-                            settings_manager.set_nested("elevenlabs.tag_audio_events", original_tag_audio_events)
 
                         if transcript:
                             # Process the complete transcript
@@ -396,19 +385,14 @@ class RecordingMixin:
                         if selected_provider:
                             settings_manager.set("stt_provider", selected_provider, auto_save=False)
 
-                        # Disable diarization
-                        original_deepgram_diarize = settings_manager.get_nested("deepgram.diarize", False)
-                        original_elevenlabs_diarize = settings_manager.get_nested("elevenlabs.diarize", True)
-                        settings_manager.set_nested("deepgram.diarize", False)
-                        settings_manager.set_nested("elevenlabs.diarize", False)
-
                         try:
-                            transcript = self.audio_handler.transcribe_audio_without_prefix(combined)
+                            # Pass diarize_override=False to avoid mutating global settings
+                            transcript = self.audio_handler.transcribe_audio_without_prefix(
+                                combined, diarize_override=False
+                            )
                         finally:
                             if selected_provider:
                                 settings_manager.set("stt_provider", original_provider, auto_save=False)
-                            settings_manager.set_nested("deepgram.diarize", original_deepgram_diarize)
-                            settings_manager.set_nested("elevenlabs.diarize", original_elevenlabs_diarize)
 
                         if transcript:
                             def update_ui():

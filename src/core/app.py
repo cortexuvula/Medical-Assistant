@@ -670,6 +670,7 @@ class MedicalDictationApp(
     def show_rsvp_reader(self) -> None:
         """Open RSVP reader with current SOAP note content."""
         from ui.dialogs.rsvp_dialog import RSVPDialog
+        from ui.dialogs.rsvp_section_picker import RSVPSectionPicker
 
         # Get SOAP note content
         soap_content = self.soap_text.get("1.0", "end").strip()
@@ -682,7 +683,9 @@ class MedicalDictationApp(
             )
             return
 
-        RSVPDialog(self, soap_content)
+        picker = RSVPSectionPicker(self, soap_content)
+        if picker.result:
+            RSVPDialog(self, picker.result)
 
     def open_rsvp_reader(self) -> None:
         """Open the standalone RSVP reader dialog.

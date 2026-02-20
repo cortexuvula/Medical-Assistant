@@ -51,7 +51,7 @@ class TranscriptionMixin:
         self._prefix_audio_checked = False
         logger.debug("Prefix audio cache reset")
 
-    def transcribe_audio_without_prefix(self, segment: AudioSegment) -> str:
+    def transcribe_audio_without_prefix(self, segment: AudioSegment, **kwargs) -> str:
         """Transcribe audio using selected provider without adding prefix audio.
 
         This method is used for conversational transcription where medical
@@ -59,6 +59,9 @@ class TranscriptionMixin:
 
         Args:
             segment: AudioSegment to transcribe
+            **kwargs: Additional keyword arguments passed to the STT provider
+                (e.g., diarize_override=False to disable diarization without
+                mutating global settings)
 
         Returns:
             Transcription text or empty string if transcription failed
@@ -67,7 +70,7 @@ class TranscriptionMixin:
         fallback_attempted = False
 
         # First attempt with selected provider
-        transcript = self._try_transcription_with_provider(segment, primary_provider)
+        transcript = self._try_transcription_with_provider(segment, primary_provider, **kwargs)
 
         # Only use fallback if there's an actual error (empty string)
         if transcript == "" and self.fallback_callback and not fallback_attempted:
@@ -77,7 +80,7 @@ class TranscriptionMixin:
             # Try fallback providers
             fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs"] if p != primary_provider]
             for provider in fallback_providers:
-                transcript = self._try_transcription_with_provider(segment, provider)
+                transcript = self._try_transcription_with_provider(segment, provider, **kwargs)
                 if transcript:
                     logger.info(f"Fallback to {provider} successful")
                     break
@@ -149,19 +152,21 @@ class TranscriptionMixin:
 
         return transcript or ""
 
-    def _try_transcription_with_provider(self, segment: AudioSegment, provider: str) -> str:
+    def _try_transcription_with_provider(self, segment: AudioSegment, provider: str, **kwargs) -> str:
         """Try to transcribe with a specific provider, handling errors.
 
         Args:
             segment: AudioSegment to transcribe
             provider: Provider name ('elevenlabs', 'deepgram', 'groq', or 'whisper')
+            **kwargs: Additional keyword arguments passed to the provider
+                (e.g., diarize_override for ElevenLabs)
 
         Returns:
             Transcription text or empty string if failed
         """
         try:
             if provider == "elevenlabs":
-                return self.elevenlabs_provider.transcribe(segment)
+                return self.elevenlabs_provider.transcribe(segment, **kwargs)
             elif provider == "deepgram":
                 return self.deepgram_provider.transcribe(segment)
             elif provider == "groq":

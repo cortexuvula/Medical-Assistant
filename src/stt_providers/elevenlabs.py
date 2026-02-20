@@ -139,13 +139,16 @@ class ElevenLabsProvider(BaseSTTProvider):
 
         return details
 
-    def transcribe(self, segment: AudioSegment) -> str:
+    def transcribe(self, segment: AudioSegment, diarize_override: bool = None) -> str:
         """Transcribe audio using ElevenLabs API.
 
         Uses BytesIO buffer instead of temp files for 2-5 seconds faster processing.
 
         Args:
             segment: Audio segment to transcribe
+            diarize_override: If provided, overrides the diarize setting from config.
+                              Use False to force-disable diarization without mutating
+                              global settings (e.g., for translation recordings).
 
         Returns:
             Transcription text
@@ -189,8 +192,8 @@ class ElevenLabsProvider(BaseSTTProvider):
             if temperature is not None:
                 data['temperature'] = temperature
 
-            # Add diarization parameters
-            diarize = elevenlabs_settings.get("diarize", True)
+            # Add diarization parameters (override takes precedence over settings)
+            diarize = diarize_override if diarize_override is not None else elevenlabs_settings.get("diarize", True)
             
             # Language code and timestamps are general transcription parameters
             language_code = elevenlabs_settings.get("language_code", "")
@@ -329,12 +332,11 @@ class ElevenLabsProvider(BaseSTTProvider):
                     self.logger.debug(f"Found diarization data: {result['diarization']}")
                 
                 # Check word-level speaker information
-                # Scan multiple word entries (not just the first) because spacing/
-                # punctuation/audio_event entries may lack speaker_id
+                # Scan ALL word entries because audio_event/punctuation entries
+                # near the start may lack speaker_id, causing false negatives
                 if 'words' in result and result['words']:
                     word_fields = set()
-                    sample_count = min(20, len(result['words']))
-                    for entry in result['words'][:sample_count]:
+                    for entry in result['words']:
                         for key in entry.keys():
                             word_fields.add(key)
                             if 'speaker' in key.lower():
@@ -344,7 +346,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                                 if key == 'speaker_id' or diarization_location is None:
                                     diarization_location = f"words.{key}"
 
-                    self.logger.debug(f"Word-level fields (from first {sample_count} entries): {word_fields}")
+                    self.logger.debug(f"Word-level fields (from {len(result['words'])} entries): {word_fields}")
 
                     # Print first 3 words with full details
                     self.logger.debug("\nFirst 3 word entries (full details):")
@@ -418,8 +420,9 @@ class ElevenLabsProvider(BaseSTTProvider):
                         f"Using plain text fallback."
                     )
 
-                # Warn if diarization was enabled but only one speaker came through
-                if diarize and transcript and transcript.count("Speaker ") <= 1:
+                # Warn if diarization was enabled but no speaker labels in output
+                # (a single "Speaker " occurrence means the API did return speaker data)
+                if diarize and transcript and transcript.count("Speaker ") == 0:
                     tips = [
                         "Diarization was enabled but only one speaker detected.",
                         "Tips: (1) Leave 'Number of Speakers' empty to let the API auto-detect.",
@@ -465,7 +468,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                 elevenlabs_settings = settings_manager.get("elevenlabs", {})
                 if elevenlabs_settings.get("retry_with_file", False):
                     self.logger.info("Attempting file-based transcription fallback...")
-                    fallback_transcript = self._transcribe_via_temp_file(segment)
+                    fallback_transcript = self._transcribe_via_temp_file(segment, diarize_override=diarize_override)
                     if fallback_transcript and len(fallback_transcript) > len(transcript):
                         self.logger.info(f"File fallback succeeded: {len(fallback_transcript)} chars vs {len(transcript)}")
                         transcript = fallback_transcript
@@ -474,13 +477,14 @@ class ElevenLabsProvider(BaseSTTProvider):
         # No temp file cleanup needed with BytesIO
         return transcript
 
-    def _transcribe_via_temp_file(self, segment: AudioSegment) -> str:
+    def _transcribe_via_temp_file(self, segment: AudioSegment, diarize_override: bool = None) -> str:
         """Fallback transcription using temp file instead of BytesIO.
 
         This can help when BytesIO export produces corrupted audio.
 
         Args:
             segment: AudioSegment to transcribe
+            diarize_override: If provided, overrides the diarize setting from config.
 
         Returns:
             Transcription text or empty string if failed
@@ -502,20 +506,28 @@ class ElevenLabsProvider(BaseSTTProvider):
             headers = {'xi-api-key': self.api_key}
 
             elevenlabs_settings = settings_manager.get("elevenlabs", {})
+            diarize = diarize_override if diarize_override is not None else elevenlabs_settings.get("diarize", True)
+
             data = {
                 'model_id': elevenlabs_settings.get("model_id", "scribe_v2"),
-                'diarize': str(elevenlabs_settings.get("diarize", True)).lower(),
             }
 
-            # Only send num_speakers if explicitly set (omit for auto-detection)
-            num_speakers = elevenlabs_settings.get("num_speakers", None)
-            if num_speakers is not None:
-                data['num_speakers'] = str(num_speakers)
+            if diarize:
+                data['diarize'] = 'true'
 
-            # Forward diarization_threshold (only effective when num_speakers omitted)
-            diarization_threshold = elevenlabs_settings.get("diarization_threshold")
-            if diarization_threshold is not None:
-                data['diarization_threshold'] = str(diarization_threshold)
+                # Only send num_speakers if explicitly set (omit for auto-detection)
+                num_speakers = elevenlabs_settings.get("num_speakers", None)
+                if num_speakers is not None:
+                    data['num_speakers'] = str(num_speakers)
+
+                # Forward diarization_threshold (only effective when num_speakers omitted)
+                diarization_threshold = elevenlabs_settings.get("diarization_threshold")
+                if diarization_threshold is not None:
+                    data['diarization_threshold'] = str(diarization_threshold)
+                else:
+                    data['diarization_threshold'] = '0.1'
+            else:
+                data['diarize'] = 'false'
 
             # Add entity detection if configured
             entity_detection = elevenlabs_settings.get("entity_detection", [])
@@ -533,6 +545,25 @@ class ElevenLabsProvider(BaseSTTProvider):
 
             if response.status_code == 200:
                 result = response.json()
+
+                # Process diarization data the same way the main path does
+                if diarize and 'words' in result and result['words']:
+                    # Check for speaker info in word entries
+                    speaker_field = None
+                    for entry in result['words']:
+                        if 'speaker_id' in entry:
+                            speaker_field = 'speaker_id'
+                            break
+                        for key in entry.keys():
+                            if 'speaker' in key.lower() and key != 'speaker_confidence':
+                                speaker_field = key
+                                break
+                        if speaker_field:
+                            break
+
+                    if speaker_field:
+                        return self._format_diarized_transcript_with_field(result['words'], speaker_field)
+
                 return result.get("text", "")
             else:
                 self.logger.error(f"File fallback failed: {response.status_code} - {response.text}")
