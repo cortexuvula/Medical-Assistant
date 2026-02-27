@@ -851,7 +851,7 @@ class AudioHandler:
         
         return channels, self.sample_rate
 
-    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default", mark_stopping: Callable = None) -> Callable:
+    def _create_stop_function(self, stream: sd.InputStream, flush_callback: Callable = None, stream_purpose: str = "default", mark_stopping: Callable = None, stream_started: threading.Event = None) -> Callable:
         """Create the stop function for the audio stream.
 
         Args:
@@ -862,6 +862,9 @@ class AudioHandler:
                           processing before the stream is stopped. Prevents GIL
                           crashes when the callback tries to call tkinter during
                           stream shutdown.
+            stream_started: Optional event that is set when the stream has finished
+                          starting. If provided, stop will wait for it before
+                          attempting to stop the stream.
 
         Returns:
             Function to stop the stream.
@@ -872,6 +875,12 @@ class AudioHandler:
         def stop_stream(wait_for_stop: bool = False) -> None:
             if stream:
                 try:
+                    # If the stream is still starting in a background thread,
+                    # wait for it to finish before stopping
+                    if stream_started and not stream_started.is_set():
+                        logger.info("Waiting for audio stream to finish starting before stopping...")
+                        stream_started.wait(timeout=3.0)
+
                     # Signal the audio callback to stop processing BEFORE
                     # stopping the stream. This prevents the callback from
                     # calling into tkinter while stream.stop() is waiting
@@ -1063,8 +1072,42 @@ class AudioHandler:
                 blocksize=0,
                 dtype='float32'
             )
-            stream.start()
-            logger.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
+
+            # Start stream in a background thread to avoid blocking the Tk main
+            # thread. On macOS, PortAudio's Pa_StartStream calls
+            # AudioOutputUnitStart which can block indefinitely while waiting
+            # for CoreAudio hardware initialization. If the main thread is stuck
+            # in this C call when Tk shutdown is triggered (e.g. user closes
+            # window, signal delivered), Python's thread state becomes NULL
+            # causing a fatal crash (_Py_FatalError_TstateNULL / SIGABRT).
+            stream_started = threading.Event()
+            stream_start_error = [None]
+
+            def _start_stream_bg():
+                try:
+                    stream.start()
+                    logger.info(f"sounddevice InputStream started successfully for '{device_info['name']}'")
+                except Exception as e:
+                    stream_start_error[0] = e
+                    logger.error(f"Error starting audio stream in background: {e}")
+                finally:
+                    stream_started.set()
+
+            start_thread = threading.Thread(target=_start_stream_bg, daemon=True)
+            start_thread.start()
+
+            # Wait briefly for the stream to start - most starts complete in
+            # <100ms. This catches immediate errors while keeping the main
+            # thread responsive for longer hardware init times.
+            if not stream_started.wait(timeout=0.5):
+                logger.info(
+                    f"Audio stream start still initializing for '{device_info['name']}', "
+                    "continuing in background"
+                )
+
+            # Check for immediate errors
+            if stream_start_error[0] is not None:
+                raise stream_start_error[0]
 
             # Add to active streams with purpose (thread-safe)
             with AudioHandler._streams_lock:
@@ -1076,8 +1119,9 @@ class AudioHandler:
                 # Track that this instance owns this stream
                 self._instance_streams.add(stream_purpose)
 
-            # Create stop function with flush callback and stopping flag
-            stop_function = self._create_stop_function(stream, flush_callback, stream_purpose, mark_stopping)
+            # Create stop function with flush callback, stopping flag, and
+            # stream_started event so stop can wait for start to complete
+            stop_function = self._create_stop_function(stream, flush_callback, stream_purpose, mark_stopping, stream_started)
 
             return stop_function # Return the specific closer for this stream
 
