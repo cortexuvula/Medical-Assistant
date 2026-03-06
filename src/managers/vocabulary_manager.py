@@ -9,14 +9,18 @@ This manager handles:
 """
 
 import json
+import os
 import csv
 import threading
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
 from settings.settings import SETTINGS, save_settings
+from managers.data_folder_manager import data_folder_manager
 from utils.vocabulary_corrector import VocabularyCorrector, CorrectionResult
 from utils.structured_logging import get_logger
+
+VOCABULARY_FILE = str(data_folder_manager.vocabulary_file_path)
 
 
 class VocabularyManager:
@@ -58,7 +62,7 @@ class VocabularyManager:
         return cls._instance
 
     def _load_settings(self) -> None:
-        """Load vocabulary settings from SETTINGS."""
+        """Load vocabulary config from SETTINGS and corrections from vocabulary.json."""
         vocab_settings = SETTINGS.get("custom_vocabulary", {})
         self._enabled = vocab_settings.get("enabled", True)
         self._default_specialty = vocab_settings.get("default_specialty", "general")
@@ -70,19 +74,89 @@ class VocabularyManager:
             "general_practice", "surgery", "psychiatry", "dermatology",
             "gastroenterology", "pulmonology", "endocrinology"
         ])
-        self._corrections = vocab_settings.get("corrections", {})
+        self._corrections = self._load_corrections_file()
+
+    def _load_corrections_file(self) -> Dict[str, Dict]:
+        """Load corrections from vocabulary.json, migrating from settings.json if needed."""
+        # 1. If vocabulary.json exists, load from it
+        if os.path.exists(VOCABULARY_FILE):
+            try:
+                with open(VOCABULARY_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                corrections = {}
+                for item in data.get("corrections", []):
+                    find_text = item.get("find_text", "").strip()
+                    if find_text:
+                        corrections[find_text] = {
+                            "replacement": item.get("replacement", ""),
+                            "category": item.get("category", "general"),
+                            "specialty": item.get("specialty"),
+                            "case_sensitive": item.get("case_sensitive", False),
+                            "priority": item.get("priority", 0),
+                            "enabled": item.get("enabled", True)
+                        }
+                self.logger.info(f"Loaded {len(corrections)} corrections from {VOCABULARY_FILE}")
+                return corrections
+            except Exception as e:
+                self.logger.error(f"Failed to load vocabulary.json: {e}")
+                return {}
+
+        # 2. Check settings.json for legacy corrections to migrate
+        vocab_settings = SETTINGS.get("custom_vocabulary", {})
+        legacy_corrections = vocab_settings.get("corrections", {})
+        if legacy_corrections:
+            self.logger.info(f"Migrating {len(legacy_corrections)} corrections from settings.json to vocabulary.json")
+            # Save to vocabulary.json
+            self._save_corrections_to_file(legacy_corrections)
+            # Remove corrections key from settings.json
+            if "corrections" in vocab_settings:
+                del vocab_settings["corrections"]
+                SETTINGS["custom_vocabulary"] = vocab_settings
+                save_settings(SETTINGS)
+                self.logger.info("Removed legacy corrections from settings.json")
+            return legacy_corrections
+
+        # 3. Neither exists - return empty
+        return {}
 
     def _save_settings(self) -> None:
-        """Save vocabulary settings to SETTINGS."""
+        """Save config to settings.json and corrections to vocabulary.json."""
         SETTINGS["custom_vocabulary"] = {
             "enabled": self._enabled,
             "default_specialty": self._default_specialty,
             "categories": self._categories,
             "specialties": self._specialties,
-            "corrections": self._corrections
         }
         save_settings(SETTINGS)
+        self._save_corrections_file()
         self.logger.info("Vocabulary settings saved")
+
+    def _save_corrections_file(self) -> None:
+        """Save corrections to vocabulary.json."""
+        self._save_corrections_to_file(self._corrections)
+
+    def _save_corrections_to_file(self, corrections: Dict[str, Dict]) -> None:
+        """Write corrections dict to vocabulary.json in array-of-objects format."""
+        export_data = {
+            "version": "1.0",
+            "corrections": []
+        }
+        for find_text, rule in corrections.items():
+            export_data["corrections"].append({
+                "find_text": find_text,
+                "replacement": rule.get("replacement", ""),
+                "category": rule.get("category", "general"),
+                "specialty": rule.get("specialty"),
+                "case_sensitive": rule.get("case_sensitive", False),
+                "priority": rule.get("priority", 0),
+                "enabled": rule.get("enabled", True)
+            })
+        try:
+            with open(VOCABULARY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2)
+            self.logger.info(f"Saved {len(export_data['corrections'])} corrections to {VOCABULARY_FILE}")
+        except Exception as e:
+            self.logger.error(f"Failed to save vocabulary.json: {e}")
 
     def save_settings(self) -> None:
         """Public method to save vocabulary settings.

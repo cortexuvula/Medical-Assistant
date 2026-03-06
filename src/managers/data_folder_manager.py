@@ -74,6 +74,11 @@ class DataFolderManager:
         return self._app_data_folder / "settings.json"
     
     @property
+    def vocabulary_file_path(self) -> Path:
+        """Get the vocabulary.json file path."""
+        return self._app_data_folder / "vocabulary.json"
+
+    @property
     def database_file_path(self) -> Path:
         """Get the database file path."""
         return self._app_data_folder / "medical_assistant.db"

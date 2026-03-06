@@ -491,8 +491,7 @@ _DEFAULTS_UI_STORAGE = {
 _DEFAULTS_VOCABULARY = {
     "custom_vocabulary": {
         "enabled": True,
-        "default_specialty": "general",
-        "corrections": {}
+        "default_specialty": "general"
     }
 }
 
