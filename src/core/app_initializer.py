@@ -503,6 +503,14 @@ class AppInitializer:
         self.app.processing_queue.completion_callback = self._on_queue_completion
         self.app.processing_queue.error_callback = self._on_queue_error
 
+        # Recover any tasks orphaned by a previous crash/shutdown
+        try:
+            recovered = self.app.processing_queue.recover_orphaned_tasks()
+            if recovered:
+                logger.info(f"Recovered {recovered} orphaned processing task(s)")
+        except Exception as e:
+            logger.warning(f"Failed to recover orphaned tasks: {e}")
+
         # Register guideline progress callback
         def on_guideline_progress(task_id, status, percent, error,
                                   batch_id=None, filename=None):

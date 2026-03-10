@@ -11,6 +11,7 @@ import numpy as np
 from pydub import AudioSegment
 
 from utils.structured_logging import get_logger
+from utils.safe_ui import schedule_ui_update
 
 logger = get_logger(__name__)
 
@@ -67,9 +68,9 @@ class SOAPAudioProcessor:
 
                 # Visual feedback based on audio level
                 if max_amp < 0.005:
-                    self.app.after(0, lambda: self.app.update_status("Audio level too low - please speak louder", "warning"))
+                    schedule_ui_update(self.app, lambda: self.app.update_status("Audio level too low - please speak louder", "warning"))
                 else:
-                    self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))
+                    schedule_ui_update(self.app, lambda: self.app.update_status("Recording SOAP note...", "info"))
             else:
                 # For non-numpy data, convert and add to recording manager
                 try:
@@ -80,7 +81,7 @@ class SOAPAudioProcessor:
                         self.app.recording_manager.add_audio_segment(raw_data)
 
                         # Visual feedback
-                        self.app.after(0, lambda: self.app.update_status("Recording SOAP note...", "info"))
+                        schedule_ui_update(self.app, lambda: self.app.update_status("Recording SOAP note...", "info"))
                     else:
                         logger.warning(f"SOAP recording: No audio segment created from data of type {type(audio_data)}")
                 except Exception as e:

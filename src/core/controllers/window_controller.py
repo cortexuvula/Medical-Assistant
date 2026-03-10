@@ -444,6 +444,20 @@ class WindowController:
                 except (OSError, RuntimeError) as e:
                     logger.error(f"Error shutting down processing queue: {str(e)}", exc_info=True)
 
+            # Wait for registered I/O threads to complete
+            try:
+                from utils.thread_registry import ThreadRegistry
+                ThreadRegistry.instance().shutdown(timeout=5.0)
+            except Exception as e:
+                logger.error(f"Error in thread registry shutdown: {e}", exc_info=True)
+
+            # Clean up any tracked temp files (PHI safety net)
+            try:
+                from utils.temp_file_tracker import TempFileTracker
+                TempFileTracker.instance().cleanup_all()
+            except Exception as e:
+                logger.error(f"Error cleaning up temp files: {e}", exc_info=True)
+
             # Cleanup notification manager if it exists
             if hasattr(self.app, 'notification_manager') and self.app.notification_manager:
                 logger.info("Cleaning up notification manager...")
@@ -553,7 +567,8 @@ class WindowController:
             else:
                 messagebox.showwarning("File Not Found", "Log file not found.")
         except (OSError, tk.TclError) as e:
-            messagebox.showerror("Error", f"Failed to open log file: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("open_dialog", e, detail="Could not open the log file.")
 
     def open_logs_folder(self, log_dir: str) -> None:
         """Open the logs directory using file explorer.
@@ -568,8 +583,8 @@ class WindowController:
                 messagebox.showerror("Error", f"Could not open logs directory: {error}")
                 logger.error(f"Error opening logs directory: {error}")
         except OSError as e:
-            messagebox.showerror("Error", f"Could not open logs directory: {str(e)}")
-            logger.error(f"Error opening logs directory: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("open_dialog", e, detail="Could not open the logs directory.")
 
     def open_logs_folder_menu(self) -> None:
         """Wrapper method for menu to open logs folder."""

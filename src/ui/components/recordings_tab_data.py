@@ -214,8 +214,8 @@ class RecordingsTabDataMixin:
             self._load_saved_analyses(rec_id)
 
         except Exception as e:
-            logger.error(f"Error loading recording: {e}")
-            tk.messagebox.showerror("Load Error", f"Failed to load recording: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("load_recording", e)
 
     def _load_saved_analyses(self, recording_id: int) -> None:
         """Load saved medication and differential analyses for a recording.
@@ -333,8 +333,8 @@ class RecordingsTabDataMixin:
             self.parent.status_manager.success(f"Recording exported to {os.path.basename(file_path)}")
 
         except Exception as e:
-            logger.error(f"Error exporting recording: {e}")
-            tk.messagebox.showerror("Export Error", f"Failed to export recording: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("save_file", e)
 
 
 __all__ = ["RecordingsTabDataMixin"]

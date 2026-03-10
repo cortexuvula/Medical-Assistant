@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 from utils.utils import get_valid_microphones
 from settings.settings import SETTINGS, save_settings
-from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog, show_elevenlabs_settings_dialog, show_deepgram_settings_dialog, show_groq_settings_dialog
+from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog
 from ui.tooltip import ToolTip
 from ui.ui_constants import Icons, SidebarConfig, Fonts
 

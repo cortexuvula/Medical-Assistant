@@ -225,8 +225,8 @@ def show_custom_suggestions_dialog(parent: tk.Tk) -> None:
             dialog.destroy()
 
         except Exception as e:
-            logger.error(f"Error saving custom suggestions: {e}")
-            messagebox.showerror("Error", f"Failed to save suggestions: {str(e)}", parent=dialog)
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("save_file", e, detail="Could not save custom suggestions.", parent=dialog)
 
     def cancel():
         dialog.destroy()

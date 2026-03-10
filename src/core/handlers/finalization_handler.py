@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Dict, Any
 
 from settings import settings_manager
 from utils.structured_logging import get_logger
+from utils.safe_ui import schedule_ui_update
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -61,7 +62,7 @@ class FinalizationHandler:
         else:
             # Process immediately
             self.app.process_soap_recording()
-            self.app.after(0, lambda: self.app.ui_state_manager.set_recording_state(
+            schedule_ui_update(self.app, lambda: self.app.ui_state_manager.set_recording_state(
                 recording=False, caller="finalize_delayed"
             ))
 

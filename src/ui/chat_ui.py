@@ -444,10 +444,8 @@ class ChatUI:
             if hasattr(self.app, '_update_chat_suggestions'):
                 self.app._update_chat_suggestions()
         except Exception as e:
-            import logging
-            logger.error(f"Error showing suggestions manager: {e}")
-            import tkinter.messagebox
-            tkinter.messagebox.showerror("Error", f"Failed to open suggestions manager: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("open_dialog", e)
         
     def send_message(self):
         """Send the current message"""

@@ -227,16 +227,20 @@ class RecordingManager:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
                 audio_data.export(temp_file.name, format="mp3")
                 temp_path = temp_file.name
-            
-            # Transcribe
-            transcript = self.audio_handler.transcribe_audio_file(
-                temp_path,
-                callback=self.on_text_recognized,
-                on_transcription_fallback=self.on_transcription_fallback
-            )
-            
-            # Clean up
-            os.unlink(temp_path)
+
+            try:
+                # Transcribe
+                transcript = self.audio_handler.transcribe_audio_file(
+                    temp_path,
+                    callback=self.on_text_recognized,
+                    on_transcription_fallback=self.on_transcription_fallback
+                )
+            finally:
+                # Clean up temp file even if transcription fails
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
             
             return {
                 'success': True,

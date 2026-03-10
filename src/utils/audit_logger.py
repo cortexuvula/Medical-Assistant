@@ -29,11 +29,14 @@ import json
 import logging
 import os
 import hashlib
+import stat
 import threading
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 from managers.data_folder_manager import data_folder_manager
 from utils.structured_logging import get_logger
@@ -117,6 +120,15 @@ class AuditLogger:
         # Audit log file path
         self._log_path = self._log_dir / "audit.log"
 
+        # Load rotation settings
+        try:
+            from settings.settings import SETTINGS
+            audit_cfg = SETTINGS.get("audit_log", {})
+        except Exception:
+            audit_cfg = {}
+        max_size_mb = audit_cfg.get("max_size_mb", 100)
+        backup_count = audit_cfg.get("backup_count", 5)
+
         # Set up Python logger for audit
         self._logger = get_logger("audit")
         self._logger.setLevel(logging.INFO)
@@ -124,34 +136,41 @@ class AuditLogger:
 
         # Only add handler if not already present
         if not self._logger.handlers:
-            # File handler for audit log (append mode)
-            handler = logging.FileHandler(
-                self._log_path,
-                mode='a',
-                encoding='utf-8'
+            # Rotating file handler for audit log — prevents unbounded growth
+            handler = ConcurrentRotatingFileHandler(
+                str(self._log_path),
+                maxBytes=max_size_mb * 1024 * 1024,
+                backupCount=backup_count,
+                encoding='utf-8',
             )
             handler.setFormatter(logging.Formatter('%(message)s'))
             self._logger.addHandler(handler)
 
-        # Secure the audit log file
-        self._secure_log_file()
+        # Secure the audit log file and rotated copies
+        self._secure_log_file(backup_count)
 
-    def _secure_log_file(self):
-        """Set secure permissions on audit log file."""
+    def _secure_log_file(self, backup_count: int = 5):
+        """Set secure permissions on audit log file and rotated copies."""
         import platform
-        import stat
 
         if platform.system() == 'Windows':
             return  # Windows uses ACLs
 
-        try:
-            if self._log_path.exists():
-                current_mode = self._log_path.stat().st_mode
-                # Set to append-only for owner (0600)
-                if current_mode & (stat.S_IRWXG | stat.S_IRWXO):
-                    os.chmod(self._log_path, stat.S_IRUSR | stat.S_IWUSR)
-        except OSError:
-            pass  # Best effort
+        secure_mode = stat.S_IRUSR | stat.S_IWUSR  # 0o600
+
+        # Secure the main log and all rotated copies (audit.log.1 .. audit.log.N)
+        paths_to_secure = [self._log_path]
+        for i in range(1, backup_count + 1):
+            paths_to_secure.append(self._log_path.parent / f"{self._log_path.name}.{i}")
+
+        for path in paths_to_secure:
+            try:
+                if path.exists():
+                    current_mode = path.stat().st_mode
+                    if current_mode & (stat.S_IRWXG | stat.S_IRWXO):
+                        os.chmod(path, secure_mode)
+            except OSError:
+                pass  # Best effort
 
     def _generate_session_hash(self, session_id: Optional[str] = None) -> str:
         """Generate a session identifier hash.

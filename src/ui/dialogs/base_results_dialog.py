@@ -32,12 +32,12 @@ import subprocess
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Tuple
 
-from ui.scaling_utils import ui_scaler
+from ui.dialogs.base_dialog import BaseDialog
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
 
 
-class BaseResultsDialog(ABC):
+class BaseResultsDialog(BaseDialog, ABC):
     """Abstract base class for agent results dialogs.
 
     This class provides common functionality for displaying AI agent results:
@@ -75,8 +75,7 @@ class BaseResultsDialog(ABC):
         Args:
             parent: Parent window
         """
-        self.parent = parent
-        self.dialog: Optional[tk.Toplevel] = None
+        super().__init__(parent, modal=False)
         self.result_text: Optional[tk.Text] = None
         self.results: Any = None
         self.results_text: str = ""
@@ -86,6 +85,36 @@ class BaseResultsDialog(ABC):
         self.logger = get_logger(self.__class__.__module__)
         self._status_label: Optional[ttk.Label] = None
         self._status_after_id: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    # BaseDialog hook implementations
+    # ------------------------------------------------------------------
+
+    def _get_title(self) -> str:
+        return self._get_dialog_title()
+
+    def _get_size(self) -> Tuple[int, int]:
+        return self._get_dialog_size()
+
+    def _get_min_size(self) -> Optional[Tuple[int, int]]:
+        min_w, min_h = self._get_min_dialog_size()
+        return (min_w, min_h)
+
+    def _get_padding(self) -> int:
+        return 20
+
+    def _create_content(self, parent_frame) -> None:
+        """Build the results dialog content (header, text area, buttons)."""
+        self._create_header()
+        self._create_text_area()
+        self._create_buttons()
+
+        # Display the results that were stored before show was called
+        self._display_formatted_results(self.results_text)
+
+    # ------------------------------------------------------------------
+    # Abstract methods subclasses must implement
+    # ------------------------------------------------------------------
 
     @abstractmethod
     def _get_dialog_title(self) -> str:
@@ -128,7 +157,7 @@ class BaseResultsDialog(ABC):
         """
         return (950, 750)
 
-    def _get_min_size(self) -> Tuple[int, int]:
+    def _get_min_dialog_size(self) -> Tuple[int, int]:
         """Return the minimum dialog window size.
 
         Override this to customize minimum dimensions.
@@ -152,6 +181,8 @@ class BaseResultsDialog(ABC):
                      metadata: Optional[Dict[str, Any]] = None) -> None:
         """Show the results in a dialog window.
 
+        This is the primary entry point for results dialogs (not ``show()``).
+
         Args:
             results: The results data (dict or string)
             result_type: Type of results being displayed
@@ -170,53 +201,10 @@ class BaseResultsDialog(ABC):
         else:
             self.results_text = str(results)
 
-        # Create dialog window
-        self._create_dialog()
-
-        # Create UI components
-        self._create_header()
-        self._create_text_area()
-        self._create_buttons()
-
-        # Display results
-        self._display_formatted_results(self.results_text)
-
-        # Focus on dialog
+        # Build dialog, create content, and focus
+        self._build_dialog()
+        self._create_content(self.main_frame)
         self.dialog.focus_set()
-
-    def _create_dialog(self) -> None:
-        """Create the dialog window."""
-        self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title(self._get_dialog_title())
-
-        # Set size
-        width, height = self._get_dialog_size()
-        dialog_width, dialog_height = ui_scaler.get_dialog_size(width, height)
-        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-
-        # Set minimum size
-        min_width, min_height = self._get_min_size()
-        self.dialog.minsize(min_width, min_height)
-
-        # Make dialog modal
-        self.dialog.transient(self.parent)
-
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-
-        # Grab focus after window is visible
-        self.dialog.deiconify()
-        try:
-            self.dialog.grab_set()
-        except tk.TclError:
-            pass  # Window not viewable yet
-
-        # Create main frame
-        self.main_frame = ttk.Frame(self.dialog, padding=20)
-        self.main_frame.pack(fill=BOTH, expand=True)
 
     def _create_header(self) -> None:
         """Create the dialog header with title and metadata."""
@@ -329,16 +317,16 @@ class BaseResultsDialog(ABC):
         if line.upper() == line and line.endswith(':') and line.strip():
             self.result_text.insert(tk.END, line + '\n', "heading")
         # Warning indicators
-        elif line.startswith('⚠') or line.startswith('[WARNING]'):
+        elif line.startswith('\u26a0') or line.startswith('[WARNING]'):
             self.result_text.insert(tk.END, line + '\n', "warning")
         # Error indicators
-        elif line.startswith('❌') or line.startswith('[ERROR]'):
+        elif line.startswith('\u274c') or line.startswith('[ERROR]'):
             self.result_text.insert(tk.END, line + '\n', "error")
         # Success indicators
-        elif line.startswith('✓') or line.startswith('[OK]'):
+        elif line.startswith('\u2713') or line.startswith('[OK]'):
             self.result_text.insert(tk.END, line + '\n', "success")
         # Bullet points
-        elif line.startswith('•') or line.startswith('-'):
+        elif line.startswith('\u2022') or line.startswith('-'):
             parts = line.split(' ', 1)
             self.result_text.insert(tk.END, parts[0] + ' ')
             if len(parts) > 1:
@@ -405,7 +393,7 @@ class BaseResultsDialog(ABC):
         ttk.Button(
             button_frame,
             text="Close",
-            command=self.dialog.destroy,
+            command=self.close,
             width=15
         ).pack(side=RIGHT)
 

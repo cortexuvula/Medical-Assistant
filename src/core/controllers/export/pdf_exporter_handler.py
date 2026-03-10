@@ -21,6 +21,7 @@ from core.controllers.export.export_helpers import (
     validate_export_content
 )
 from settings import settings_manager
+from utils.error_handling import show_error_dialog
 from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
@@ -78,8 +79,7 @@ class PDFExporterHandler:
                 messagebox.showerror("Export Failed", "Failed to export PDF. Check logs for details.")
 
         except Exception as e:
-            logger.error(f"Error exporting to PDF: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to export PDF: {str(e)}")
+            show_error_dialog("export_pdf", e, parent=self.app)
 
     def export_all_as_pdf(self) -> None:
         """Export all documents as separate PDFs."""
@@ -117,8 +117,7 @@ class PDFExporterHandler:
                 messagebox.showinfo("Export Info", "No documents with content to export.")
 
         except Exception as e:
-            logger.error(f"Error exporting all to PDF: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to export PDFs: {str(e)}")
+            show_error_dialog("export_pdf", e, parent=self.app)
 
     def export_as_pdf_letterhead(self) -> None:
         """Export current document as PDF with simple letterhead."""
@@ -166,8 +165,7 @@ class PDFExporterHandler:
                 messagebox.showerror("Export Failed", "Failed to export PDF. Check logs for details.")
 
         except Exception as e:
-            logger.error(f"Error exporting to PDF with letterhead: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to export PDF: {str(e)}")
+            show_error_dialog("export_pdf", e, parent=self.app)
 
     def print_document(self) -> None:
         """Print current document via system dialog."""
@@ -188,6 +186,10 @@ class PDFExporterHandler:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp_path = tmp.name
 
+            # Register with tracker as crash-case backup
+            from utils.temp_file_tracker import TempFileTracker
+            TempFileTracker.instance().register(tmp_path)
+
             pdf_exporter = PDFExporter()
             doc_type = DOCUMENT_TYPES[selected_tab]
 
@@ -202,15 +204,21 @@ class PDFExporterHandler:
                     logger.error(f"Failed to print: {error}")
                     messagebox.showerror("Print Error", f"Failed to print document: {error}")
 
-                self.app.after(5000, lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
+                def _cleanup_pdf():
+                    try:
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+                        TempFileTracker.instance().unregister(tmp_path)
+                    except OSError:
+                        pass
+                self.app.after(5000, _cleanup_pdf)
             else:
                 messagebox.showerror("Print Error", "Failed to prepare document for printing.")
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
 
         except Exception as e:
-            logger.error(f"Error printing document: {str(e)}")
-            messagebox.showerror("Print Error", f"Failed to print: {str(e)}")
+            show_error_dialog("print_document", e, parent=self.app)
 
     def _export_document_as_pdf(
         self,

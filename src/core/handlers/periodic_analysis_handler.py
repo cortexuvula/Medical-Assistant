@@ -14,6 +14,7 @@ from utils.differential_tracker import DifferentialTracker
 from utils.constants import TimingConstants
 from database.database import Database
 from utils.structured_logging import get_logger
+from utils.safe_ui import schedule_ui_update
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -233,7 +234,7 @@ class PeriodicAnalysisHandler:
                         else:
                             record_tab.update_countdown(seconds)
 
-            self.app.after(0, update_ui)
+            schedule_ui_update(self.app, update_ui)
         except Exception as e:
             logger.error(f"Error updating countdown: {e}")
 
@@ -478,7 +479,7 @@ class PeriodicAnalysisHandler:
                     )
 
                 # Update UI on main thread using accumulated display
-                self.app.after(0, lambda: self.update_analysis_display(analysis_text))
+                schedule_ui_update(self.app, lambda: self.update_analysis_display(analysis_text))
                 self.app.status_manager.success(f"Analysis #{analysis_count} completed")
             else:
                 error_msg = result.error or 'Unknown error'

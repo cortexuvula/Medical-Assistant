@@ -13,9 +13,10 @@ from ui.dialogs.dialogs import (
     show_about_dialog,
     show_shortcuts_dialog,
     show_letter_options_dialog,
-    show_elevenlabs_settings_dialog,
-    show_deepgram_settings_dialog,
-    show_groq_settings_dialog
+)
+from ui.dialogs.unified_settings_dialog import (
+    show_unified_settings_dialog,
+    UnifiedSettingsDialog,
 )
 from utils.structured_logging import get_logger
 
@@ -40,11 +41,6 @@ class AppDialogMixin:
     def show_api_keys_dialog(self) -> None:
         """Shows a dialog to update API keys and updates the .env file."""
         self.menu_manager.show_api_keys_dialog()
-
-        # Update local properties
-        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
 
         # Update UI components based on API availability
         from utils.security import get_security_manager
@@ -71,15 +67,7 @@ class AppDialogMixin:
             if self.soap_button:
                 self.soap_button.config(state=DISABLED)
 
-        # Reinitialize audio handler with new API keys
-        from audio.audio import AudioHandler
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
-        )
-
+        self._refresh_audio_handler()
         self.status_manager.success("API keys updated successfully")
 
     def show_about(self) -> None:
@@ -95,39 +83,49 @@ class AppDialogMixin:
         return show_letter_options_dialog(self)
 
     def show_elevenlabs_settings(self) -> None:
-        """Show ElevenLabs settings dialog."""
-        show_elevenlabs_settings_dialog(self)
-
-        # Refresh the audio handler with potentially new settings
-        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        from audio.audio import AudioHandler
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
+        """Show ElevenLabs settings in Preferences dialog."""
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AUDIO_STT,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_ELEVENLABS
         )
-        self.status_manager.success("ElevenLabs settings saved successfully")
+        self._refresh_audio_handler()
 
     def show_deepgram_settings(self) -> None:
-        """Show dialog to configure Deepgram settings."""
-        show_deepgram_settings_dialog(self)
-
-        # Refresh the audio handler with potentially new settings
-        from audio.audio import AudioHandler
-        self.audio_handler = AudioHandler(
-            elevenlabs_api_key=self.elevenlabs_api_key,
-            deepgram_api_key=self.deepgram_api_key,
-            groq_api_key=self.groq_api_key,
-            recognition_language=self.recognition_language
+        """Show Deepgram settings in Preferences dialog."""
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AUDIO_STT,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_DEEPGRAM
         )
-        self.status_manager.success("Deepgram settings saved successfully")
+        self._refresh_audio_handler()
 
     def show_groq_settings(self) -> None:
-        """Show dialog to configure Groq settings."""
-        show_groq_settings_dialog(self)
+        """Show Groq settings in Preferences dialog."""
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AUDIO_STT,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_GROQ
+        )
+        self._refresh_audio_handler()
 
-        # Refresh the audio handler with potentially new settings
+    def show_translation_settings(self) -> None:
+        """Show Translation settings in Preferences dialog."""
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AI_MODELS,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_TRANSLATION
+        )
+
+    def show_tts_settings(self) -> None:
+        """Show TTS settings in Preferences dialog."""
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AUDIO_STT,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_TTS
+        )
+        self._refresh_audio_handler()
+
+    def _refresh_audio_handler(self) -> None:
+        """Refresh the audio handler after settings changes."""
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         from audio.audio import AudioHandler
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
@@ -135,19 +133,6 @@ class AppDialogMixin:
             groq_api_key=self.groq_api_key,
             recognition_language=self.recognition_language
         )
-        self.status_manager.success("Groq settings saved successfully")
-
-    def show_translation_settings(self) -> None:
-        """Show dialog to configure translation settings."""
-        from ui.dialogs.dialogs import show_translation_settings_dialog
-        show_translation_settings_dialog(self)
-        self.status_manager.success("Translation settings saved successfully")
-
-    def show_tts_settings(self) -> None:
-        """Show dialog to configure TTS settings."""
-        from ui.dialogs.dialogs import show_tts_settings_dialog
-        show_tts_settings_dialog(self)
-        self.status_manager.success("TTS settings saved successfully")
 
     def record_prefix_audio(self) -> None:
         """Shows a dialog to record and save a prefix audio file."""

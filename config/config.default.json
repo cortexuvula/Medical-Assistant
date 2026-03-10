@@ -27,6 +27,11 @@
     "max_file_size_mb": 100,
     "temp_file_cleanup_age_hours": 24
   },
+  "audit_log": {
+    "max_size_mb": 100,
+    "backup_count": 5
+  },
+  "max_audio_file_size_mb": 500,
   "ui": {
     "theme": "flatly",
     "window_width": 0,

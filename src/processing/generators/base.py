@@ -8,6 +8,7 @@ from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
 
 from utils.structured_logging import get_logger
+from utils.safe_ui import schedule_ui_update
 
 logger = get_logger(__name__)
 
@@ -46,8 +47,8 @@ class StreamingMixin:
             except Exception as e:
                 logger.warning(f"Error appending streaming chunk: {e}")
 
-        # Schedule UI update on main thread
-        self.app.after(0, update)
+        # Schedule UI update on main thread (safe from worker threads)
+        schedule_ui_update(self.app, update)
 
     def _start_streaming_display(self, widget, status_msg: str) -> None:
         """Prepare widget for streaming display.
@@ -65,7 +66,7 @@ class StreamingMixin:
             except Exception as e:
                 logger.warning(f"Error preparing streaming display: {e}")
 
-        self.app.after(0, setup)
+        schedule_ui_update(self.app, setup)
         self.app.status_manager.progress(status_msg)
 
     def _finish_streaming_display(self, widget, success_msg: str, button=None) -> None:
@@ -91,7 +92,7 @@ class StreamingMixin:
             except Exception as e:
                 logger.warning(f"Error finishing streaming display: {e}")
 
-        self.app.after(0, finish)
+        schedule_ui_update(self.app, finish)
 
     def _update_text_widget_content(self, widget, content: str) -> None:
         """Replace text widget content with new content.

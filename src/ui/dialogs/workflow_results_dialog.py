@@ -534,12 +534,16 @@ class WorkflowResultsDialog:
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp_path = tmp.name
-            
+
+            # Register with tracker as crash-case backup
+            from utils.temp_file_tracker import TempFileTracker
+            TempFileTracker.instance().register(tmp_path)
+
             # Generate PDF
             if self._export_to_pdf_file(tmp_path):
                 # Open system print dialog
                 system = platform.system()
-                
+
                 if system == 'Windows':
                     # Use Windows print command
                     os.startfile(tmp_path, "print")
@@ -549,9 +553,16 @@ class WorkflowResultsDialog:
                 else:  # Linux
                     # Use lpr command on Linux
                     subprocess.run(['lpr', tmp_path])
-                
+
                 # Clean up temp file after a delay
-                self.dialog.after(5000, lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
+                def _cleanup_pdf():
+                    try:
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+                        TempFileTracker.instance().unregister(tmp_path)
+                    except OSError:
+                        pass
+                self.dialog.after(5000, _cleanup_pdf)
                 
                 messagebox.showinfo(
                     "Print",

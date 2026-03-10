@@ -351,7 +351,8 @@ def show_api_keys_dialog(parent: tk.Tk) -> dict:
             messagebox.showinfo("API Keys", "API keys updated successfully")
             dialog.destroy()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to update API keys: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("api_keys", e, parent=dialog)
             return None
 
     # Add more padding to the button frame

@@ -13,7 +13,7 @@ allowing the UI to remain responsive during long-running bulk uploads.
 """
 
 from typing import Dict, Optional, Callable, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import os
 from threading import Event
@@ -34,7 +34,7 @@ class GuidelinesProcessingMixin:
         if not hasattr(self, 'guideline_batches'):
             return
 
-        cutoff = datetime.now() - __import__('datetime').timedelta(hours=max_age_hours)
+        cutoff = datetime.now() - timedelta(hours=max_age_hours)
         to_remove = [
             bid for bid, batch in self.guideline_batches.items()
             if batch.get("status") in ("completed", "cancelled")

@@ -174,6 +174,64 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             recording_workers=self.max_workers,
             guideline_workers=self.max_guideline_workers
         )
+
+    def recover_orphaned_tasks(self) -> int:
+        """Recover tasks that were interrupted by a previous crash/shutdown.
+
+        Checks the processing_queue DB table for tasks stuck in 'queued' or
+        'processing' state and marks them as failed (re-queuing is not possible
+        without the in-memory audio data).
+
+        Returns:
+            Number of tasks recovered
+        """
+        if not self.app or not hasattr(self.app, 'db') or not self.app.db:
+            return 0
+
+        recovered = 0
+        try:
+            # Use the Database's connection context manager for thread-safe access
+            with self.app.db.connection() as (conn, cursor):
+                cursor.execute(
+                    "SELECT task_id, recording_id, status "
+                    "FROM processing_queue WHERE status IN ('queued', 'processing')"
+                )
+                rows = cursor.fetchall()
+
+            if not rows:
+                return 0
+
+            for row in rows:
+                task_id = row[0]
+                recording_id = row[1]
+                status = row[2]
+
+                error_msg = (
+                    "Interrupted by application shutdown"
+                    if status == 'processing'
+                    else "Interrupted by application shutdown - please reprocess"
+                )
+
+                try:
+                    self.app.db.update_queue_status(
+                        task_id, "failed",
+                        last_error=error_msg
+                    )
+                    logger.info(
+                        f"Marked orphaned {status} task as failed",
+                        task_id=task_id,
+                        recording_id=recording_id
+                    )
+                    recovered += 1
+                except Exception as e:
+                    logger.warning(f"Failed to recover task {task_id}: {e}")
+
+            if recovered:
+                logger.info(f"Recovered {recovered} orphaned task(s) from previous session")
+        except Exception as e:
+            logger.error(f"Error recovering orphaned tasks: {e}", exc_info=True)
+
+        return recovered
     
     def add_recording(self, recording_data: Dict[str, Any]) -> Optional[str]:
         """Add a recording to the processing queue.
@@ -243,6 +301,15 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                     }
                 self.batch_tasks[batch_id]["total"] += 1
                 self.batch_tasks[batch_id]["task_ids"].append(task_id)
+
+        # DB FIRST: persist task to survive crashes
+        try:
+            if self.app and hasattr(self.app, 'db') and self.app.db and recording_id is not None:
+                self.app.db.add_to_processing_queue(
+                    recording_id, task_id, recording_data["priority"]
+                )
+        except Exception as e:
+            logger.warning(f"Failed to persist task to DB (continuing in-memory): {e}")
 
         # Add to queue (outside lock - queue is thread-safe)
         self.queue.put((recording_data["priority"], task_id, recording_data))
@@ -364,6 +431,16 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                         self.active_tasks[task_id]["future"] = future
                         self.active_tasks[task_id]["status"] = "processing"
                         self.active_tasks[task_id]["executor_type"] = task_type  # Track which executor
+
+                # Update DB status to 'processing'
+                try:
+                    if self.app and hasattr(self.app, 'db') and self.app.db:
+                        self.app.db.update_queue_status(
+                            task_id, "processing",
+                            started_at=datetime.now().isoformat()
+                        )
+                except Exception:
+                    pass  # Non-critical, best-effort
 
                 # Mark queue task as done
                 self.queue.task_done()
@@ -735,6 +812,22 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
     
     def _mark_completed(self, task_id: str, recording_data: Dict, result: Dict, processing_time: float):
         """Mark a task as completed successfully."""
+        # DB FIRST: persist completion before updating memory
+        try:
+            if self.app and hasattr(self.app, 'db') and self.app.db:
+                self.app.db.update_recording(
+                    recording_data["recording_id"],
+                    processing_status="completed",
+                    processing_completed_at=datetime.now()
+                )
+                self.app.db.update_queue_status(
+                    task_id, "completed",
+                    completed_at=datetime.now().isoformat()
+                )
+        except Exception as e:
+            logger.error(f"Failed to persist task completion to DB: {e}")
+
+        # MEMORY SECOND
         with self.lock:
             # Update task data
             recording_data["status"] = "completed"
@@ -760,14 +853,6 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             if batch_id and batch_id in self.batch_tasks:
                 self.batch_tasks[batch_id]["completed"] += 1
                 self._check_batch_completion(batch_id)
-        
-        # Update database
-        if self.app and hasattr(self.app, 'db'):
-            self.app.db.update_recording(
-                recording_data["recording_id"],
-                processing_status="completed",
-                processing_completed_at=datetime.now()
-            )
         
         # Add processing time to result for notification
         if isinstance(result, dict):
@@ -811,6 +896,22 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
 
     def _mark_failed(self, task_id: str, recording_data: Dict, error_msg: str):
         """Mark a task as failed."""
+        # DB FIRST: persist failure before updating memory
+        try:
+            if self.app and hasattr(self.app, 'db') and self.app.db:
+                self.app.db.update_recording(
+                    recording_data["recording_id"],
+                    processing_status="failed",
+                    error_message=error_msg
+                )
+                self.app.db.update_queue_status(
+                    task_id, "failed",
+                    last_error=error_msg
+                )
+        except Exception as e:
+            logger.error(f"Failed to persist task failure to DB: {e}")
+
+        # MEMORY SECOND
         with self.lock:
             # Update task data
             recording_data["status"] = "failed"
@@ -834,14 +935,6 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             if batch_id and batch_id in self.batch_tasks:
                 self.batch_tasks[batch_id]["failed"] += 1
                 self._check_batch_completion(batch_id)
-        
-        # Update database
-        if self.app and hasattr(self.app, 'db'):
-            self.app.db.update_recording(
-                recording_data["recording_id"],
-                processing_status="failed",
-                error_message=error_msg
-            )
         
         # Notify failure
         self._notify_error(task_id, recording_data, error_msg)
@@ -1387,18 +1480,30 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
             audio_data = None
             
             if audio_path and os.path.exists(audio_path):
-                try:
-                    from pydub import AudioSegment
-                    audio_data = AudioSegment.from_mp3(audio_path)
-                    logger.info("Loaded audio for reprocessing", audio_path=audio_path, recording_id=recording_id)
-                except Exception as e:
-                    logger.error(
-                        "Failed to load audio for reprocessing",
+                # Validate file size before loading into memory
+                from audio.audio import AudioHandler
+                is_valid, size_mb, max_mb = AudioHandler.validate_audio_file_size(audio_path)
+                if not is_valid:
+                    logger.warning(
+                        "Audio file too large for reprocessing, using existing transcript",
                         audio_path=audio_path,
+                        size_mb=size_mb,
+                        max_mb=max_mb,
                         recording_id=recording_id,
-                        error=str(e)
                     )
-                    # Continue without audio - transcript might be available
+                else:
+                    try:
+                        from pydub import AudioSegment
+                        audio_data = AudioSegment.from_mp3(audio_path)
+                        logger.info("Loaded audio for reprocessing", audio_path=audio_path, recording_id=recording_id)
+                    except Exception as e:
+                        logger.error(
+                            "Failed to load audio for reprocessing",
+                            audio_path=audio_path,
+                            recording_id=recording_id,
+                            error=str(e)
+                        )
+                        # Continue without audio - transcript might be available
             
             # Reset processing fields
             self.app.db.update_recording(

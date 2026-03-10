@@ -177,11 +177,15 @@ class MenuManager:
         settings_menu.add_command(label="Update API Keys", command=self.show_api_keys_dialog)
         settings_menu.add_separator()
 
-        # Organized submenus
-        self._create_audio_stt_submenu(settings_menu)
-        self._create_ai_models_submenu(settings_menu)
+        # Organized submenus (prompt settings and data/storage kept as submenus)
         self._create_prompt_settings_submenu(settings_menu)
         self._create_data_storage_submenu(settings_menu)
+
+        # Agent Settings and MCP Tools at top level
+        if hasattr(self.app, 'show_agent_settings'):
+            settings_menu.add_command(label="Agent Settings", command=self.app.show_agent_settings)
+        if hasattr(self.app, 'show_mcp_config'):
+            settings_menu.add_command(label="MCP Tools", command=self.app.show_mcp_config)
 
         settings_menu.add_separator()
 

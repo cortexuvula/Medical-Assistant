@@ -623,8 +623,8 @@ class ContextPanel:
                 tkinter.messagebox.showinfo("Template Saved", f"Template '{template_name}' has been saved successfully!")
 
             except Exception as e:
-                logger.error(f"Error saving context template: {e}")
-                tkinter.messagebox.showerror("Error", f"Failed to save template: {str(e)}")
+                from utils.error_handling import show_error_dialog
+                show_error_dialog("save_file", e, detail="Could not save the context template.", parent=dialog)
         
         def cancel():
             dialog.destroy()
@@ -677,8 +677,8 @@ class ContextPanel:
                     tkinter.messagebox.showinfo("Template Deleted", f"Template '{template_name}' has been deleted.")
 
             except Exception as e:
-                logger.error(f"Error deleting custom template: {e}")
-                tkinter.messagebox.showerror("Error", f"Failed to delete template: {str(e)}")
+                from utils.error_handling import show_error_dialog
+                show_error_dialog("save_file", e, detail="Could not delete the template.")
     
     def _clear_context(self):
         """Clear the context text."""

@@ -42,6 +42,72 @@ except ImportError:
 
 
 # =============================================================================
+# API Key Detection & Stripping
+# =============================================================================
+
+import re
+import logging
+
+_api_key_logger = logging.getLogger(__name__)
+
+# Common API key prefixes (case-sensitive patterns)
+_API_KEY_PATTERNS = [
+    re.compile(r'^sk-[A-Za-z0-9]{20,}'),          # OpenAI
+    re.compile(r'^sk-ant-[A-Za-z0-9]{20,}'),       # Anthropic
+    re.compile(r'^gsk_[A-Za-z0-9]{20,}'),          # Groq
+    re.compile(r'^sk_[A-Za-z0-9]{20,}'),           # ElevenLabs
+    re.compile(r'^csk-[A-Za-z0-9]{20,}'),          # Cerebras
+    re.compile(r'^xai-[A-Za-z0-9]{20,}'),          # Grok/xAI
+    re.compile(r'^AIza[A-Za-z0-9_-]{30,}'),        # Google AI
+    re.compile(r'^key-[A-Za-z0-9]{20,}'),          # Generic key-prefixed
+    re.compile(r'^[A-Za-z0-9]{32,64}$'),           # Deepgram and similar (long hex tokens)
+]
+
+# Field names that commonly hold API keys (exact match, lowercased)
+_API_KEY_FIELD_NAMES = frozenset({
+    'api_key', 'apikey', 'api-key', 'secret_key', 'secret',
+    'access_key', 'auth_token', 'private_key',
+})
+
+# Substrings in field names that indicate secrets
+_API_KEY_FIELD_SUBSTRINGS = ('password', 'passwd', 'api_key', 'apikey', 'secret_key')
+
+
+def looks_like_api_key(value: str) -> bool:
+    """Check if a string value looks like an API key based on known patterns."""
+    if not isinstance(value, str) or len(value) < 20:
+        return False
+    return any(p.match(value) for p in _API_KEY_PATTERNS)
+
+
+def strip_api_keys_from_dict(d: dict, _path: str = "") -> list:
+    """Recursively find and empty values that look like API keys.
+
+    Returns a list of (dotted_path, provider_hint) for every key that was stripped.
+    """
+    stripped = []
+    if not isinstance(d, dict):
+        return stripped
+
+    for key, value in list(d.items()):
+        dotted = f"{_path}.{key}" if _path else key
+
+        if isinstance(value, str) and value:
+            key_lower = key.lower()
+            is_key_field = (
+                key_lower in _API_KEY_FIELD_NAMES
+                or any(sub in key_lower for sub in _API_KEY_FIELD_SUBSTRINGS)
+            )
+            if is_key_field or looks_like_api_key(value):
+                stripped.append((dotted, value[:6] + "…"))
+                d[key] = ""  # Blank it out
+        elif isinstance(value, dict):
+            stripped.extend(strip_api_keys_from_dict(value, dotted))
+
+    return stripped
+
+
+# =============================================================================
 # Validation Result
 # =============================================================================
 
@@ -305,6 +371,20 @@ if PYDANTIC_AVAILABLE:
             if v.lower() not in known_providers:
                 pass
             return v
+
+        @model_validator(mode="before")
+        @classmethod
+        def reject_api_keys(cls, data):
+            """Strip any raw API keys that have leaked into settings.json."""
+            if isinstance(data, dict):
+                stripped = strip_api_keys_from_dict(data)
+                for path, hint in stripped:
+                    _api_key_logger.warning(
+                        "API key stripped from settings at '%s' (prefix: %s). "
+                        "Keys should only be stored in encrypted storage.",
+                        path, hint
+                    )
+            return data
 
 
 # =============================================================================

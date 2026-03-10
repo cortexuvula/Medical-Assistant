@@ -47,7 +47,8 @@ from threading import Lock
 
 from utils.exceptions import (
     APIError, RateLimitError, ServiceUnavailableError,
-    AuthenticationError, MedicalAssistantError
+    AuthenticationError, MedicalAssistantError,
+    PermanentError, RetryableError
 )
 from utils.structured_logging import get_logger
 
@@ -85,6 +86,12 @@ def is_retryable_error(error: Exception, status_code: Optional[int] = None) -> b
     Returns:
         True if the error should be retried, False otherwise
     """
+    # Check mixin classes first for explicit classification
+    if isinstance(error, PermanentError):
+        return False
+    if isinstance(error, RetryableError):
+        return True
+
     # Check status code first if provided
     if status_code is not None and status_code in RETRYABLE_HTTP_CODES:
         return True

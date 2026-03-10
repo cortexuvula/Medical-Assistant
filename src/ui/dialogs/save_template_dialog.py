@@ -6,42 +6,30 @@ Dialog for saving agent configuration as a template.
 
 import tkinter as tk
 from tkinter import messagebox
-from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from typing import Optional
 
+from ui.dialogs.base_dialog import BaseDialog
 
-class SaveTemplateDialog:
+
+class SaveTemplateDialog(BaseDialog):
     """Dialog for saving configuration as template."""
 
     def __init__(self, parent):
-        self.parent = parent
-        self.result = None
+        super().__init__(parent, modal=True)
 
-    def show(self) -> Optional[dict]:
-        """Show the dialog and return template info."""
-        self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title("Save as Template")
-        dialog_width, dialog_height = ui_scaler.get_dialog_size(400, 300)
-        self.dialog.geometry(f"{dialog_width}x{dialog_height}")
-        self.dialog.transient(self.parent)
+    def _get_title(self):
+        return "Save as Template"
 
-        # Center the dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - dialog_width) // 2
-        y = (self.dialog.winfo_screenheight() - dialog_height) // 2
-        self.dialog.geometry(f"+{x}+{y}")
+    def _get_size(self):
+        return (400, 300)
 
-        # Grab focus after window is visible
-        self.dialog.deiconify()
-        try:
-            self.dialog.grab_set()
-        except tk.TclError:
-            pass  # Window not viewable yet
+    def _get_padding(self):
+        return 20
 
-        # Create UI
-        frame = ttk.Frame(self.dialog, padding=20)
-        frame.pack(fill="both", expand=True)
+    def _create_content(self, parent_frame):
+        """Build the template form."""
+        frame = parent_frame
 
         # Template ID
         ttk.Label(frame, text="Template ID:").grid(row=0, column=0, sticky="w", pady=5)
@@ -87,11 +75,8 @@ class SaveTemplateDialog:
         ttk.Button(
             button_frame,
             text="Cancel",
-            command=self.dialog.destroy
+            command=self.close
         ).pack(side="left", padx=5)
-
-        self.dialog.wait_window()
-        return self.result
 
     def _save_clicked(self):
         """Handle save button click."""
@@ -107,7 +92,7 @@ class SaveTemplateDialog:
             "tags": [t.strip() for t in self.tags_var.get().split(",") if t.strip()]
         }
 
-        self.dialog.destroy()
+        self.close()
 
 
 __all__ = ["SaveTemplateDialog"]

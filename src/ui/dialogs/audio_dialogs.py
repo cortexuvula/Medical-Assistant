@@ -226,17 +226,34 @@ class AudioDialogManager:
             if not preview_segment:
                 status_var.set("No recording to preview")
                 return
-                
+
             try:
                 # Create a temporary file for preview
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                    preview_segment.export(temp_file.name, format="mp3", bitrate="192k")
-                    # Open the file with the default audio player
-                    if os.name == 'nt':  # Windows
-                        os.startfile(temp_file.name)
-                    else:  # macOS or Linux
-                        import subprocess
-                        subprocess.Popen(['open', temp_file.name] if sys.platform == 'darwin' else ['xdg-open', temp_file.name])
+                    temp_path = temp_file.name
+                preview_segment.export(temp_path, format="mp3", bitrate="192k")
+
+                # Register with tracker for crash-case cleanup
+                from utils.temp_file_tracker import TempFileTracker
+                TempFileTracker.instance().register(temp_path)
+
+                # Open the file with the default audio player
+                if os.name == 'nt':  # Windows
+                    os.startfile(temp_path)
+                else:  # macOS or Linux
+                    import subprocess
+                    subprocess.Popen(['open', temp_path] if sys.platform == 'darwin' else ['xdg-open', temp_path])
+
+                # Schedule cleanup after 30s (enough time for audio player)
+                def _cleanup_preview():
+                    try:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                        TempFileTracker.instance().unregister(temp_path)
+                    except OSError:
+                        pass
+                prefix_dialog.after(30000, _cleanup_preview)
+
                 status_var.set("Playing preview")
             except Exception as e:
                 ctx = ErrorContext.capture(

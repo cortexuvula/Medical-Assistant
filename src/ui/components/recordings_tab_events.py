@@ -183,8 +183,8 @@ class RecordingsTabEventsMixin:
                 tk.messagebox.showerror("Error", "Reprocessing functionality not available")
 
         except Exception as e:
-            logger.error(f"Error reprocessing recordings: {e}")
-            tk.messagebox.showerror("Reprocess Error", f"Failed to reprocess recordings: {str(e)}")
+            from utils.error_handling import show_error_dialog
+            show_error_dialog("reprocess", e)
 
     # ========================================
     # Batch Processing

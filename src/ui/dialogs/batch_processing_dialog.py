@@ -4,6 +4,7 @@ Batch Processing Dialog
 Provides UI for configuring batch processing of multiple recordings.
 """
 
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Dict, Optional
@@ -289,7 +290,26 @@ class BatchProcessingDialog:
         )
         
         if files:
-            self.selected_files = list(files)
+            # Validate file sizes before accepting
+            from audio.audio import AudioHandler
+            from settings.settings import SETTINGS
+            max_mb = SETTINGS.get("max_audio_file_size_mb", 500)
+            valid_files = []
+            skipped_files = []
+            for f in files:
+                is_valid, size_mb, _ = AudioHandler.validate_audio_file_size(f, max_mb)
+                if is_valid:
+                    valid_files.append(f)
+                else:
+                    skipped_files.append(f"{os.path.basename(f)} ({size_mb} MB)")
+            if skipped_files:
+                messagebox.showwarning(
+                    "Files Too Large",
+                    f"The following files exceed the {max_mb} MB limit and were skipped:\n\n"
+                    + "\n".join(skipped_files),
+                    parent=self.dialog
+                )
+            self.selected_files = valid_files
             self._update_source_display()
     
     def _on_process(self):

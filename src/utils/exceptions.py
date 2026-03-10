@@ -48,6 +48,16 @@ Error Codes:
         raise APIError("Failed", error_code="PROVIDER_UNAVAILABLE")
 """
 
+class RetryableError:
+    """Mixin indicating an error is safe to retry (transient failure)."""
+    pass
+
+
+class PermanentError:
+    """Mixin indicating an error should not be retried."""
+    pass
+
+
 class MedicalAssistantError(Exception):
     """Base exception class for Medical Assistant."""
     def __init__(self, message: str, error_code: str = None, details: dict = None):
@@ -94,26 +104,38 @@ class APIError(MedicalAssistantError):
         self.status_code = status_code
 
 
-class RateLimitError(APIError):
+class RateLimitError(APIError, RetryableError):
     """Raised when API rate limit is exceeded."""
     def __init__(self, message: str, retry_after: int = None, **kwargs):
         super().__init__(message, status_code=429, **kwargs)
         self.retry_after = retry_after
 
 
-class AuthenticationError(APIError):
+class AuthenticationError(APIError, PermanentError):
     """Raised when API authentication fails."""
     def __init__(self, message: str, **kwargs):
         super().__init__(message, status_code=401, **kwargs)
 
 
-class ServiceUnavailableError(APIError):
+class ServiceUnavailableError(APIError, RetryableError):
     """Raised when external service is unavailable."""
     def __init__(self, message: str, **kwargs):
         super().__init__(message, status_code=503, **kwargs)
 
 
-class APITimeoutError(APIError):
+class QuotaExceededError(APIError, PermanentError):
+    """Raised when API usage quota is exceeded."""
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, status_code=403, **kwargs)
+
+
+class InvalidRequestError(APIError, PermanentError):
+    """Raised when an API request is malformed or invalid."""
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, status_code=400, **kwargs)
+
+
+class APITimeoutError(APIError, RetryableError):
     """Raised when an API call times out.
 
     Note: Named APITimeoutError to avoid shadowing Python's built-in TimeoutError.
@@ -132,7 +154,7 @@ class APITimeoutError(APIError):
 TimeoutError = APITimeoutError
 
 
-class ConfigurationError(MedicalAssistantError):
+class ConfigurationError(MedicalAssistantError, PermanentError):
     """Raised when configuration is invalid or missing."""
     pass
 
@@ -147,7 +169,7 @@ class ExportError(MedicalAssistantError):
     pass
 
 
-class ValidationError(MedicalAssistantError):
+class ValidationError(MedicalAssistantError, PermanentError):
     """Raised when input validation fails."""
     def __init__(self, message: str, field: str = None, **kwargs):
         super().__init__(message, **kwargs)

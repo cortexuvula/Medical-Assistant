@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from pydub import AudioSegment
+from utils.error_handling import show_error_dialog
 
 from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
@@ -73,8 +74,7 @@ class FileManager:
                 return file_path
                 
         except Exception as e:
-            logger.error(f"Failed to save text file: {e}")
-            messagebox.showerror("Save Error", f"Failed to save file: {str(e)}")
+            show_error_dialog("save_file", e)
             
         return None
     
@@ -108,8 +108,7 @@ class FileManager:
                 return file_path
                 
         except Exception as e:
-            logger.error(f"Failed to load audio file: {e}")
-            messagebox.showerror("Load Error", f"Failed to load file: {str(e)}")
+            show_error_dialog("load_file", e)
             
         return None
     
@@ -163,8 +162,7 @@ class FileManager:
                 return file_path
                 
         except Exception as e:
-            logger.error(f"Failed to save audio file: {e}")
-            messagebox.showerror("Save Error", f"Failed to save audio: {str(e)}")
+            show_error_dialog("save_file", e)
             
         return None
     
@@ -226,8 +224,7 @@ class FileManager:
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to export prompts: {e}")
-            messagebox.showerror("Export Error", f"Failed to export prompts: {str(e)}")
+            show_error_dialog("export_prompts", e)
             
         return False
     
@@ -278,8 +275,7 @@ class FileManager:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         prompts_data = json.load(f)
                 except json.JSONDecodeError as e:
-                    logger.error(f"Invalid JSON in import file: {e}")
-                    messagebox.showerror("Import Error", f"Invalid JSON format: {str(e)}")
+                    show_error_dialog("import_prompts", e, detail="The file does not contain valid JSON.")
                     return False
 
                 # Schema validation
@@ -315,8 +311,7 @@ class FileManager:
                 return True
 
         except Exception as e:
-            logger.error(f"Failed to import prompts: {e}")
-            messagebox.showerror("Import Error", f"Failed to import prompts: {str(e)}")
+            show_error_dialog("import_prompts", e)
 
         return False
 
@@ -400,8 +395,7 @@ class FileManager:
                 return folder_path
                 
         except Exception as e:
-            logger.error(f"Failed to set default folder: {e}")
-            messagebox.showerror("Error", f"Failed to set folder: {str(e)}")
+            show_error_dialog("save_file", e, detail="Could not set the default folder.")
             
         return None
     

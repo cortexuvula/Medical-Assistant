@@ -583,16 +583,45 @@ class AudioHandler:
             ctx.log()
             return None, ""
 
+    @staticmethod
+    def validate_audio_file_size(file_path: str, max_size_mb: float = None) -> tuple[bool, float, float]:
+        """Validate that an audio file is within the allowed size limit.
+
+        Args:
+            file_path: Path to the audio file.
+            max_size_mb: Maximum allowed size in MB. Reads from SETTINGS if None.
+
+        Returns:
+            Tuple of (is_valid, file_size_mb, max_mb).
+        """
+        if max_size_mb is None:
+            max_size_mb = SETTINGS.get("max_audio_file_size_mb", 500)
+        try:
+            file_size_bytes = os.path.getsize(file_path)
+        except OSError:
+            return True, 0.0, max_size_mb  # Let downstream handle missing files
+        file_size_mb = file_size_bytes / (1024 * 1024)
+        return file_size_mb <= max_size_mb, round(file_size_mb, 1), max_size_mb
+
     def load_audio_file(self, file_path: str) -> tuple[Optional[AudioSegment], str]:
         """Load and transcribe audio from a file.
-        
+
         Args:
             file_path: Path to audio file
-            
+
         Returns:
             Tuple of (AudioSegment, transcription_text)
         """
         try:
+            # Validate file size before loading into memory
+            is_valid, file_size_mb, max_mb = self.validate_audio_file_size(file_path)
+            if not is_valid:
+                raise ValueError(
+                    f"Audio file is too large ({file_size_mb} MB). "
+                    f"Maximum allowed size is {max_mb} MB. "
+                    f"Please use a smaller file or increase the limit in Settings."
+                )
+
             if (file_path.lower().endswith(".mp3")):
                 seg = AudioSegment.from_file(file_path, format="mp3")
             elif (file_path.lower().endswith(".wav")):

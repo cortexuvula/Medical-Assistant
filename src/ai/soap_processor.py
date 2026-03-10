@@ -19,6 +19,7 @@ from typing import List, Any, Dict, Optional
 
 from ai.ai import create_soap_note_with_openai
 from settings.settings_manager import settings_manager
+from utils.safe_ui import schedule_ui_update
 
 
 class SOAPProcessor:
@@ -52,7 +53,7 @@ class SOAPProcessor:
                 if not audio_segment:
                     logger.warning("No SOAP audio was recorded.")
                     # Update UI to indicate no audio
-                    self.app.after(0, lambda: [
+                    schedule_ui_update(self.app, lambda: [
                         self.status_manager.warning("No audio recorded for SOAP note."),
                         self.app.progress_bar.stop(),
                         self.app.progress_bar.pack_forget(),
@@ -66,7 +67,7 @@ class SOAPProcessor:
                 logger.info(f"Processing SOAP audio, duration: {duration_ms}ms")
                 
                 # Update status on UI thread
-                self.app.after(0, lambda: [
+                schedule_ui_update(self.app, lambda: [
                     self.status_manager.progress("Finalizing SOAP audio..."),
                     self.app.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
@@ -132,26 +133,26 @@ class SOAPProcessor:
                     if os.path.exists(audio_path):
                         file_size = os.path.getsize(audio_path)
                         logger.info(f"SOAP audio saved successfully to: {audio_path} (size: {file_size} bytes)")
-                        self.app.after(0, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
+                        schedule_ui_update(self.app, lambda: self.status_manager.progress(f"SOAP audio saved to: {audio_path}"))
                     else:
                         logger.error(f"Audio save reported success but file not found: {audio_path}")
-                        self.app.after(0, lambda: self.status_manager.progress("Warning: Audio file may not have been saved"))
+                        schedule_ui_update(self.app, lambda: self.status_manager.progress("Warning: Audio file may not have been saved"))
                 else:
                     logger.error(f"Failed to save SOAP audio to: {audio_path}")
-                    self.app.after(0, lambda: self.status_manager.progress("Failed to save audio file"))
+                    schedule_ui_update(self.app, lambda: self.status_manager.progress("Failed to save audio file"))
                 
                 # Update status on UI thread
-                self.app.after(0, lambda: [
+                schedule_ui_update(self.app, lambda: [
                     self.status_manager.progress("Transcribing SOAP audio..."),
                     self.app.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
-                
+
                 # Transcribe by sending the saved MP3 file directly to the
                 # ElevenLabs API — bypassing AudioSegment→WAV conversion, prefix
                 # audio concatenation, and all intermediate audio manipulation.
                 # This is the exact same thing that happens when the user uploads
                 # an audio file, which produces correct multi-speaker diarization.
-                self.app.after(0, lambda: self.status_manager.progress("Transcribing SOAP audio..."))
+                schedule_ui_update(self.app, lambda: self.status_manager.progress("Transcribing SOAP audio..."))
 
                 transcript = None
                 if save_result and os.path.exists(audio_path):
@@ -185,7 +186,7 @@ class SOAPProcessor:
                 logger.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
                 
                 # Update transcript tab with the raw transcript
-                self.app.after(0, lambda: [
+                schedule_ui_update(self.app, lambda: [
                     self.app.transcript_text.delete("1.0", tk.END),
                     self.app.transcript_text.insert(tk.END, transcript),
                     self.status_manager.progress("Creating SOAP note from transcript...")
@@ -236,16 +237,16 @@ class SOAPProcessor:
                     # Each method submits work to thread pool, so they can safely run concurrently
                     if hasattr(self.app, 'document_generators') and self.app.document_generators:
                         logger.info(f"Scheduling auto-analysis for SOAP note ({len(soap_note)} chars)")
-                        self.app.after(0, lambda sn=soap_note:
+                        schedule_ui_update(self.app, lambda sn=soap_note:
                             self.app.document_generators._run_medication_to_panel(sn))
-                        self.app.after(0, lambda sn=soap_note:
+                        schedule_ui_update(self.app, lambda sn=soap_note:
                             self.app.document_generators._run_diagnostic_to_panel(sn))
-                        self.app.after(0, lambda sn=soap_note:
+                        schedule_ui_update(self.app, lambda sn=soap_note:
                             self.app.document_generators._run_compliance_to_panel(sn))
 
-                self.app.after(0, finalize_soap)
+                schedule_ui_update(self.app, finalize_soap)
             except concurrent.futures.TimeoutError:
-                self.app.after(0, lambda: [
+                schedule_ui_update(self.app, lambda: [
                     self.status_manager.error("SOAP note creation timed out. Please try again."),
                     self.app.soap_button.config(state=NORMAL),
                     self.app.progress_bar.stop(),
@@ -254,7 +255,7 @@ class SOAPProcessor:
             except Exception as e:
                 error_msg = f"Error processing SOAP note: {str(e)}"
                 logger.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
+                schedule_ui_update(self.app, lambda: [
                     self.status_manager.error(error_msg),
                     self.app.soap_button.config(state=NORMAL),
                     self.app.progress_bar.stop(),

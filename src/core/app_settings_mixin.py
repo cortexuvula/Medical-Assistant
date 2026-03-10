@@ -152,10 +152,14 @@ class AppSettingsMixin:
         )
 
     def show_temperature_settings(self) -> None:
-        """Show dialog to configure temperature settings for each AI provider."""
-        from ui.dialogs.temperature_dialog import show_temperature_settings_dialog
-        show_temperature_settings_dialog(self)
-        self.status_manager.success("Temperature settings saved successfully")
+        """Show Temperature settings in Preferences dialog."""
+        from ui.dialogs.unified_settings_dialog import (
+            show_unified_settings_dialog, UnifiedSettingsDialog
+        )
+        show_unified_settings_dialog(
+            self, initial_tab=UnifiedSettingsDialog.TAB_AI_MODELS,
+            initial_subtab=UnifiedSettingsDialog.SUBTAB_TEMPERATURE
+        )
 
     def show_agent_settings(self) -> None:
         """Show dialog to configure AI agent settings."""

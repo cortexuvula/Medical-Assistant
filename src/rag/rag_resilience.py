@@ -216,6 +216,68 @@ def reset_all_circuit_breakers():
     logger.info("All RAG circuit breakers reset")
 
 
+def get_effective_weights(
+    vector_w: float, bm25_w: float, graph_w: float
+) -> tuple[float, float, float]:
+    """Redistribute weight from unavailable components to live ones.
+
+    Checks circuit breaker states for Neon (vector + BM25) and Neo4j (graph).
+    If a circuit breaker is OPEN, that component's weight is redistributed
+    proportionally among the remaining live components so the total stays ~1.0.
+
+    When the embedding circuit breaker is open, vector search is unavailable
+    (it depends on embeddings). BM25 uses Neon but does not need embeddings.
+
+    Args:
+        vector_w: Base weight for vector search
+        bm25_w: Base weight for BM25 keyword search
+        graph_w: Base weight for graph (Neo4j) search
+
+    Returns:
+        Tuple of (effective_vector_w, effective_bm25_w, effective_graph_w)
+        summing to approximately 1.0. If all components are down, returns
+        the original weights unchanged.
+    """
+    # Cache availability checks to avoid redundant circuit breaker lock acquisitions
+    neon_ok = is_neon_available()
+    embedding_ok = is_openai_embedding_available()
+    neo4j_ok = is_neo4j_available()
+
+    # Vector search requires both Neon and OpenAI embeddings
+    vector_live = neon_ok and embedding_ok
+    # BM25 requires Neon (but not embeddings)
+    bm25_live = neon_ok
+    # Graph search requires Neo4j
+    graph_live = neo4j_ok
+
+    live_components = {
+        "vector": (vector_w, vector_live),
+        "bm25": (bm25_w, bm25_live),
+        "graph": (graph_w, graph_live),
+    }
+
+    dead_weight = sum(w for w, alive in live_components.values() if not alive)
+    live_weight = sum(w for w, alive in live_components.values() if alive)
+
+    # If nothing is live or nothing is dead, return originals
+    if live_weight == 0 or dead_weight == 0:
+        return (vector_w, bm25_w, graph_w)
+
+    # Redistribute dead weight proportionally among live components
+    scale = (live_weight + dead_weight) / live_weight
+
+    eff_vector = (vector_w * scale) if vector_live else 0.0
+    eff_bm25 = (bm25_w * scale) if bm25_live else 0.0
+    eff_graph = (graph_w * scale) if graph_live else 0.0
+
+    logger.debug(
+        f"Effective weights: vector={eff_vector:.3f}, bm25={eff_bm25:.3f}, "
+        f"graph={eff_graph:.3f} (dead_weight={dead_weight:.3f})"
+    )
+
+    return (eff_vector, eff_bm25, eff_graph)
+
+
 class CircuitOpenError(ServiceUnavailableError):
     """Raised when a circuit breaker is open and blocking requests."""
 

@@ -103,6 +103,162 @@ def sanitize_error_for_user(error: Exception) -> str:
     return "An error occurred while processing your request. Please try again."
 
 
+# =============================================================================
+# Error Template System — "Problem + Action" dialogs
+# =============================================================================
+
+@dataclass
+class ErrorTemplate:
+    """Template for user-facing error dialogs."""
+    title: str
+    problem: str
+    actions: list  # list[str] of suggested remediation steps
+
+
+_ERROR_TEMPLATES: Dict[str, ErrorTemplate] = {
+    "save_file": ErrorTemplate(
+        title="Save Error",
+        problem="The file could not be saved.",
+        actions=["Check that the destination folder exists and is writable.",
+                 "Ensure there is enough disk space.",
+                 "Try saving to a different location."],
+    ),
+    "load_file": ErrorTemplate(
+        title="Load Error",
+        problem="The file could not be loaded.",
+        actions=["Check that the file exists and is not corrupted.",
+                 "Ensure you have read permissions for the file.",
+                 "Try opening a different file."],
+    ),
+    "export_pdf": ErrorTemplate(
+        title="PDF Export Error",
+        problem="The PDF could not be exported.",
+        actions=["Ensure the destination folder is writable.",
+                 "Check that no other program has the file open.",
+                 "Try exporting to a different location."],
+    ),
+    "export_word": ErrorTemplate(
+        title="Word Export Error",
+        problem="The Word document could not be exported.",
+        actions=["Ensure the destination folder is writable.",
+                 "Check that the python-docx package is installed.",
+                 "Try exporting to a different location."],
+    ),
+    "export_fhir": ErrorTemplate(
+        title="FHIR Export Error",
+        problem="The FHIR export failed.",
+        actions=["Check that a SOAP note has been generated first.",
+                 "Try exporting again."],
+    ),
+    "print_document": ErrorTemplate(
+        title="Print Error",
+        problem="The document could not be printed.",
+        actions=["Check that a printer is configured on your system.",
+                 "Try exporting to PDF instead."],
+    ),
+    "save_settings": ErrorTemplate(
+        title="Settings Error",
+        problem="Settings could not be saved.",
+        actions=["Check that the settings file is not read-only.",
+                 "Ensure there is enough disk space.",
+                 "Restart the application and try again."],
+    ),
+    "api_keys": ErrorTemplate(
+        title="API Key Error",
+        problem="API keys could not be updated.",
+        actions=["Check your internet connection.",
+                 "Verify the key format is correct.",
+                 "Try updating one key at a time."],
+    ),
+    "import_prompts": ErrorTemplate(
+        title="Import Error",
+        problem="Prompts could not be imported.",
+        actions=["Check that the file is valid JSON.",
+                 "Ensure the file was exported from this application.",
+                 "Try importing a different file."],
+    ),
+    "export_prompts": ErrorTemplate(
+        title="Export Error",
+        problem="Prompts could not be exported.",
+        actions=["Ensure the destination folder is writable.",
+                 "Try exporting to a different location."],
+    ),
+    "upload_document": ErrorTemplate(
+        title="Upload Error",
+        problem="The document could not be uploaded.",
+        actions=["Check your internet connection.",
+                 "Ensure the file is not too large.",
+                 "Try uploading again."],
+    ),
+    "load_recording": ErrorTemplate(
+        title="Recording Error",
+        problem="The recording could not be loaded.",
+        actions=["The recording data may be corrupted.",
+                 "Try selecting a different recording.",
+                 "Check the application logs for details."],
+    ),
+    "reprocess": ErrorTemplate(
+        title="Reprocess Error",
+        problem="The recording could not be reprocessed.",
+        actions=["Check that the AI provider is configured correctly.",
+                 "Verify your API key is valid.",
+                 "Try again in a few moments."],
+    ),
+    "chat_error": ErrorTemplate(
+        title="Chat Error",
+        problem="An error occurred in the chat interface.",
+        actions=["Check your internet connection.",
+                 "Verify your AI provider API key.",
+                 "Try sending your message again."],
+    ),
+    "open_dialog": ErrorTemplate(
+        title="Error",
+        problem="The requested action could not be completed.",
+        actions=["Try the action again.",
+                 "Restart the application if the problem persists.",
+                 "Check the application logs for details."],
+    ),
+    "generic": ErrorTemplate(
+        title="Error",
+        problem="An unexpected error occurred.",
+        actions=["Try the action again.",
+                 "Restart the application if the problem persists."],
+    ),
+}
+
+
+def show_error_dialog(category: str, error: Exception, detail: str = None, parent=None):
+    """Show a user-friendly error dialog with actionable suggestions.
+
+    Args:
+        category: Error category key from _ERROR_TEMPLATES.
+        error: The original exception (logged but not shown to user).
+        detail: Optional extra context to append to the problem description.
+        parent: Optional tkinter parent widget.
+    """
+    import tkinter.messagebox as messagebox
+
+    # Log the full exception for developers
+    logger.error("Error [%s]: %s", category, error, exc_info=True)
+
+    template = _ERROR_TEMPLATES.get(category, _ERROR_TEMPLATES["generic"])
+
+    problem = template.problem
+    if detail:
+        problem = f"{problem}\n{detail}"
+
+    actions_text = "\n".join(f"• {a}" for a in template.actions)
+    message = f"{problem}\n\nWhat to try:\n{actions_text}"
+
+    messagebox.showerror(template.title, message, parent=parent)
+
+
+def get_sanitized_error(category: str, error: Exception) -> str:
+    """Return a one-liner suitable for a status bar (no raw exception details)."""
+    template = _ERROR_TEMPLATES.get(category, _ERROR_TEMPLATES["generic"])
+    return template.problem
+
+
 class ErrorSeverity(Enum):
     """Classification of error severity for handling decisions."""
 

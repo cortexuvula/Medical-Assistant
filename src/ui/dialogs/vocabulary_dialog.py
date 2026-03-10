@@ -17,8 +17,10 @@ from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
 
+from ui.dialogs.base_dialog import BaseDialog
 
-class VocabularyDialog:
+
+class VocabularyDialog(BaseDialog):
     """Dialog for managing custom vocabulary corrections."""
 
     # Category options
@@ -37,9 +39,9 @@ class VocabularyDialog:
         Args:
             parent: Parent window
         """
-        self.parent = parent
-        self.dialog = None
+        super().__init__(parent, modal=True)
         self.logger = get_logger(__name__)
+        self._saved = False
 
         # Load current corrections from manager
         self._load_from_manager()
@@ -50,35 +52,31 @@ class VocabularyDialog:
         self.enabled = vocabulary_manager._enabled
         self.default_specialty = vocabulary_manager._default_specialty
 
+    def _get_title(self):
+        return "Custom Vocabulary Settings"
+
+    def _get_size(self):
+        return (1100, 700)
+
+    def _get_min_size(self):
+        return (900, 600)
+
+    def _get_padding(self):
+        return 10
+
     def show(self) -> bool:
         """Show the dialog and return True if changes were saved.
 
         Returns:
             bool: True if user saved changes, False if cancelled
         """
-        # Create dialog window
-        self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title("Custom Vocabulary Settings")
-        self.dialog.geometry("1100x700")
-        self.dialog.minsize(900, 600)
-        self.dialog.transient(self.parent)
+        # Call the base show() which sets self.result via _create_content / close
+        super().show()
+        return self._saved
 
-        # Center the dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - 1100) // 2
-        y = (self.dialog.winfo_screenheight() - 700) // 2
-        self.dialog.geometry(f"1100x700+{x}+{y}")
-
-        # Grab focus after window is visible
-        self.dialog.deiconify()
-        try:
-            self.dialog.grab_set()
-        except tk.TclError:
-            pass  # Window not viewable yet
-
-        # Create main container
-        main_container = ttk.Frame(self.dialog)
-        main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
+    def _create_content(self, parent_frame):
+        """Build the vocabulary settings UI."""
+        main_container = parent_frame
 
         # Create enable toggle at top
         self._create_enable_section(main_container)
@@ -90,18 +88,12 @@ class VocabularyDialog:
         self._create_corrections_list(main_container)
 
         # Create button bar
-        result = self._create_button_bar(main_container)
+        self._create_button_bar(main_container)
 
-        # Handle dialog close
-        self.dialog.protocol("WM_DELETE_WINDOW", self._on_cancel)
-
-        # Focus on dialog
-        self.dialog.focus_set()
-
-        # Wait for dialog to close
-        self.dialog.wait_window()
-
-        return result.get("saved", False)
+    def _on_close(self):
+        """Called when dialog is closed via Escape or window close button."""
+        # Treated as cancel -- _saved stays False
+        pass
 
     def _create_enable_section(self, parent):
         """Create the enable/disable toggle section.
@@ -622,40 +614,20 @@ class VocabularyDialog:
         if hasattr(self, 'count_label'):
             self.count_label.configure(text=f"{len(self.working_corrections)} entries")
 
-    def _create_button_bar(self, parent) -> dict:
+    def _create_button_bar(self, parent):
         """Create bottom button bar.
 
         Args:
             parent: Parent widget
-
-        Returns:
-            dict: Result dictionary with 'saved' key
         """
-        result = {"saved": False}
-
         button_frame = ttk.Frame(parent)
         button_frame.pack(fill=X, pady=(10, 0))
 
         # Save button
-        def save_changes():
-            # Update manager with all changes
-            vocabulary_manager._corrections = self.working_corrections.copy()
-            vocabulary_manager._enabled = self.enabled_var.get()
-            vocabulary_manager._default_specialty = self.specialty_var.get()
-
-            # Clear pattern cache
-            vocabulary_manager.corrector.clear_cache()
-
-            # Save to settings
-            vocabulary_manager.save_settings()
-
-            result["saved"] = True
-            self.dialog.destroy()
-
         ttk.Button(
             button_frame,
             text="Save",
-            command=save_changes,
+            command=self._save_changes,
             bootstyle="success"
         ).pack(side=RIGHT, padx=(5, 0))
 
@@ -663,7 +635,7 @@ class VocabularyDialog:
         ttk.Button(
             button_frame,
             text="Cancel",
-            command=self._on_cancel,
+            command=self.close,
             bootstyle="secondary"
         ).pack(side=RIGHT)
 
@@ -675,11 +647,21 @@ class VocabularyDialog:
         )
         self.count_label.pack(side=LEFT)
 
-        return result
+    def _save_changes(self):
+        """Save vocabulary changes and close."""
+        # Update manager with all changes
+        vocabulary_manager._corrections = self.working_corrections.copy()
+        vocabulary_manager._enabled = self.enabled_var.get()
+        vocabulary_manager._default_specialty = self.specialty_var.get()
 
-    def _on_cancel(self):
-        """Handle cancel/close."""
-        self.dialog.destroy()
+        # Clear pattern cache
+        vocabulary_manager.corrector.clear_cache()
+
+        # Save to settings
+        vocabulary_manager.save_settings()
+
+        self._saved = True
+        self.close()
 
 
 class VocabularyEntryDialog:

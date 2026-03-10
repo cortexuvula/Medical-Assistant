@@ -717,6 +717,15 @@ def invalidate_settings_cache() -> None:
 def save_settings(settings: dict) -> None:
     """Save settings to file and invalidate cache."""
     try:
+        # Strip any raw API keys that may have leaked into the settings dict
+        from settings.settings_models import strip_api_keys_from_dict
+        stripped = strip_api_keys_from_dict(settings)
+        for path, hint in stripped:
+            logger.warning(
+                "API key stripped before saving settings at '%s' (prefix: %s)",
+                path, hint
+            )
+
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=4)
         # Invalidate cache so next load gets fresh data

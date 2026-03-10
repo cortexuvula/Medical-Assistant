@@ -16,6 +16,7 @@ from core.controllers.export.export_helpers import (
     validate_export_content,
     create_fhir_config
 )
+from utils.error_handling import show_error_dialog
 from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
@@ -79,8 +80,7 @@ class FHIRExporterHandler:
                 messagebox.showerror("Export Failed", f"Failed to export FHIR: {error_msg}")
 
         except Exception as e:
-            logger.error(f"Error exporting as FHIR: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to export FHIR: {str(e)}")
+            show_error_dialog("export_fhir", e, parent=self.app)
 
     def copy_fhir_to_clipboard(self) -> None:
         """Copy current document as FHIR JSON to clipboard."""
@@ -116,8 +116,7 @@ class FHIRExporterHandler:
                 messagebox.showerror("Export Failed", f"Failed to copy FHIR to clipboard: {error_msg}")
 
         except Exception as e:
-            logger.error(f"Error copying FHIR to clipboard: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to copy FHIR: {str(e)}")
+            show_error_dialog("export_fhir", e, parent=self.app)
 
     def _prepare_fhir_content(self, doc_type: str, content: str) -> dict:
         """Prepare content dictionary for FHIR export.

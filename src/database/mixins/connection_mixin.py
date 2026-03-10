@@ -4,6 +4,8 @@ Database Connection Mixin
 Provides thread-safe connection management for the Database class.
 """
 
+import os
+import platform
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -139,15 +141,24 @@ class ConnectionMixin:
         else:
             logger.debug(f"Creating database connection for thread {thread_id} ({thread_name})")
 
-        conn = sqlite3.connect(
-            self.db_path,
-            timeout=30.0,
-            check_same_thread=True  # Enforce single-thread per connection
-        )
-        # Enable WAL mode for better concurrency
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
-        conn.execute("PRAGMA foreign_keys=ON")
+        # Set restrictive umask before creating DB/WAL/SHM files to prevent
+        # a race window where PHI files are world-readable before _secure_database_file() runs
+        old_umask = None
+        if platform.system() != 'Windows':
+            old_umask = os.umask(0o077)
+        try:
+            conn = sqlite3.connect(
+                self.db_path,
+                timeout=30.0,
+                check_same_thread=True  # Enforce single-thread per connection
+            )
+            # Enable WAL mode for better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
+            conn.execute("PRAGMA foreign_keys=ON")
+        finally:
+            if old_umask is not None:
+                os.umask(old_umask)
 
         logger.debug(f"Database connection created for thread {thread_id}. Total connections: {current_count + 1}")
         return conn

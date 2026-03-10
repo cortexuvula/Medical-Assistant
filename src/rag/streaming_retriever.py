@@ -503,12 +503,25 @@ class StreamingHybridRetriever:
                     if entity_name and entity_name not in result.related_entities:
                         result.related_entities.append(entity_name)
 
-        # Calculate combined scores
+        # Get effective weights (redistributed if any circuit breaker is open)
+        try:
+            from rag.rag_resilience import get_effective_weights
+            eff_vector_w, eff_bm25_w, eff_graph_w = get_effective_weights(
+                self.config.vector_weight,
+                self.config.bm25_weight,
+                self.config.graph_weight,
+            )
+        except ImportError:
+            eff_vector_w = self.config.vector_weight
+            eff_bm25_w = self.config.bm25_weight
+            eff_graph_w = self.config.graph_weight
+
+        # Calculate combined scores with effective weights
         for result in results_map.values():
             result.combined_score = (
-                result.vector_score * self.config.vector_weight +
-                result.bm25_score * self.config.bm25_weight +
-                result.graph_score * self.config.graph_weight
+                result.vector_score * eff_vector_w +
+                result.bm25_score * eff_bm25_w +
+                result.graph_score * eff_graph_w
             )
 
         # Sort by combined score

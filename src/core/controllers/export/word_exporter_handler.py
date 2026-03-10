@@ -16,6 +16,7 @@ from core.controllers.export.export_helpers import (
     validate_export_content
 )
 from settings import settings_manager
+from utils.error_handling import show_error_dialog
 from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
@@ -86,8 +87,7 @@ class WordExporterHandler:
                 messagebox.showerror("Export Failed", f"Failed to export Word document: {error_msg}")
 
         except Exception as e:
-            logger.error(f"Error exporting to Word: {str(e)}")
-            messagebox.showerror("Export Error", f"Failed to export Word document: {str(e)}")
+            show_error_dialog("export_word", e, parent=self.app)
 
     def _offer_open_file(self, file_path: str) -> None:
         """Offer to open exported file."""
