@@ -284,19 +284,26 @@ class PeriodicAnalyzer:
     def _countdown_loop(self):
         """Countdown loop that updates every second and triggers analysis."""
         try:
-            while self._seconds_remaining > 0 and not self._stop_event.is_set():
-                # Send countdown update if callback is set
+            while not self._stop_event.is_set():
+                # Read seconds_remaining and callback under lock
                 with self._lock:
+                    remaining = self._seconds_remaining
                     callback = self._countdown_callback
+
+                if remaining <= 0:
+                    break
 
                 if callback:
                     try:
-                        callback(self._seconds_remaining)
+                        callback(remaining)
                     except Exception as e:
                         logger.error(f"Error in countdown callback: {e}")
 
                 time.sleep(1)
-                self._seconds_remaining -= 1
+
+                # Decrement under lock
+                with self._lock:
+                    self._seconds_remaining -= 1
 
             # Time's up - perform analysis if not stopped
             if not self._stop_event.is_set():
@@ -324,10 +331,9 @@ class PeriodicAnalyzer:
         elapsed_time = 0.0
         analysis_num = 0
 
-        # Signal that callback is starting
-        self._callback_complete.clear()
-
         with self._lock:
+            # Signal that callback is starting (must be inside lock to avoid race with stop())
+            self._callback_complete.clear()
             if not self._is_running or not self._callback:
                 self._callback_complete.set()
                 return

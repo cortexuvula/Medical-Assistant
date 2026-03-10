@@ -278,8 +278,12 @@ class ElevenLabsProvider(BaseSTTProvider):
 
             # Process response
             if response.status_code == 200:
-                result = response.json()
-                
+                try:
+                    result = response.json()
+                except (ValueError, Exception) as json_err:
+                    self.logger.error(f"ElevenLabs returned invalid JSON: {json_err}")
+                    raise TranscriptionError(f"ElevenLabs returned invalid JSON response: {json_err}")
+
                 # Print successful response info to terminal
                 self.logger.debug("\n===== ELEVENLABS API RESPONSE =====")
                 self.logger.debug(f"Status: {response.status_code} OK")
@@ -544,7 +548,11 @@ class ElevenLabsProvider(BaseSTTProvider):
                 response = self._make_api_call(url, headers=headers, files=files, data=data, timeout=300)
 
             if response.status_code == 200:
-                result = response.json()
+                try:
+                    result = response.json()
+                except (ValueError, Exception) as json_err:
+                    self.logger.error(f"ElevenLabs returned invalid JSON: {json_err}")
+                    raise TranscriptionError(f"ElevenLabs returned invalid JSON response: {json_err}")
 
                 # Process diarization data the same way the main path does
                 if diarize and 'words' in result and result['words']:
@@ -751,7 +759,11 @@ class ElevenLabsProvider(BaseSTTProvider):
                     raise TranscriptionError(f"ElevenLabs transcribe_file failed: {e}")
 
             if response.status_code == 200:
-                result = response.json()
+                try:
+                    result = response.json()
+                except (ValueError, Exception) as json_err:
+                    self.logger.error(f"ElevenLabs returned invalid JSON: {json_err}")
+                    raise TranscriptionError(f"ElevenLabs returned invalid JSON response: {json_err}")
                 self.logger.info(
                     f"transcribe_file response: {len(result.get('words', []))} words, "
                     f"keys={list(result.keys())}"

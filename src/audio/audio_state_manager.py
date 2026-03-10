@@ -251,6 +251,10 @@ class AudioStateManager:
             
             self._combined_chunks.append(combined_segment)
             num_segments = len(self._segments)
+            # Subtract raw segment bytes and add back the combined AudioSegment's byte size
+            raw_segment_bytes = sum(seg.nbytes for seg in self._segments)
+            self._estimated_memory_bytes -= raw_segment_bytes
+            self._estimated_memory_bytes += len(combined_segment.raw_data)
             self._segments.clear()
             
             logger.debug(f"Combined {num_segments} segments into chunk "

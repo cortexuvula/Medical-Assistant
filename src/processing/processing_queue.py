@@ -318,7 +318,8 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                 recording_data["batch_options"] = batch_options
             
             task_id = self.add_recording(recording_data)
-            task_ids.append(task_id)
+            if task_id is not None:
+                task_ids.append(task_id)
         
         # Notify batch start
         if self.batch_callback:

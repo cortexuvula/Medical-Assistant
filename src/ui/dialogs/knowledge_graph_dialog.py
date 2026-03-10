@@ -41,6 +41,8 @@ class KnowledgeGraphDialog(tk.Toplevel):
         self._graph_data: Optional[GraphData] = None
         self._loading = False
         self._data_source = "patient"  # "patient" or "guidelines"
+        self._search_after_id = None  # For debounced search
+        self._search_trace_id = None  # For trace cleanup
 
         self._create_widgets()
         self._center_window()
@@ -101,7 +103,7 @@ class KnowledgeGraphDialog(tk.Toplevel):
         # Search
         ttk.Label(toolbar, text="Search:").pack(side=tk.LEFT)
         self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", self._on_search_change)
+        self._search_trace_id = self.search_var.trace_add("write", self._on_search_change)
         search_entry = ttk.Entry(toolbar, textvariable=self.search_var, width=25)
         search_entry.pack(side=tk.LEFT, padx=(5, 0))
 
@@ -544,7 +546,7 @@ class KnowledgeGraphDialog(tk.Toplevel):
     def _on_search_change(self, *args) -> None:
         """Handle search text change."""
         # Debounce search
-        if hasattr(self, "_search_after_id"):
+        if self._search_after_id is not None:
             self.after_cancel(self._search_after_id)
         self._search_after_id = self.after(300, self._do_search)
 
@@ -628,6 +630,14 @@ class KnowledgeGraphDialog(tk.Toplevel):
 
     def destroy(self) -> None:
         """Clean up resources on close."""
+        # Remove trace callback to prevent memory leak
+        if self._search_trace_id is not None:
+            try:
+                self.search_var.trace_remove("write", self._search_trace_id)
+            except Exception:
+                pass
+            self._search_trace_id = None
+
         if self._data_provider:
             try:
                 self._data_provider.close()

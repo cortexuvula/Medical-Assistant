@@ -739,8 +739,9 @@ Format your response as:
 
         # Insert before CLINICAL PEARLS if present, otherwise append at end
         if "CLINICAL PEARLS:" in analysis:
-            parts = analysis.split("CLINICAL PEARLS:")
-            return parts[0] + medication_section + "\n\nCLINICAL PEARLS:" + parts[1]
+            parts = analysis.split("CLINICAL PEARLS:", 1)
+            if len(parts) >= 2:
+                return parts[0] + medication_section + "\n\nCLINICAL PEARLS:" + parts[1]
         else:
             return analysis + "\n" + medication_section
 

@@ -85,7 +85,13 @@ def _gemini_api_call(
             contents=prompt_content,
             config=config,
         )
+        if not getattr(response, 'candidates', None):
+            raise APIError("Gemini returned empty response (no candidates)")
+        if response.text is None:
+            raise APIError("Gemini returned empty response text")
         return response.text
+    except (APIError, RateLimitError, AuthenticationError, APITimeoutError):
+        raise
     except Exception as e:
         error_msg = str(e)
         if "quota" in error_msg.lower() or "rate" in error_msg.lower():

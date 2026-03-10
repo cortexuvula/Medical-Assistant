@@ -585,6 +585,16 @@ class AIProcessor:
         if temp_key in analysis_settings:
             temperature = analysis_settings[temp_key]
 
+        # Validate temperature is numeric and within range
+        try:
+            temperature = float(temperature)
+            if not (0.0 <= temperature <= 2.0):
+                logger.warning(f"Temperature {temperature} out of range, using 0.7")
+                temperature = 0.7
+        except (TypeError, ValueError):
+            logger.warning(f"Invalid temperature value '{temperature}', using 0.7")
+            temperature = 0.7
+
         # Generate analysis - pass the provider to override global setting
         analysis = call_ai(model, system_message, prompt, temperature, provider=ai_provider)
 

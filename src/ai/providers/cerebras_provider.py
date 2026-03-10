@@ -135,6 +135,8 @@ def call_cerebras(model: str, system_message: str, prompt: str, temperature: flo
         ]
 
         response = _cerebras_api_call(model, messages, temperature)
+        if not response.choices:
+            return AIResult.failure("Cerebras returned empty response (no choices)", error_code="API_EMPTY_RESPONSE")
         text = response.choices[0].message.content.strip()
         return AIResult.success(text, model=model, provider="cerebras")
     except APITimeoutError as e:

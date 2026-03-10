@@ -28,6 +28,7 @@ class SOAPAudioProcessor:
 
     # Counter for logging periodic updates
     _callback_count = 0
+    _callback_count_lock = threading.Lock()
 
     def process_soap_callback(self, audio_data) -> None:
         """Callback for SOAP note recording using RecordingManager.
@@ -41,11 +42,13 @@ class SOAPAudioProcessor:
         """
         # Add audio segment to recording manager (thread-safe, no tkinter)
         if isinstance(audio_data, np.ndarray):
-            SOAPAudioProcessor._callback_count += 1
+            with SOAPAudioProcessor._callback_count_lock:
+                SOAPAudioProcessor._callback_count += 1
+                count = SOAPAudioProcessor._callback_count
             self.app.recording_manager.add_audio_segment(audio_data)
             # Log every 10 callbacks at INFO level to track audio flow
-            if SOAPAudioProcessor._callback_count == 1 or SOAPAudioProcessor._callback_count % 10 == 0:
-                logger.info(f"SOAP callback #{SOAPAudioProcessor._callback_count}: "
+            if count == 1 or count % 10 == 0:
+                logger.info(f"SOAP callback #{count}: "
                            f"shape={audio_data.shape}, dtype={audio_data.dtype}, "
                            f"max_amp={np.abs(audio_data).max():.4f}")
             else:

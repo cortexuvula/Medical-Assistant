@@ -104,9 +104,10 @@ class ConnectionPool:
         Raises:
             DatabaseError: If pool is closed or timeout occurs
         """
-        # Check closed status (quick check without lock first)
-        if self._closed:
-            raise DatabaseError("Connection pool is closed")
+        # Check closed status under lock for thread safety
+        with self._lock:
+            if self._closed:
+                raise DatabaseError("Connection pool is closed")
 
         conn = None
         try:
@@ -144,13 +145,20 @@ class ConnectionPool:
         current_time = time.time()
 
         # Skip health check if recently verified (saves 50-100ms per DB operation)
-        last_check = self._last_health_check.get(conn_id, 0)
+        with self._lock:
+            last_check = self._last_health_check.get(conn_id, 0)
         if current_time - last_check < self.HEALTH_CHECK_INTERVAL:
             # Connection was verified recently, return to pool without health check
             try:
                 self._pool.put(conn, timeout=5.0)
             except queue.Full:
                 self.logger.warning("Pool full when returning connection, closing it")
+                with self._lock:
+                    try:
+                        self._all_connections.remove(conn)
+                    except ValueError:
+                        pass
+                    self._last_health_check.pop(conn_id, None)
                 self._safe_close_connection(conn)
             return
 
@@ -164,12 +172,19 @@ class ConnectionPool:
                 # Restore original timeout
                 conn.execute(f"PRAGMA busy_timeout = {old_timeout}")
                 # Update last health check time
-                self._last_health_check[conn_id] = current_time
+                with self._lock:
+                    self._last_health_check[conn_id] = current_time
                 # Return to pool with timeout to avoid blocking
                 try:
                     self._pool.put(conn, timeout=5.0)
                 except queue.Full:
                     self.logger.warning("Pool full when returning connection, closing it")
+                    with self._lock:
+                        try:
+                            self._all_connections.remove(conn)
+                        except ValueError:
+                            pass
+                        self._last_health_check.pop(conn_id, None)
                     self._safe_close_connection(conn)
             except sqlite3.OperationalError:
                 # Database busy or locked - treat as broken
@@ -197,9 +212,14 @@ class ConnectionPool:
         """
         self.logger.warning("Replacing broken database connection")
 
-        # Clear health check cache for this connection
-        conn_id = id(broken_conn)
-        self._last_health_check.pop(conn_id, None)
+        # Remove broken connection from tracking immediately (under lock)
+        with self._lock:
+            conn_id = id(broken_conn)
+            self._last_health_check.pop(conn_id, None)
+            try:
+                self._all_connections.remove(broken_conn)
+            except ValueError:
+                pass  # Already removed
 
         # Close the broken connection
         try:
@@ -212,8 +232,7 @@ class ConnectionPool:
             new_conn = self._create_connection()
         except Exception as e:
             self.logger.error(f"Failed to create replacement connection: {e}")
-            # Put a None marker that will cause next get to fail
-            # This is better than reducing pool size silently
+            # Pool size is reduced; better than returning a broken connection
             return
 
         # Update tracking and return to pool (with lock)
@@ -226,11 +245,6 @@ class ConnectionPool:
                     pass
                 return
 
-            # Update all_connections list
-            try:
-                self._all_connections.remove(broken_conn)
-            except ValueError:
-                pass  # Already removed
             self._all_connections.append(new_conn)
 
         # Return new connection to pool (outside lock)
