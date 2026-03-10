@@ -416,7 +416,7 @@ class TestVocabularySettings:
 
         assert "enabled" in vocab
         assert "default_specialty" in vocab
-        assert "corrections" in vocab
+        # Note: "corrections" was moved to dedicated vocabulary.json file
 
     def test_vocabulary_corrections_persist(self, tmp_path):
         """Custom vocabulary corrections should persist."""
