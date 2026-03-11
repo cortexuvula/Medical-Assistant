@@ -69,8 +69,8 @@ class AppUiLayoutMixin:
                 if hasattr(self, '_resize_after_id'):
                     self.after_cancel(self._resize_after_id)
                 self._resize_after_id = self.after(50, self._adjust_bottom_sash)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"UI layout resize error: {e}")
 
     def _adjust_bottom_sash(self) -> None:
         """Adjust the content_paned sash based on bottom section collapse state."""

@@ -6,7 +6,9 @@ to complement vector similarity search.
 """
 
 from utils.structured_logging import get_logger
+import math
 import re
+import threading
 from typing import Optional
 
 from rag.search_config import SearchQualityConfig, get_search_quality_config
@@ -127,7 +129,7 @@ class BM25Searcher:
 
                 # Normalize rank to 0-1 range
                 # ts_rank_cd typically returns values < 1
-                normalized_score = min(1.0, float(rank) * 10)
+                normalized_score = min(1.0, math.log1p(float(rank) * 100) / math.log1p(100))
 
                 results.append(BM25SearchResult(
                     document_id=str(doc_id),
@@ -211,7 +213,7 @@ class BM25Searcher:
                     import json
                     meta = json.loads(metadata)
 
-                normalized_score = min(1.0, float(rank) * 10)
+                normalized_score = min(1.0, math.log1p(float(rank) * 100) / math.log1p(100))
 
                 results.append(BM25SearchResult(
                     document_id=str(doc_id),
@@ -329,6 +331,7 @@ class BM25Searcher:
 
 # Singleton instance
 _searcher: Optional[BM25Searcher] = None
+_searcher_lock = threading.Lock()
 
 
 def get_bm25_searcher() -> BM25Searcher:
@@ -338,15 +341,19 @@ def get_bm25_searcher() -> BM25Searcher:
         BM25Searcher instance
     """
     global _searcher
-    if _searcher is None:
-        _searcher = BM25Searcher()
+    if _searcher is not None:
+        return _searcher
+    with _searcher_lock:
+        if _searcher is None:
+            _searcher = BM25Searcher()
     return _searcher
 
 
 def reset_bm25_searcher():
     """Reset the global BM25 searcher instance."""
     global _searcher
-    _searcher = None
+    with _searcher_lock:
+        _searcher = None
 
 
 def search_bm25(

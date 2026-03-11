@@ -399,7 +399,7 @@ class GraphitiClient:
                     entity_type=entity_type,
                     fact=fact,
                     source_document_id=source_doc_id,
-                    relevance_score=0.8,
+                    relevance_score=getattr(result, "score", getattr(result, "relevance_score", 0.5)),
                 ))
 
             return graph_results
@@ -593,30 +593,34 @@ class GraphitiClient:
 
 # Singleton instance
 _graphiti_client: Optional[GraphitiClient] = None
+_graphiti_client_lock = threading.Lock()
 
 
 def get_graphiti_client() -> Optional[GraphitiClient]:
     """Get the global Graphiti client instance."""
     global _graphiti_client
 
-    if _graphiti_client is None:
-        uri = os.environ.get("NEO4J_URI")
-        if not uri:
+    if _graphiti_client is not None:
+        return _graphiti_client
+    with _graphiti_client_lock:
+        if _graphiti_client is None:
+            uri = os.environ.get("NEO4J_URI")
+            if not uri:
+                try:
+                    from settings.settings import SETTINGS
+                    uri = SETTINGS.get("graphiti_neo4j_uri")
+                except Exception as e:
+                    logger.debug(f"Could not load graphiti_neo4j_uri from SETTINGS: {e}")
+
+            if not uri:
+                logger.debug("Graphiti not configured - Neo4j URI not found")
+                return None
+
             try:
-                from settings.settings import SETTINGS
-                uri = SETTINGS.get("graphiti_neo4j_uri")
+                _graphiti_client = GraphitiClient()
             except Exception as e:
-                logger.debug(f"Could not load graphiti_neo4j_uri from SETTINGS: {e}")
-
-        if not uri:
-            logger.debug("Graphiti not configured - Neo4j URI not found")
-            return None
-
-        try:
-            _graphiti_client = GraphitiClient()
-        except Exception as e:
-            logger.warning(f"Failed to create Graphiti client: {e}")
-            return None
+                logger.warning(f"Failed to create Graphiti client: {e}")
+                return None
 
     return _graphiti_client
 
@@ -624,6 +628,7 @@ def get_graphiti_client() -> Optional[GraphitiClient]:
 def reset_graphiti_client():
     """Reset the global Graphiti client instance."""
     global _graphiti_client
-    if _graphiti_client:
-        _graphiti_client.close()
-        _graphiti_client = None
+    with _graphiti_client_lock:
+        if _graphiti_client:
+            _graphiti_client.close()
+            _graphiti_client = None

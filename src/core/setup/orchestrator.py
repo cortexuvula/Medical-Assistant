@@ -84,7 +84,10 @@ class SetupOrchestrator:
             except Exception as e:
                 self.logger.error(f"Failed to initialize {component_name}: {e}")
                 # Clean up already-initialized components
-                self.cleanup_all()
+                try:
+                    self.cleanup_all()
+                except Exception as ce:
+                    self.logger.error(f"Cleanup also failed: {ce}")
                 raise
 
         self.logger.info("Application initialization complete")

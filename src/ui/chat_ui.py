@@ -553,7 +553,10 @@ class ChatUI:
         # Save the state to settings
         from settings.settings import SETTINGS, save_settings
         SETTINGS.setdefault("chat_interface", {})["collapsed"] = self.is_collapsed
-        save_settings(SETTINGS)
+        try:
+            save_settings(SETTINGS)
+        except Exception as e:
+            logger.warning(f"Failed to save chat collapse state: {e}")
 
         if self.is_collapsed:
             # Hide the chat frame content
@@ -654,8 +657,11 @@ class ChatUI:
         
         # Update settings
         from settings.settings import SETTINGS, save_settings
-        SETTINGS["chat_interface"]["enable_tools"] = enabled
-        save_settings(SETTINGS)
+        SETTINGS.setdefault("chat_interface", {})["enable_tools"] = enabled
+        try:
+            save_settings(SETTINGS)
+        except Exception as e:
+            logger.warning(f"Failed to save chat tools setting: {e}")
         
         # Update chat processor if it exists
         if hasattr(self.app, 'chat_processor') and self.app.chat_processor:

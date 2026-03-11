@@ -187,15 +187,15 @@ class HTTPClientManager:
             if provider in self._httpx_clients:
                 try:
                     self._httpx_clients[provider].close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error closing httpx client for {provider}: {e}")
                 del self._httpx_clients[provider]
 
             if provider in self._requests_sessions:
                 try:
                     self._requests_sessions[provider].close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error closing requests session for {provider}: {e}")
                 del self._requests_sessions[provider]
 
     def shutdown(self) -> None:
@@ -210,16 +210,16 @@ class HTTPClientManager:
             for provider, client in list(self._httpx_clients.items()):
                 try:
                     client.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error closing httpx client for {provider}: {e}")
             self._httpx_clients.clear()
 
             # Close all requests sessions
             for provider, session in list(self._requests_sessions.items()):
                 try:
                     session.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error closing requests session for {provider}: {e}")
             self._requests_sessions.clear()
 
     def get_stats(self) -> Dict[str, Dict]:

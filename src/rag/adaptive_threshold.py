@@ -9,6 +9,7 @@ Dynamically adjusts the similarity threshold based on:
 
 from utils.structured_logging import get_logger
 import statistics
+import threading
 from typing import Optional
 
 from rag.search_config import SearchQualityConfig, get_search_quality_config
@@ -232,6 +233,7 @@ class AdaptiveThresholdCalculator:
 
 # Singleton instance
 _calculator: Optional[AdaptiveThresholdCalculator] = None
+_calculator_lock = threading.Lock()
 
 
 def get_adaptive_threshold_calculator() -> AdaptiveThresholdCalculator:
@@ -241,15 +243,19 @@ def get_adaptive_threshold_calculator() -> AdaptiveThresholdCalculator:
         AdaptiveThresholdCalculator instance
     """
     global _calculator
-    if _calculator is None:
-        _calculator = AdaptiveThresholdCalculator()
+    if _calculator is not None:
+        return _calculator
+    with _calculator_lock:
+        if _calculator is None:
+            _calculator = AdaptiveThresholdCalculator()
     return _calculator
 
 
 def reset_adaptive_threshold_calculator():
     """Reset the global calculator instance."""
     global _calculator
-    _calculator = None
+    with _calculator_lock:
+        _calculator = None
 
 
 def calculate_adaptive_threshold(

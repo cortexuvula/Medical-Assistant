@@ -208,7 +208,11 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         response = _anthropic_api_call(client, model, messages, temperature)
         if not response.content:
             return AIResult.failure("Anthropic returned empty response (no content)", error_code="API_EMPTY_RESPONSE")
-        text = response.content[0].text.strip()
+        block = response.content[0]
+        text = getattr(block, 'text', None)
+        if not text:
+            return AIResult.failure("Anthropic returned non-text content block (e.g., tool_use)", error_code="API_EMPTY_RESPONSE")
+        text = text.strip()
         return AIResult.success(text, model=model, provider="anthropic")
     except APITimeoutError as e:
         logger.error(f"Anthropic API timeout with model {model}: {str(e)}")

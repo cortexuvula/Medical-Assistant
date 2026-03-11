@@ -96,7 +96,7 @@ class MCPProtocol:
                         logger.warning(f"MCP server process terminated with code: {self.process.returncode}")
                         break
                     continue
-                    
+
                 try:
                     response = json.loads(line)
                     logger.debug(f"MCP response: {response}")
@@ -105,6 +105,9 @@ class MCPProtocol:
                     logger.warning(f"Invalid JSON from MCP server: {line}")
         except Exception as e:
             logger.error(f"Error reading MCP responses: {e}")
+        finally:
+            # Notify any waiters that the reader has exited so they don't hang forever
+            self.response_queue.put({"error": {"code": -1, "message": "MCP reader thread exited"}})
     
     def _read_stderr(self):
         """Read stderr output from the MCP server"""

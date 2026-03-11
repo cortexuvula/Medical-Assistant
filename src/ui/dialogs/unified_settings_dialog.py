@@ -156,8 +156,8 @@ class UnifiedSettingsDialog(
         if subtab_name in audio_subtabs and hasattr(self, '_audio_stt_notebook'):
             try:
                 self._audio_stt_notebook.select(audio_subtabs[subtab_name])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to select audio sub-tab '{subtab_name}': {e}")
             return
 
         # AI Models sub-tabs
@@ -168,8 +168,8 @@ class UnifiedSettingsDialog(
         if subtab_name in ai_subtabs and hasattr(self, '_ai_models_notebook'):
             try:
                 self._ai_models_notebook.select(ai_subtabs[subtab_name])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to select AI models sub-tab '{subtab_name}': {e}")
 
     def _create_buttons(self, parent):
         """Create save/cancel/reset buttons."""

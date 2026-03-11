@@ -134,7 +134,10 @@ def call_groq(model: str, system_message: str, prompt: str, temperature: float) 
         response = _groq_api_call(model, messages, temperature)
         if not response.choices:
             return AIResult.failure("Groq returned empty response (no choices)", error_code="API_EMPTY_RESPONSE")
-        text = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content:
+            return AIResult.failure("Groq returned empty content (model may have returned tool calls only)", error_code="API_EMPTY_RESPONSE")
+        text = content.strip()
         return AIResult.success(text, model=model, provider="groq")
     except APITimeoutError as e:
         logger.error(f"Groq API timeout with model {model}: {str(e)}")

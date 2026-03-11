@@ -691,8 +691,8 @@ class AppInitializer:
             try:
                 guidelines_settings = SETTINGS.get("clinical_guidelines", {})
                 conn_str = guidelines_settings.get("database_url")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Guidelines settings not available: {e}")
 
         if not conn_str:
             logger.debug("Guidelines system not configured (CLINICAL_GUIDELINES_DATABASE_URL not set)")

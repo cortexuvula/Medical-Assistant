@@ -165,7 +165,8 @@ class ConnectionPool:
         try:
             # Check if connection is still valid with timeout protection
             # Use a short timeout to avoid blocking shutdown
-            old_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+            row = conn.execute("PRAGMA busy_timeout").fetchone()
+            old_timeout = row[0] if row else 0
             conn.execute(f"PRAGMA busy_timeout = {int(self.HEALTH_CHECK_TIMEOUT * 1000)}")
             try:
                 conn.execute("SELECT 1")

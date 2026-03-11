@@ -355,7 +355,10 @@ class RecordTab:
 
         # Save state to settings
         SETTINGS["advanced_analysis_collapsed"] = self._analysis_results_collapsed
-        save_settings(SETTINGS)
+        try:
+            save_settings(SETTINGS)
+        except Exception as e:
+            logger.warning(f"Failed to save analysis collapsed state: {e}")
 
         if self._analysis_results_collapsed:
             # Collapse: hide the content

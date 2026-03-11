@@ -166,11 +166,19 @@ class NotebookRagMixin:
 
                 import os
                 filename = os.path.basename(file_path)
-                self.parent.after(0, lambda f=filename, idx=i: progress_dialog.update_file_start(f, idx))
+                try:
+                    if self.parent.winfo_exists():
+                        self.parent.after(0, lambda f=filename, idx=i: progress_dialog.update_file_start(f, idx))
+                except (tk.TclError, Exception):
+                    pass
 
                 try:
                     def progress_callback(progress):
-                        self.parent.after(0, lambda p=progress: progress_dialog.update_file_progress(p))
+                        try:
+                            if self.parent.winfo_exists():
+                                self.parent.after(0, lambda p=progress: progress_dialog.update_file_progress(p))
+                        except (tk.TclError, Exception):
+                            pass
 
                     manager.upload_document(
                         file_path=file_path,
@@ -181,20 +189,40 @@ class NotebookRagMixin:
                         progress_callback=progress_callback,
                     )
                     success_count += 1
-                    self.parent.after(0, lambda: progress_dialog.update_file_complete(True))
+                    try:
+                        if self.parent.winfo_exists():
+                            self.parent.after(0, lambda: progress_dialog.update_file_complete(True))
+                    except (tk.TclError, Exception):
+                        pass
 
                 except Exception as e:
                     logger.error(f"Failed to upload {filename}: {e}")
                     fail_count += 1
-                    self.parent.after(0, lambda: progress_dialog.update_file_complete(False))
+                    try:
+                        if self.parent.winfo_exists():
+                            self.parent.after(0, lambda: progress_dialog.update_file_complete(False))
+                    except (tk.TclError, Exception):
+                        pass
 
-            self.parent.after(0, progress_dialog.complete)
-            self.parent.after(0, self._update_rag_document_count)
+            try:
+                if self.parent.winfo_exists():
+                    self.parent.after(0, progress_dialog.complete)
+            except (tk.TclError, Exception):
+                pass
+            try:
+                if self.parent.winfo_exists():
+                    self.parent.after(0, self._update_rag_document_count)
+            except (tk.TclError, Exception):
+                pass
 
             if success_count > 0 and hasattr(self.parent, 'status_manager'):
-                self.parent.after(0, lambda: self.parent.status_manager.success(
-                    f"Uploaded {success_count} document(s)"
-                ))
+                try:
+                    if self.parent.winfo_exists():
+                        self.parent.after(0, lambda: self.parent.status_manager.success(
+                            f"Uploaded {success_count} document(s)"
+                        ))
+                except (tk.TclError, Exception):
+                    pass
 
         import threading
         thread = threading.Thread(target=process_files, daemon=True)

@@ -52,6 +52,31 @@ class DiagnosticAgent(BaseAgent):
     """Agent specialized in diagnostic analysis and differential diagnosis generation."""
     
     # Default configuration for diagnostic agent
+    @staticmethod
+    def _safe_extract_section(text: str, start_marker: str, end_markers: list = None) -> str:
+        """Safely extract a section of text between markers.
+
+        Args:
+            text: The full text to extract from
+            start_marker: The marker that begins the section
+            end_markers: Optional list of markers that end the section
+
+        Returns:
+            The extracted section text, or empty string if marker not found
+        """
+        if start_marker not in text:
+            return ""
+        parts = text.split(start_marker, 1)
+        if len(parts) < 2:
+            return ""
+        section = parts[1]
+        if end_markers:
+            for end_marker in end_markers:
+                if end_marker in section:
+                    section = section.split(end_marker, 1)[0]
+                    break
+        return section.strip()
+
     DEFAULT_CONFIG = AgentConfig(
         name="DiagnosticAgent",
         description="Analyzes clinical findings and suggests differential diagnoses with ICD code validation",
@@ -167,8 +192,8 @@ Format your response as:
 
             # Extract key information for metadata
             differential_count = len(self._extract_diagnoses(structured_analysis))
-            has_red_flags = "RED FLAGS:" in structured_analysis and \
-                           len(structured_analysis.split("RED FLAGS:")[1].split("\n")[0].strip()) > 0
+            red_flags_section = self._safe_extract_section(structured_analysis, "RED FLAGS:")
+            has_red_flags = bool(red_flags_section and red_flags_section.split("\n")[0].strip())
 
             # Add validation warnings to the analysis if needed
             validation_warnings = self._get_validation_warnings(icd_validation_results)
@@ -519,12 +544,10 @@ Format your response as:
         diagnoses = []
 
         if "DIFFERENTIAL DIAGNOSES:" in analysis:
-            diff_section = analysis.split("DIFFERENTIAL DIAGNOSES:")[1]
-            # Find end of differential section
-            for end_marker in ["RED FLAGS:", "RECOMMENDED INVESTIGATIONS:", "CLINICAL PEARLS:"]:
-                if end_marker in diff_section:
-                    diff_section = diff_section.split(end_marker)[0]
-                    break
+            diff_section = self._safe_extract_section(
+                analysis, "DIFFERENTIAL DIAGNOSES:",
+                ["RED FLAGS:", "RECOMMENDED INVESTIGATIONS:", "CLINICAL PEARLS:"]
+            )
 
             # Look for numbered or bulleted items
             lines = diff_section.strip().split("\n")
@@ -882,12 +905,10 @@ Format your response as:
         if "RECOMMENDED INVESTIGATIONS:" not in analysis:
             return investigations
 
-        inv_section = analysis.split("RECOMMENDED INVESTIGATIONS:")[1]
-        # Find end of section
-        for end_marker in ["CLINICAL PEARLS:", "MEDICATION CONSIDERATIONS:", "ICD CODE VALIDATION"]:
-            if end_marker in inv_section:
-                inv_section = inv_section.split(end_marker)[0]
-                break
+        inv_section = self._safe_extract_section(
+            analysis, "RECOMMENDED INVESTIGATIONS:",
+            ["CLINICAL PEARLS:", "MEDICATION CONSIDERATIONS:", "ICD CODE VALIDATION"]
+        )
 
         lines = inv_section.strip().split("\n")
 
@@ -946,12 +967,10 @@ Format your response as:
         if "CLINICAL PEARLS:" not in analysis:
             return pearls
 
-        pearl_section = analysis.split("CLINICAL PEARLS:")[1]
-        # Find end of section
-        for end_marker in ["ICD CODE VALIDATION", "MEDICATION CONSIDERATIONS:"]:
-            if end_marker in pearl_section:
-                pearl_section = pearl_section.split(end_marker)[0]
-                break
+        pearl_section = self._safe_extract_section(
+            analysis, "CLINICAL PEARLS:",
+            ["ICD CODE VALIDATION", "MEDICATION CONSIDERATIONS:"]
+        )
 
         lines = pearl_section.strip().split("\n")
 

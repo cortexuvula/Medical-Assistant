@@ -12,6 +12,7 @@ Enhanced with:
 """
 
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -419,6 +420,7 @@ class GraphDataProvider:
         """
         self._client = graphiti_client
         self._driver = None
+        self._driver_lock = threading.Lock()
         self._env_prefix = env_prefix
 
     def _get_neo4j_driver(self):
@@ -426,43 +428,47 @@ class GraphDataProvider:
         if self._driver is not None:
             return self._driver
 
-        import os
-        try:
-            from neo4j import GraphDatabase
-        except ImportError:
-            raise ImportError(
-                "neo4j package is required. Install with: pip install neo4j"
-            )
+        with self._driver_lock:
+            if self._driver is not None:
+                return self._driver
 
-        # Get config from environment or settings
-        prefix = self._env_prefix
-        uri = os.environ.get(f"{prefix}NEO4J_URI")
-        user = os.environ.get(f"{prefix}NEO4J_USER", "neo4j")
-        password = os.environ.get(f"{prefix}NEO4J_PASSWORD")
-
-        if not uri or not password:
+            import os
             try:
-                from settings.settings import SETTINGS
-                uri = uri or SETTINGS.get("graphiti_neo4j_uri")
-                user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
-                password = password or SETTINGS.get("graphiti_neo4j_password")
-            except Exception:
-                pass
+                from neo4j import GraphDatabase
+            except ImportError:
+                raise ImportError(
+                    "neo4j package is required. Install with: pip install neo4j"
+                )
 
-        if not uri or not password:
-            raise ValueError(
-                "Neo4j connection details not found. "
-                "Set NEO4J_URI and NEO4J_PASSWORD environment variables."
+            # Get config from environment or settings
+            prefix = self._env_prefix
+            uri = os.environ.get(f"{prefix}NEO4J_URI")
+            user = os.environ.get(f"{prefix}NEO4J_USER", "neo4j")
+            password = os.environ.get(f"{prefix}NEO4J_PASSWORD")
+
+            if not uri or not password:
+                try:
+                    from settings.settings import SETTINGS
+                    uri = uri or SETTINGS.get("graphiti_neo4j_uri")
+                    user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
+                    password = password or SETTINGS.get("graphiti_neo4j_password")
+                except Exception:
+                    pass
+
+            if not uri or not password:
+                raise ValueError(
+                    "Neo4j connection details not found. "
+                    "Set NEO4J_URI and NEO4J_PASSWORD environment variables."
+                )
+
+            # Use short connection timeout from config
+            connect_timeout = get_timeout("neo4j_connect", default=5.0)
+            self._driver = GraphDatabase.driver(
+                uri,
+                auth=(user, password),
+                connection_timeout=connect_timeout,
             )
-
-        # Use short connection timeout from config
-        connect_timeout = get_timeout("neo4j_connect", default=5.0)
-        self._driver = GraphDatabase.driver(
-            uri,
-            auth=(user, password),
-            connection_timeout=connect_timeout,
-        )
-        return self._driver
+            return self._driver
 
     def _record_success(self):
         """Record successful operation for circuit breaker."""
@@ -600,6 +606,12 @@ class GraphDataProvider:
                         node_id = record["id"]
                         entity_type_str = record["entity_type"]
 
+                        # Filter by entity type if specified (same as primary path)
+                        if entity_types:
+                            entity_type = EntityType.from_string(entity_type_str)
+                            if entity_type.value not in entity_types:
+                                continue
+
                         props = record["props"] or {}
                         props.pop("embedding", None)
                         props.pop("content", None)
@@ -709,6 +721,18 @@ class GraphDataProvider:
         Returns:
             List of dicts with condition, recommendation, fact, source
         """
+        # Check circuit breaker first for fast fail
+        try:
+            from rag.rag_resilience import get_neo4j_circuit_breaker
+            from utils.resilience import CircuitState
+
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.warning("Neo4j circuit breaker open, skipping compliance check")
+                return []
+        except ImportError:
+            pass
+
         try:
             driver = self._get_neo4j_driver()
         except Exception:
@@ -751,6 +775,18 @@ class GraphDataProvider:
         Returns:
             List of dicts with recommendation details
         """
+        # Check circuit breaker first for fast fail
+        try:
+            from rag.rag_resilience import get_neo4j_circuit_breaker
+            from utils.resilience import CircuitState
+
+            cb = get_neo4j_circuit_breaker()
+            if cb.state == CircuitState.OPEN:
+                logger.warning("Neo4j circuit breaker open, skipping guidelines lookup")
+                return []
+        except ImportError:
+            pass
+
         try:
             driver = self._get_neo4j_driver()
         except Exception:

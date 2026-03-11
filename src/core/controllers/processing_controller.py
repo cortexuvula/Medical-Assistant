@@ -500,9 +500,14 @@ class ProcessingController:
             import pyperclip
             pyperclip.copy(text)
         except Exception:
-            self.app.clipboard_clear()
-            self.app.clipboard_append(text)
-            self.app.update()
+            try:
+                self.app.clipboard_clear()
+                self.app.clipboard_append(text)
+                self.app.update()
+            except Exception as e:
+                logger.warning(f"Failed to copy to clipboard: {e}")
+                self.app.update_status("Failed to copy text to clipboard.")
+                return
         self.app.update_status("Text copied to clipboard.")
 
     def clear_text(self) -> None:

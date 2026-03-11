@@ -107,8 +107,13 @@ class RagProcessor:
 
         # Log RAG mode configuration for debugging
         if self.use_local_rag:
-            # Mask the URL for security (show only first 30 chars)
-            masked_url = self.neon_database_url[:30] + "..." if len(self.neon_database_url) > 30 else self.neon_database_url
+            # Mask the URL for security (hide credentials)
+            try:
+                import urllib.parse
+                parsed = urllib.parse.urlparse(self.neon_database_url)
+                masked_url = f"{parsed.scheme}://***:***@{parsed.hostname}/..."
+            except Exception:
+                masked_url = "postgresql://***:***@***/..."
             logger.info(f"Local RAG mode enabled (Neon URL: {masked_url})")
         else:
             # Log env var status to help debug
@@ -161,7 +166,7 @@ class RagProcessor:
             try:
                 from rag.hybrid_retriever import get_hybrid_retriever
                 self._hybrid_retriever = get_hybrid_retriever()
-            except ImportError as e:
+            except (ImportError, Exception) as e:
                 logger.error(f"Failed to initialize hybrid retriever: {e}")
                 return None
         return self._hybrid_retriever
@@ -172,7 +177,7 @@ class RagProcessor:
             try:
                 from rag.streaming_retriever import get_streaming_retriever
                 self._streaming_retriever = get_streaming_retriever()
-            except ImportError as e:
+            except (ImportError, Exception) as e:
                 logger.error(f"Failed to initialize streaming retriever: {e}")
                 return None
         return self._streaming_retriever
@@ -392,9 +397,15 @@ class RagProcessor:
         query_lower = query.lower().strip()
         words = query_lower.split()
 
-        # Short queries are often follow-ups
-        if len(words) <= 4:
+        # Very short queries (1-2 words) are likely follow-ups
+        if len(words) <= 2:
             return True
+
+        # 3-4 word queries are follow-ups only if they contain context references
+        if len(words) <= 4:
+            for ref in self._CONTEXT_REFS:
+                if ref in words:
+                    return True
 
         # Check for follow-up patterns
         for pattern in self._FOLLOWUP_PATTERNS:
@@ -640,10 +651,14 @@ class RagProcessor:
             logger.warning("RAG processor is already processing a message")
             return
 
+        # Set processing flag immediately to prevent duplicate queries
+        self.is_processing = True
+
         # Check if RAG is configured
         rag_mode = self.get_rag_mode()
 
         if rag_mode == "none":
+            self.is_processing = False
             self._display_error(
                 "No RAG system configured.\n"
                 "Please set NEON_DATABASE_URL in your environment."
@@ -676,8 +691,6 @@ class RagProcessor:
             callback: Optional callback when processing is complete
         """
         try:
-            self.is_processing = True
-
             # Add user message to RAG tab
             self._add_message_to_rag_tab("User", user_message)
 
@@ -761,8 +774,6 @@ class RagProcessor:
         )
 
         try:
-            self.is_processing = True
-
             # Create cancellation token for this query
             self._current_cancellation_token = CancellationToken()
 
@@ -1072,8 +1083,9 @@ Please provide a comprehensive answer based on the above context. If you cite sp
 
         # Truncate excessively long responses
         if len(text) > self.MAX_RESPONSE_LENGTH:
+            original_len = len(text)
             text = text[:self.MAX_RESPONSE_LENGTH] + "\n\n[Response truncated due to length]"
-            logger.warning(f"Response truncated from {len(text)} to {self.MAX_RESPONSE_LENGTH} chars")
+            logger.warning(f"Response truncated from {original_len} to {self.MAX_RESPONSE_LENGTH} chars")
 
         # Apply dangerous pattern removal
         for pattern, replacement in self.DANGEROUS_PATTERNS:

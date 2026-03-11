@@ -1042,7 +1042,12 @@ def run_in_thread(
                     res = result  # Capture result before lambda
                     safe_ui_update(app, lambda r=res: callback(r))
                 else:
-                    callback(result)
+                    try:
+                        callback(result)
+                    except Exception as cb_err:
+                        logger.error(f"Error in callback: {cb_err}", exc_info=True)
+                        if error_callback:
+                            error_callback(cb_err)
         except Exception as e:
             logger.error(f"Error in background thread: {e}", exc_info=True)
             if error_callback:

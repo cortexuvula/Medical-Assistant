@@ -8,6 +8,7 @@ Provides bidirectional expansion of:
 """
 
 import re
+import threading
 from typing import Optional
 
 from rag.models import QueryExpansion
@@ -26,7 +27,6 @@ MEDICAL_ABBREVIATIONS: dict[str, list[str]] = {
     "htn": ["hypertension", "high blood pressure"],
     "afib": ["atrial fibrillation", "a-fib"],
     "dvt": ["deep vein thrombosis", "deep venous thrombosis"],
-    "pe": ["pulmonary embolism"],
     "cvd": ["cardiovascular disease", "heart disease"],
     "bp": ["blood pressure"],
     "hr": ["heart rate"],
@@ -112,7 +112,7 @@ MEDICAL_ABBREVIATIONS: dict[str, list[str]] = {
     "fhx": ["family history"],
     "shx": ["social history"],
     "ros": ["review of systems"],
-    "pe": ["physical exam", "physical examination"],
+    "pe": ["pulmonary embolism", "physical exam", "physical examination"],
     "dx": ["diagnosis"],
     "ddx": ["differential diagnosis"],
     "tx": ["treatment", "therapy"],
@@ -428,7 +428,7 @@ class MedicalQueryExpander:
 
         # Combine original with top expanded terms
         all_terms = [original] + expanded_terms[:5]  # Limit to avoid overly broad search
-        return " OR ".join(all_terms)
+        return " ".join(all_terms)
 
     def get_search_terms(self, expansion: QueryExpansion) -> list[str]:
         """Get all search terms from an expansion.
@@ -444,6 +444,7 @@ class MedicalQueryExpander:
 
 # Singleton instance
 _expander: Optional[MedicalQueryExpander] = None
+_expander_lock = threading.Lock()
 
 
 def get_query_expander() -> MedicalQueryExpander:
@@ -453,15 +454,19 @@ def get_query_expander() -> MedicalQueryExpander:
         MedicalQueryExpander instance
     """
     global _expander
-    if _expander is None:
-        _expander = MedicalQueryExpander()
+    if _expander is not None:
+        return _expander
+    with _expander_lock:
+        if _expander is None:
+            _expander = MedicalQueryExpander()
     return _expander
 
 
 def reset_query_expander():
     """Reset the global query expander instance."""
     global _expander
-    _expander = None
+    with _expander_lock:
+        _expander = None
 
 
 def expand_medical_query(query: str) -> QueryExpansion:

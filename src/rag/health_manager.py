@@ -31,7 +31,8 @@ def _load_env():
     try:
         from managers.data_folder_manager import data_folder_manager
         paths.append(data_folder_manager.env_file_path)  # AppData / Application Support
-    except Exception:
+    except Exception as e:
+        # data_folder_manager may not be initialized yet
         pass
     paths.extend([
         pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
@@ -44,7 +45,7 @@ def _load_env():
                 load_dotenv(dotenv_path=str(p))
                 return
         except Exception:
-            pass
+            pass  # logger not yet initialized at module load time
     load_dotenv()  # Try default search
 
 _load_env()
@@ -325,8 +326,8 @@ class RAGHealthManager:
                     circuit_state=circuit_state,
                 )
 
-            client = OpenAI(api_key=api_key)
             timeout = get_timeout("health_check", default=5.0)
+            client = OpenAI(api_key=api_key, timeout=timeout)
 
             # Use a lightweight API call (list first model)
             # This is faster than an embedding call
@@ -399,6 +400,7 @@ class RAGHealthManager:
 
 # Singleton instance
 _health_manager: Optional[RAGHealthManager] = None
+_health_manager_lock = threading.Lock()
 
 
 def get_health_manager() -> RAGHealthManager:
@@ -408,14 +410,18 @@ def get_health_manager() -> RAGHealthManager:
         RAGHealthManager singleton
     """
     global _health_manager
-    if _health_manager is None:
-        _health_manager = RAGHealthManager()
+    if _health_manager is not None:
+        return _health_manager
+    with _health_manager_lock:
+        if _health_manager is None:
+            _health_manager = RAGHealthManager()
     return _health_manager
 
 
 def reset_health_manager():
     """Reset the global health manager instance."""
     global _health_manager
-    if _health_manager:
-        _health_manager.clear_cache()
-    _health_manager = None
+    with _health_manager_lock:
+        if _health_manager:
+            _health_manager.clear_cache()
+        _health_manager = None

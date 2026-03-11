@@ -15,6 +15,7 @@ Enhanced with:
 """
 
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Optional
@@ -533,7 +534,8 @@ class HybridRetriever:
             # Also boost results that mention the entity
             entity_lower = entity_name.lower() if entity_name else ""
             for key, result in results_map.items():
-                if entity_lower and entity_lower in result.chunk_text.lower():
+                text_lower = result.chunk_text.lower()
+                if entity_lower and re.search(rf'\b{re.escape(entity_lower)}\b', text_lower):
                     result.graph_score = max(result.graph_score, 0.3)
                     if entity_name and entity_name not in result.related_entities:
                         result.related_entities.append(entity_name)
@@ -723,6 +725,8 @@ class HybridRetriever:
                         elif isinstance(date_value, str):
                             try:
                                 result_date = datetime.fromisoformat(date_value.replace("Z", "+00:00"))
+                                # Strip timezone info for comparison with naive datetimes
+                                result_date = result_date.replace(tzinfo=None)
                                 break
                             except ValueError:
                                 continue
@@ -903,6 +907,7 @@ class HybridRetriever:
 
 # Singleton instance
 _retriever: Optional[HybridRetriever] = None
+_retriever_lock = threading.Lock()
 
 
 def get_hybrid_retriever() -> HybridRetriever:
@@ -912,12 +917,16 @@ def get_hybrid_retriever() -> HybridRetriever:
         HybridRetriever instance
     """
     global _retriever
-    if _retriever is None:
-        _retriever = HybridRetriever()
+    if _retriever is not None:
+        return _retriever
+    with _retriever_lock:
+        if _retriever is None:
+            _retriever = HybridRetriever()
     return _retriever
 
 
 def reset_hybrid_retriever():
     """Reset the global hybrid retriever instance."""
     global _retriever
-    _retriever = None
+    with _retriever_lock:
+        _retriever = None

@@ -377,6 +377,7 @@ class AgentManager:
 
         for attempt in range(retry_config.max_retries + 1):
             try:
+                last_error = None  # Reset so stale errors don't propagate
                 return agent.execute(task), retry_count
             except (ConnectionError, TimeoutError, OSError) as e:
                 # Network-related errors - worth retrying

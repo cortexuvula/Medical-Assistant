@@ -265,11 +265,17 @@ class RecordingsTabEventsMixin:
             except Exception as e:
                 logger.error(f"Batch processing error: {e}")
                 error_msg = str(e)  # Capture before closure
-                self.parent.after(0, lambda: [
-                    self.parent.status_manager.error(f"Batch processing failed: {error_msg}"),
-                    self.batch_progress_dialog.add_detail(f"Batch processing failed: {error_msg}", "error"),
-                    self._on_batch_complete()
-                ])
+                def _handle_batch_error(msg=error_msg):
+                    try:
+                        if not self.parent.winfo_exists():
+                            return
+                        self.parent.status_manager.error(f"Batch processing failed: {msg}")
+                        if hasattr(self, 'batch_progress_dialog') and self.batch_progress_dialog:
+                            self.batch_progress_dialog.add_detail(f"Batch processing failed: {msg}", "error")
+                        self._on_batch_complete()
+                    except Exception:
+                        pass
+                self.parent.after(0, _handle_batch_error)
 
         def cancel_batch(batch_id):
             if hasattr(self.parent, 'processing_queue') and self.parent.processing_queue:

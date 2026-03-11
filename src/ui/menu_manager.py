@@ -371,9 +371,12 @@ class MenuManager:
         self.app.audio_handler.groq_api_key = os.getenv("GROQ_API_KEY", "")
         
         # Update the STT providers with new keys
-        self.app.audio_handler.elevenlabs_provider.api_key = self.app.audio_handler.elevenlabs_api_key
-        self.app.audio_handler.deepgram_provider.api_key = self.app.audio_handler.deepgram_api_key
-        self.app.audio_handler.groq_provider.api_key = self.app.audio_handler.groq_api_key
+        if getattr(self.app.audio_handler, 'elevenlabs_provider', None):
+            self.app.audio_handler.elevenlabs_provider.api_key = self.app.audio_handler.elevenlabs_api_key
+        if getattr(self.app.audio_handler, 'deepgram_provider', None):
+            self.app.audio_handler.deepgram_provider.api_key = self.app.audio_handler.deepgram_api_key
+        if getattr(self.app.audio_handler, 'groq_provider', None):
+            self.app.audio_handler.groq_provider.api_key = self.app.audio_handler.groq_api_key
 
         # Refresh provider dropdowns to show only providers with API keys
         if hasattr(self.app, 'refresh_provider_dropdowns'):

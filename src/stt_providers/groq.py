@@ -112,6 +112,7 @@ class GroqProvider(BaseSTTProvider):
 
         transcript = ""
 
+        audio_buffer = None
         try:
             # Export audio to BytesIO buffer instead of temp file (saves 2-5 seconds)
             audio_buffer = BytesIO()
@@ -180,6 +181,9 @@ class GroqProvider(BaseSTTProvider):
             error_msg = f"Unexpected error during GROQ transcription: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             raise TranscriptionError(error_msg)
+        finally:
+            if audio_buffer is not None:
+                audio_buffer.close()
 
         # Return whatever transcript we got, empty string if we failed
         return transcript

@@ -144,6 +144,8 @@ class DeepgramProvider(BaseSTTProvider):
                 raise TranscriptionError(f"Failed to transcribe audio: {str(e)}")
             
             # Process response
+            if not hasattr(response, 'to_json'):
+                raise TranscriptionError(f"Unexpected Deepgram response type: {type(response).__name__}")
             response_json = json.loads(response.to_json(indent=4))
             
             # Print successful response info to terminal

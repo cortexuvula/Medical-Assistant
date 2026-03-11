@@ -297,6 +297,7 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                         "total": 0,
                         "completed": 0,
                         "failed": 0,
+                        "tracking_errors": 0,
                         "task_ids": []
                     }
                 self.batch_tasks[batch_id]["total"] += 1
@@ -439,8 +440,8 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                             task_id, "processing",
                             started_at=datetime.now().isoformat()
                         )
-                except Exception:
-                    pass  # Non-critical, best-effort
+                except Exception as e:
+                    logger.warning("Failed to update queue status to 'processing'", task_id=task_id, error=str(e))
 
                 # Mark queue task as done
                 self.queue.task_done()
@@ -510,6 +511,7 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                     audio_data = recording_data.get("audio_data")
                     
                     # Save audio file before transcription
+                    audio_saved = False
                     try:
                         from datetime import datetime as dt
                         import os
@@ -568,13 +570,16 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                                         audio_path=audio_path,
                                         file_size_bytes=file_size
                                     )
+                                    audio_saved = True
                                 else:
                                     logger.error(
                                         "Audio save reported success but file not found",
                                         audio_path=audio_path
                                     )
+                                    audio_saved = False
                             else:
                                 logger.error("Failed to save audio", audio_path=audio_path)
+                                audio_saved = False
                     except (OSError, IOError) as e:
                         # File system errors during audio save
                         ctx = ErrorContext.capture(
@@ -597,6 +602,9 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                         ctx.log()
                         # Continue with transcription even if audio save fails
                     
+                    # Track audio save status in recording data for downstream consumers
+                    recording_data["audio_saved"] = audio_saved
+
                     # Log comprehensive audio data info for debugging
                     if hasattr(audio_data, 'duration_seconds'):
                         logger.debug("Audio duration", duration_seconds=audio_data.duration_seconds)
@@ -1192,6 +1200,7 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                     WHERE batch_id = ?
                 """, (completed, failed, batch_id))
             except Exception as e:
+                batch["tracking_errors"] = batch.get("tracking_errors", 0) + 1
                 logger.warning("Failed to update batch progress in database", batch_id=batch_id, error=str(e))
 
         # Notify progress
@@ -1228,7 +1237,20 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                     """, (completed, failed, batch_id))
                     logger.info("Marked batch as completed in database", batch_id=batch_id)
                 except Exception as e:
+                    batch["tracking_errors"] = batch.get("tracking_errors", 0) + 1
                     logger.warning("Failed to mark batch as completed in database", batch_id=batch_id, error=str(e))
+
+            # Log tracking error summary if any occurred
+            tracking_errors = batch.get("tracking_errors", 0)
+            if tracking_errors > 0:
+                logger.warning(
+                    "Batch had database tracking errors",
+                    batch_id=batch_id,
+                    tracking_errors=tracking_errors,
+                    completed=completed,
+                    failed=failed,
+                    total=total
+                )
 
             # Notify completion
             if self.batch_callback:

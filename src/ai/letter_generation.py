@@ -26,7 +26,7 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
     """
     from utils.error_codes import get_error_message
 
-    model = SETTINGS["referral"]["model"]  # Use actual settings, not defaults
+    model = SETTINGS.get("referral", {}).get("model", "gpt-4")
 
     # Add conditions to the prompt if provided
     if conditions:

@@ -538,7 +538,7 @@ class VocabularyDialog(BaseDialog):
             ctx = ErrorContext.capture(
                 operation="Importing CSV vocabulary file",
                 exception=e,
-                input_summary=f"file={file_path if 'file_path' in dir() else 'unknown'}"
+                input_summary=f"file={file_path if 'file_path' in locals() else 'unknown'}"
             )
             self.logger.error(ctx.to_log_string())
             messagebox.showerror(
@@ -657,8 +657,17 @@ class VocabularyDialog(BaseDialog):
         # Clear pattern cache
         vocabulary_manager.corrector.clear_cache()
 
-        # Save to settings
-        vocabulary_manager.save_settings()
+        # Save to settings — don't close dialog if save fails
+        try:
+            vocabulary_manager.save_settings()
+        except Exception as e:
+            self.logger.error(f"Failed to save vocabulary settings: {e}")
+            messagebox.showerror(
+                "Save Error",
+                f"Failed to save vocabulary settings:\n{e}\n\nPlease try again.",
+                parent=self.dialog
+            )
+            return
 
         self._saved = True
         self.close()

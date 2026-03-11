@@ -296,6 +296,11 @@ class Database(ConnectionMixin, RecordingMixin, QueueMixin, AnalysisMixin, Diagn
                 if column_name not in existing_columns:
                     logger.info(f"Adding missing column '{column_name}' to recordings table")
                     try:
+                        import re
+                        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column_name):
+                            raise ValueError(f"Invalid column name: {column_name}")
+                        if not re.match(r'^[a-zA-Z][a-zA-Z0-9 ()\'\"]*$', column_type):
+                            raise ValueError(f"Invalid column type: {column_type}")
                         conn.execute(f"ALTER TABLE recordings ADD COLUMN {column_name} {column_type}")
                         conn.commit()
                         logger.info(f"Successfully added column '{column_name}'")

@@ -190,22 +190,37 @@ class AudioDialogManager:
                         if preview_segment:
                             duration = preview_segment.duration_seconds
                             # Update UI on main thread
-                            prefix_dialog.after(0, lambda: [
-                                status_var.set(f"Recording stopped - {duration:.1f} seconds captured"),
-                                preview_button.config(state=NORMAL),
-                                save_button.config(state=NORMAL),
-                                record_button.config(state=NORMAL)
-                            ])
+                            def _update_success(dur=duration):
+                                try:
+                                    if not prefix_dialog.winfo_exists():
+                                        return
+                                    status_var.set(f"Recording stopped - {dur:.1f} seconds captured")
+                                    preview_button.config(state=NORMAL)
+                                    save_button.config(state=NORMAL)
+                                    record_button.config(state=NORMAL)
+                                except tk.TclError:
+                                    pass
+                            prefix_dialog.after(0, _update_success)
                         else:
-                            prefix_dialog.after(0, lambda: [
-                                status_var.set("Recording stopped - no audio captured"),
-                                record_button.config(state=NORMAL)
-                            ])
+                            def _update_no_preview():
+                                try:
+                                    if not prefix_dialog.winfo_exists():
+                                        return
+                                    status_var.set("Recording stopped - no audio captured")
+                                    record_button.config(state=NORMAL)
+                                except tk.TclError:
+                                    pass
+                            prefix_dialog.after(0, _update_no_preview)
                     else:
-                        prefix_dialog.after(0, lambda: [
-                            status_var.set("Recording stopped - no audio captured"),
-                            record_button.config(state=NORMAL)
-                        ])
+                        def _update_no_segments():
+                            try:
+                                if not prefix_dialog.winfo_exists():
+                                    return
+                                status_var.set("Recording stopped - no audio captured")
+                                record_button.config(state=NORMAL)
+                            except tk.TclError:
+                                pass
+                        prefix_dialog.after(0, _update_no_segments)
                 except Exception as e:
                     ctx = ErrorContext.capture(
                         operation="Stopping prefix recording",

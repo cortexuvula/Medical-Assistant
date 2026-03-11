@@ -69,7 +69,10 @@ class NotebookAnalysisMixin:
 
         # Save state to settings
         SETTINGS["analysis_panel_collapsed"] = self._analysis_collapsed
-        save_settings(SETTINGS)
+        try:
+            save_settings(SETTINGS)
+        except Exception as e:
+            logger.warning(f"Failed to save analysis panel collapsed state: {e}")
 
         # Get references
         analysis_content = self.components.get('analysis_content')

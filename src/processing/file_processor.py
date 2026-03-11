@@ -75,29 +75,44 @@ class FileProcessor:
                             logger.error(f"Failed to add to database: {str(db_err)}", exc_info=True)
                         
                         # Always append to transcript_text widget and switch to transcript tab
-                        self.app.after(0, lambda: [
-                            self.app.append_text_to_widget(transcript, self.app.transcript_text),
-                            self.app.notebook.select(0),  # Switch to transcript tab (index 0)
-                            self.app.status_manager.success(f"Audio file processed and saved to database: {filename}"),
-                            self.app.progress_bar.stop(),
-                            self.app.progress_bar.pack_forget()
-                        ])
+                        def _on_success(fn=filename):
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                self.app.append_text_to_widget(transcript, self.app.transcript_text)
+                                self.app.notebook.select(0)
+                                self.app.status_manager.success(f"Audio file processed and saved to database: {fn}")
+                                self.app.progress_bar.stop()
+                                self.app.progress_bar.pack_forget()
+                            except Exception:
+                                pass
+                        self.app.after(0, _on_success)
                     else:
-                        self.app.after(0, lambda: self.app.update_status("No transcript was produced", "warning"))
+                        self.app.after(0, lambda: self.app.update_status("No transcript was produced", "warning") if self.app.winfo_exists() else None)
                 else:
-                    self.app.after(0, lambda: [
-                        self.app.status_manager.error("Failed to process audio file"),
-                        self.app.progress_bar.stop(),
-                        self.app.progress_bar.pack_forget()
-                    ])
+                    def _on_fail():
+                        try:
+                            if not self.app.winfo_exists():
+                                return
+                            self.app.status_manager.error("Failed to process audio file")
+                            self.app.progress_bar.stop()
+                            self.app.progress_bar.pack_forget()
+                        except Exception:
+                            pass
+                    self.app.after(0, _on_fail)
             except Exception as e:
                 error_msg = f"Error processing audio file: {str(e)}"
                 logger.error(error_msg, exc_info=True)
-                self.app.after(0, lambda: [
-                    self.app.status_manager.error(error_msg),
-                    self.app.progress_bar.stop(),
-                    self.app.progress_bar.pack_forget()
-                ])
+                def _on_error(msg=error_msg):
+                    try:
+                        if not self.app.winfo_exists():
+                            return
+                        self.app.status_manager.error(msg)
+                        self.app.progress_bar.stop()
+                        self.app.progress_bar.pack_forget()
+                    except Exception:
+                        pass
+                self.app.after(0, _on_error)
                 
         # Use I/O executor for the task since it primarily involves file I/O
         self.app.io_executor.submit(task)

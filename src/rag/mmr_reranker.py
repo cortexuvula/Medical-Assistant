@@ -8,6 +8,7 @@ MMR formula: MMR = λ * relevance - (1-λ) * max_similarity_to_selected
 """
 
 import math
+import threading
 from typing import Optional
 
 from rag.models import HybridSearchResult
@@ -275,6 +276,7 @@ class MMRReranker:
 
 # Singleton instance
 _reranker: Optional[MMRReranker] = None
+_reranker_lock = threading.Lock()
 
 
 def get_mmr_reranker() -> MMRReranker:
@@ -284,15 +286,19 @@ def get_mmr_reranker() -> MMRReranker:
         MMRReranker instance
     """
     global _reranker
-    if _reranker is None:
-        _reranker = MMRReranker()
+    if _reranker is not None:
+        return _reranker
+    with _reranker_lock:
+        if _reranker is None:
+            _reranker = MMRReranker()
     return _reranker
 
 
 def reset_mmr_reranker():
     """Reset the global MMR reranker instance."""
     global _reranker
-    _reranker = None
+    with _reranker_lock:
+        _reranker = None
 
 
 def rerank_with_mmr(

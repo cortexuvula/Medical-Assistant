@@ -63,7 +63,10 @@ class ThemeManager:
         
         # Update settings
         SETTINGS["theme"] = new_theme
-        save_settings(SETTINGS)
+        try:
+            save_settings(SETTINGS)
+        except Exception as e:
+            logger.warning(f"Failed to save theme setting: {e}")
         
         # Check if the NEW theme is dark (not the current theme which has just been switched)
         is_dark = new_theme in self.dark_themes

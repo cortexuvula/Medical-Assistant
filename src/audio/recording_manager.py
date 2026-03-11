@@ -225,8 +225,8 @@ class RecordingManager:
         try:
             # Save to temporary file
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                audio_data.export(temp_file.name, format="mp3")
                 temp_path = temp_file.name
+                audio_data.export(temp_path, format="mp3")
 
             try:
                 # Transcribe

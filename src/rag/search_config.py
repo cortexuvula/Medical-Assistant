@@ -8,6 +8,7 @@ Provides configuration for:
 - MMR result diversity
 """
 
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -70,6 +71,8 @@ class SearchQualityConfig:
 
         # Ensure weights sum to approximately 1
         total_weight = self.vector_weight + self.bm25_weight + self.graph_weight
+        if total_weight == 0:
+            raise ValueError("At least one search weight must be > 0")
         if abs(total_weight - 1.0) > 0.01:
             # Normalize weights
             self.vector_weight /= total_weight
@@ -127,6 +130,7 @@ class SearchQualityConfig:
 
 # Default configuration singleton
 _default_config: Optional[SearchQualityConfig] = None
+_default_config_lock = threading.Lock()
 
 
 def get_search_quality_config() -> SearchQualityConfig:
@@ -139,13 +143,16 @@ def get_search_quality_config() -> SearchQualityConfig:
     """
     global _default_config
 
-    if _default_config is None:
-        try:
-            from settings.settings import SETTINGS
-            config_dict = SETTINGS.get("rag_search_quality", {})
-            _default_config = SearchQualityConfig.from_dict(config_dict)
-        except Exception:
-            _default_config = SearchQualityConfig()
+    if _default_config is not None:
+        return _default_config
+    with _default_config_lock:
+        if _default_config is None:
+            try:
+                from settings.settings import SETTINGS
+                config_dict = SETTINGS.get("rag_search_quality", {})
+                _default_config = SearchQualityConfig.from_dict(config_dict)
+            except Exception:
+                _default_config = SearchQualityConfig()
 
     return _default_config
 
@@ -153,4 +160,5 @@ def get_search_quality_config() -> SearchQualityConfig:
 def reset_search_quality_config():
     """Reset the configuration singleton."""
     global _default_config
-    _default_config = None
+    with _default_config_lock:
+        _default_config = None
