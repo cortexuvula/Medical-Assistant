@@ -5,8 +5,11 @@ Provides transcription functionality for the AudioHandler class.
 """
 
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from pydub import AudioSegment
+
+if TYPE_CHECKING:
+    from stt_providers.base import TranscriptionResult
 
 from settings.settings import SETTINGS
 from managers.vocabulary_manager import vocabulary_manager
