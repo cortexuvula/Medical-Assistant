@@ -45,6 +45,9 @@ class AudioSttTabMixin:
         # Groq sub-tab
         self._create_groq_subtab(sub_notebook)
 
+        # Modulate sub-tab
+        self._create_modulate_subtab(sub_notebook)
+
         # TTS sub-tab
         self._create_tts_subtab(sub_notebook)
 
@@ -260,6 +263,73 @@ class AudioSttTabMixin:
         lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
         lang_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
         ToolTip(lang_entry, "ISO language code (e.g., 'en', 'es', 'fr')")
+
+        frame.columnconfigure(1, weight=1)
+
+    def _create_modulate_subtab(self, parent_notebook: ttk.Notebook):
+        """Create Modulate (Velma Transcribe) settings sub-tab."""
+        frame = ttk.Frame(parent_notebook, padding=15)
+        parent_notebook.add(frame, text="Modulate")
+
+        modulate_settings = settings_manager.get("modulate", {})
+        defaults = settings_manager.get_default("modulate", {})
+
+        self.widgets['audio_stt']['modulate'] = {}
+        row = 0
+
+        # Model
+        model_label = ttk.Label(frame, text="Model:")
+        model_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(model_label, "Modulate Velma transcription model")
+        model_var = tk.StringVar(value=modulate_settings.get("model", defaults.get("model", "default")))
+        self.widgets['audio_stt']['modulate']['model'] = model_var
+        model_combo = ttk.Combobox(frame, textvariable=model_var, width=30,
+                                   values=["default"])
+        model_combo.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(model_combo, "Velma Transcribe model")
+        row += 1
+
+        # Language
+        lang_label = ttk.Label(frame, text="Language:")
+        lang_label.grid(row=row, column=0, sticky="w", pady=10)
+        ToolTip(lang_label, "Language code for transcription")
+        lang_var = tk.StringVar(value=modulate_settings.get("language", defaults.get("language", "en-US")))
+        self.widgets['audio_stt']['modulate']['language'] = lang_var
+        lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
+        lang_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
+        ToolTip(lang_entry, "ISO language code (e.g., 'en-US')")
+        row += 1
+
+        # Enable Emotions
+        emotions_var = tk.BooleanVar(value=modulate_settings.get("enable_emotions", defaults.get("enable_emotions", True)))
+        self.widgets['audio_stt']['modulate']['enable_emotions'] = emotions_var
+        emotions_cb = ttk.Checkbutton(frame, text="Enable Emotion Detection", variable=emotions_var)
+        emotions_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(emotions_cb, "Detect 20+ emotions in patient voice (anxiety, sadness, etc.)")
+        row += 1
+
+        # Enable Diarization
+        diarize_var = tk.BooleanVar(value=modulate_settings.get("enable_diarization", defaults.get("enable_diarization", True)))
+        self.widgets['audio_stt']['modulate']['enable_diarization'] = diarize_var
+        diarize_cb = ttk.Checkbutton(frame, text="Enable Speaker Diarization", variable=diarize_var)
+        diarize_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(diarize_cb, "Identify and label different speakers in the recording")
+        row += 1
+
+        # Enable Deepfake Detection
+        deepfake_var = tk.BooleanVar(value=modulate_settings.get("enable_deepfake_detection", defaults.get("enable_deepfake_detection", False)))
+        self.widgets['audio_stt']['modulate']['enable_deepfake_detection'] = deepfake_var
+        deepfake_cb = ttk.Checkbutton(frame, text="Enable Deepfake Detection", variable=deepfake_var)
+        deepfake_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(deepfake_cb, "Detect AI-generated or manipulated audio")
+        row += 1
+
+        # Enable PII Redaction
+        pii_var = tk.BooleanVar(value=modulate_settings.get("enable_pii_redaction", defaults.get("enable_pii_redaction", False)))
+        self.widgets['audio_stt']['modulate']['enable_pii_redaction'] = pii_var
+        pii_cb = ttk.Checkbutton(frame, text="Enable PII/PHI Redaction", variable=pii_var)
+        pii_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(pii_cb, "Automatically redact personally identifiable and health information")
 
         frame.columnconfigure(1, weight=1)
 

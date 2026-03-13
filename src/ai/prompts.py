@@ -56,6 +56,7 @@ Before writing each section, carefully review the transcript to extract ALL of t
 - Allergies - drug and non-drug (state "Allergies not discussed" if not mentioned)
 - Family history (state "Not discussed during the visit" if not mentioned)
 - Social history - smoking, alcohol, occupation, living situation (state "Not discussed" if not mentioned)
+- Patient emotional state and affect (if voice emotion analysis data is provided, incorporate observed emotions into the subjective narrative, e.g., "Patient appeared anxious when describing symptoms")
 - Review of systems findings discussed (state "No review of systems performed" if not discussed)
 
 ### Objective Section - Include ALL of these categories:

@@ -5,6 +5,7 @@ Handles SOAP recording processing including audio combination,
 transcription, and SOAP note generation.
 """
 
+import json
 import os
 import concurrent.futures
 
@@ -170,36 +171,47 @@ class SOAPProcessor:
                         logger.warning(f"transcribe_file failed, falling back: {e}")
                         transcript = None
 
-                # Fallback: standard transcribe_audio path
+                # Fallback: standard transcribe_audio path (with metadata capture)
+                emotion_data = None
+                emotion_context = ""
                 if not transcript:
                     logger.info("Using standard transcribe_audio fallback")
-                    transcript = self.audio_handler.transcribe_audio(audio_segment)
-                    if transcript:
+                    # Use metadata-aware transcription to capture emotion data in one call
+                    result_with_meta = self.audio_handler.transcribe_audio_with_metadata(audio_segment)
+                    if result_with_meta.success and result_with_meta.text:
+                        transcript = result_with_meta.text
                         logger.info("Fallback transcribe_audio succeeded")
+                        # Extract emotion data if available (Modulate provider)
+                        if result_with_meta.metadata.get("emotion_data"):
+                            emotion_data = result_with_meta.metadata["emotion_data"]
+                            from ai.emotion_processor import format_emotion_for_soap
+                            emotion_context = format_emotion_for_soap(emotion_data)
+                            logger.info(f"Captured emotion data with {len(emotion_data)} utterances")
                     else:
                         logger.warning("Fallback transcribe_audio also failed")
                 # If all transcription methods failed
                 if not transcript:
                     raise ValueError("All transcription methods failed - no text recognized")
-                
+
                 # Log success and progress
                 logger.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
-                
+
                 # Update transcript tab with the raw transcript
                 schedule_ui_update(self.app, lambda: [
                     self.app.transcript_text.delete("1.0", tk.END),
                     self.app.transcript_text.insert(tk.END, transcript),
                     self.status_manager.progress("Creating SOAP note from transcript...")
                 ])
-                
+
                 # Get context text from the context tab
                 context_text = self.app.context_text.get("1.0", tk.END).strip()
-                
+
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.io_executor.submit(
                     create_soap_note_with_openai,
                     transcript,
-                    context_text
+                    context_text,
+                    emotion_context
                 )
                 
                 # Get result with timeout to prevent hanging
@@ -243,6 +255,21 @@ class SOAPProcessor:
                             self.app.document_generators._run_diagnostic_to_panel(sn))
                         schedule_ui_update(self.app, lambda sn=soap_note:
                             self.app.document_generators._run_compliance_to_panel(sn))
+
+                        # Display emotion data in panel if available
+                        if emotion_data:
+                            schedule_ui_update(self.app, lambda ed=emotion_data:
+                                self.app.document_generators._run_emotion_to_panel(ed))
+
+                    # Save emotion data to recording metadata if available
+                    if emotion_data:
+                        try:
+                            recording_id = getattr(self.app, 'current_recording_id', None) or getattr(self.app, 'selected_recording_id', None)
+                            if recording_id:
+                                self.app.db.update_recording(recording_id, metadata=json.dumps({"emotion_data": emotion_data}))
+                                logger.info(f"Saved emotion data to recording {recording_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to save emotion data: {e}")
 
                 schedule_ui_update(self.app, finalize_soap)
             except concurrent.futures.TimeoutError:

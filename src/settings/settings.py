@@ -345,6 +345,14 @@ _DEFAULTS_STT_PROVIDERS = {
         "profanity_filter": False,
         "redact": False,
         "alternatives": 1
+    },
+    "modulate": {
+        "model": "default",
+        "language": "en-US",
+        "enable_emotions": True,
+        "enable_diarization": True,
+        "enable_deepfake_detection": False,
+        "enable_pii_redaction": False
     }
 }
 

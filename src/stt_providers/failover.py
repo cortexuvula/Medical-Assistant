@@ -294,6 +294,17 @@ def create_failover_manager_from_settings() -> STTFailoverManager:
     except Exception as e:
         logger.warning(f"Could not create ElevenLabs provider: {e}")
 
+    # Try to create Modulate provider
+    try:
+        from utils.security import get_security_manager
+        modulate_key = get_security_manager().get_api_key("modulate") or ""
+        if modulate_key:
+            from stt_providers.modulate import ModulateProvider
+            providers.append(ModulateProvider(api_key=modulate_key))
+            logger.info("Added Modulate to failover chain")
+    except Exception as e:
+        logger.warning(f"Could not create Modulate provider: {e}")
+
     # Always add Whisper as fallback (local, no API key needed)
     try:
         from stt_providers.whisper import WhisperProvider

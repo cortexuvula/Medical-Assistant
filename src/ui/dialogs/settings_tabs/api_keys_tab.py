@@ -108,6 +108,7 @@ class ApiKeysTabMixin:
             ("deepgram", "Deepgram API Key:", "DEEPGRAM_API_KEY", "API key for Deepgram speech-to-text (nova-2-medical model)"),
             ("elevenlabs", "ElevenLabs API Key:", "ELEVENLABS_API_KEY", "API key for ElevenLabs STT and TTS"),
             ("groq", "Groq API Key:", "GROQ_API_KEY", "API key for Groq ultra-fast Whisper transcription"),
+            ("modulate", "Modulate API Key:", "MODULATE_API_KEY", "API key for Modulate Velma Transcribe (emotion detection, diarization)"),
         ]
 
         for key_id, label, env_var, tooltip in stt_keys_config:

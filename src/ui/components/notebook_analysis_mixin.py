@@ -8,6 +8,7 @@ analysis, panel toggle, and saved analysis loading.
 
 from __future__ import annotations
 
+import json
 import tkinter as tk
 from typing import Any, Dict
 
@@ -45,6 +46,14 @@ _ANALYSIS_TYPES = {
         "empty_msg": ("Clinical guidelines compliance will appear here after SOAP note generation.\n\n"
                       "Use the 'Upload Guidelines' button to add clinical guidelines to the database."),
         "formatter_method": "format_compliance_panel",
+    },
+    "emotion": {
+        "attr": "_last_emotion_analysis",
+        "widget_key": "emotion_analysis_text",
+        "btn_key": "emotion_view_details_btn",
+        "label": "Emotional Assessment",
+        "empty_msg": "Emotional assessment will appear here when using Modulate STT provider.",
+        "formatter_method": "format_emotion_panel",
     },
 }
 
@@ -302,6 +311,42 @@ class NotebookAnalysisMixin:
         except tk.TclError as e:
             logger.debug(f"Could not switch to differential tab: {e}")
 
+    def _open_emotion_details(self) -> None:
+        """Open full emotion results dialog with current analysis."""
+        try:
+            analysis = self._get_stored_analysis('_last_emotion_analysis')
+            if not analysis:
+                if hasattr(self.parent, 'status_manager'):
+                    self.parent.status_manager.warning("No emotional assessment available. Use Modulate STT provider.")
+                return
+
+            result = analysis.get('result', 'No analysis available')
+            self._show_simple_analysis_dialog("Emotional Assessment Details", result, 700, 550)
+
+        except Exception as e:
+            logger.error(f"Error opening emotion details: {e}")
+            if hasattr(self.parent, 'status_manager'):
+                self.parent.status_manager.error("Failed to open emotion details")
+
+    def show_emotion_analysis_tab(self) -> None:
+        """Switch to the Emotional Assessment tab within the SOAP panel."""
+        try:
+            # Make sure analysis panel is expanded
+            if hasattr(self, '_analysis_collapsed') and self._analysis_collapsed:
+                self._toggle_analysis_panel()
+
+            # Find the analysis notebook
+            analysis_content = self.components.get('analysis_content')
+            if analysis_content:
+                for child in analysis_content.winfo_children():
+                    if hasattr(child, 'select') and hasattr(child, 'tabs'):
+                        tabs = child.tabs()
+                        if len(tabs) > 3:
+                            child.select(tabs[3])  # Emotion is fourth tab
+                        break
+        except tk.TclError as e:
+            logger.debug(f"Could not switch to emotion tab: {e}")
+
     def show_compliance_analysis_tab(self) -> None:
         """Switch to the Clinical Guidelines tab within the SOAP panel."""
         try:
@@ -346,6 +391,22 @@ class NotebookAnalysisMixin:
 
             if analyses.get('compliance'):
                 self._update_compliance_panel_from_saved(analyses['compliance'])
+
+            # Also load emotion data from recording metadata
+            try:
+                from database.database import get_database
+                db = get_database()
+                recording = db.get_recording(recording_id)
+                if recording:
+                    metadata_str = recording.get('metadata', '')
+                    if metadata_str:
+                        metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+                        emotion_data = metadata.get('emotion_data')
+                        if emotion_data:
+                            self._update_emotion_panel_from_saved(emotion_data)
+                            analyses['emotion'] = emotion_data
+            except Exception as e:
+                logger.debug(f"Could not load emotion data: {e}")
 
             return analyses
 
@@ -409,6 +470,37 @@ class NotebookAnalysisMixin:
     def _update_compliance_panel_from_saved(self, analysis: Dict[str, Any]) -> None:
         """Update compliance analysis panel with saved analysis."""
         self._update_analysis_panel_from_saved("compliance", analysis)
+
+    def _update_emotion_panel_from_saved(self, emotion_data) -> None:
+        """Update emotion analysis panel with saved emotion data from recording metadata."""
+        try:
+            from ai.emotion_processor import format_emotion_for_panel
+
+            widget = self.components.get('emotion_analysis_text')
+            if not widget:
+                return
+
+            formatted = format_emotion_for_panel(emotion_data)
+
+            # Store for View Details button
+            setattr(self.parent, '_last_emotion_analysis', {
+                'result': formatted,
+                'metadata': emotion_data
+            })
+
+            # Update widget
+            widget.config(state='normal')
+            widget.delete('1.0', 'end')
+            widget.insert('1.0', formatted)
+            widget.config(state='disabled')
+
+            # Enable View Details button
+            view_btn = self.components.get('emotion_view_details_btn')
+            if view_btn:
+                view_btn.config(state='normal')
+
+        except Exception as e:
+            logger.error(f"Failed to update emotion panel from saved: {e}")
 
     def clear_analysis_panels(self) -> None:
         """Clear the medication, differential, and compliance analysis panels."""

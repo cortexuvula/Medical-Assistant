@@ -126,11 +126,13 @@ class AppDialogMixin:
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+        self.modulate_api_key = os.getenv("MODULATE_API_KEY", "")
         from audio.audio import AudioHandler
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,
             deepgram_api_key=self.deepgram_api_key,
             groq_api_key=self.groq_api_key,
+            modulate_api_key=self.modulate_api_key,
             recognition_language=self.recognition_language
         )
 

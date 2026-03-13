@@ -7,7 +7,7 @@ from pydub import AudioSegment
 from typing import List, Optional, Callable, Any, Dict, Tuple, Union
 from pathlib import Path
 from settings.settings import SETTINGS
-from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider
+from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider, ModulateProvider
 from managers.vocabulary_manager import vocabulary_manager
 from core.config import get_config
 from utils.error_handling import ErrorContext
@@ -70,7 +70,7 @@ class AudioHandler:
     _active_streams = {}  # Class variable to track all active streams by purpose
     _streams_lock = threading.Lock()  # Lock for thread-safe stream management
 
-    def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = ""):
+    def __init__(self, elevenlabs_api_key: str = "", deepgram_api_key: str = "", recognition_language: str = "en-US", groq_api_key: str = "", modulate_api_key: str = ""):
         """Initialize the AudioHandler with necessary API keys and settings.
 
         Args:
@@ -78,10 +78,12 @@ class AudioHandler:
             deepgram_api_key: API key for Deepgram
             recognition_language: Language code for speech recognition
             groq_api_key: API key for GROQ (default STT provider)
+            modulate_api_key: API key for Modulate (Velma Transcribe)
         """
         self.elevenlabs_api_key = elevenlabs_api_key
         self.deepgram_api_key = deepgram_api_key
         self.groq_api_key = groq_api_key
+        self.modulate_api_key = modulate_api_key
         self.recognition_language = recognition_language
 
         # Initialize STT providers
@@ -89,6 +91,7 @@ class AudioHandler:
         self.deepgram_provider = DeepgramProvider(deepgram_api_key, recognition_language)
         self.groq_provider = GroqProvider(groq_api_key, recognition_language)
         self.whisper_provider = WhisperProvider("", recognition_language)
+        self.modulate_provider = ModulateProvider(modulate_api_key, recognition_language)
 
         # Initialize fallback callback to None
         self.fallback_callback = None

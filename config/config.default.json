@@ -78,6 +78,14 @@
     "language": "en",
     "prompt": ""
   },
+  "modulate": {
+    "model": "default",
+    "language": "en-US",
+    "enable_emotions": true,
+    "enable_diarization": true,
+    "enable_deepfake_detection": false,
+    "enable_pii_redaction": false
+  },
   "ai_tasks": {
     "refine_text": {
       "model": "gpt-3.5-turbo",

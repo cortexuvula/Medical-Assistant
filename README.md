@@ -55,6 +55,7 @@ Medical Assistant is a comprehensive desktop application for medical documentati
   - Side panel for adding previous medical information
   - Automatically integrates patient history into SOAP note generation
   - Smart context preservation during recordings
+  - Voice emotion analysis integration (when using Modulate STT) — patient emotional state woven into Subjective section
 
 - **ICD Code Integration**
   - Choose between ICD-9, ICD-10, or both code versions
@@ -124,6 +125,7 @@ Real-time medical translation for multilingual patient consultations:
 | **Deepgram** | Nova-2 Medical | Medical terminology accuracy, HIPAA-eligible |
 | **ElevenLabs** | Scribe v2 | High accuracy, speaker diarization, entity detection, keyterm prompting |
 | **Groq** | Whisper Large v3 Turbo | Speed (216x real-time), cost-effective |
+| **Modulate (Velma)** | Velma Transcribe | Voice emotion detection (20+ emotions), speaker diarization, deepfake detection, PII/PHI redaction |
 | **Local Whisper** | Turbo | Offline capability, privacy |
 
 #### Text-to-Speech
@@ -162,7 +164,7 @@ python main.py
 # 4. Configure API keys via Settings → API Keys (keys are encrypted)
 ```
 
-**Minimum Requirements:** At least one LLM provider API key (OpenAI, Anthropic, or Gemini) and one STT provider API key (Deepgram, ElevenLabs, or Groq).
+**Minimum Requirements:** At least one LLM provider API key (OpenAI, Anthropic, or Gemini) and one STT provider API key (Deepgram, ElevenLabs, Groq, or Modulate).
 
 ---
 
@@ -216,6 +218,7 @@ python main.py
    DEEPGRAM_API_KEY=...
    ELEVENLABS_API_KEY=...
    GROQ_API_KEY=gsk_...
+   MODULATE_API_KEY=...
 
    # Optional: Local Models
    OLLAMA_API_URL=http://localhost:11434
@@ -400,8 +403,8 @@ Access all settings through the comprehensive Preferences dialog:
 
 | Tab | Settings |
 |-----|----------|
-| **API Keys** | All LLM keys (OpenAI, Anthropic, Gemini, Grok) and STT keys (Deepgram, ElevenLabs, Groq) |
-| **Audio & STT** | Provider settings (ElevenLabs, Deepgram, Groq), TTS voice selection, audio quality |
+| **API Keys** | All LLM keys (OpenAI, Anthropic, Gemini, Grok) and STT keys (Deepgram, ElevenLabs, Groq, Modulate) |
+| **Audio & STT** | Provider settings (ElevenLabs, Deepgram, Groq, Modulate), TTS voice selection, audio quality |
 | **AI Models** | Temperature settings per task, model selection, translation provider configuration |
 | **Prompts** | Customize Refine, Improve, SOAP, Referral, and Advanced Analysis prompts |
 | **Storage** | Default folder, Custom Vocabulary, Address Book management, Prefix Audio |
@@ -419,6 +422,7 @@ Settings
 │   ├── ElevenLabs Settings
 │   ├── Deepgram Settings
 │   ├── Groq Settings
+│   ├── Modulate Settings
 │   └── TTS Settings
 ├── AI & Models ▸
 │   ├── Temperature Settings
@@ -536,6 +540,7 @@ Medical-Assistant/
 │   │   │   ├── ollama_provider.py
 │   │   │   └── router.py     # Intelligent provider routing
 │   │   ├── ai_processor.py   # Core AI processing logic
+│   │   ├── emotion_processor.py # Voice emotion analysis formatting
 │   │   ├── soap_generation.py
 │   │   ├── letter_generation.py
 │   │   ├── text_processing.py
@@ -564,6 +569,7 @@ Medical-Assistant/
 │   │   ├── deepgram.py
 │   │   ├── elevenlabs.py
 │   │   ├── groq.py
+│   │   ├── modulate.py       # Velma Transcribe with emotion detection
 │   │   └── whisper.py
 │   ├── tts_providers/         # Text-to-speech
 │   │   ├── base.py
@@ -607,10 +613,12 @@ Medical-Assistant/
 
 ```
 Audio Input → STT Provider → Transcript → AI Processing → Document Generation
-                                              ↓
-                                        Agent System
-                                              ↓
-                                     Database Storage → Export (PDF/DOCX/FHIR)
+                  ↓                            ↓
+           Emotion Data*              Agent System
+                  ↓                            ↓
+           SOAP Integration          Database Storage → Export (PDF/DOCX/FHIR)
+
+* Voice emotion analysis available with Modulate (Velma) STT provider
 ```
 
 ---
@@ -759,6 +767,7 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 - [Deepgram](https://deepgram.com) - Speech-to-text
 - [ElevenLabs](https://elevenlabs.io) - Text-to-speech and STT
 - [Groq](https://groq.com) - Fast inference
+- [Modulate.ai](https://modulate.ai) - Voice emotion detection
 - [Ollama](https://ollama.ai) - Local model hosting
 - [ttkbootstrap](https://ttkbootstrap.readthedocs.io) - Modern UI themes
 

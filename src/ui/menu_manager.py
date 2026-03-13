@@ -258,6 +258,7 @@ class MenuManager:
         audio_menu.add_command(label="ElevenLabs Settings", command=self.app.show_elevenlabs_settings)
         audio_menu.add_command(label="Deepgram Settings", command=self.app.show_deepgram_settings)
         audio_menu.add_command(label="Groq Settings", command=self.app.show_groq_settings)
+        audio_menu.add_command(label="Modulate Settings", command=lambda: show_unified_settings_dialog(self.app, initial_tab="Audio & STT"))
         audio_menu.add_separator()
         audio_menu.add_command(label="TTS Settings", command=self.app.show_tts_settings)
 

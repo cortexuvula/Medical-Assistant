@@ -301,6 +301,7 @@ class AppInitializer:
         self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
         self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
         self.app.groq_api_key = security_manager.get_api_key("groq") or ""
+        self.app.modulate_api_key = security_manager.get_api_key("modulate") or ""
         self.app.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
 
         # Check for necessary API keys using security manager
@@ -329,6 +330,7 @@ class AppInitializer:
                 self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
                 self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
                 self.app.groq_api_key = security_manager.get_api_key("groq") or ""
+                self.app.modulate_api_key = security_manager.get_api_key("modulate") or ""
                 
     def _initialize_audio_handler(self):
         """Initialize the audio handler and text processor."""
@@ -337,6 +339,7 @@ class AppInitializer:
             elevenlabs_api_key=self.app.elevenlabs_api_key,
             deepgram_api_key=self.app.deepgram_api_key,
             groq_api_key=self.app.groq_api_key,
+            modulate_api_key=getattr(self.app, 'modulate_api_key', ''),
             recognition_language=self.app.recognition_language
         )
         

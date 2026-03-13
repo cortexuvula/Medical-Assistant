@@ -26,6 +26,7 @@ class APIKeyManager:
         'groq': 'GROQ_API_KEY',
         'gemini': 'GEMINI_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
+        'modulate': 'MODULATE_API_KEY',
     }
 
     def __init__(self):
@@ -53,7 +54,7 @@ class APIKeyManager:
         has_ai_key = any(security_mgr.get_api_key(p) for p in ai_providers)
 
         # Check for STT provider keys
-        stt_providers = ['deepgram', 'elevenlabs', 'groq']
+        stt_providers = ['deepgram', 'elevenlabs', 'groq', 'modulate']
         has_stt_key = any(security_mgr.get_api_key(p) for p in stt_providers)
 
         return has_ai_key and has_stt_key

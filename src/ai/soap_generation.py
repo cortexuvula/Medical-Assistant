@@ -104,13 +104,14 @@ def format_soap_paragraphs(text: str) -> str:
     return '\n'.join(result_lines)
 
 
-def _prepare_soap_generation(text: str, context: str, settings: dict = None) -> tuple:
+def _prepare_soap_generation(text: str, context: str, settings: dict = None, emotion_context: str = "") -> tuple:
     """Prepare common parameters for SOAP note generation.
 
     Args:
         text: Transcript text to convert
         context: Optional medical context
         settings: Settings dict (uses SETTINGS global if None)
+        emotion_context: Optional voice emotion analysis summary from Modulate STT
 
     Returns:
         Tuple of (model, system_message, full_prompt, temperature)
@@ -146,11 +147,14 @@ def _prepare_soap_generation(text: str, context: str, settings: dict = None) -> 
     time_date_str = datetime.now().strftime("Time %H:%M Date %d %b %Y")
     transcript_with_datetime = f"{time_date_str}\n\n{text}"
 
-    # Build prompt with context
+    # Build prompt with context and optional emotion data
+    parts = []
     if context and context.strip():
-        full_prompt = f"Previous medical context:\n{context}\n\n{SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)}"
-    else:
-        full_prompt = SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime)
+        parts.append(f"Previous medical context:\n{context}")
+    if emotion_context and emotion_context.strip():
+        parts.append(f"Voice Emotional Analysis:\n{emotion_context}")
+    parts.append(SOAP_PROMPT_TEMPLATE.format(text=transcript_with_datetime))
+    full_prompt = "\n\n".join(parts)
 
     return model, system_message, full_prompt, temperature
 
@@ -214,7 +218,8 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
 def create_soap_note_streaming(
     text: str,
     context: str = "",
-    on_chunk: Callable[[str], None] = None
+    on_chunk: Callable[[str], None] = None,
+    emotion_context: str = ""
 ) -> str:
     """Create a SOAP note with streaming display.
 
@@ -225,6 +230,7 @@ def create_soap_note_streaming(
         text: Transcript text to convert to SOAP note
         context: Optional additional medical context
         on_chunk: Callback function called with each text chunk for progressive display
+        emotion_context: Optional voice emotion analysis summary from Modulate STT
 
     Returns:
         Complete SOAP note text
@@ -236,7 +242,7 @@ def create_soap_note_streaming(
 
     # Prepare generation parameters
     model, system_message, full_prompt, temperature = _prepare_soap_generation(
-        text, context, settings=current_settings
+        text, context, settings=current_settings, emotion_context=emotion_context
     )
 
     # Use streaming API call
@@ -251,19 +257,20 @@ def create_soap_note_streaming(
     return _postprocess_soap_result(result_text, context, on_chunk)
 
 
-def create_soap_note_with_openai(text: str, context: str = "") -> str:
+def create_soap_note_with_openai(text: str, context: str = "", emotion_context: str = "") -> str:
     """Create a SOAP note using AI.
 
     Args:
         text: Transcript text to convert to SOAP note
         context: Optional additional medical context
+        emotion_context: Optional voice emotion analysis summary from Modulate STT
 
     Returns:
         Complete SOAP note text
     """
     # Prepare generation parameters
     model, system_message, full_prompt, temperature = _prepare_soap_generation(
-        text, context, settings=SETTINGS
+        text, context, settings=SETTINGS, emotion_context=emotion_context
     )
 
     result = call_ai(model, system_message, full_prompt, temperature)

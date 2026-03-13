@@ -102,6 +102,7 @@ class ConfigController:
             ("groq", "GROQ"),
             ("elevenlabs", "ElevenLabs"),
             ("deepgram", "Deepgram"),
+            ("modulate", "Modulate (Velma)"),
         ]
 
         available = []
@@ -263,7 +264,8 @@ class ConfigController:
             "elevenlabs": "ElevenLabs",
             "deepgram": "Deepgram",
             "groq": "GROQ",
-            "google": "Google"
+            "google": "Google",
+            "modulate": "Modulate (Velma)"
         }
 
         primary_display = provider_names.get(primary_provider, primary_provider)
@@ -274,7 +276,7 @@ class ConfigController:
 
         # Update STT provider dropdown to reflect actual service being used
         try:
-            stt_providers = ["groq", "elevenlabs", "deepgram"]
+            stt_providers = ["groq", "elevenlabs", "deepgram", "modulate"]
             fallback_index = stt_providers.index(fallback_provider)
             self.app.after(0, lambda: [
                 self.app.status_manager.warning(message),

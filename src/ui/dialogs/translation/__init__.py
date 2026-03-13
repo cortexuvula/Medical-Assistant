@@ -68,7 +68,8 @@ class TranslationDialog(
             elevenlabs_api_key=audio_handler.elevenlabs_api_key,
             deepgram_api_key=audio_handler.deepgram_api_key,
             recognition_language=audio_handler.recognition_language,
-            groq_api_key=audio_handler.groq_api_key
+            groq_api_key=audio_handler.groq_api_key,
+            modulate_api_key=getattr(audio_handler, 'modulate_api_key', '')
         )
         logger.info(f"AudioHandler created for translation dialog")
         self.translation_manager = get_translation_manager()

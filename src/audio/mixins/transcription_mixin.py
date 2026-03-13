@@ -34,7 +34,7 @@ class TranscriptionMixin:
         Args:
             provider: Provider name ('elevenlabs', 'deepgram', 'groq', or 'whisper')
         """
-        if provider in ["elevenlabs", "deepgram", "groq", "whisper"]:
+        if provider in ["elevenlabs", "deepgram", "groq", "whisper", "modulate"]:
             from settings.settings import save_settings
             SETTINGS["stt_provider"] = provider
             save_settings(SETTINGS)
@@ -78,7 +78,7 @@ class TranscriptionMixin:
             fallback_attempted = True
 
             # Try fallback providers
-            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs"] if p != primary_provider]
+            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs", "modulate"] if p != primary_provider]
             for provider in fallback_providers:
                 transcript = self._try_transcription_with_provider(segment, provider, **kwargs)
                 if transcript:
@@ -131,7 +131,7 @@ class TranscriptionMixin:
 
         # Only use fallback if there's an actual error (empty string)
         if transcript == "" and not fallback_attempted:
-            fallback_providers = ["deepgram", "elevenlabs", "groq", "whisper"]
+            fallback_providers = ["deepgram", "elevenlabs", "groq", "whisper", "modulate"]
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
 
@@ -173,12 +173,49 @@ class TranscriptionMixin:
                 return self.groq_provider.transcribe(segment)
             elif provider == "whisper":
                 return self.whisper_provider.transcribe(segment)
+            elif provider == "modulate":
+                return self.modulate_provider.transcribe(segment, **kwargs)
             else:
                 logger.warning(f"Unknown provider: {provider}")
                 return ""
         except Exception as e:
             logger.error(f"Error with {provider} transcription: {str(e)}", exc_info=True)
             return ""
+
+
+    def transcribe_audio_with_metadata(self, segment: AudioSegment) -> 'TranscriptionResult':
+        """Transcribe audio and return structured result with metadata.
+
+        When Modulate is the active provider, this returns a TranscriptionResult
+        that includes emotion data in .metadata. For other providers, wraps the
+        plain text result.
+
+        Args:
+            segment: AudioSegment to transcribe
+
+        Returns:
+            TranscriptionResult with text and optional emotion metadata
+        """
+        from stt_providers.base import TranscriptionResult
+
+        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
+
+        if primary_provider == "modulate" and hasattr(self, 'modulate_provider'):
+            try:
+                result = self.modulate_provider.transcribe_with_result(segment)
+                if result.success:
+                    # Apply vocabulary corrections
+                    if result.text:
+                        result.text = vocabulary_manager.correct_transcript(result.text)
+                    return result
+            except Exception as e:
+                logger.error(f"Modulate transcribe_with_result failed: {e}", exc_info=True)
+
+        # Fallback: use standard transcribe and wrap result
+        text = self.transcribe_audio(segment)
+        if text:
+            return TranscriptionResult.success_result(text=text)
+        return TranscriptionResult.failure_result(error="Transcription returned empty result")
 
 
 __all__ = ["TranscriptionMixin"]

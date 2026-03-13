@@ -197,7 +197,7 @@ class UnifiedSettingsDialog(
 
             api_keys = self.widgets.get('api_keys', {})
             for key_id in ['openai', 'anthropic', 'gemini',
-                          'deepgram', 'elevenlabs', 'groq']:
+                          'deepgram', 'elevenlabs', 'groq', 'modulate']:
                 if key_id in api_keys:
                     value = api_keys[key_id].get().strip()
                     if value:
@@ -265,6 +265,10 @@ class UnifiedSettingsDialog(
             if 'groq' in audio_stt:
                 for key, var in audio_stt['groq'].items():
                     settings_manager.set_nested(f'groq.{key}', var.get(), auto_save=False)
+
+            if 'modulate' in audio_stt:
+                for key, var in audio_stt['modulate'].items():
+                    settings_manager.set_nested(f'modulate.{key}', var.get(), auto_save=False)
 
             if 'tts' in audio_stt:
                 for key, var in audio_stt['tts'].items():

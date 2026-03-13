@@ -332,6 +332,7 @@ if PYDANTIC_AVAILABLE:
         deepgram: Optional[Dict[str, Any]] = None
         elevenlabs: Optional[Dict[str, Any]] = None
         groq: Optional[Dict[str, Any]] = None
+        modulate: Optional[Dict[str, Any]] = None
 
         # Custom data
         custom_vocabulary: Optional[Dict[str, Any]] = None
@@ -367,7 +368,7 @@ if PYDANTIC_AVAILABLE:
         @classmethod
         def validate_stt_provider(cls, v):
             """Validate STT provider is a known value."""
-            known_providers = {"groq", "deepgram", "elevenlabs", "whisper", "google"}
+            known_providers = {"groq", "deepgram", "elevenlabs", "whisper", "google", "modulate"}
             if v.lower() not in known_providers:
                 pass
             return v

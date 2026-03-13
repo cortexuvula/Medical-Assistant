@@ -133,6 +133,7 @@ class STTProvider(BaseProvider):
     ELEVENLABS = "elevenlabs"
     WHISPER = "whisper"
     OPENAI = "openai"  # OpenAI Whisper API
+    MODULATE = "modulate"
 
     @classmethod
     def get_display_name(cls, provider: 'STTProvider') -> str:
@@ -143,6 +144,7 @@ class STTProvider(BaseProvider):
             cls.ELEVENLABS: "ElevenLabs",
             cls.WHISPER: "Whisper (Local)",
             cls.OPENAI: "OpenAI Whisper",
+            cls.MODULATE: "Modulate (Velma)",
         }
         return display_names.get(provider, provider.value.title())
 
@@ -230,6 +232,7 @@ STT_DEEPGRAM = STTProvider.DEEPGRAM.value
 STT_GROQ = STTProvider.GROQ.value
 STT_ELEVENLABS = STTProvider.ELEVENLABS.value
 STT_WHISPER = STTProvider.WHISPER.value
+STT_MODULATE = STTProvider.MODULATE.value
 
 # TTS Providers
 TTS_ELEVENLABS = TTSProvider.ELEVENLABS.value

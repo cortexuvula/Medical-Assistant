@@ -626,6 +626,59 @@ class NotebookTabs(NotebookRagMixin, NotebookGuidelinesMixin, NotebookAnalysisMi
         text_widgets['compliance_analysis'] = compliance_analysis_text
         self.components['compliance_analysis_text'] = compliance_analysis_text
 
+        # ----- Tab 4: Emotional Assessment -----
+        emotion_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(emotion_tab, text="  Emotional Assessment  ")
+
+        # Emotion header with copy button
+        emotion_header = ttk.Frame(emotion_tab)
+        emotion_header.pack(fill=tk.X, padx=5, pady=3)
+
+        emotion_copy_btn = ttk.Button(
+            emotion_header,
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(emotion_analysis_text)
+        )
+        emotion_copy_btn.pack(side=tk.RIGHT, padx=2)
+
+        # View Details button for full emotion dialog
+        emotion_view_btn = ttk.Button(
+            emotion_header,
+            text="View Details",
+            bootstyle="success-outline",
+            command=self._open_emotion_details,
+            state='disabled'  # Initially disabled until analysis is available
+        )
+        emotion_view_btn.pack(side=tk.RIGHT, padx=2)
+        self.components['emotion_view_details_btn'] = emotion_view_btn
+
+        # Emotion analysis scrollbar and text widget
+        emotion_content = ttk.Frame(emotion_tab)
+        emotion_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        emotion_scroll = ttk.Scrollbar(emotion_content)
+        emotion_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        emotion_analysis_text = tk.Text(
+            emotion_content,
+            wrap=tk.WORD,
+            yscrollcommand=emotion_scroll.set,
+            state='disabled',
+            height=8
+        )
+        emotion_analysis_text.pack(fill=tk.BOTH, expand=True)
+        emotion_scroll.config(command=emotion_analysis_text.yview)
+
+        # Initial placeholder message
+        emotion_analysis_text.config(state='normal')
+        emotion_analysis_text.insert('1.0', "Emotional assessment will appear here when using Modulate STT provider.")
+        emotion_analysis_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['emotion_analysis'] = emotion_analysis_text
+        self.components['emotion_analysis_text'] = emotion_analysis_text
+
         return soap_text
 
     def _copy_to_clipboard(self, text_widget: tk.Text) -> None:
