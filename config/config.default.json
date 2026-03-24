@@ -79,12 +79,15 @@
     "prompt": ""
   },
   "modulate": {
-    "model": "default",
-    "language": "en-US",
-    "enable_emotions": true,
+    "model": "batch-multilingual",
     "enable_diarization": true,
-    "enable_deepfake_detection": false,
-    "enable_pii_redaction": false
+    "enable_emotions": true,
+    "enable_accent_detection": true,
+    "enable_pii_tagging": false,
+    "emotion_in_soap": false,
+    "emotion_disclaimer": "Voice emotion analysis is observational only and based on acoustic features. It does not constitute a clinical assessment, diagnosis, or screening tool.",
+    "emotion_cluster_window_seconds": 120,
+    "speaker_role_overrides": {}
   },
   "ai_tasks": {
     "refine_text": {

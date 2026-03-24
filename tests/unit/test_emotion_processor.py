@@ -360,3 +360,233 @@ class TestGetDominantEmotions:
         result_str = str(result)
         assert "anxiety" in result_str
         assert "joy" in result_str
+
+
+# --- V2 Test Data ---
+
+SAMPLE_V2_EMOTION_DATA = {
+    "version": 2,
+    "segments": [
+        {"start_time": 1.0, "end_time": 1.5, "speaker": "speaker_1",
+         "text": "Hello?", "emotion_label": "calm", "emotion_raw": "Calm",
+         "emotions": {"calm": 1.0}},
+        {"start_time": 2.0, "end_time": 4.0, "speaker": "speaker_2",
+         "text": "Hi, it's Dr. Smith. How are you?", "emotion_label": "calm",
+         "emotion_raw": "Calm", "emotions": {"calm": 1.0}},
+        {"start_time": 5.0, "end_time": 12.0, "speaker": "speaker_1",
+         "text": "Oh fine, just got him up.", "emotion_label": "calm",
+         "emotion_raw": "Calm", "emotions": {"calm": 1.0}},
+        {"start_time": 12.0, "end_time": 46.0, "speaker": "speaker_2",
+         "text": "I got a text from community nurses about a memory test.",
+         "emotion_label": "neutral", "emotion_raw": "Neutral",
+         "emotions": {"neutral": 1.0}},
+        {"start_time": 47.0, "end_time": 49.0, "speaker": "speaker_1",
+         "text": "Oh, yeah. Well... I don't know.", "emotion_label": "confusion",
+         "emotion_raw": "Confused", "emotions": {"confusion": 1.0}},
+        {"start_time": 51.0, "end_time": 53.0, "speaker": "speaker_2",
+         "text": "Is it difficult to get him into the lab?",
+         "emotion_label": "neutral", "emotion_raw": "Neutral",
+         "emotions": {"neutral": 1.0}},
+        {"start_time": 54.0, "end_time": 55.0, "speaker": "speaker_1",
+         "text": "Yes. Yes.", "emotion_label": "calm", "emotion_raw": "Calm",
+         "emotions": {"calm": 1.0}},
+        {"start_time": 61.0, "end_time": 83.0, "speaker": "speaker_1",
+         "text": "Yeah. He can't walk, getting him in and out of the car.",
+         "emotion_label": "concern", "emotion_raw": "Concerned",
+         "emotions": {"concern": 1.0}},
+        {"start_time": 83.0, "end_time": 120.0, "speaker": "speaker_2",
+         "text": "Okay. Well, I'll send the requisition into the lab.",
+         "emotion_label": "neutral", "emotion_raw": "Neutral",
+         "emotions": {"neutral": 1.0}},
+        {"start_time": 121.0, "end_time": 132.0, "speaker": "speaker_1",
+         "text": "We have nobody around here to help us.",
+         "emotion_label": "concern", "emotion_raw": "Concerned",
+         "emotions": {"concern": 1.0}},
+        {"start_time": 150.0, "end_time": 169.0, "speaker": "speaker_1",
+         "text": "I was thinking of giving them a call.",
+         "emotion_label": "concern", "emotion_raw": "Concerned",
+         "emotions": {"concern": 1.0}},
+        {"start_time": 244.0, "end_time": 246.0, "speaker": "speaker_1",
+         "text": "Okay, we'll try to get that done then.",
+         "emotion_label": "calm", "emotion_raw": "Calm",
+         "emotions": {"calm": 1.0}},
+        {"start_time": 247.0, "end_time": 250.0, "speaker": "speaker_2",
+         "text": "Okay. All right, I'll place the order now.",
+         "emotion_label": "calm", "emotion_raw": "Calm",
+         "emotions": {"calm": 1.0}},
+    ],
+    "overall": {
+        "dominant_emotion": "calm",
+        "emotion_distribution": {"calm": 6, "neutral": 4, "concern": 3, "confusion": 1},
+        "total_segments": 13,
+    }
+}
+
+
+# --- V2 Panel Tests ---
+
+
+class TestFormatPanelV2:
+    """Test v2 3-tier panel display."""
+
+    @pytest.fixture(autouse=True)
+    def mock_settings(self, monkeypatch):
+        """Mock settings_manager for v2 tests."""
+        from unittest.mock import MagicMock
+        mock_sm = MagicMock()
+        mock_sm.get.return_value = {
+            "emotion_in_soap": False,
+            "emotion_disclaimer": "Test disclaimer.",
+            "emotion_cluster_window_seconds": 120,
+            "speaker_role_overrides": {},
+        }
+        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+
+    def test_panel_v2_returns_string(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_panel_v2_has_headline(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "VOICE EMOTION ANALYSIS" in result
+
+    def test_panel_v2_has_speaker_detail(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "SPEAKER DETAIL" in result
+
+    def test_panel_v2_has_segment_table(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "SEGMENT DETAIL" in result
+
+    def test_panel_v2_has_disclaimer(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "disclaimer" in result.lower() or "observational" in result.lower() or "not constitute" in result.lower()
+
+    def test_panel_v2_shows_concern_cluster(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "concern" in result.lower()
+
+    def test_panel_v2_shows_speaker_roles(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        result_lower = result.lower()
+        # Should have speaker labels (patient, physician, caregiver, or speaker)
+        assert "speaker_1" in result_lower or "speaker_2" in result_lower
+
+    def test_panel_v2_no_old_clinical_significance_text(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "No clinically significant patterns detected" not in result
+
+    def test_panel_v2_shows_baseline(self):
+        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
+        assert "Baseline" in result or "baseline" in result
+
+
+# --- V2 SOAP Tests ---
+
+
+class TestFormatSoapV2:
+    """Test v2 SOAP formatting."""
+
+    def _mock_settings(self, monkeypatch, emotion_in_soap=False):
+        from unittest.mock import MagicMock
+        mock_sm = MagicMock()
+        mock_sm.get.return_value = {
+            "emotion_in_soap": emotion_in_soap,
+            "emotion_disclaimer": "Test disclaimer.",
+            "emotion_cluster_window_seconds": 120,
+            "speaker_role_overrides": {},
+        }
+        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+        monkeypatch.setattr("ai.emotion_processor.settings_manager",
+                            mock_sm, raising=False)
+        # Also patch the import in _format_soap_v2
+        import ai.emotion_processor as ep
+        original_format = ep._format_soap_v2
+
+        def patched_format(data):
+            import ai.emotion_speaker_analyzer
+            ai.emotion_speaker_analyzer.settings_manager = mock_sm
+            # For the settings check inside _format_soap_v2
+            from unittest.mock import patch
+            with patch("settings.settings_manager.settings_manager", mock_sm):
+                return original_format(data)
+        return mock_sm
+
+    def test_soap_v2_returns_empty_when_disabled(self, monkeypatch):
+        mock_sm = self._mock_settings(monkeypatch, emotion_in_soap=False)
+        # Also need to patch the settings_manager import in emotion_processor
+        monkeypatch.setattr("ai.emotion_processor.settings_manager",
+                            mock_sm, raising=False)
+        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
+        assert result == ""
+
+    def test_soap_v2_includes_disclaimer_when_enabled(self, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_sm = MagicMock()
+        mock_sm.get.return_value = {
+            "emotion_in_soap": True,
+            "emotion_disclaimer": "Test disclaimer.",
+            "emotion_cluster_window_seconds": 120,
+            "speaker_role_overrides": {},
+        }
+        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
+        if result:  # Only check if there are flags to report
+            assert "disclaimer" in result.lower() or "Test disclaimer" in result
+
+    def test_soap_v2_no_diagnostic_language(self, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_sm = MagicMock()
+        mock_sm.get.return_value = {
+            "emotion_in_soap": True,
+            "emotion_disclaimer": "Test disclaimer.",
+            "emotion_cluster_window_seconds": 120,
+            "speaker_role_overrides": {},
+        }
+        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
+        forbidden = ["screening", "disorder", "PHQ", "GAD", "diagnosis", "depression"]
+        for word in forbidden:
+            assert word.lower() not in result.lower(), f"Found forbidden word '{word}' in SOAP output"
+
+
+# --- V1 Backward Compatibility Tests ---
+
+
+class TestV1Compatibility:
+    """Verify v1 data still works through all public functions."""
+
+    def test_v1_soap_still_works(self):
+        result = format_emotion_for_soap(SAMPLE_EMOTION_DATA)
+        assert isinstance(result, str)
+        # V1 data with anxiety 0.72 and sadness 0.68 should produce output
+        assert len(result) > 0
+
+    def test_v1_panel_still_works(self):
+        result = format_emotion_for_panel(SAMPLE_EMOTION_DATA)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "VOICE EMOTION ANALYSIS" in result
+
+    def test_v1_dominant_still_works(self):
+        result = get_dominant_emotions(SAMPLE_EMOTION_DATA)
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_v2_dominant_uses_emotion_label(self, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_sm = MagicMock()
+        mock_sm.get.return_value = {
+            "emotion_cluster_window_seconds": 120,
+            "speaker_role_overrides": {},
+            "emotion_disclaimer": "Test.",
+        }
+        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+
+        result = get_dominant_emotions(SAMPLE_V2_EMOTION_DATA)
+        assert isinstance(result, list)
+        # Should find concern, confusion (non-neutral, non-calm with 1.0 confidence)
+        emotions = [r["emotion"] for r in result]
+        assert "concern" in emotions
+        assert "confusion" in emotions

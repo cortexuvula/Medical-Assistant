@@ -618,10 +618,11 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                             sample_width=audio_data.sample_width
                         )
 
-                    # Use the app's audio handler to transcribe
+                    # Use the app's audio handler to transcribe (with metadata for emotions)
                     if hasattr(self.app, 'audio_handler'):
                         try:
-                            transcript = self.app.audio_handler.transcribe_audio(audio_data)
+                            result = self.app.audio_handler.transcribe_audio_with_metadata(audio_data)
+                            transcript = result.text if result.success else ""
                             if transcript:
                                 # Update the recording data and database
                                 recording_data["transcript"] = transcript
@@ -631,6 +632,14 @@ class ProcessingQueue(BatchProcessingMixin, DocumentGenerationMixin, Reprocessin
                                     recording_id=recording_id,
                                     transcript_length=len(transcript)
                                 )
+                                # Save emotion data if available (Modulate provider)
+                                if result.metadata and result.metadata.get("emotion_data"):
+                                    import json
+                                    self.app.db.update_recording(
+                                        recording_id,
+                                        metadata=json.dumps({"emotion_data": result.metadata["emotion_data"]})
+                                    )
+                                    logger.info("Saved emotion data from batch transcription", recording_id=recording_id)
                             else:
                                 raise TranscriptionError("Transcription returned empty result")
                         except TranscriptionError:

@@ -148,32 +148,37 @@ class SOAPProcessor:
                     self.app.progress_bar.pack(side=LEFT, padx=(5, 0))
                 ])
 
-                # Transcribe by sending the saved MP3 file directly to the
-                # ElevenLabs API — bypassing AudioSegment→WAV conversion, prefix
-                # audio concatenation, and all intermediate audio manipulation.
-                # This is the exact same thing that happens when the user uploads
-                # an audio file, which produces correct multi-speaker diarization.
+                # Transcribe the audio using the selected STT provider.
+                # When Modulate is selected, we must use transcribe_audio_with_metadata()
+                # to capture emotion data. For other providers, try the direct file
+                # path first (better diarization) then fall back to segment-based.
                 schedule_ui_update(self.app, lambda: self.status_manager.progress("Transcribing SOAP audio..."))
 
                 transcript = None
-                if save_result and os.path.exists(audio_path):
-                    try:
-                        elevenlabs = self.audio_handler.elevenlabs_provider
-                        if elevenlabs and hasattr(elevenlabs, 'transcribe_file'):
-                            logger.info(f"Using transcribe_file (direct MP3→API) for: {audio_path}")
-                            transcript = elevenlabs.transcribe_file(audio_path)
-                            if transcript:
-                                # Apply vocabulary corrections (normally done by transcribe_audio)
-                                from managers.vocabulary_manager import vocabulary_manager
-                                transcript = vocabulary_manager.correct_transcript(transcript)
-                                logger.info(f"transcribe_file succeeded: {len(transcript)} chars")
-                    except Exception as e:
-                        logger.warning(f"transcribe_file failed, falling back: {e}")
-                        transcript = None
-
-                # Fallback: standard transcribe_audio path (with metadata capture)
                 emotion_data = None
                 emotion_context = ""
+                selected_provider = settings_manager.get("stt_provider", "elevenlabs")
+
+                # For Modulate, always use metadata-aware transcription to capture emotions
+                if selected_provider == "modulate":
+                    logger.info("Using Modulate provider — routing through transcribe_audio_with_metadata()")
+                else:
+                    # For non-Modulate providers, try direct file transcription first
+                    if save_result and os.path.exists(audio_path):
+                        try:
+                            elevenlabs = self.audio_handler.elevenlabs_provider
+                            if elevenlabs and hasattr(elevenlabs, 'transcribe_file'):
+                                logger.info(f"Using transcribe_file (direct MP3→API) for: {audio_path}")
+                                transcript = elevenlabs.transcribe_file(audio_path)
+                                if transcript:
+                                    from managers.vocabulary_manager import vocabulary_manager
+                                    transcript = vocabulary_manager.correct_transcript(transcript)
+                                    logger.info(f"transcribe_file succeeded: {len(transcript)} chars")
+                        except Exception as e:
+                            logger.warning(f"transcribe_file failed, falling back: {e}")
+                            transcript = None
+
+                # Metadata-aware fallback (always used for Modulate, fallback for others)
                 if not transcript:
                     logger.info("Using standard transcribe_audio fallback")
                     # Use metadata-aware transcription to capture emotion data in one call

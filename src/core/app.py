@@ -58,7 +58,11 @@ def main() -> None:
     
     # Load environment variables from .env file
     load_dotenv(dotenv_path=str(data_folder_manager.env_file_path))
-    
+
+    # Initialize Sentry error monitoring (must be before any app code)
+    from utils.sentry_config import init_sentry
+    init_sentry()
+
     # Log application startup
     logger.info("Medical Dictation application starting")
     
@@ -76,6 +80,13 @@ def main() -> None:
         except (OSError, IOError):
             # If logging fails, write to stderr as fallback
             sys.stderr.write(f"Error: {exc_type.__name__}: {exc_value}\n")
+
+        # Report to Sentry (PHI is scrubbed by before_send callback)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception((exc_type, exc_value, exc_traceback))
+        except Exception:
+            pass  # Sentry reporting is best-effort
 
         # Don't show popup for TclErrors - these are usually harmless UI timing issues
         if exc_type.__name__ != "TclError":
@@ -555,6 +566,7 @@ class MedicalDictationApp(
                 ("groq", "GROQ"),
                 ("elevenlabs", "ElevenLabs"),
                 ("deepgram", "Deepgram"),
+                ("modulate", "Modulate (Velma)"),
             ]
         }
 

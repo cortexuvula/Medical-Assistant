@@ -60,6 +60,7 @@ class UnifiedSettingsDialog(
         self.notebook: Optional[ttk.Notebook] = None
         self.widgets: Dict[str, Dict] = {}
         self._modified = False
+        self._saved = False
 
     # Sub-tab name constants for initial_subtab parameter
     SUBTAB_ELEVENLABS = "ElevenLabs"
@@ -139,6 +140,7 @@ class UnifiedSettingsDialog(
             pass
 
         self.parent.wait_window(self.dialog)
+        return self._saved
 
     def _select_subtab(self, subtab_name: str):
         """Select a sub-tab within a nested notebook.
@@ -196,12 +198,25 @@ class UnifiedSettingsDialog(
             security_mgr = get_security_manager()
 
             api_keys = self.widgets.get('api_keys', {})
-            for key_id in ['openai', 'anthropic', 'gemini',
-                          'deepgram', 'elevenlabs', 'groq', 'modulate']:
+
+            # Map of provider key_id to environment variable name
+            api_key_env_map = {
+                'openai': 'OPENAI_API_KEY',
+                'anthropic': 'ANTHROPIC_API_KEY',
+                'gemini': 'GEMINI_API_KEY',
+                'cerebras': 'CEREBRAS_API_KEY',
+                'deepgram': 'DEEPGRAM_API_KEY',
+                'elevenlabs': 'ELEVENLABS_API_KEY',
+                'groq': 'GROQ_API_KEY',
+                'modulate': 'MODULATE_API_KEY',
+            }
+
+            for key_id, env_var in api_key_env_map.items():
                 if key_id in api_keys:
                     value = api_keys[key_id].get().strip()
                     if value:
                         security_mgr.store_api_key(key_id, value)
+                        os.environ[env_var] = value
 
             # Save Ollama URL to environment
             if 'ollama_url' in api_keys:
@@ -348,6 +363,21 @@ class UnifiedSettingsDialog(
             # Persist all settings at once
             settings_manager.save()
 
+            # Refresh audio handler with updated API keys
+            if hasattr(self.parent, 'audio_handler'):
+                ah = self.parent.audio_handler
+                for attr in ['elevenlabs', 'deepgram', 'groq', 'modulate']:
+                    key_val = security_mgr.get_api_key(attr) or ""
+                    setattr(ah, f'{attr}_api_key', key_val)
+                    provider = getattr(ah, f'{attr}_provider', None)
+                    if provider:
+                        provider.api_key = key_val
+
+            # Refresh provider dropdowns to reflect available keys
+            if hasattr(self.parent, 'refresh_provider_dropdowns'):
+                self.parent.refresh_provider_dropdowns()
+
+            self._saved = True
             messagebox.showinfo("Settings Saved", "All settings have been saved successfully.")
             self.dialog.destroy()
 
@@ -503,6 +533,9 @@ def show_unified_settings_dialog(parent, initial_tab: str = None, initial_subtab
             (use UnifiedSettingsDialog.TAB_* constants)
         initial_subtab: Optional sub-tab name within Audio & STT or AI Models
             (use UnifiedSettingsDialog.SUBTAB_* constants)
+
+    Returns:
+        bool: True if settings were saved, False if cancelled
     """
     dialog = UnifiedSettingsDialog(parent)
-    dialog.show(initial_tab, initial_subtab)
+    return dialog.show(initial_tab, initial_subtab)

@@ -7,7 +7,6 @@ File, Settings, and Help menus with their respective commands.
 
 import tkinter as tk
 import os
-from ui.dialogs.dialogs import show_api_keys_dialog
 from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
 
 
@@ -360,28 +359,12 @@ class MenuManager:
         show_unified_settings_dialog(self.app)
 
     def show_api_keys_dialog(self) -> None:
-        """Shows a dialog to update API keys and updates the .env file."""
-        # Call the refactored function from dialogs.py
-        show_api_keys_dialog(self.app)
+        """Shows API keys dialog via unified settings, focused on API Keys tab.
 
-        # Note: OpenAI API key is read from env/security manager by modern provider modules
-
-        # Update audio handler with the new API keys
-        self.app.audio_handler.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.app.audio_handler.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        self.app.audio_handler.groq_api_key = os.getenv("GROQ_API_KEY", "")
-        
-        # Update the STT providers with new keys
-        if getattr(self.app.audio_handler, 'elevenlabs_provider', None):
-            self.app.audio_handler.elevenlabs_provider.api_key = self.app.audio_handler.elevenlabs_api_key
-        if getattr(self.app.audio_handler, 'deepgram_provider', None):
-            self.app.audio_handler.deepgram_provider.api_key = self.app.audio_handler.deepgram_api_key
-        if getattr(self.app.audio_handler, 'groq_provider', None):
-            self.app.audio_handler.groq_provider.api_key = self.app.audio_handler.groq_api_key
-
-        # Refresh provider dropdowns to show only providers with API keys
-        if hasattr(self.app, 'refresh_provider_dropdowns'):
-            self.app.refresh_provider_dropdowns()
+        Audio handler refresh and provider dropdown updates are handled
+        inside the unified dialog's _save_all_settings method.
+        """
+        show_unified_settings_dialog(self.app, initial_tab="API Keys")
     
     def update_menu_theme(self) -> None:
         """Update menu styling when theme changes."""

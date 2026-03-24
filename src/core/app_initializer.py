@@ -18,7 +18,7 @@ from tkinter.constants import DISABLED
 import ttkbootstrap as ttk
 
 from settings.settings import SETTINGS
-from ui.dialogs.dialogs import show_api_keys_dialog
+from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
 from audio.audio import AudioHandler
 from processing.text_processor import TextProcessor
 from ui.workflow_ui import WorkflowUI
@@ -312,7 +312,8 @@ class AppInitializer:
 
         # Check if we have at least one LLM and one STT provider
         has_llm = bool(openai_key or anthropic_key or gemini_key or ollama_url)
-        has_stt = bool(self.app.elevenlabs_api_key or self.app.deepgram_api_key or self.app.groq_api_key)
+        has_stt = bool(self.app.elevenlabs_api_key or self.app.deepgram_api_key
+                       or self.app.groq_api_key or getattr(self.app, 'modulate_api_key', ''))
 
         if not has_llm or not has_stt:
             messagebox.showinfo(
@@ -320,11 +321,11 @@ class AppInitializer:
                 "Welcome to Medical Assistant!\n\n" +
                 "To use this application, you need:\n" +
                 "• At least one LLM provider (OpenAI, Anthropic, Gemini, or Ollama)\n" +
-                "• At least one STT provider (Groq, Deepgram, or ElevenLabs)\n\n" +
+                "• At least one STT provider (Groq, Deepgram, ElevenLabs, or Modulate)\n\n" +
                 "Please configure your API keys."
             )
-            # Open the API key dialog
-            result = show_api_keys_dialog(self.app)
+            # Open the unified settings dialog on the API Keys tab
+            result = show_unified_settings_dialog(self.app, initial_tab="API Keys")
             if result:
                 # Update the keys after dialog closes (re-check encrypted storage)
                 self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""

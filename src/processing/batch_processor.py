@@ -217,6 +217,8 @@ class BatchProcessor:
                         transcript = audio_handler.groq_provider.transcribe(audio_segment)
                     elif stt_provider_lower in ["local whisper", "whisper"]:
                         transcript = audio_handler.whisper_provider.transcribe(audio_segment)
+                    elif stt_provider_lower == "modulate":
+                        transcript = audio_handler.modulate_provider.transcribe(audio_segment)
                     else:
                         error_msg = f"Unknown STT provider: {stt_provider}"
 

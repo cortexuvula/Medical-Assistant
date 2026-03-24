@@ -56,13 +56,19 @@ class FileProcessor:
 
         def task() -> None:
             try:
-                # Use I/O executor for file loading which is I/O-bound
-                segment, transcript = self.app.audio_handler.load_audio_file(file_path)
-                
+                # Use metadata-aware loading to capture emotion data from Modulate
+                segment, transcript, metadata = self.app.audio_handler.load_audio_file_with_metadata(file_path)
+
                 if segment and transcript:
                     # Store segment
                     self.app.audio_segments = [segment]
-                    
+
+                    # Extract emotion data if available (Modulate provider)
+                    emotion_data = None
+                    if metadata and metadata.get("emotion_data"):
+                        emotion_data = metadata["emotion_data"]
+                        logger.info(f"Captured emotion data from file transcription")
+
                     # Handle transcript result
                     if transcript:
                         # Add to database
@@ -71,11 +77,17 @@ class FileProcessor:
                             recording_id = self.app.db.add_recording(filename=filename, transcript=transcript)
                             self.app.current_recording_id = recording_id  # Track the current recording ID
                             logger.info(f"Added recording to database with ID: {recording_id}")
+
+                            # Save emotion data to recording metadata
+                            if emotion_data and recording_id:
+                                import json
+                                self.app.db.update_recording(recording_id, metadata=json.dumps({"emotion_data": emotion_data}))
+                                logger.info(f"Saved emotion data to recording {recording_id}")
                         except Exception as db_err:
                             logger.error(f"Failed to add to database: {str(db_err)}", exc_info=True)
-                        
+
                         # Always append to transcript_text widget and switch to transcript tab
-                        def _on_success(fn=filename):
+                        def _on_success(fn=filename, ed=emotion_data):
                             try:
                                 if not self.app.winfo_exists():
                                     return
@@ -84,6 +96,10 @@ class FileProcessor:
                                 self.app.status_manager.success(f"Audio file processed and saved to database: {fn}")
                                 self.app.progress_bar.stop()
                                 self.app.progress_bar.pack_forget()
+
+                                # Display emotion data in panel if available
+                                if ed and hasattr(self.app, 'document_generators') and self.app.document_generators:
+                                    self.app.document_generators._run_emotion_to_panel(ed)
                             except Exception:
                                 pass
                         self.app.after(0, _on_success)

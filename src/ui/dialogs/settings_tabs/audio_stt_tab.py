@@ -267,7 +267,7 @@ class AudioSttTabMixin:
         frame.columnconfigure(1, weight=1)
 
     def _create_modulate_subtab(self, parent_notebook: ttk.Notebook):
-        """Create Modulate (Velma Transcribe) settings sub-tab."""
+        """Create Modulate (Velma-2 Batch) settings sub-tab."""
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Modulate")
 
@@ -277,35 +277,17 @@ class AudioSttTabMixin:
         self.widgets['audio_stt']['modulate'] = {}
         row = 0
 
-        # Model
+        # Model (selects endpoint: batch-english-fast or batch-multilingual)
         model_label = ttk.Label(frame, text="Model:")
         model_label.grid(row=row, column=0, sticky="w", pady=10)
-        ToolTip(model_label, "Modulate Velma transcription model")
-        model_var = tk.StringVar(value=modulate_settings.get("model", defaults.get("model", "default")))
+        ToolTip(model_label, "Velma-2 model — English Fast is cheapest ($0.025/hr, >200x real-time)")
+        model_var = tk.StringVar(value=modulate_settings.get("model", defaults.get("model", "batch-english-fast")))
         self.widgets['audio_stt']['modulate']['model'] = model_var
         model_combo = ttk.Combobox(frame, textvariable=model_var, width=30,
-                                   values=["default"])
+                                   values=["batch-english-fast", "batch-multilingual"])
         model_combo.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
-        ToolTip(model_combo, "Velma Transcribe model")
-        row += 1
-
-        # Language
-        lang_label = ttk.Label(frame, text="Language:")
-        lang_label.grid(row=row, column=0, sticky="w", pady=10)
-        ToolTip(lang_label, "Language code for transcription")
-        lang_var = tk.StringVar(value=modulate_settings.get("language", defaults.get("language", "en-US")))
-        self.widgets['audio_stt']['modulate']['language'] = lang_var
-        lang_entry = ttk.Entry(frame, textvariable=lang_var, width=30)
-        lang_entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
-        ToolTip(lang_entry, "ISO language code (e.g., 'en-US')")
-        row += 1
-
-        # Enable Emotions
-        emotions_var = tk.BooleanVar(value=modulate_settings.get("enable_emotions", defaults.get("enable_emotions", True)))
-        self.widgets['audio_stt']['modulate']['enable_emotions'] = emotions_var
-        emotions_cb = ttk.Checkbutton(frame, text="Enable Emotion Detection", variable=emotions_var)
-        emotions_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
-        ToolTip(emotions_cb, "Detect 20+ emotions in patient voice (anxiety, sadness, etc.)")
+        ToolTip(model_combo, "batch-english-fast: English only, >200x speed, $0.025/hr\n"
+                             "batch-multilingual: 70+ languages, $0.03/hr")
         row += 1
 
         # Enable Diarization
@@ -313,23 +295,40 @@ class AudioSttTabMixin:
         self.widgets['audio_stt']['modulate']['enable_diarization'] = diarize_var
         diarize_cb = ttk.Checkbutton(frame, text="Enable Speaker Diarization", variable=diarize_var)
         diarize_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
-        ToolTip(diarize_cb, "Identify and label different speakers in the recording")
+        ToolTip(diarize_cb, "Identify and label different speakers (1-indexed). Default: on")
         row += 1
 
-        # Enable Deepfake Detection
-        deepfake_var = tk.BooleanVar(value=modulate_settings.get("enable_deepfake_detection", defaults.get("enable_deepfake_detection", False)))
-        self.widgets['audio_stt']['modulate']['enable_deepfake_detection'] = deepfake_var
-        deepfake_cb = ttk.Checkbutton(frame, text="Enable Deepfake Detection", variable=deepfake_var)
-        deepfake_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
-        ToolTip(deepfake_cb, "Detect AI-generated or manipulated audio")
+        # Enable Emotions
+        emotions_var = tk.BooleanVar(value=modulate_settings.get("enable_emotions", defaults.get("enable_emotions", True)))
+        self.widgets['audio_stt']['modulate']['enable_emotions'] = emotions_var
+        emotions_cb = ttk.Checkbutton(frame, text="Enable Emotion Detection", variable=emotions_var)
+        emotions_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(emotions_cb, "Detect 26 emotion categories per utterance (Anxious, Sad, Angry, etc.)")
         row += 1
 
-        # Enable PII Redaction
-        pii_var = tk.BooleanVar(value=modulate_settings.get("enable_pii_redaction", defaults.get("enable_pii_redaction", False)))
-        self.widgets['audio_stt']['modulate']['enable_pii_redaction'] = pii_var
-        pii_cb = ttk.Checkbutton(frame, text="Enable PII/PHI Redaction", variable=pii_var)
+        # Enable Accent Detection
+        accent_var = tk.BooleanVar(value=modulate_settings.get("enable_accent_detection", defaults.get("enable_accent_detection", True)))
+        self.widgets['audio_stt']['modulate']['enable_accent_detection'] = accent_var
+        accent_cb = ttk.Checkbutton(frame, text="Enable Accent Detection", variable=accent_var)
+        accent_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(accent_cb, "Detect speaker accent per utterance (American, British, Indian, etc.)")
+        row += 1
+
+        # Enable PII/PHI Tagging
+        pii_var = tk.BooleanVar(value=modulate_settings.get("enable_pii_tagging", defaults.get("enable_pii_tagging", False)))
+        self.widgets['audio_stt']['modulate']['enable_pii_tagging'] = pii_var
+        pii_cb = ttk.Checkbutton(frame, text="Enable PII/PHI Tagging", variable=pii_var)
         pii_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
-        ToolTip(pii_cb, "Automatically redact personally identifiable and health information")
+        ToolTip(pii_cb, "Tag personally identifiable and protected health information in transcript")
+        row += 1
+
+        # Include emotion observations in SOAP notes
+        emotion_soap_var = tk.BooleanVar(value=modulate_settings.get("emotion_in_soap", defaults.get("emotion_in_soap", False)))
+        self.widgets['audio_stt']['modulate']['emotion_in_soap'] = emotion_soap_var
+        emotion_soap_cb = ttk.Checkbutton(frame, text="Include Emotion Observations in SOAP Notes", variable=emotion_soap_var)
+        emotion_soap_cb.grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
+        ToolTip(emotion_soap_cb, "When enabled, brief observational voice emotion notes are included\n"
+                                 "as context for SOAP note generation. Off by default.")
 
         frame.columnconfigure(1, weight=1)
 

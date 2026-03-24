@@ -132,9 +132,9 @@ class AudioHandler:
         """Set the STT provider to use for transcription.
         
         Args:
-            provider: Provider name ('elevenlabs', 'deepgram', 'groq', or 'whisper')
+            provider: Provider name ('elevenlabs', 'deepgram', 'groq', 'whisper', or 'modulate')
         """
-        if provider in ["elevenlabs", "deepgram", "groq", "whisper"]:
+        if provider in ["elevenlabs", "deepgram", "groq", "whisper", "modulate"]:
             # Update the setting
             from settings.settings import SETTINGS, save_settings
             SETTINGS["stt_provider"] = provider
@@ -286,7 +286,7 @@ class AudioHandler:
             fallback_attempted = True
             
             # Try fallback providers
-            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs"] if p != primary_provider]
+            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs", "modulate"] if p != primary_provider]
             for provider in fallback_providers:
                 transcript = self._try_transcription_with_provider(segment, provider)
                 if transcript:
@@ -347,7 +347,7 @@ class AudioHandler:
         # For successful API calls that return a result (even placeholders like "[Silence...]"), 
         # we'll keep that result and not fall back
         if transcript == "" and not fallback_attempted:
-            fallback_providers = ["deepgram", "elevenlabs", "groq", "whisper"]
+            fallback_providers = ["deepgram", "elevenlabs", "groq", "modulate", "whisper"]
             # Remove primary provider from fallbacks to avoid duplicate attempt
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
@@ -375,8 +375,8 @@ class AudioHandler:
         
         Args:
             segment: AudioSegment to transcribe
-            provider: Provider name ('elevenlabs', 'deepgram', 'groq', or 'whisper')
-            
+            provider: Provider name ('elevenlabs', 'deepgram', 'groq', 'whisper', or 'modulate')
+
         Returns:
             Transcription text or empty string if failed
         """
@@ -392,7 +392,10 @@ class AudioHandler:
                 
             elif provider == "whisper":
                 return self.whisper_provider.transcribe(segment)
-                
+
+            elif provider == "modulate":
+                return self.modulate_provider.transcribe(segment)
+
             else:
                 logger.warning(f"Unknown provider: {provider}")
                 return ""
@@ -406,6 +409,40 @@ class AudioHandler:
             )
             ctx.log()
             return ""
+
+    def transcribe_audio_with_metadata(self, segment: AudioSegment) -> 'TranscriptionResult':
+        """Transcribe audio and return structured result with metadata.
+
+        When Modulate is the active provider, returns a TranscriptionResult
+        that includes emotion data in .metadata. For other providers, wraps
+        the plain text result.
+
+        Args:
+            segment: AudioSegment to transcribe
+
+        Returns:
+            TranscriptionResult with text and optional emotion metadata
+        """
+        from stt_providers.base import TranscriptionResult
+
+        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
+
+        if primary_provider == "modulate":
+            try:
+                result = self.modulate_provider.transcribe_with_result(segment)
+                if result.success:
+                    # Apply vocabulary corrections
+                    if result.text:
+                        result.text = vocabulary_manager.correct_transcript(result.text)
+                    return result
+            except Exception as e:
+                logger.error(f"Modulate transcribe_with_result failed: {e}", exc_info=True)
+
+        # Fallback: use standard transcribe and wrap result
+        text = self.transcribe_audio(segment)
+        if text:
+            return TranscriptionResult.success_result(text=text)
+        return TranscriptionResult.failure_result(error="Transcription returned empty result")
 
     def convert_audio_to_segment(self, audio_data: Union[AudioData, np.ndarray]) -> Optional[AudioSegment]:
         """Convert audio data to AudioSegment without transcribing.
@@ -615,6 +652,21 @@ class AudioHandler:
         Returns:
             Tuple of (AudioSegment, transcription_text)
         """
+        result = self.load_audio_file_with_metadata(file_path)
+        return result[0], result[1]
+
+    def load_audio_file_with_metadata(self, file_path: str) -> tuple[Optional[AudioSegment], str, Optional[dict]]:
+        """Load and transcribe audio from a file, capturing metadata.
+
+        Uses transcribe_audio_with_metadata() to capture emotion data
+        from providers like Modulate.ai.
+
+        Args:
+            file_path: Path to audio file
+
+        Returns:
+            Tuple of (AudioSegment, transcription_text, metadata_dict_or_None)
+        """
         try:
             # Validate file size before loading into memory
             is_valid, file_size_mb, max_mb = self.validate_audio_file_size(file_path)
@@ -631,9 +683,15 @@ class AudioHandler:
                 seg = AudioSegment.from_file(file_path, format="wav")
             else:
                 raise ValueError("Unsupported audio format. Only .wav and .mp3 supported.")
-                
+
+            # Use metadata-aware transcription to capture emotion data
+            result = self.transcribe_audio_with_metadata(seg)
+            if result.success and result.text:
+                return seg, result.text, result.metadata
+
+            # Fallback to plain transcription
             transcript = self.transcribe_audio(seg)
-            return seg, transcript
+            return seg, transcript, None
             
         except Exception as e:
             ctx = ErrorContext.capture(
@@ -643,7 +701,7 @@ class AudioHandler:
                 file_path=file_path
             )
             ctx.log()
-            return None, ""
+            return None, "", None
 
     def save_audio(self, segments: List[AudioSegment], file_path: str) -> bool:
         """Save combined audio segments to file.
