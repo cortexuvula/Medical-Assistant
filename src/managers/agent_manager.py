@@ -458,12 +458,13 @@ class AgentManager:
                 )
                 futures[future] = sub_config
 
-            # Collect results
-            for future in as_completed(futures):
+            # Collect results with timeout to prevent indefinite hangs
+            sub_agent_timeout = 120  # seconds
+            for future in as_completed(futures, timeout=sub_agent_timeout):
                 sub_config = futures[future]
 
                 try:
-                    sub_response = future.result()
+                    sub_response = future.result(timeout=sub_agent_timeout)
 
                     if sub_response:
                         results[sub_config.output_key] = sub_response

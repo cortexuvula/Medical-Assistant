@@ -96,11 +96,9 @@ class TestProviderMethods:
         with patch.object(security_module, 'get_security_manager', return_value=mock_security_mgr):
             keys, names = app._get_available_providers("ai")
 
-        # Fallback behavior: returns all providers when none have keys
-        assert len(keys) == 3
-        assert "openai" in keys
-        assert "anthropic" in keys
-        assert "gemini" in keys
+        # Only keyless providers (ollama) are returned when no API keys configured
+        assert len(keys) == 1
+        assert "ollama" in keys
 
     def test_get_available_providers_invalid_type(self):
         """Test graceful handling of invalid provider type."""

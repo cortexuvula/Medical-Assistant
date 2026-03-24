@@ -125,7 +125,10 @@ class BM25Searcher:
                     meta = metadata
                 else:
                     import json
-                    meta = json.loads(metadata)
+                    try:
+                        meta = json.loads(metadata)
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
 
                 # Normalize rank to 0-1 range
                 # ts_rank_cd typically returns values < 1
@@ -211,7 +214,10 @@ class BM25Searcher:
                     meta = metadata
                 else:
                     import json
-                    meta = json.loads(metadata)
+                    try:
+                        meta = json.loads(metadata)
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
 
                 normalized_score = min(1.0, math.log1p(float(rank) * 100) / math.log1p(100))
 

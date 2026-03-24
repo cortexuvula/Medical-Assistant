@@ -12,6 +12,16 @@ from utils.structured_logging import get_logger
 logger = get_logger(__name__)
 
 
+def _safe_json_list(val):
+    """Safely parse a JSON string to a list, returning [] on failure."""
+    if not val:
+        return []
+    try:
+        return json.loads(val)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 class DiagnosticsMixin:
     """Mixin providing diagnostic-related database operations."""
 
@@ -51,8 +61,8 @@ class DiagnosticsMixin:
                     'confidence_score': row[6],
                     'confidence_level': row[7],
                     'reasoning': row[8],
-                    'supporting_findings': json.loads(row[9]) if row[9] else [],
-                    'against_findings': json.loads(row[10]) if row[10] else [],
+                    'supporting_findings': _safe_json_list(row[9]),
+                    'against_findings': _safe_json_list(row[10]),
                     'is_red_flag': bool(row[11]),
                     'created_at': row[12]
                 }
@@ -98,7 +108,7 @@ class DiagnosticsMixin:
                     'investigation_type': row[3],
                     'priority': row[4],
                     'rationale': row[5],
-                    'target_diagnoses': json.loads(row[6]) if row[6] else [],
+                    'target_diagnoses': _safe_json_list(row[6]),
                     'status': row[7],
                     'ordered_at': row[8],
                     'completed_at': row[9],

@@ -456,6 +456,12 @@ class ElevenLabsProvider(BaseSTTProvider):
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
             self.logger.debug("================================\n")
 
+        finally:
+            try:
+                audio_buffer.close()
+            except Exception:
+                pass
+
         # Check for possible truncation
         if transcript and audio_details:
             duration_seconds = audio_details.get('duration_seconds', 0)

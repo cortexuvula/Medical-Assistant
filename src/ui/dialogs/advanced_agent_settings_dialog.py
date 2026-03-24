@@ -451,11 +451,15 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         item = selection[0]
         tags = tree.item(item, "tags")
         if tags:
-            sub_agent = json.loads(tags[0])
-            
+            try:
+                sub_agent = json.loads(tags[0])
+            except (json.JSONDecodeError, TypeError) as e:
+                messagebox.showerror("Error", f"Could not parse sub-agent data: {e}")
+                return
+
             dialog = SubAgentDialog(self.dialog, sub_agent)
             result = dialog.show()
-            
+
             if result:
                 # Update tree item
                 tree.delete(item)
@@ -567,7 +571,10 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
             for item in tree.get_children():
                 tags = tree.item(item, "tags")
                 if tags:
-                    sub_agents.append(json.loads(tags[0]))
+                    try:
+                        sub_agents.append(json.loads(tags[0]))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
         
         # Get basic config with safe defaults
         config = {

@@ -194,10 +194,14 @@ class MenuManager:
         settings_menu.add_separator()
 
         # Quick toggles at bottom
+        qc_var = getattr(self.app, 'quick_continue_var', None)
+        if qc_var is None:
+            qc_var = tk.BooleanVar(value=False)
+            self.app.quick_continue_var = qc_var
         settings_menu.add_checkbutton(
             label="Quick Continue Mode",
             command=self.app.toggle_quick_continue_mode,
-            variable=self.app.quick_continue_var if hasattr(self.app, 'quick_continue_var') else None
+            variable=qc_var
         )
         settings_menu.add_command(label="Toggle Theme", command=self.app.toggle_theme, accelerator="Alt+T")
 

@@ -42,21 +42,29 @@ class RecordingsTabDataMixin:
         Args:
             force_refresh: Force reload from database ignoring cache
         """
-        if self._refresh_in_progress:
+        if not hasattr(self, '_refresh_lock'):
+            import threading as _threading
+            self._refresh_lock = _threading.Lock()
+
+        if not self._refresh_lock.acquire(blocking=False):
             logger.debug("Refresh already in progress, skipping")
             return
 
-        current_time = time.time()
+        try:
+            current_time = time.time()
 
-        # Check cache first
-        if (not force_refresh
-                and self._recordings_cache is not None
-                and current_time - self._recordings_cache_time < self.RECORDINGS_CACHE_TTL):
-            self._populate_recordings_tree(self._recordings_cache)
-            return
+            # Check cache first
+            if (not force_refresh
+                    and self._recordings_cache is not None
+                    and current_time - self._recordings_cache_time < self.RECORDINGS_CACHE_TTL):
+                self._refresh_lock.release()
+                self._populate_recordings_tree(self._recordings_cache)
+                return
 
-        self._show_loading_state()
-        self._refresh_in_progress = True
+            self._show_loading_state()
+        except Exception:
+            self._refresh_lock.release()
+            raise
 
         def task():
             try:
@@ -82,7 +90,7 @@ class RecordingsTabDataMixin:
                     except RuntimeError:
                         pass
             finally:
-                self._refresh_in_progress = False
+                self._refresh_lock.release()
 
         threading.Thread(target=task, daemon=True).start()
 
