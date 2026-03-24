@@ -162,6 +162,10 @@ class ModulateProvider(BaseSTTProvider):
     def _get_endpoint_url(self, settings: dict) -> str:
         """Determine the API endpoint URL based on model setting.
 
+        The -vfast English endpoint does NOT return utterances (no diarization
+        or emotion data). When diarization or emotions are enabled, automatically
+        upgrade to the batch-multilingual endpoint which returns full utterances.
+
         Args:
             settings: Modulate settings dict
 
@@ -169,7 +173,22 @@ class ModulateProvider(BaseSTTProvider):
             Full endpoint URL
         """
         model = settings.get("model", "default")
-        return MODEL_ENDPOINTS.get(model, MODULATE_BATCH_ENGLISH_URL)
+        url = MODEL_ENDPOINTS.get(model, MODULATE_BATCH_ENGLISH_URL)
+
+        # The -vfast endpoint only returns {text, duration_ms} — no utterances.
+        # Upgrade to the multilingual endpoint when features that need utterances are enabled.
+        needs_utterances = (
+            settings.get("enable_diarization", True)
+            or settings.get("enable_emotions", True)
+        )
+        if needs_utterances and url == MODULATE_BATCH_ENGLISH_URL:
+            self.logger.info(
+                "Upgrading from vfast to batch-multilingual endpoint "
+                "(diarization/emotions require utterances)"
+            )
+            url = MODULATE_BATCH_MULTILINGUAL_URL
+
+        return url
 
     def _get_modulate_settings(self) -> dict:
         """Get Modulate.ai settings from settings manager."""

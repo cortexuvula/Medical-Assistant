@@ -329,24 +329,51 @@ class TestModulateTranscription:
 class TestModulateEndpointSelection:
     """Test model-to-endpoint mapping."""
 
-    def test_english_fast_endpoint(self):
+    def test_english_fast_endpoint_no_diarization(self):
+        """When diarization and emotions are disabled, vfast endpoint is used."""
         provider = ModulateProvider(api_key="test-key")
-        url = provider._get_endpoint_url({"model": "batch-english-fast"})
+        url = provider._get_endpoint_url({
+            "model": "batch-english-fast",
+            "enable_diarization": False,
+            "enable_emotions": False,
+        })
         assert url == MODULATE_BATCH_ENGLISH_URL
+
+    def test_english_fast_upgrades_with_diarization(self):
+        """When diarization is enabled, vfast auto-upgrades to multilingual."""
+        provider = ModulateProvider(api_key="test-key")
+        url = provider._get_endpoint_url({
+            "model": "batch-english-fast",
+            "enable_diarization": True,
+            "enable_emotions": False,
+        })
+        assert url == MODULATE_BATCH_MULTILINGUAL_URL
+
+    def test_default_upgrades_with_diarization(self):
+        """Default model (vfast) upgrades when diarization defaults to True."""
+        provider = ModulateProvider(api_key="test-key")
+        url = provider._get_endpoint_url({"model": "default"})
+        assert url == MODULATE_BATCH_MULTILINGUAL_URL
 
     def test_multilingual_endpoint(self):
         provider = ModulateProvider(api_key="test-key")
         url = provider._get_endpoint_url({"model": "batch-multilingual"})
         assert url == MODULATE_BATCH_MULTILINGUAL_URL
 
-    def test_default_endpoint(self):
-        provider = ModulateProvider(api_key="test-key")
-        url = provider._get_endpoint_url({"model": "default"})
-        assert url == MODULATE_BATCH_ENGLISH_URL
-
-    def test_unknown_model_falls_back(self):
+    def test_unknown_model_falls_back_and_upgrades(self):
+        """Unknown model falls back to vfast, then upgrades if diarization enabled."""
         provider = ModulateProvider(api_key="test-key")
         url = provider._get_endpoint_url({"model": "nonexistent"})
+        # Default diarization=True, so it upgrades
+        assert url == MODULATE_BATCH_MULTILINGUAL_URL
+
+    def test_unknown_model_stays_vfast_without_diarization(self):
+        provider = ModulateProvider(api_key="test-key")
+        url = provider._get_endpoint_url({
+            "model": "nonexistent",
+            "enable_diarization": False,
+            "enable_emotions": False,
+        })
         assert url == MODULATE_BATCH_ENGLISH_URL
 
 
