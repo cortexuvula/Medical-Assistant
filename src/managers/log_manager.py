@@ -30,6 +30,9 @@ def _get_logging_settings() -> dict:
         "console_level": "INFO",
         "max_file_size_kb": 200,
         "backup_count": 2,
+        "module_levels": {
+            "rag": "WARNING",
+        },
     }
 
     try:
@@ -124,9 +127,17 @@ class LogManager:
         console_handler.setLevel(self.console_level)
         root_logger.addHandler(console_handler)
 
+        # Apply per-module log level overrides
+        module_levels = self._settings.get("module_levels", {})
+        for module_name, level_str in module_levels.items():
+            module_logger = logging.getLogger(module_name)
+            module_logger.setLevel(get_log_level_from_string(level_str))
+
         logging.info("Logging initialized")
         logging.info(f"Log file path: {self.log_file}")
         logging.debug(f"Log levels - file: {logging.getLevelName(self.file_level)}, console: {logging.getLevelName(self.console_level)}")
+        if module_levels:
+            logging.debug(f"Module log level overrides: {module_levels}")
         
     def get_log_file_path(self) -> str:
         """Get the path to the current log file.

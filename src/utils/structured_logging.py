@@ -386,12 +386,14 @@ def get_logger(name: str, json_format: bool = False) -> StructuredLogger:
         return _loggers[name]
 
 
-def timed(operation_name: str = None, logger: StructuredLogger = None):
+def timed(operation_name: str = None, logger: StructuredLogger = None, level: int = logging.DEBUG):
     """Decorator to log function execution time.
 
     Args:
         operation_name: Name for the operation (defaults to function name)
         logger: Logger to use (creates one if not provided)
+        level: Log level for successful completion messages (default DEBUG).
+               Errors are always logged at ERROR level.
 
     Returns:
         Decorator function
@@ -417,7 +419,8 @@ def timed(operation_name: str = None, logger: StructuredLogger = None):
             try:
                 result = func(*args, **kwargs)
                 elapsed = time.perf_counter() - start_time
-                logger.info(
+                logger.log(
+                    level,
                     f"Completed {op_name}",
                     duration_ms=round(elapsed * 1000, 2),
                     status="success"

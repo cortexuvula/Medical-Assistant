@@ -24,6 +24,7 @@ Usage:
         handle_error(result.error)
 """
 
+import logging
 from typing import Callable
 
 from utils.structured_logging import get_logger, timed
@@ -46,7 +47,7 @@ from utils.constants import (
 from utils.exceptions import AIResult
 
 
-@timed("ai_call_streaming")
+@timed("ai_call_streaming", level=logging.INFO)
 def call_ai_streaming(
     model: str,
     system_message: str,
@@ -96,7 +97,7 @@ def call_ai_streaming(
         return result
 
 
-@timed("ai_call")
+@timed("ai_call", level=logging.INFO)
 def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             provider: str = None) -> AIResult:
     """Route API calls to the appropriate provider based on the selected AI provider in settings.
