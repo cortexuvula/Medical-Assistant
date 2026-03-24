@@ -4,7 +4,10 @@ import threading
 import numpy as np
 import platform
 from pydub import AudioSegment
-from typing import List, Optional, Callable, Any, Dict, Tuple, Union
+from typing import List, Optional, Callable, Any, Dict, Tuple, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stt_providers.base import TranscriptionResult
 from pathlib import Path
 from settings.settings import SETTINGS
 from stt_providers import DeepgramProvider, ElevenLabsProvider, GroqProvider, WhisperProvider, ModulateProvider
