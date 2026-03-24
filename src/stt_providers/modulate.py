@@ -453,6 +453,20 @@ class ModulateProvider(BaseSTTProvider):
 
                 utterances = result.get("utterances", [])
 
+                # Diagnostic logging (mirrors transcribe() for debugging)
+                self.logger.info(f"Modulate.ai response keys: {list(result.keys())}")
+                self.logger.info(f"Modulate.ai text length: {len(result.get('text', ''))}, "
+                                f"duration_ms: {result.get('duration_ms')}, "
+                                f"utterances count: {len(utterances)}")
+                if utterances:
+                    speakers = set(u.get("speaker") for u in utterances if u.get("speaker") is not None)
+                    emotions = [u.get("emotion") for u in utterances if u.get("emotion")]
+                    self.logger.info(
+                        f"Modulate.ai result: {len(utterances)} utterances, "
+                        f"{len(speakers)} unique speakers: {sorted(speakers)}, "
+                        f"emotions: {set(emotions)}"
+                    )
+
                 # Format transcript with diarization labels
                 enable_diarization = settings.get("enable_diarization", True)
                 if enable_diarization and utterances:
@@ -498,6 +512,128 @@ class ModulateProvider(BaseSTTProvider):
         except Exception as e:
             self.logger.error(f"Modulate.ai transcribe_with_result failed: {e}", exc_info=True)
             return TranscriptionResult.failure_result(error=str(e))
+
+    def transcribe_file(self, file_path: str) -> tuple:
+        """Transcribe audio directly from a file without AudioSegment re-encoding.
+
+        Sends the file directly to the Modulate.ai API, preserving original
+        audio quality for better diarization results.
+
+        Args:
+            file_path: Path to an audio file (MP3, WAV, etc.)
+
+        Returns:
+            Tuple of (transcript_text, metadata_dict). transcript_text includes
+            speaker labels when diarization is enabled. metadata_dict contains
+            emotion_data, utterances, and accent_detection when available.
+            Returns ("", None) on failure.
+        """
+        if not self._check_api_key():
+            return "", None
+
+        try:
+            import os
+
+            settings = self._get_modulate_settings()
+            url = self._get_endpoint_url(settings)
+            headers = {'X-API-Key': self.api_key}
+
+            # Calculate timeout based on file size
+            file_size = os.path.getsize(file_path)
+            file_size_kb = file_size / 1024
+            timeout = max(60, int(file_size_kb / 500) * 60)
+
+            ext = os.path.splitext(file_path)[1].lower()
+            content_types = {
+                '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+                '.m4a': 'audio/mp4', '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+            }
+            content_type = content_types.get(ext, 'audio/mpeg')
+            filename = os.path.basename(file_path)
+
+            self.logger.info(
+                f"transcribe_file: sending {filename} directly to API "
+                f"({file_size_kb:.1f}KB, {content_type})"
+            )
+
+            # Build form data with feature flags
+            data = {}
+            enable_diarization = settings.get("enable_diarization", True)
+            data['speaker_diarization'] = 'true' if enable_diarization else 'false'
+            enable_emotions = settings.get("enable_emotions", True)
+            data['emotion_signal'] = 'true' if enable_emotions else 'false'
+            enable_accent = settings.get("enable_accent_detection", False)
+            data['accent_signal'] = 'true' if enable_accent else 'false'
+            enable_pii = settings.get("enable_pii_tagging", False)
+            data['pii_phi_tagging'] = 'true' if enable_pii else 'false'
+
+            self.logger.info(f"transcribe_file request params: {data}")
+
+            with open(file_path, 'rb') as audio_file:
+                files = {'upload_file': (filename, audio_file, content_type)}
+                try:
+                    response = self._make_api_call(
+                        url, headers=headers, files=files,
+                        data=data, timeout=timeout,
+                    )
+                except (APIError, RateLimitError, ServiceUnavailableError) as e:
+                    self.logger.error(f"transcribe_file API call failed: {e}")
+                    return "", None
+
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                except (ValueError, Exception) as json_err:
+                    self.logger.error(f"Modulate.ai returned invalid JSON: {json_err}")
+                    return "", None
+
+                utterances = result.get("utterances", [])
+
+                # Diagnostic logging
+                self.logger.info(f"transcribe_file response keys: {list(result.keys())}")
+                self.logger.info(
+                    f"transcribe_file: text_len={len(result.get('text', ''))}, "
+                    f"duration_ms={result.get('duration_ms')}, "
+                    f"utterances={len(utterances)}"
+                )
+                if utterances:
+                    speakers = set(u.get("speaker") for u in utterances if u.get("speaker") is not None)
+                    emotions = [u.get("emotion") for u in utterances if u.get("emotion")]
+                    self.logger.info(
+                        f"transcribe_file: {len(speakers)} speakers: {sorted(speakers)}, "
+                        f"emotions: {set(emotions)}"
+                    )
+
+                # Format transcript with diarization labels
+                if enable_diarization and utterances:
+                    transcript = self._format_diarized_transcript(utterances)
+                else:
+                    transcript = result.get("text", "")
+
+                # Build metadata
+                metadata = {}
+                emotion_data = self._build_emotion_data(utterances)
+                if emotion_data:
+                    metadata['emotion_data'] = emotion_data
+                metadata['utterances'] = utterances
+                accents = [u.get("accent") for u in utterances if u.get("accent")]
+                if accents:
+                    metadata['accent_detection'] = {
+                        "accents": list(set(accents)),
+                        "per_utterance": accents,
+                    }
+
+                return transcript, metadata
+            else:
+                self.logger.error(
+                    f"transcribe_file error: {response.status_code} - {response.text}"
+                )
+                return "", None
+
+        except Exception as e:
+            self.logger.error(f"transcribe_file error: {e}", exc_info=True)
+            return "", None
 
     def _validate_and_log_audio(self, segment: AudioSegment) -> dict:
         """Validate audio segment and log its details."""

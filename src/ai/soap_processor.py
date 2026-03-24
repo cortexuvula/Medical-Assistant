@@ -159,9 +159,26 @@ class SOAPProcessor:
                 emotion_context = ""
                 selected_provider = settings_manager.get("stt_provider", "elevenlabs")
 
-                # For Modulate, always use metadata-aware transcription to capture emotions
+                # For Modulate, use direct file transcription for best diarization quality
                 if selected_provider == "modulate":
-                    logger.info("Using Modulate provider — routing through transcribe_audio_with_metadata()")
+                    if save_result and os.path.exists(audio_path):
+                        try:
+                            modulate = self.audio_handler.modulate_provider
+                            if modulate and hasattr(modulate, 'transcribe_file'):
+                                logger.info(f"Using Modulate transcribe_file (direct MP3→API) for: {audio_path}")
+                                transcript, meta = modulate.transcribe_file(audio_path)
+                                if transcript:
+                                    from managers.vocabulary_manager import vocabulary_manager
+                                    transcript = vocabulary_manager.correct_transcript(transcript)
+                                    logger.info(f"Modulate transcribe_file succeeded: {len(transcript)} chars")
+                                    if meta and meta.get("emotion_data"):
+                                        emotion_data = meta["emotion_data"]
+                                        from ai.emotion_processor import format_emotion_for_soap
+                                        emotion_context = format_emotion_for_soap(emotion_data)
+                                        logger.info(f"Captured emotion data from transcribe_file")
+                        except Exception as e:
+                            logger.warning(f"Modulate transcribe_file failed, falling back: {e}")
+                            transcript = None
                 else:
                     # For non-Modulate providers, try direct file transcription first
                     if save_result and os.path.exists(audio_path):
