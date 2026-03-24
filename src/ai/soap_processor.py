@@ -159,14 +159,22 @@ class SOAPProcessor:
                 emotion_context = ""
                 selected_provider = settings_manager.get("stt_provider", "elevenlabs")
 
+                # Breadcrumb logging for transcription path diagnosis
+                logger.info(f"STT provider: {selected_provider}, save_result={save_result}, "
+                            f"audio_path_exists={os.path.exists(audio_path) if audio_path else False}")
+
                 # For Modulate, use direct file transcription for best diarization quality
                 if selected_provider == "modulate":
+                    modulate = getattr(self.audio_handler, 'modulate_provider', None)
+                    logger.info(f"Modulate provider available: {modulate is not None}, "
+                                f"has_transcribe_file: {hasattr(modulate, 'transcribe_file') if modulate else False}")
                     if save_result and os.path.exists(audio_path):
                         try:
-                            modulate = self.audio_handler.modulate_provider
                             if modulate and hasattr(modulate, 'transcribe_file'):
                                 logger.info(f"Using Modulate transcribe_file (direct MP3→API) for: {audio_path}")
                                 transcript, meta = modulate.transcribe_file(audio_path)
+                                logger.info(f"transcribe_file returned: transcript_len={len(transcript) if transcript else 0}, "
+                                            f"has_meta={meta is not None}")
                                 if transcript:
                                     from managers.vocabulary_manager import vocabulary_manager
                                     transcript = vocabulary_manager.correct_transcript(transcript)
@@ -176,9 +184,14 @@ class SOAPProcessor:
                                         from ai.emotion_processor import format_emotion_for_soap
                                         emotion_context = format_emotion_for_soap(emotion_data)
                                         logger.info(f"Captured emotion data from transcribe_file")
+                            else:
+                                logger.warning("Modulate provider missing or no transcribe_file method")
                         except Exception as e:
-                            logger.warning(f"Modulate transcribe_file failed, falling back: {e}")
+                            logger.warning(f"Modulate transcribe_file failed, falling back: {e}", exc_info=True)
                             transcript = None
+                    else:
+                        logger.warning(f"Cannot use transcribe_file: save_result={save_result}, "
+                                       f"audio_path={audio_path}")
                 else:
                     # For non-Modulate providers, try direct file transcription first
                     if save_result and os.path.exists(audio_path):
@@ -197,12 +210,14 @@ class SOAPProcessor:
 
                 # Metadata-aware fallback (always used for Modulate, fallback for others)
                 if not transcript:
-                    logger.info("Using standard transcribe_audio fallback")
+                    logger.info(f"Entering fallback transcribe_audio_with_metadata (provider={selected_provider})")
                     # Use metadata-aware transcription to capture emotion data in one call
                     result_with_meta = self.audio_handler.transcribe_audio_with_metadata(audio_segment)
+                    logger.info(f"Fallback result: success={result_with_meta.success}, "
+                                f"text_len={len(result_with_meta.text) if result_with_meta.text else 0}, "
+                                f"metadata_keys={list(result_with_meta.metadata.keys()) if result_with_meta.metadata else []}")
                     if result_with_meta.success and result_with_meta.text:
                         transcript = result_with_meta.text
-                        logger.info("Fallback transcribe_audio succeeded")
                         # Extract emotion data if available (Modulate provider)
                         if result_with_meta.metadata.get("emotion_data"):
                             emotion_data = result_with_meta.metadata["emotion_data"]
@@ -215,8 +230,9 @@ class SOAPProcessor:
                 if not transcript:
                     raise ValueError("All transcription methods failed - no text recognized")
 
-                # Log success and progress
+                # Log success with transcript preview to verify speaker labels
                 logger.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
+                logger.info(f"Transcript preview: {repr(transcript[:200])}")
 
                 # Update transcript tab with the raw transcript
                 schedule_ui_update(self.app, lambda: [

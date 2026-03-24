@@ -392,8 +392,12 @@ class ModulateProvider(BaseSTTProvider):
                 enable_diarization = settings.get("enable_diarization", True)
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
+                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
                 else:
                     transcript = result.get("text", "")
+                    self.logger.warning(f"Diarization skipped in transcribe(): "
+                                        f"enable_diarization={enable_diarization}, "
+                                        f"utterances_count={len(utterances)}")
 
             else:
                 self.logger.error(f"Modulate.ai API error: {response.status_code} - {response.text}")
@@ -471,8 +475,12 @@ class ModulateProvider(BaseSTTProvider):
                 enable_diarization = settings.get("enable_diarization", True)
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
+                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
                 else:
                     transcript = result.get("text", "")
+                    self.logger.warning(f"Diarization skipped in transcribe_with_result(): "
+                                        f"enable_diarization={enable_diarization}, "
+                                        f"utterances_count={len(utterances)}")
 
                 # Build metadata
                 metadata = {}
@@ -608,8 +616,12 @@ class ModulateProvider(BaseSTTProvider):
                 # Format transcript with diarization labels
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
+                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
                 else:
                     transcript = result.get("text", "")
+                    self.logger.warning(f"Diarization skipped in transcribe_file(): "
+                                        f"enable_diarization={enable_diarization}, "
+                                        f"utterances_count={len(utterances)}")
 
                 # Build metadata
                 metadata = {}

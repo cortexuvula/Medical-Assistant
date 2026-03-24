@@ -32,6 +32,10 @@ def _get_logging_settings() -> dict:
         "backup_count": 2,
         "module_levels": {
             "rag": "WARNING",
+            "neo4j": "WARNING",
+            "httpx": "WARNING",
+            "httpcore": "WARNING",
+            "openai": "WARNING",
         },
     }
 
