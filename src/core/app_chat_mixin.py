@@ -63,6 +63,10 @@ class AppChatMixin:
                     self.chat_ui.set_processing(False)
                 return
 
+            # Extract context on main thread BEFORE switching tabs,
+            # so we capture the correct tab content (e.g. SOAP note)
+            context_data = self._extract_chat_context(current_tab)
+
             # Switch to Chat tab so user can see the response
             self.notebook.select(4)  # Chat tab index
 
@@ -76,7 +80,31 @@ class AppChatMixin:
                     self.chat_ui.set_processing(False)
                 self.status_manager.success("Chat response ready")
 
-            self.chat_processor.process_message(message, on_complete)
+            self.chat_processor.process_message(message, on_complete, context_data=context_data)
+
+    def _extract_chat_context(self, current_tab: int) -> Dict[str, Any]:
+        """Extract context from the current tab on the main thread.
+
+        Must be called BEFORE switching to the Chat tab so that
+        active_text_widget still points to the source document.
+        """
+        tab_names = ["transcript", "soap", "referral", "letter", "chat"]
+        context: Dict[str, Any] = {
+            "tab_name": tab_names[current_tab] if current_tab < len(tab_names) else "",
+            "tab_index": current_tab,
+            "content": "",
+            "content_length": 0,
+            "has_content": False,
+        }
+        try:
+            if hasattr(self, 'active_text_widget') and self.active_text_widget:
+                content = self.active_text_widget.get("1.0", "end-1c").strip()
+                context["content"] = content
+                context["content_length"] = len(content)
+                context["has_content"] = bool(content)
+        except (tk.TclError, AttributeError) as e:
+            logger.error(f"Error extracting chat context: {e}")
+        return context
 
     def _update_chat_suggestions(self) -> None:
         """Update chat suggestions based on current tab and content."""

@@ -106,33 +106,39 @@ class ChatProcessor:
         else:
             self.chat_agent = None
         
-    def process_message(self, user_message: str, callback: Optional[Callable] = None):
+    def process_message(self, user_message: str, callback: Optional[Callable] = None,
+                        context_data: Optional[Dict[str, Any]] = None):
         """
         Process a chat message from the user.
-        
+
         Args:
             user_message: The user's input message
             callback: Optional callback to call when processing is complete
+            context_data: Pre-extracted context from main thread (avoids
+                          cross-thread Tkinter access and tab-switch race)
         """
         if self.is_processing:
             logger.warning("Chat processor is already processing a message")
             return
-            
+
         # Run processing in a separate thread to avoid blocking UI
         thread = threading.Thread(
             target=self._process_message_async,
-            args=(user_message, callback),
+            args=(user_message, callback, context_data),
             daemon=True
         )
         thread.start()
         
-    def _process_message_async(self, user_message: str, callback: Optional[Callable]):
+    def _process_message_async(self, user_message: str, callback: Optional[Callable],
+                               context_data: Optional[Dict[str, Any]] = None):
         """Async processing of chat message."""
         try:
             self.is_processing = True
 
-            # Get current context from active tab
-            context_data = self._extract_context()
+            # Use pre-extracted context if provided (avoids cross-thread
+            # Tkinter access), otherwise fall back to local extraction
+            if context_data is None:
+                context_data = self._extract_context()
 
             # Check for special chat commands when in chat tab
             if context_data.get("tab_name") == "chat" and self._handle_chat_command(user_message):
