@@ -197,23 +197,17 @@ Format the referral letter with:
         # Infer specialty from conditions if not provided
         inferred_specialty = specialty or self._infer_specialty_from_conditions(conditions)
 
-        # Use recipient-aware prompt if recipient_type is provided
-        if recipient_type and recipient_type != 'specialist':
-            # Use the enhanced recipient-aware prompt builder
-            prompt = self._build_recipient_aware_prompt(
-                source_text=source_text,
-                conditions=conditions,
-                recipient_type=recipient_type,
-                urgency=input_urgency,
-                specialty=inferred_specialty,
-                recipient_details=recipient_details,
-                context=task.context
-            )
-        else:
-            # Use standard specialist referral prompt
-            prompt = self._build_standard_referral_prompt(
-                source_text, conditions, task.context, inferred_specialty
-            )
+        # Use recipient-aware prompt for all recipient types (including specialist)
+        # to get urgency statements, recipient details, and structured guidance
+        prompt = self._build_recipient_aware_prompt(
+            source_text=source_text,
+            conditions=conditions,
+            recipient_type=recipient_type or 'specialist',
+            urgency=input_urgency,
+            specialty=inferred_specialty,
+            recipient_details=recipient_details,
+            context=task.context
+        )
 
         # Call AI to generate referral
         referral_letter = self._call_ai(prompt)
@@ -648,82 +642,178 @@ Format the referral letter with:
 
         conditions_lower = conditions.lower()
 
-        # Condition to specialty mapping
+        # Condition to specialty mapping (ordered by specificity — more specific first)
         specialty_mappings = {
-            "urology": [
-                "bph", "benign prostatic", "prostate", "urinary", "bladder",
-                "kidney stone", "renal calculi", "hematuria", "incontinence",
-                "erectile", "testicular", "scrotal", "uti", "pyelonephritis"
+            "allergy/immunology": [
+                "allergy", "allergic", "anaphylaxis", "urticaria", "angioedema",
+                "immunodeficiency", "autoimmune", "immunotherapy"
             ],
             "cardiology": [
                 "hypertension", "heart", "cardiac", "arrhythmia", "afib",
                 "atrial fibrillation", "chest pain", "angina", "heart failure",
                 "chf", "coronary", "murmur", "palpitation", "bradycardia",
-                "tachycardia", "valve", "cardiomyopathy"
+                "tachycardia", "valve", "cardiomyopathy", "aortic"
             ],
-            "gastroenterology": [
-                "gerd", "reflux", "ibs", "crohn", "colitis", "hepatitis",
-                "cirrhosis", "pancreatitis", "gallbladder", "dysphagia",
-                "gi bleed", "hemorrhoid", "diverticulitis", "celiac"
+            "vascular surgery": [
+                "varicose", "deep vein", "dvt", "peripheral vascular",
+                "aortic aneurysm", "claudication", "carotid stenosis"
             ],
-            "neurology": [
-                "headache", "migraine", "seizure", "epilepsy", "stroke",
-                "parkinson", "tremor", "neuropathy", "multiple sclerosis",
-                "dementia", "alzheimer", "vertigo", "tia"
+            "neurosurgery": [
+                "brain tumor", "spinal cord", "hydrocephalus", "subdural",
+                "intracranial", "craniotomy"
+            ],
+            "cardiothoracic surgery": [
+                "cabg", "bypass surgery", "valve replacement"
+            ],
+            "colorectal surgery": [
+                "rectal prolapse", "anal fissure", "fistula", "pilonidal"
+            ],
+            "dermatology": [
+                "rash", "eczema", "psoriasis", "skin cancer", "melanoma",
+                "acne", "dermatitis", "skin lesion", "mole", "basal cell",
+                "squamous cell"
             ],
             "endocrinology": [
                 "diabetes", "thyroid", "hypothyroid", "hyperthyroid",
                 "cushing", "addison", "pituitary", "adrenal", "osteoporosis",
-                "pcos", "hormone"
+                "pcos", "hormone", "hyperparathyroid"
             ],
-            "pulmonology": [
-                "asthma", "copd", "pneumonia", "pulmonary", "lung",
-                "bronchitis", "sleep apnea", "osa", "shortness of breath",
-                "dyspnea", "pleural", "interstitial"
+            "gastroenterology": [
+                "gerd", "reflux", "ibs", "crohn", "colitis", "hepatitis",
+                "cirrhosis", "pancreatitis", "gallbladder", "dysphagia",
+                "gi bleed", "hemorrhoid", "diverticulitis", "celiac",
+                "barrett", "polyp"
             ],
-            "rheumatology": [
-                "arthritis", "rheumatoid", "lupus", "sle", "gout",
-                "fibromyalgia", "scleroderma", "vasculitis", "sjogren"
+            "general surgery": [
+                "hernia", "appendicitis", "cholecystectomy", "abscess",
+                "lipoma", "lymph node biopsy"
+            ],
+            "geriatric medicine": [
+                "frailty", "falls risk", "cognitive decline", "polypharmacy",
+                "geriatric assessment"
+            ],
+            "hematology": [
+                "anemia", "bleeding disorder", "leukemia", "lymphoma",
+                "thrombocytopenia", "clotting", "coagulopathy", "myeloma",
+                "polycythemia"
+            ],
+            "infectious disease": [
+                "hiv", "aids", "tuberculosis", "osteomyelitis", "endocarditis",
+                "sepsis", "resistant infection", "mrsa", "tropical disease"
+            ],
+            "nephrology": [
+                "chronic kidney", "ckd", "renal failure", "dialysis",
+                "proteinuria", "glomerulonephritis", "nephrotic", "renal"
+            ],
+            "neurology": [
+                "headache", "migraine", "seizure", "epilepsy", "stroke",
+                "parkinson", "tremor", "neuropathy", "multiple sclerosis",
+                "dementia", "alzheimer", "vertigo", "tia", "motor neuron"
+            ],
+            "obstetrics/gynecology": [
+                "pregnancy", "prenatal", "menstrual", "endometriosis",
+                "ovarian", "uterine", "cervical", "menopause", "pelvic pain",
+                "fibroids", "contraception"
+            ],
+            "oncology": [
+                "cancer", "tumor", "malignancy", "chemotherapy",
+                "radiation therapy", "metastasis", "carcinoma"
+            ],
+            "ophthalmology": [
+                "cataract", "glaucoma", "macular", "diabetic retinopathy",
+                "vision loss", "eye", "retinal"
             ],
             "orthopedics": [
                 "fracture", "joint pain", "knee", "hip replacement",
                 "rotator cuff", "back pain", "spine", "disc", "meniscus",
-                "ligament", "acl", "osteoarthritis"
+                "ligament", "acl", "osteoarthritis", "carpal tunnel",
+                "shoulder", "ankle"
             ],
-            "dermatology": [
-                "rash", "eczema", "psoriasis", "skin cancer", "melanoma",
-                "acne", "dermatitis", "skin lesion", "mole"
+            "otolaryngology (ent)": [
+                "hearing loss", "tinnitus", "sinusitis", "tonsil",
+                "deviated septum", "ear infection", "nasal polyp",
+                "thyroid nodule", "laryngeal", "hoarseness"
+            ],
+            "pain management": [
+                "chronic pain", "pain clinic", "neuropathic pain",
+                "pain management", "nerve block"
+            ],
+            "palliative care": [
+                "palliative", "end of life", "terminal", "hospice",
+                "symptom management"
+            ],
+            "pediatrics": [
+                "pediatric", "child", "developmental delay", "growth",
+                "failure to thrive", "vaccination concern"
+            ],
+            "physical medicine & rehabilitation": [
+                "rehabilitation", "stroke recovery", "spinal injury",
+                "physical therapy", "occupational therapy"
+            ],
+            "plastic surgery": [
+                "reconstruction", "skin graft", "scar revision", "burn",
+                "breast reconstruction"
+            ],
+            "podiatry": [
+                "foot pain", "plantar fasciitis", "bunion", "ingrown toenail",
+                "diabetic foot"
             ],
             "psychiatry": [
                 "depression", "anxiety", "bipolar", "schizophrenia",
-                "ptsd", "ocd", "adhd", "eating disorder", "substance"
+                "ptsd", "ocd", "adhd", "eating disorder", "substance",
+                "psychosis", "suicidal"
             ],
-            "ophthalmology": [
-                "cataract", "glaucoma", "macular", "diabetic retinopathy",
-                "vision loss", "eye"
+            "pulmonology": [
+                "asthma", "copd", "pneumonia", "pulmonary", "lung",
+                "bronchitis", "sleep apnea", "osa", "shortness of breath",
+                "dyspnea", "pleural", "interstitial lung"
             ],
-            "otolaryngology": [
-                "hearing loss", "tinnitus", "sinusitis", "tonsil",
-                "sleep apnea", "deviated septum", "ear infection"
+            "reproductive medicine/fertility": [
+                "infertility", "ivf", "fertility", "assisted reproduction"
             ],
-            "nephrology": [
-                "chronic kidney", "ckd", "renal failure", "dialysis",
-                "proteinuria", "glomerulonephritis"
+            "rheumatology": [
+                "arthritis", "rheumatoid", "lupus", "sle", "gout",
+                "fibromyalgia", "scleroderma", "vasculitis", "sjogren",
+                "ankylosing spondylitis"
             ],
-            "hematology": [
-                "anemia", "bleeding disorder", "leukemia", "lymphoma",
-                "thrombocytopenia", "clotting"
+            "sleep medicine": [
+                "insomnia", "sleep disorder", "narcolepsy", "restless leg"
             ],
-            "oncology": [
-                "cancer", "tumor", "malignancy", "chemotherapy",
-                "radiation therapy", "metastasis"
+            "sports medicine": [
+                "sports injury", "ligament tear", "tendinopathy",
+                "concussion", "overuse injury"
+            ],
+            "urology": [
+                "bph", "benign prostatic", "prostate", "urinary", "bladder",
+                "kidney stone", "renal calculi", "hematuria", "incontinence",
+                "erectile", "testicular", "scrotal", "uti", "pyelonephritis"
             ]
+        }
+
+        # Display names for specialties with non-trivial capitalization
+        display_names = {
+            "allergy/immunology": "Allergy/Immunology",
+            "cardiothoracic surgery": "Cardiothoracic Surgery",
+            "colorectal surgery": "Colorectal Surgery",
+            "general surgery": "General Surgery",
+            "geriatric medicine": "Geriatric Medicine",
+            "infectious disease": "Infectious Disease",
+            "obstetrics/gynecology": "Obstetrics/Gynecology",
+            "otolaryngology (ent)": "Otolaryngology (ENT)",
+            "pain management": "Pain Management",
+            "palliative care": "Palliative Care",
+            "physical medicine & rehabilitation": "Physical Medicine & Rehabilitation",
+            "plastic surgery": "Plastic Surgery",
+            "reproductive medicine/fertility": "Reproductive Medicine/Fertility",
+            "sleep medicine": "Sleep Medicine",
+            "sports medicine": "Sports Medicine",
+            "vascular surgery": "Vascular Surgery",
         }
 
         for specialty, keywords in specialty_mappings.items():
             for keyword in keywords:
                 if keyword in conditions_lower:
-                    return specialty.capitalize()
+                    return display_names.get(specialty, specialty.capitalize())
 
         return None
 

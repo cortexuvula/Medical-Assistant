@@ -61,11 +61,16 @@ def get_possible_conditions(text: str) -> str:
     Returns:
         Comma-separated string of medical conditions
     """
-    prompt = ("Extract up to a maximun of 5 relevant medical conditions for a referral from the following text. "
-              "Keep the condition names simple and specific and not longer that 3 words. "
+    from settings.settings_manager import settings_manager
+
+    prompt = ("Extract up to a maximum of 5 relevant medical conditions for a referral from the following text. "
+              "Keep the condition names simple and specific and not longer than 3 words. "
               "Return them as a comma-separated list. Text: " + text)
-    result = call_ai("gpt-4", "You are a physician specialized in referrals.", prompt, 0.7)
-    # Clean both markdown and citations; use result.text to get the text content
+
+    # Use configured provider/model instead of hardcoded gpt-4
+    provider = settings_manager.get_ai_provider()
+    model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
+    result = call_ai(model, "You are a physician specialized in referrals.", prompt, 0.7)
     return clean_text(result.text)
 
 

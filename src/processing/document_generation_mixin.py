@@ -76,7 +76,7 @@ class DocumentGenerationMixin:
             return None
 
     def _generate_referral(self, soap_note: str) -> Optional[str]:
-        """Generate referral from SOAP note.
+        """Generate referral from SOAP note using the referral agent.
 
         Args:
             soap_note: The SOAP note text
@@ -89,35 +89,27 @@ class DocumentGenerationMixin:
             processing to continue. Errors are logged with full context.
         """
         try:
-            from ai.ai import create_referral_with_openai
+            from managers.agent_manager import agent_manager
+            from ai.agents.models import AgentTask, AgentType
 
-            provider = settings_manager.get_ai_provider()
-            model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
-
-            # For batch processing, use a default condition
-            conditions = "Based on the clinical findings in the SOAP note"
-
-            # Generate referral
-            referral = create_referral_with_openai(soap_note, conditions)
-            return referral
-        except (APIError, APITimeoutError) as e:
-            ctx = ErrorContext.capture(
-                operation="Generate referral",
-                exception=e,
-                error_code=getattr(e, 'error_code', 'REFERRAL_API_ERROR'),
-                soap_note_length=len(soap_note)
+            task = AgentTask(
+                task_description="Generate specialist referral from SOAP note",
+                input_data={
+                    "soap_note": soap_note,
+                    "recipient_type": "specialist",
+                    "urgency": "routine",
+                }
             )
-            ctx.log()
-            return None
-        except (ConnectionError, TimeoutError) as e:
-            ctx = ErrorContext.capture(
-                operation="Generate referral",
-                exception=e,
-                error_code="REFERRAL_NETWORK_ERROR",
-                soap_note_length=len(soap_note)
-            )
-            ctx.log()
-            return None
+
+            response = agent_manager.execute_agent_task(AgentType.REFERRAL, task)
+
+            if response and response.success and response.result:
+                return response.result
+            else:
+                error_msg = response.error if response else "No response from agent"
+                logger.warning(f"Referral agent returned no result: {error_msg}")
+                return None
+
         except Exception as e:
             ctx = ErrorContext.capture(
                 operation="Generate referral",

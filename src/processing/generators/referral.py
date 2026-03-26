@@ -71,20 +71,12 @@ class ReferralGeneratorMixin:
         else:
             source_text = context_text
 
-        def get_conditions_task() -> str:
-            try:
-                # Use existing function to get possible conditions
-                future = self.app.io_executor.submit(get_possible_conditions, source_text)
-                return future.result(timeout=60) or ""
-            except Exception as e:
-                logger.error(f"Error analyzing conditions: {str(e)}")
-                return ""
-
-        future = self.app.io_executor.submit(get_conditions_task)
+        # Submit directly to io_executor (avoid nested submit which risks deadlock)
+        future = self.app.io_executor.submit(get_possible_conditions, source_text)
 
         def on_conditions_done(future_result):
             try:
-                suggestions = future_result.result()
+                suggestions = future_result.result(timeout=60) or ""
                 self.app.after(0, lambda: self._show_referral_options_dialog(
                     suggestions,
                     has_transcript=bool(transcript),
@@ -128,7 +120,7 @@ class ReferralGeneratorMixin:
         result = dialog.show()
 
         if not result:
-            self.app.update_status("Referral generation cancelled.", status_type="warning")
+            self.app.status_manager.warning("Referral generation cancelled.")
             return
 
         # Process the dialog result
@@ -245,13 +237,27 @@ class ReferralGeneratorMixin:
 
         Note: Progress bar and button state are handled by AsyncUIErrorHandler.
         """
-        # Update text area
+        # Update text area (saves to DB if current_recording_id is set)
         self.app._update_text_area(
             referral_text,
             f"Referral created for: {conditions}",
             self.app.referral_button,
             self.app.referral_text
         )
+
+        # If no active recording, create one so the referral is persisted
+        if not getattr(self.app, 'current_recording_id', None):
+            try:
+                rec_id = self.app.db.add_recording(
+                    filename="Referral",
+                    referral=referral_text
+                )
+                if rec_id:
+                    self.app.current_recording_id = rec_id
+                    self.app.selected_recording_id = rec_id
+                    logger.info(f"Created new recording {rec_id} for standalone referral")
+            except Exception as e:
+                logger.warning(f"Failed to save standalone referral to database: {e}")
 
         # Switch to referral tab
         self.app.notebook.select(2)
