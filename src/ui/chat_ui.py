@@ -323,15 +323,15 @@ class ChatUI:
         # Update counter text
         self.char_counter.config(text=f"{char_count}/{self.max_input_length}")
         
-        # Change color if approaching limit
-        if char_count > self.max_input_length * 0.9:
-            self.char_counter.config(foreground="orange")
-        elif char_count > self.max_input_length:
+        # Change color based on proximity to limit (check strictest first)
+        if char_count > self.max_input_length:
             self.char_counter.config(foreground="red")
+        elif char_count > self.max_input_length * 0.9:
+            self.char_counter.config(foreground="orange")
         else:
             # Use theme-appropriate color for normal state
             is_dark = self._is_dark_theme()
-            normal_color = "#6c757d" if not is_dark else "#6c757d"
+            normal_color = "#6c757d" if not is_dark else "#adb5bd"
             self.char_counter.config(foreground=normal_color)
             
         # Reset modified flag
@@ -466,6 +466,8 @@ class ChatUI:
             
         # Call the callback if set
         if self.on_send_callback:
+            # Clear input immediately so user sees feedback
+            self.clear_input()
             self.set_processing(True)
             self.on_send_callback(content)
             
@@ -487,8 +489,7 @@ class ChatUI:
             self.send_button.config(state=tk.NORMAL, text="Send")
             self.clear_button.config(state=tk.NORMAL)
             self.input_text.config(state=tk.NORMAL)
-            # Clear input after successful send
-            self.clear_input()
+            self.input_text.focus_set()
             
     def set_send_callback(self, callback: Callable[[str], None]):
         """Set the callback for when send is clicked"""

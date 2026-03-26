@@ -99,6 +99,11 @@ class AppChatMixin:
         try:
             if hasattr(self, 'active_text_widget') and self.active_text_widget:
                 content = self.active_text_widget.get("1.0", "end-1c").strip()
+                # Truncate to avoid oversized prompts (consistent with
+                # ChatProcessor._extract_context fallback path)
+                max_context_length = 8000
+                if len(content) > max_context_length:
+                    content = content[:max_context_length] + "...[truncated]"
                 context["content"] = content
                 context["content_length"] = len(content)
                 context["has_content"] = bool(content)

@@ -64,27 +64,29 @@ class ToolExecutor:
             logger.info(f"Executing tool '{tool_name}' with arguments: {arguments}")
             
         try:
-            # Check if confirmation is needed
-            if self.require_confirmation:
-                # Do a dry run first to check if confirmation is needed
-                result = self._execute_with_timeout(tool, arguments)
-                
-                if result.requires_confirmation and self.confirm_callback:
-                    message = result.confirmation_message or f"Tool '{tool_name}' requires confirmation to proceed."
-                    if not self.confirm_callback(message):
-                        return ToolResult(
-                            success=False,
-                            output=None,
-                            error="User cancelled the operation"
-                        )
-                        
-            # Execute the tool with timeout
+            # Execute the tool once
             result = self._execute_with_timeout(tool, arguments)
-            
+
+            # If the tool signals it needs confirmation, ask the user
+            # before re-executing (the first call returned early without
+            # performing the destructive action).
+            if result.requires_confirmation and self.require_confirmation and self.confirm_callback:
+                message = result.confirmation_message or f"Tool '{tool_name}' requires confirmation to proceed."
+                if not self.confirm_callback(message):
+                    return ToolResult(
+                        success=False,
+                        output=None,
+                        error="User cancelled the operation"
+                    )
+                # User confirmed — re-execute to perform the actual operation.
+                # Tools that return requires_confirmation=True must NOT perform
+                # the action on that first call (they return early as a gate).
+                result = self._execute_with_timeout(tool, arguments)
+
             # Record execution
             execution_time = time.time() - start_time
             self._record_execution(tool_name, arguments, result, execution_time)
-            
+
             return result
             
         except Exception as e:

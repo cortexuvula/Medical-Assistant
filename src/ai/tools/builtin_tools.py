@@ -9,9 +9,36 @@ import datetime
 from typing import Dict, Any, List
 import requests
 
+from pathlib import Path
+
 from .base_tool import BaseTool, ToolResult
 from .tool_registry import register_tool
 from ..agents.models import Tool, ToolParameter
+
+
+def _validate_file_path(file_path: str) -> tuple[bool, str]:
+    """Validate that a file path is safe for tool access.
+
+    Resolves symlinks and '..' segments, then checks that the resolved
+    path falls within the user's home directory.  Rejects null bytes and
+    other common traversal tricks.
+
+    Returns:
+        (is_valid, error_message)  — error_message is empty when valid.
+    """
+    if not file_path or '\x00' in file_path:
+        return False, "Invalid file path"
+
+    try:
+        resolved = os.path.realpath(file_path)
+    except (OSError, ValueError) as e:
+        return False, f"Cannot resolve path: {e}"
+
+    home_dir = str(Path.home())
+    if not resolved.startswith(home_dir + os.sep) and resolved != home_dir:
+        return False, f"Access denied: path must be within {home_dir}"
+
+    return True, ""
 
 
 @register_tool
@@ -197,24 +224,27 @@ class FileReadTool(BaseTool):
     def execute(self, file_path: str, encoding: str = "utf-8") -> ToolResult:
         """Read a file's contents."""
         try:
-            # Security check - ensure path is within allowed directories
-            # For now, we'll just check if it exists
+            # Security: validate path is within allowed directories
+            is_valid, error = _validate_file_path(file_path)
+            if not is_valid:
+                return ToolResult(success=False, output=None, error=error)
+
             if not os.path.exists(file_path):
                 return ToolResult(
                     success=False,
                     output=None,
                     error=f"File not found: {file_path}"
                 )
-                
+
             with open(file_path, 'r', encoding=encoding) as f:
                 content = f.read()
-                
+
             return ToolResult(
                 success=True,
                 output=content,
                 metadata={"file_path": file_path, "size": len(content)}
             )
-            
+
         except Exception as e:
             return ToolResult(
                 success=False,
@@ -264,26 +294,31 @@ class FileWriteTool(BaseTool):
     def execute(self, file_path: str, content: str, mode: str = "write", encoding: str = "utf-8") -> ToolResult:
         """Write content to a file."""
         try:
-            # This operation requires confirmation
+            # Security: validate path is within allowed directories
+            is_valid, error = _validate_file_path(file_path)
+            if not is_valid:
+                return ToolResult(success=False, output=None, error=error)
+
+            # This operation requires confirmation when overwriting
             if mode == "write" and os.path.exists(file_path):
                 return ToolResult(
                     success=True,
                     output=None,
                     requires_confirmation=True,
-                    confirmation_message=f"File '{file_path}' already exists. Overwrite it?"
+                    confirmation_message=f"File already exists. Overwrite it?"
                 )
-                
+
             file_mode = 'w' if mode == "write" else 'a'
-            
+
             with open(file_path, file_mode, encoding=encoding) as f:
                 f.write(content)
-                
+
             return ToolResult(
                 success=True,
-                output=f"Successfully wrote {len(content)} characters to {file_path}",
+                output=f"Successfully wrote {len(content)} characters to file",
                 metadata={"file_path": file_path, "mode": mode, "size": len(content)}
             )
-            
+
         except Exception as e:
             return ToolResult(
                 success=False,

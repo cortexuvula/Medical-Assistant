@@ -391,9 +391,9 @@ class MedicalDictationApp(
         chat_container = ttk.Frame(bottom_paned)
         analysis_container = ttk.Frame(bottom_paned)
 
-        # Add to paned window - chat on left (smaller), analysis on right (larger)
+        # Add to paned window - chat on left, analysis on right (equal split)
         bottom_paned.add(chat_container, weight=1)
-        bottom_paned.add(analysis_container, weight=3)
+        bottom_paned.add(analysis_container, weight=1)
 
         # Create chat interface in chat container (without its own collapse button)
         self.chat_ui = ChatUI(chat_container, self, show_collapse_button=False)
@@ -413,7 +413,7 @@ class MedicalDictationApp(
         # Use longer delay to ensure window is fully rendered
         self.after(500, self._adjust_bottom_sash)
 
-        # Set horizontal sash position for Chat (25%) vs Analysis (75%)
+        # Set horizontal sash position for Chat (50%) vs Analysis (50%)
         self.after(600, self._adjust_horizontal_sash)
 
         # Bind Configure event to maintain sash position on resize

@@ -221,9 +221,9 @@ class TestPromptConstruction:
             "has_content": True
         }
 
-        prompt = processor._construct_prompt("Summarize this", context)
+        system_message, prompt = processor._construct_prompt("Summarize this", context)
 
-        assert "transcription analysis" in prompt.lower()
+        assert "transcription analysis" in system_message.lower()
         assert "Patient reports headache" in prompt
         assert "Summarize this" in prompt
 
@@ -243,7 +243,7 @@ class TestPromptConstruction:
         ]
 
         context = {"tab_name": "chat", "has_content": False}
-        prompt = processor._construct_prompt("Current question", context)
+        system_message, prompt = processor._construct_prompt("Current question", context)
 
         assert "Previous question" in prompt
         assert "Previous answer" in prompt
@@ -260,10 +260,10 @@ class TestPromptConstruction:
         processor = ChatProcessor(app)
 
         context = {"tab_name": "chat", "has_content": False}
-        prompt = processor._construct_prompt("Hello", context)
+        system_message, prompt = processor._construct_prompt("Hello", context)
 
-        assert "helpful medical ai assistant" in prompt.lower()
-        assert "do not modify any document" in prompt.lower()
+        assert "helpful medical ai assistant" in system_message.lower()
+        assert "do not modify any document" in system_message.lower()
 
 
 class TestToolDetection:

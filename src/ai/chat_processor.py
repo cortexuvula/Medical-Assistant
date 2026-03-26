@@ -75,6 +75,9 @@ class ChatProcessor:
         self._typing_frames = ["⏳ Assistant is thinking", "⏳ Assistant is thinking.", "⏳ Assistant is thinking..", "⏳ Assistant is thinking..."]
         self._typing_frame_index = 0
 
+        # Track embedded widgets in chat so they can be destroyed on clear
+        self._chat_embedded_widgets = []
+
         # Circuit breaker for AI provider resilience
         # Opens after 5 consecutive failures, recovers after 60 seconds
         self._ai_circuit_breaker = CircuitBreaker(
@@ -151,10 +154,12 @@ class ChatProcessor:
             self._add_to_history("user", user_message)
 
             # Construct prompt for AI
-            prompt = self._construct_prompt(user_message, context_data)
+            system_message, prompt = self._construct_prompt(user_message, context_data)
 
             # Get AI response (might include tool usage)
-            ai_response, tool_info = self._get_ai_response_with_tools(prompt)
+            ai_response, tool_info = self._get_ai_response_with_tools(
+                prompt, system_message=system_message, context_data=context_data
+            )
 
             # Hide typing indicator before showing response
             self._hide_typing_indicator()
@@ -183,7 +188,14 @@ class ChatProcessor:
                 self.app.after(0, callback)
                 
     def _extract_context(self) -> Dict[str, Any]:
-        """Extract context from the currently active tab."""
+        """Fallback context extraction.
+
+        WARNING: This method accesses Tkinter widgets, so it must only be
+        called from the main thread. The preferred path is pre-extraction
+        via AppChatMixin._extract_chat_context() which is passed as
+        context_data to process_message().  This fallback returns empty
+        context with a warning if called from a non-main thread.
+        """
         context = {
             "tab_name": "",
             "tab_index": 0,
@@ -191,38 +203,52 @@ class ChatProcessor:
             "content_length": 0,
             "has_content": False
         }
-        
+
+        # Guard: Tkinter widgets must only be accessed from the main thread
+        if threading.current_thread() is not threading.main_thread():
+            logger.warning(
+                "_extract_context called from worker thread — returning empty context. "
+                "Pass context_data to process_message() instead."
+            )
+            return context
+
         try:
             # Get current tab info
             current_tab = self.app.notebook.index(self.app.notebook.select())
             tab_names = ["transcript", "soap", "referral", "letter", "chat"]
-            
+
             if 0 <= current_tab < len(tab_names):
                 context["tab_name"] = tab_names[current_tab]
                 context["tab_index"] = current_tab
-                
+
                 # Get content from active text widget
                 if hasattr(self.app, 'active_text_widget') and self.app.active_text_widget:
                     content = self.app.active_text_widget.get("1.0", "end-1c").strip()
+                    # Truncate if too long
+                    if len(content) > self.max_context_length:
+                        content = content[:self.max_context_length] + "...[truncated]"
                     context["content"] = content
                     context["content_length"] = len(content)
                     context["has_content"] = bool(content)
-                    
-                    # Truncate if too long
-                    if len(content) > self.max_context_length:
-                        context["content"] = content[:self.max_context_length] + "...[truncated]"
 
         except (tk.TclError, AttributeError) as e:
             logger.error(f"Error extracting context: {e}")
             
         return context
         
-    def _construct_prompt(self, user_message: str, context_data: Dict[str, Any]) -> str:
-        """Construct the prompt to send to the AI."""
-        
-        # System message based on context
+    def _construct_prompt(self, user_message: str, context_data: Dict[str, Any]) -> tuple[str, str]:
+        """Construct the system message and prompt to send to the AI.
+
+        Returns:
+            Tuple of (system_message, prompt). The system_message is
+            context-specific (e.g. SOAP-focused) and should be passed as the
+            API system parameter. The prompt contains document content,
+            conversation history, and the user request.
+        """
+
+        # Context-specific system message
         tab_name = context_data.get("tab_name", "unknown")
-        
+
         system_messages = {
             "transcript": "You are an AI assistant helping with medical transcription analysis. You can help summarize, extract information, remove speaker labels, clean up formatting, and answer questions about the transcript content. When asked to modify text, provide the complete cleaned version.",
             "soap": "You are an AI assistant helping with SOAP note creation and improvement. You can help improve clarity, add medical detail, ensure proper medical documentation format, and fix any formatting issues. When modifying content, provide the complete updated version.",
@@ -230,18 +256,16 @@ class ChatProcessor:
             "letter": "You are an AI assistant helping with patient communication letters. You can help improve tone, clarity, empathy, and formatting while maintaining medical accuracy. When modifying content, provide the complete updated version.",
             "chat": "You are a helpful medical AI assistant. Engage in conversation, answer questions, provide medical information, and help with various healthcare-related queries. Do not modify any document content - just have a natural conversation."
         }
-        
+
         system_msg = system_messages.get(tab_name, "You are an AI assistant helping with medical documentation.")
-        
-        # Build prompt
+
+        # Build prompt (no embedded system message — it's returned separately)
         prompt_parts = [
-            f"System: {system_msg}",
-            "",
             "Current Context:",
             f"- Document Type: {tab_name.title()}",
             f"- Has Content: {'Yes' if context_data.get('has_content') else 'No'}",
         ]
-        
+
         # Add content if available
         if context_data.get("has_content"):
             prompt_parts.extend([
@@ -252,7 +276,7 @@ class ChatProcessor:
                 "---",
                 ""
             ])
-        
+
         # Add conversation history (last few exchanges)
         if self.conversation_history:
             prompt_parts.append("Recent Conversation:")
@@ -261,15 +285,15 @@ class ChatProcessor:
                 message = item["message"][:200] + "..." if len(item["message"]) > 200 else item["message"]
                 prompt_parts.append(f"{role}: {message}")
             prompt_parts.append("")
-        
+
         # Add current user message
         prompt_parts.extend([
             f"User Request: {user_message}",
             "",
             "Please provide a helpful response. If the user is asking you to modify the document content, provide the improved version and explain what changes you made."
         ])
-        
-        return "\n".join(prompt_parts)
+
+        return system_msg, "\n".join(prompt_parts)
         
     def _should_use_tools(self, user_message: str) -> bool:
         """Determine if the message might benefit from tool usage."""
@@ -339,17 +363,27 @@ class ChatProcessor:
                 
         return False
     
-    def _get_ai_response_with_tools(self, prompt: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    def _get_ai_response_with_tools(self, prompt: str,
+                                     system_message: str = None,
+                                     context_data: Optional[Dict[str, Any]] = None,
+                                     ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
         """Get response from AI provider, possibly using tools."""
-        response_text, tool_info = self._get_ai_response(prompt)
+        response_text, tool_info = self._get_ai_response(
+            prompt, system_message=system_message, context_data=context_data
+        )
         return response_text, tool_info
     
-    def _get_ai_response(self, prompt: str, max_retries: int = 3) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    def _get_ai_response(self, prompt: str, max_retries: int = 3,
+                         system_message: str = None,
+                         context_data: Optional[Dict[str, Any]] = None,
+                         ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
         """Get response from AI provider with retry logic and circuit breaker.
 
         Args:
             prompt: The prompt to send to the AI
             max_retries: Maximum number of retry attempts (default: 3)
+            system_message: Context-specific system message (falls back to generic)
+            context_data: Pre-extracted context from the originating tab
 
         Returns:
             Tuple of (response_text, tool_info) or (None, None) on failure
@@ -375,10 +409,20 @@ class ChatProcessor:
         if user_message and self._should_use_tools(user_message):
             logger.info("Using chat agent with tools for this request")
 
-            # Create an agent task with just the user message
+            # Build context including document content and conversation history
+            context_parts = []
+            if context_data and context_data.get("has_content"):
+                tab_name = context_data.get("tab_name", "document")
+                content = context_data.get("content", "")
+                context_parts.append(f"Current {tab_name.title()} Document Content:\n{content}")
+
+            history_context = self.get_context_from_history(max_entries=3)
+            if history_context:
+                context_parts.append(f"Recent Conversation:\n{history_context}")
+
             task = AgentTask(
                 task_description=user_message,
-                context=self.get_context_from_history(max_entries=3)
+                context="\n\n".join(context_parts) if context_parts else None
             )
 
             # Execute with chat agent (has its own retry logic)
@@ -412,7 +456,9 @@ class ChatProcessor:
 
         # Get current AI provider setting
         provider = settings_manager.get_ai_provider().lower()
-        system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
+        # Use the context-specific system message, fall back to generic
+        if not system_message:
+            system_message = "You are a helpful medical AI assistant specialized in medical documentation and analysis."
 
         # Retry loop with exponential backoff
         last_exception = None
@@ -562,57 +608,75 @@ class ChatProcessor:
             
         return False
         
+    def _get_widget_for_tab(self, tab_index: int):
+        """Map a tab index to its corresponding text widget.
+
+        Uses the tab_index captured *before* the tab switch so that
+        auto-apply targets the originating document, not the chat widget.
+        """
+        widget_map = {
+            0: getattr(self.app, 'transcript_text', None),
+            1: getattr(self.app, 'soap_text', None),
+            2: getattr(self.app, 'referral_text', None),
+            3: getattr(self.app, 'letter_text', None),
+        }
+        return widget_map.get(tab_index)
+
     def _apply_response_to_document(self, ai_response: str, context_data: Dict[str, Any]):
         """Apply the AI response to the current document automatically."""
-        
+
         def apply_changes():
             try:
                 # Log the AI response for debugging
                 logger.info(f"AI Response received: {ai_response[:200]}...")
-                
+
                 # Extract the actual content from the AI response
                 content_to_apply = self._extract_content_from_response(ai_response)
-                
+
                 # Log extracted content
                 logger.info(f"Extracted content length: {len(content_to_apply) if content_to_apply else 0}")
                 if content_to_apply:
                     logger.info(f"Extracted content preview: {content_to_apply[:100]}...")
-                
-                if content_to_apply and hasattr(self.app, 'active_text_widget') and self.app.active_text_widget:
+
+                # Look up the correct widget using tab_index captured before tab switch
+                target_widget = self._get_widget_for_tab(context_data.get("tab_index", 0))
+                if content_to_apply and target_widget:
                     # Automatically replace content without asking
-                    self.app.active_text_widget.delete("1.0", "end")
-                    self.app.active_text_widget.insert("1.0", content_to_apply)
-                    
+                    target_widget.delete("1.0", "end")
+                    target_widget.insert("1.0", content_to_apply)
+
                     # Show success message
                     tab_name = context_data.get("tab_name", "document").title()
                     self.app.status_manager.success(f"{tab_name} updated with AI response")
-                    
+
                     logger.info(f"Auto-applied AI response to {tab_name} tab")
                 else:
-                    logger.warning(f"No content to apply or no active text widget. Content: {bool(content_to_apply)}, Widget: {hasattr(self.app, 'active_text_widget')}")
+                    logger.warning(f"No content to apply or no target widget. Content: {bool(content_to_apply)}, Widget: {bool(target_widget)}")
                     self.app.status_manager.warning("No content to apply to document")
 
             except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error applying AI response to document: {e}", exc_info=True)
                 self.app.status_manager.error("Failed to apply changes")
-                
+
         # Apply on main thread
         self.app.after(0, apply_changes)
         
     def _apply_response_with_confirmation(self, ai_response: str, context_data: Dict[str, Any]):
         """Apply the AI response to the current document with user confirmation."""
-        
+
         def apply_changes():
             try:
                 # Extract the actual content from the AI response
                 content_to_apply = self._extract_content_from_response(ai_response)
-                
-                if content_to_apply and hasattr(self.app, 'active_text_widget') and self.app.active_text_widget:
+
+                # Look up the correct widget using tab_index captured before tab switch
+                target_widget = self._get_widget_for_tab(context_data.get("tab_index", 0))
+                if content_to_apply and target_widget:
                     # Ask user for confirmation
                     from tkinter import messagebox
-                    
+
                     tab_name = context_data.get("tab_name", "document").title()
-                    
+
                     if messagebox.askyesno(
                         "Apply Changes",
                         f"Do you want to apply the AI's suggestions to your {tab_name}?\n\n"
@@ -620,9 +684,9 @@ class ChatProcessor:
                         parent=self.app
                     ):
                         # Replace content
-                        self.app.active_text_widget.delete("1.0", "end")
-                        self.app.active_text_widget.insert("1.0", content_to_apply)
-                        
+                        target_widget.delete("1.0", "end")
+                        target_widget.insert("1.0", content_to_apply)
+
                         self.app.status_manager.success(f"{tab_name} updated with AI response")
                     else:
                         self.app.status_manager.info("Changes not applied")
@@ -632,7 +696,7 @@ class ChatProcessor:
             except (tk.TclError, AttributeError) as e:
                 logger.error(f"Error applying AI response to document: {e}")
                 self.app.status_manager.error("Failed to apply changes")
-                
+
         # Apply on main thread
         self.app.after(0, apply_changes)
         
@@ -782,35 +846,36 @@ class ChatProcessor:
         return "\n\n".join(context_parts)
     
     def _confirm_tool_execution(self, message: str) -> bool:
-        """Callback to confirm tool execution with the user."""
+        """Callback to confirm tool execution with the user.
+
+        Called from a worker thread. Schedules a dialog on the main thread
+        and blocks until the user responds or a 30-second timeout elapses.
+        """
         try:
             from tkinter import messagebox
-            
-            # Run on main thread
+
             result = [False]
-            
+            event = threading.Event()
+
             def show_confirmation():
-                result[0] = messagebox.askyesno(
-                    "Tool Confirmation",
-                    message,
-                    parent=self.app
-                )
-                
+                try:
+                    result[0] = messagebox.askyesno(
+                        "Tool Confirmation",
+                        message,
+                        parent=self.app
+                    )
+                finally:
+                    event.set()  # Unblock worker regardless of outcome
+
             self.app.after(0, show_confirmation)
-            
-            # Wait for user response (with timeout)
-            import time
-            timeout = 30  # 30 seconds timeout
-            start_time = time.time()
-            
-            while len(result) == 1 and not result[0]:
-                time.sleep(0.1)
-                if time.time() - start_time > timeout:
-                    logger.warning("Tool confirmation timed out")
-                    return False
-                    
+
+            # Block efficiently until dialog is dismissed or timeout
+            if not event.wait(timeout=30):
+                logger.warning("Tool confirmation timed out")
+                return False
+
             return result[0]
-            
+
         except (tk.TclError, RuntimeError) as e:
             logger.error(f"Error showing tool confirmation: {e}")
             return False  # Deny on error
@@ -863,7 +928,7 @@ class ChatProcessor:
                 
                 # Create a small frame to hold the button
                 button_frame = tk.Frame(chat_widget, bg=chat_widget.cget('bg'))
-                
+
                 copy_btn = ttk.Button(
                     button_frame,
                     text="Copy",
@@ -871,13 +936,16 @@ class ChatProcessor:
                     command=lambda r=ai_response: self._copy_to_clipboard(r)
                 )
                 copy_btn.pack(padx=2)
-                
+
                 # Add tooltip
                 from ui.tooltip import ToolTip
                 ToolTip(copy_btn, "Copy this response to clipboard")
-                
+
                 # Create window for button frame in text widget
                 chat_widget.window_create("end-1c", window=button_frame)
+
+                # Track for cleanup on chat clear
+                self._chat_embedded_widgets.append(button_frame)
                 chat_widget.insert("end", "\n")
                 
                 # Bind right-click to the response text
@@ -934,6 +1002,14 @@ class ChatProcessor:
         if message_lower in ["clear chat history", "clear chat", "clear", "/clear"]:
             def clear_chat():
                 try:
+                    # Destroy embedded widgets (copy buttons) to prevent memory leak
+                    for widget in self._chat_embedded_widgets:
+                        try:
+                            widget.destroy()
+                        except tk.TclError:
+                            pass
+                    self._chat_embedded_widgets.clear()
+
                     # Clear the chat text widget
                     self.app.chat_text.delete("1.0", "end")
                     # Clear conversation history
@@ -950,23 +1026,20 @@ class ChatProcessor:
         return False
 
     def _show_typing_indicator(self):
-        """Show a typing indicator in the chat widget while processing."""
+        """Show a typing indicator in the chat widget while processing.
+
+        Does NOT add a separator line — _append_to_chat_tab adds the
+        separator when the real response arrives, avoiding duplicates.
+        """
         def show():
             try:
                 chat_widget = self.app.chat_text
 
-                # Get current content to check if we need separator
-                current_content = chat_widget.get("1.0", "end-1c")
-
-                # Add separator if there's existing content
-                if current_content.strip():
-                    chat_widget.insert("end", "\n" + "="*50 + "\n\n")
-
-                # Mark the position where we inserted the indicator
+                # Mark the position where we insert the indicator
                 self._typing_indicator_mark = chat_widget.index("end-1c")
 
                 # Insert initial typing indicator
-                chat_widget.insert("end", self._typing_frames[0], "typing_indicator")
+                chat_widget.insert("end", "\n" + self._typing_frames[0], "typing_indicator")
                 chat_widget.tag_config("typing_indicator", foreground="#888888", font=("Arial", 10, "italic"))
 
                 # Scroll to bottom
@@ -1022,8 +1095,8 @@ class ChatProcessor:
                 # Remove indicator text if mark exists
                 if self._typing_indicator_mark:
                     chat_widget = self.app.chat_text
-                    # Delete from mark to end
-                    chat_widget.delete(self._typing_indicator_mark, "end")
+                    # Delete from mark to end-1c (preserve widget's trailing newline)
+                    chat_widget.delete(self._typing_indicator_mark, "end-1c")
                     self._typing_indicator_mark = None
 
                 self._typing_frame_index = 0

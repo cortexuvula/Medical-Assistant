@@ -102,7 +102,7 @@ class AppUiLayoutMixin:
             logger.debug(f"Could not adjust bottom sash: {e}")
 
     def _adjust_horizontal_sash(self) -> None:
-        """Adjust the horizontal sash for Chat (25%) vs Analysis (75%) split."""
+        """Adjust the horizontal sash for Chat (50%) vs Analysis (50%) split."""
         try:
             bottom_paned = self.ui.components.get('bottom_paned')
             if not bottom_paned:
@@ -116,8 +116,8 @@ class AppUiLayoutMixin:
                 self.after(200, self._adjust_horizontal_sash)
                 return
 
-            # Chat gets 25%, Analysis gets 75%
-            sash_pos = int(total_width * 0.25)
+            # Chat gets 50%, Analysis gets 50%
+            sash_pos = int(total_width * 0.50)
             bottom_paned.sashpos(0, sash_pos)
             logger.debug(f"Set horizontal sash: {sash_pos} of {total_width}")
 

@@ -17,7 +17,7 @@ class DrugInteractionTool(BaseTool):
     def get_definition(self) -> Tool:
         return Tool(
             name="check_drug_interaction",
-            description="Check for potential drug interactions between medications",
+            description="Check for potential drug interactions between medications (DEMO ONLY - not for clinical use)",
             parameters=[
                 ToolParameter(
                     name="drug1",
@@ -70,7 +70,8 @@ class DrugInteractionTool(BaseTool):
                     "drug2": drug2,
                     "severity": interaction["severity"],
                     "description": interaction["description"],
-                    "recommendation": "Consult with healthcare provider before using together"
+                    "recommendation": "Consult with healthcare provider before using together",
+                    "disclaimer": "DEMO ONLY: This is a mock implementation with limited data. Do not use for clinical decisions."
                 }
             else:
                 result = {
@@ -121,9 +122,17 @@ class BMICalculatorTool(BaseTool):
     def execute(self, weight: float, height: float) -> ToolResult:
         """Calculate BMI and provide interpretation."""
         try:
+            # Validate inputs
+            if height <= 0 or weight <= 0:
+                return ToolResult(
+                    success=False,
+                    output=None,
+                    error="Weight and height must be positive numbers"
+                )
+
             # Convert height from cm to meters
             height_m = height / 100
-            
+
             # Calculate BMI
             bmi = weight / (height_m ** 2)
             
@@ -216,10 +225,18 @@ class DosageCalculatorTool(BaseTool):
             ]
         )
         
-    def execute(self, medication: str, dose_per_kg: float, weight: float, 
+    def execute(self, medication: str, dose_per_kg: float, weight: float,
                 frequency: str = "once daily", max_dose: float = None) -> ToolResult:
         """Calculate medication dosage."""
         try:
+            # Validate inputs
+            if weight <= 0 or dose_per_kg <= 0:
+                return ToolResult(
+                    success=False,
+                    output=None,
+                    error="Weight and dose_per_kg must be positive numbers"
+                )
+
             # Calculate base dose
             calculated_dose = dose_per_kg * weight
             
