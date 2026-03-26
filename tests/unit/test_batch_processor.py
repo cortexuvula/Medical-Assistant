@@ -11,9 +11,33 @@ import tempfile
 from unittest.mock import Mock, MagicMock, patch, PropertyMock
 import sys
 from pathlib import Path
+from functools import wraps
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+
+def _patch_stt_provider(provider_name):
+    """Helper to reliably patch stt_provider for batch processor tests.
+
+    Patches both SETTINGS dict and settings_manager.get to ensure
+    the provider value is seen regardless of import/caching order.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from settings.settings_manager import settings_manager
+            original_get = settings_manager.get
+
+            def patched_get(key, default=None):
+                if key == 'stt_provider':
+                    return provider_name
+                return original_get(key, default)
+
+            with patch.object(settings_manager, 'get', side_effect=patched_get):
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class TestBatchProcessorInitialization:
@@ -466,6 +490,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('deepgram')
     def test_transcription_with_deepgram(self):
         """Test transcription using Deepgram provider."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -479,12 +504,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True}
+                )
 
             self.mock_app.audio_handler.deepgram_provider.transcribe.assert_called_once()
         finally:
@@ -514,6 +537,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('local whisper')
     def test_transcription_with_whisper(self):
         """Test transcription using local Whisper provider."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -527,17 +551,16 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'local whisper'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True}
+                )
 
             self.mock_app.audio_handler.whisper_provider.transcribe.assert_called_once()
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_transcription_failure_continue_on_error(self):
         """Test handling transcription failure with continue_on_error=True."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -551,19 +574,18 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True, "continue_on_error": True},
-                        on_progress=progress_callback
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True, "continue_on_error": True},
+                    on_progress=progress_callback
+                )
 
             # Should report failure via progress callback but continue
             assert any("failed" in str(call).lower() for call in progress_callback.call_args_list)
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_transcription_failure_stop_on_error(self):
         """Test handling transcription failure with continue_on_error=False."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -576,20 +598,19 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    with pytest.raises(Exception):
-                        self.processor.process_batch_files(
-                            [valid_file],
-                            {"process_soap": True, "continue_on_error": False},
-                            on_complete=complete_callback
-                        )
+                with pytest.raises(Exception):
+                    self.processor.process_batch_files(
+                        [valid_file],
+                        {"process_soap": True, "continue_on_error": False},
+                        on_complete=complete_callback
+                    )
 
             # Complete callback should still be called
             complete_callback.assert_called_once()
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_empty_transcript_handling(self):
         """Test handling when transcription returns empty result."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -602,13 +623,11 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True},
-                        on_progress=progress_callback
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True},
+                    on_progress=progress_callback
+                )
 
             # Should not add to database
             self.mock_app.db.add_recording.assert_not_called()
@@ -715,6 +734,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_recording_data_structure(self):
         """Test the structure of recording data passed to queue."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -728,12 +748,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True, "process_referral": False}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True, "process_referral": False}
+                )
 
             call_args = self.mock_app.processing_queue.add_recording.call_args
             recording_data = call_args[0][0]
@@ -746,6 +764,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('unknown_provider')
     def test_unknown_stt_provider(self):
         """Test handling of unknown STT provider."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -757,13 +776,11 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'unknown_provider'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True, "continue_on_error": True},
-                        on_progress=progress_callback
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True, "continue_on_error": True},
+                    on_progress=progress_callback
+                )
 
             # Should report the unknown provider error
             assert any("unknown" in str(call).lower() or "failed" in str(call).lower()
