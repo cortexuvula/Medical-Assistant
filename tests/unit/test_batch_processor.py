@@ -425,6 +425,7 @@ class TestProcessBatchFiles:
         self.mock_app.status_manager.error.assert_called_once()
         callback.assert_called_once()
 
+    @_patch_stt_provider('groq')
     def test_filters_invalid_paths(self):
         """Test that invalid paths are filtered out."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -438,12 +439,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file, "/invalid/path.wav"],
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file, "/invalid/path.wav"],
+                    {"process_soap": True}
+                )
 
             # Should process the valid file
             assert self.mock_app.db.add_recording.called
@@ -463,6 +462,7 @@ class TestProcessBatchFiles:
                 on_complete=callback
             )
 
+    @_patch_stt_provider('groq')
     def test_priority_mapping(self):
         """Test priority mapping for file processing."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -476,12 +476,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"priority": "high", "process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"priority": "high", "process_soap": True}
+                )
 
             # Check the recording data passed to add_recording
             call_args = self.mock_app.processing_queue.add_recording.call_args
@@ -513,6 +511,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('elevenlabs')
     def test_transcription_with_elevenlabs(self):
         """Test transcription using ElevenLabs provider."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -526,12 +525,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'elevenlabs'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True}
+                )
 
             self.mock_app.audio_handler.elevenlabs_provider.transcribe.assert_called_once()
         finally:
@@ -634,6 +631,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_database_save_failure(self):
         """Test handling when database save fails."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -646,16 +644,15 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    with pytest.raises(Exception):
-                        self.processor.process_batch_files(
-                            [valid_file],
-                            {"process_soap": True, "continue_on_error": False}
-                        )
+                with pytest.raises(Exception):
+                    self.processor.process_batch_files(
+                        [valid_file],
+                        {"process_soap": True, "continue_on_error": False}
+                    )
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_progress_callback_called(self):
         """Test that progress callback is called during processing."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -671,18 +668,17 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True},
-                        on_progress=progress_callback
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True},
+                    on_progress=progress_callback
+                )
 
             assert progress_callback.call_count >= 2  # At least processing and queued
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_completion_callback_called(self):
         """Test that completion callback is called."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -698,18 +694,17 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True},
-                        on_complete=complete_callback
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True},
+                    on_complete=complete_callback
+                )
 
             complete_callback.assert_called_once()
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_success_message_on_completion(self):
         """Test that success message is shown on completion."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -723,12 +718,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        [valid_file],
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    [valid_file],
+                    {"process_soap": True}
+                )
 
             self.mock_app.status_manager.success.assert_called_once()
         finally:
@@ -788,6 +781,7 @@ class TestProcessBatchFiles:
         finally:
             os.unlink(valid_file)
 
+    @_patch_stt_provider('groq')
     def test_multiple_files_processing(self):
         """Test processing multiple files."""
         files = []
@@ -804,12 +798,10 @@ class TestProcessBatchFiles:
 
             with patch('pydub.AudioSegment') as MockAudio:
                 MockAudio.from_file.return_value = Mock()
-
-                with patch.dict('settings.settings.SETTINGS', {'stt_provider': 'groq'}):
-                    self.processor.process_batch_files(
-                        files,
-                        {"process_soap": True}
-                    )
+                self.processor.process_batch_files(
+                    files,
+                    {"process_soap": True}
+                )
 
             assert self.mock_app.db.add_recording.call_count == 3
             assert self.mock_app.processing_queue.add_recording.call_count == 3

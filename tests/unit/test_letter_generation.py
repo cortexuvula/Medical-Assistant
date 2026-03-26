@@ -1,5 +1,6 @@
 """Unit tests for ai.letter_generation module."""
 
+import sys
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
@@ -135,15 +136,17 @@ class TestGetPossibleConditions:
 
     @patch("ai.letter_generation.clean_text", side_effect=lambda t, **kw: t)
     @patch("ai.letter_generation.call_ai")
-    @patch("settings.settings_manager.settings_manager")
-    def test_uses_configured_provider_model(self, mock_sm, mock_call_ai, mock_clean):
+    def test_uses_configured_provider_model(self, mock_call_ai, mock_clean):
         from ai.letter_generation import get_possible_conditions
+        sm_mod = sys.modules['settings.settings_manager']
 
+        mock_sm = Mock()
         mock_sm.get_ai_provider.return_value = "anthropic"
         mock_sm.get_nested.return_value = "claude-3-opus"
         mock_call_ai.return_value = _make_ai_result("Condition A")
 
-        get_possible_conditions("text")
+        with patch.object(sm_mod, 'settings_manager', mock_sm):
+            get_possible_conditions("text")
 
         assert mock_call_ai.call_args[0][0] == "claude-3-opus"
         mock_sm.get_nested.assert_called_with("anthropic.model", "gpt-4")
@@ -442,10 +445,11 @@ class TestCreateLetterWithAi:
 
     @patch("ai.letter_generation.clean_text", side_effect=lambda t, **kw: t)
     @patch("ai.letter_generation.call_ai")
-    @patch("settings.settings_manager.settings_manager")
-    def test_uses_configured_model_and_temperature(self, mock_sm, mock_call_ai, mock_clean):
+    def test_uses_configured_model_and_temperature(self, mock_call_ai, mock_clean):
         from ai.letter_generation import create_letter_with_ai
+        sm_mod = sys.modules['settings.settings_manager']
 
+        mock_sm = Mock()
         mock_sm.get_ai_provider.return_value = "anthropic"
         mock_sm.get_nested.side_effect = lambda key, default: {
             "anthropic.model": "claude-3-sonnet",
@@ -453,7 +457,8 @@ class TestCreateLetterWithAi:
         }.get(key, default)
         mock_call_ai.return_value = _make_ai_result("letter")
 
-        create_letter_with_ai("text")
+        with patch.object(sm_mod, 'settings_manager', mock_sm):
+            create_letter_with_ai("text")
 
         call_args = mock_call_ai.call_args[0]
         assert call_args[0] == "claude-3-sonnet"
@@ -563,10 +568,11 @@ class TestCreateLetterStreaming:
 
     @patch("ai.letter_generation.clean_text", side_effect=lambda t, **kw: t)
     @patch("ai.letter_generation.call_ai_streaming")
-    @patch("settings.settings_manager.settings_manager")
-    def test_uses_configured_model_and_temperature(self, mock_sm, mock_call_streaming, mock_clean):
+    def test_uses_configured_model_and_temperature(self, mock_call_streaming, mock_clean):
         from ai.letter_generation import create_letter_streaming
+        sm_mod = sys.modules['settings.settings_manager']
 
+        mock_sm = Mock()
         mock_sm.get_ai_provider.return_value = "anthropic"
         mock_sm.get_nested.side_effect = lambda key, default: {
             "anthropic.model": "claude-3-haiku",
@@ -574,7 +580,8 @@ class TestCreateLetterStreaming:
         }.get(key, default)
         mock_call_streaming.return_value = _make_ai_result("letter")
 
-        create_letter_streaming("text", on_chunk=Mock())
+        with patch.object(sm_mod, 'settings_manager', mock_sm):
+            create_letter_streaming("text", on_chunk=Mock())
 
         call_args = mock_call_streaming.call_args[0]
         assert call_args[0] == "claude-3-haiku"
