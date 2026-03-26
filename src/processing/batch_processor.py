@@ -89,6 +89,14 @@ class BatchProcessor:
 
         self.app.processing_queue.set_batch_callback(batch_callback)
 
+        # Capture context from UI on the main thread (before background processing)
+        context_text = ""
+        if hasattr(self.app, 'context_text') and self.app.context_text:
+            try:
+                context_text = self.app.context_text.get("1.0", "end").strip()
+            except Exception:
+                pass
+
         # Build batch recordings data
         batch_recordings = []
 
@@ -116,6 +124,7 @@ class BatchProcessor:
                 "filename": recording.get("filename", ""),
                 "transcript": recording.get("transcript", ""),
                 "patient_name": recording.get("patient_name", "Unknown"),
+                "context": context_text,
                 "process_options": {
                     "generate_soap": options.get("process_soap", False),
                     "generate_referral": options.get("process_referral", False),
@@ -164,6 +173,14 @@ class BatchProcessor:
         if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
             from processing.processing_queue import ProcessingQueue
             self.app.processing_queue = ProcessingQueue(self.app)
+
+        # Capture context from UI on the main thread (before background processing)
+        context_text = ""
+        if hasattr(self.app, 'context_text') and self.app.context_text:
+            try:
+                context_text = self.app.context_text.get("1.0", "end").strip()
+            except Exception:
+                pass
 
         # Validate and prepare files
         valid_files = []
@@ -258,6 +275,7 @@ class BatchProcessor:
                     "filename": filename,
                     "transcript": transcript,
                     "patient_name": f"Patient from {filename}",
+                    "context": context_text,
                     "audio_path": file_path,
                     "process_options": {
                         "generate_soap": options.get("process_soap", False),

@@ -4,6 +4,8 @@ SOAP Note Generator Module
 Handles SOAP note generation from transcripts.
 """
 
+import json
+
 from tkinter import messagebox
 from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
@@ -104,6 +106,16 @@ class SOAPGeneratorMixin:
                         logger.debug("No current_recording_id set, creating new database entry")
                         self.app._save_soap_recording_to_database(filename, transcript, soap_note)
                         logger.info(f"Created new recording with ID: {self.app.current_recording_id}")
+
+                    # Persist context to recording metadata for reprocessing
+                    if context_text:
+                        try:
+                            rec_id = getattr(self.app, 'current_recording_id', None) or getattr(self.app, 'selected_recording_id', None)
+                            if rec_id:
+                                self.app.db.update_recording(rec_id, metadata=json.dumps({"context": context_text}))
+                                logger.debug(f"Saved context ({len(context_text)} chars) to recording {rec_id} metadata")
+                        except Exception as e:
+                            logger.warning(f"Failed to save context to metadata: {e}")
 
                     # Auto-run all analyses in parallel to the side panels
                     # Each method submits work to thread pool, so they can safely run concurrently

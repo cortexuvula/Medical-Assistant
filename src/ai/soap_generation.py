@@ -148,6 +148,12 @@ def _prepare_soap_generation(text: str, context: str, settings: dict = None, emo
     transcript_with_datetime = f"{time_date_str}\n\n{text}"
 
     # Build prompt with context and optional emotion data
+    # Truncate context to prevent token overflow when combined with long transcripts
+    max_context_length = 8000
+    if context and len(context) > max_context_length:
+        context = context[:max_context_length] + "...[truncated]"
+        logger.info(f"Context truncated to {max_context_length} chars for SOAP generation")
+
     parts = []
     if context and context.strip():
         parts.append(f"Previous medical context:\n{context}")

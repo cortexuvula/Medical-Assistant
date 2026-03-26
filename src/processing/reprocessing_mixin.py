@@ -10,8 +10,9 @@ This mixin is designed to be used with ProcessingQueue to keep the main
 class focused on core queue operations.
 """
 
+import json
 import os
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 
 from utils.error_handling import ErrorContext
 from utils.exceptions import DatabaseError
@@ -22,6 +23,20 @@ logger = get_logger(__name__)
 
 class ReprocessingMixin:
     """Mixin providing reprocessing capabilities for ProcessingQueue."""
+
+    @staticmethod
+    def _extract_context_from_metadata(metadata: Any) -> str:
+        """Extract context from recording metadata, handling both dict and JSON string."""
+        if not metadata:
+            return ""
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (json.JSONDecodeError, TypeError):
+                return ""
+        if isinstance(metadata, dict):
+            return metadata.get("context", "")
+        return ""
 
     def reprocess_failed_recording(self, recording_id: int) -> Optional[str]:
         """Reprocess a failed recording by re-adding it to the queue.
@@ -86,7 +101,7 @@ class ReprocessingMixin:
                 'audio_data': audio_data,
                 'transcript': recording.get('transcript', ''),  # Use existing transcript if available
                 'patient_name': recording.get('patient_name', 'Patient'),
-                'context': recording.get('metadata', {}).get('context', '') if isinstance(recording.get('metadata'), dict) else '',
+                'context': self._extract_context_from_metadata(recording.get('metadata')),
                 'process_options': {
                     'generate_soap': not bool(recording.get('soap_note')),
                     'generate_referral': not bool(recording.get('referral')),

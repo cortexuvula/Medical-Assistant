@@ -38,6 +38,14 @@ SOAP_SYSTEM_MESSAGE_TEMPLATE = """You are an experienced general family practice
 
 Your task is to extract ALL clinically relevant information from the transcript and organize it into a comprehensive SOAP note. ACCURACY AND COMPLETENESS ARE CRITICAL - missing information can affect patient care.
 
+## USING PREVIOUS MEDICAL CONTEXT
+
+If "Previous medical context" is provided before the transcript, it contains relevant patient history, visit type, or clinical background from the treating physician. You MUST:
+- Incorporate this context into the appropriate SOAP sections (e.g., past medical history, reason for visit, consultation type)
+- Use it to inform your clinical reasoning in the Assessment section
+- Do NOT repeat context verbatim — integrate it naturally into the documentation
+- If context conflicts with transcript content, prefer the transcript (it reflects the current visit)
+
 ## CRITICAL EXTRACTION REQUIREMENTS
 
 IMPORTANT: For EVERY category listed below, you MUST include an entry in your SOAP note. If information was not discussed or mentioned in the transcript, explicitly state "Not discussed during the visit" or "Not mentioned" for that item. DO NOT omit any category.
@@ -188,6 +196,9 @@ Follow up:
 # Anthropic/Claude-specific SOAP system message
 # Claude requires more explicit and repeated formatting instructions to produce consistent bullet-point output
 SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE = """You are a physician creating a SOAP note from a patient consultation transcript.
+
+USING PREVIOUS MEDICAL CONTEXT:
+If "Previous medical context" is provided, integrate it into the appropriate SOAP sections (past history, visit type, clinical background). Use it to inform your Assessment reasoning. Do not repeat it verbatim. If context conflicts with the transcript, prefer the transcript.
 
 STRICT FORMATTING RULES:
 1. Plain text only - NO markdown (no **, no ##, no ---, no ===)

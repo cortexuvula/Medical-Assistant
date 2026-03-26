@@ -39,6 +39,10 @@ class SOAPProcessor:
         
     def process_soap_recording(self) -> None:
         """Process SOAP recording using AudioHandler with improved concurrency."""
+        # Extract context on the main thread BEFORE submitting to io_executor
+        # (Tkinter widgets must only be accessed from the main thread)
+        context_text = self.app.context_text.get("1.0", tk.END).strip()
+
         def task():
             try:
                 # Reset the audio handler silence threshold to normal
@@ -241,8 +245,7 @@ class SOAPProcessor:
                     self.status_manager.progress("Creating SOAP note from transcript...")
                 ])
 
-                # Get context text from the context tab
-                context_text = self.app.context_text.get("1.0", tk.END).strip()
+                # context_text was extracted on the main thread before task() was submitted
 
                 # Use IO executor for the AI API call (I/O-bound operation)
                 future = self.io_executor.submit(
@@ -299,15 +302,20 @@ class SOAPProcessor:
                             schedule_ui_update(self.app, lambda ed=emotion_data:
                                 self.app.document_generators._run_emotion_to_panel(ed))
 
-                    # Save emotion data to recording metadata if available
-                    if emotion_data:
-                        try:
-                            recording_id = getattr(self.app, 'current_recording_id', None) or getattr(self.app, 'selected_recording_id', None)
-                            if recording_id:
-                                self.app.db.update_recording(recording_id, metadata=json.dumps({"emotion_data": emotion_data}))
-                                logger.info(f"Saved emotion data to recording {recording_id}")
-                        except Exception as e:
-                            logger.warning(f"Failed to save emotion data: {e}")
+                    # Save context and emotion data to recording metadata
+                    try:
+                        recording_id = getattr(self.app, 'current_recording_id', None) or getattr(self.app, 'selected_recording_id', None)
+                        if recording_id:
+                            metadata = {}
+                            if context_text:
+                                metadata["context"] = context_text
+                            if emotion_data:
+                                metadata["emotion_data"] = emotion_data
+                            if metadata:
+                                self.app.db.update_recording(recording_id, metadata=json.dumps(metadata))
+                                logger.info(f"Saved metadata (context={bool(context_text)}, emotion={bool(emotion_data)}) to recording {recording_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save metadata: {e}")
 
                 schedule_ui_update(self.app, finalize_soap)
             except concurrent.futures.TimeoutError:
