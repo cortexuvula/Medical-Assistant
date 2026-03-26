@@ -11,9 +11,12 @@ from pydub import AudioSegment
 if TYPE_CHECKING:
     from stt_providers.base import TranscriptionResult
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from managers.vocabulary_manager import vocabulary_manager
 from utils.structured_logging import get_logger
+from utils.constants import (
+    STT_ELEVENLABS, STT_DEEPGRAM, STT_GROQ, STT_WHISPER, STT_MODULATE,
+)
 
 logger = get_logger(__name__)
 
@@ -37,10 +40,8 @@ class TranscriptionMixin:
         Args:
             provider: Provider name ('elevenlabs', 'deepgram', 'groq', or 'whisper')
         """
-        if provider in ["elevenlabs", "deepgram", "groq", "whisper", "modulate"]:
-            from settings.settings import save_settings
-            SETTINGS["stt_provider"] = provider
-            save_settings(SETTINGS)
+        if provider in [STT_ELEVENLABS, STT_DEEPGRAM, STT_GROQ, STT_WHISPER, STT_MODULATE]:
+            settings_manager.set("stt_provider", provider)
             logger.info(f"STT provider set to {provider}")
         else:
             logger.warning(f"Unknown STT provider: {provider}")
@@ -52,7 +53,18 @@ class TranscriptionMixin:
         """
         self._prefix_audio_cache = None
         self._prefix_audio_checked = False
+        self._prefix_audio_mtime = None
         logger.debug("Prefix audio cache reset")
+
+    def _prefix_audio_needs_reload(self, path: str) -> bool:
+        """Check if prefix audio file has been modified since last load."""
+        try:
+            if not os.path.exists(path):
+                return self._prefix_audio_cache is not None  # Need to clear cache
+            current_mtime = os.path.getmtime(path)
+            return current_mtime != self._prefix_audio_mtime
+        except OSError:
+            return False
 
     def transcribe_audio_without_prefix(self, segment: AudioSegment, **kwargs) -> str:
         """Transcribe audio using selected provider without adding prefix audio.
@@ -69,7 +81,7 @@ class TranscriptionMixin:
         Returns:
             Transcription text or empty string if transcription failed
         """
-        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
+        primary_provider = settings_manager.get("stt_provider", STT_ELEVENLABS)
         fallback_attempted = False
 
         # First attempt with selected provider
@@ -81,7 +93,7 @@ class TranscriptionMixin:
             fallback_attempted = True
 
             # Try fallback providers
-            fallback_providers = [p for p in ["groq", "deepgram", "elevenlabs", "modulate"] if p != primary_provider]
+            fallback_providers = [p for p in [STT_GROQ, STT_DEEPGRAM, STT_ELEVENLABS, STT_MODULATE] if p != primary_provider]
             for provider in fallback_providers:
                 transcript = self._try_transcription_with_provider(segment, provider, **kwargs)
                 if transcript:
@@ -99,22 +111,29 @@ class TranscriptionMixin:
         Returns:
             Transcription text or empty string if transcription failed
         """
-        # Check if there's a prefix audio file to prepend (use cache)
-        if not self._prefix_audio_checked:
+        # Check if there's a prefix audio file to prepend (use cache with mtime tracking)
+        from managers.data_folder_manager import data_folder_manager
+        prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
+
+        if not self._prefix_audio_checked or self._prefix_audio_needs_reload(prefix_audio_path):
             self._prefix_audio_checked = True
-            from managers.data_folder_manager import data_folder_manager
-            prefix_audio_path = str(data_folder_manager.app_data_folder / "prefix_audio.mp3")
             logger.debug(f"Checking for prefix audio at: {prefix_audio_path}")
             if os.path.exists(prefix_audio_path):
                 try:
-                    logger.info(f"Loading prefix audio from {prefix_audio_path}")
-                    self._prefix_audio_cache = AudioSegment.from_file(prefix_audio_path)
-                    logger.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
+                    current_mtime = os.path.getmtime(prefix_audio_path)
+                    if self._prefix_audio_cache is None or current_mtime != self._prefix_audio_mtime:
+                        logger.info(f"Loading prefix audio from {prefix_audio_path}")
+                        self._prefix_audio_cache = AudioSegment.from_file(prefix_audio_path)
+                        self._prefix_audio_mtime = current_mtime
+                        logger.info(f"Cached prefix audio (length: {len(self._prefix_audio_cache)}ms)")
                 except Exception as e:
                     logger.error(f"Error loading prefix audio: {e}", exc_info=True)
                     self._prefix_audio_cache = None
+                    self._prefix_audio_mtime = None
             else:
                 logger.debug(f"No prefix audio file found at: {prefix_audio_path}")
+                self._prefix_audio_cache = None
+                self._prefix_audio_mtime = None
 
         # If we have cached prefix audio, prepend it
         if self._prefix_audio_cache:
@@ -126,7 +145,7 @@ class TranscriptionMixin:
                 logger.error(f"Error prepending prefix audio: {e}", exc_info=True)
 
         # Get the selected STT provider from settings
-        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
+        primary_provider = settings_manager.get("stt_provider", STT_ELEVENLABS)
         fallback_attempted = False
 
         # First attempt with selected provider
@@ -134,7 +153,7 @@ class TranscriptionMixin:
 
         # Only use fallback if there's an actual error (empty string)
         if transcript == "" and not fallback_attempted:
-            fallback_providers = ["deepgram", "elevenlabs", "groq", "whisper", "modulate"]
+            fallback_providers = [STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_WHISPER, STT_MODULATE]
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
 
@@ -168,15 +187,15 @@ class TranscriptionMixin:
             Transcription text or empty string if failed
         """
         try:
-            if provider == "elevenlabs":
+            if provider == STT_ELEVENLABS:
                 return self.elevenlabs_provider.transcribe(segment, **kwargs)
-            elif provider == "deepgram":
+            elif provider == STT_DEEPGRAM:
                 return self.deepgram_provider.transcribe(segment)
-            elif provider == "groq":
+            elif provider == STT_GROQ:
                 return self.groq_provider.transcribe(segment)
-            elif provider == "whisper":
+            elif provider == STT_WHISPER:
                 return self.whisper_provider.transcribe(segment)
-            elif provider == "modulate":
+            elif provider == STT_MODULATE:
                 return self.modulate_provider.transcribe(segment, **kwargs)
             else:
                 logger.warning(f"Unknown provider: {provider}")
@@ -201,9 +220,9 @@ class TranscriptionMixin:
         """
         from stt_providers.base import TranscriptionResult
 
-        primary_provider = SETTINGS.get("stt_provider", "elevenlabs")
+        primary_provider = settings_manager.get("stt_provider", STT_ELEVENLABS)
 
-        if primary_provider == "modulate" and hasattr(self, 'modulate_provider'):
+        if primary_provider == STT_MODULATE and hasattr(self, 'modulate_provider'):
             try:
                 result = self.modulate_provider.transcribe_with_result(segment)
                 if result.success:

@@ -675,6 +675,196 @@ class TestEdgeCases:
         self.mock_provider.translate.assert_called_once_with(text_with_special, "en", "en")
 
 
+class TestTranslateSafe:
+    """Tests for translate_safe (OperationResult variant)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from src.managers.translation_manager import TranslationManager
+
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            mock_security.return_value = Mock()
+            self.manager = TranslationManager()
+
+        self.mock_provider = Mock()
+        self.manager._provider_instance = self.mock_provider
+        self.manager._current_provider = 'deep_translator:google'
+
+    def test_translate_safe_empty_text_returns_success_empty(self):
+        """Test that empty text returns success with empty string."""
+        result = self.manager.translate_safe("")
+
+        assert result.success is True
+        assert result.value == ""
+
+    def test_translate_safe_none_text_returns_success_empty(self):
+        """Test that None text returns success with empty string."""
+        result = self.manager.translate_safe(None)
+
+        assert result.success is True
+        assert result.value == ""
+
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_safe_success(self, mock_settings):
+        """Test successful translation returns success result."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
+        self.mock_provider.translate.return_value = "Translated"
+
+        result = self.manager.translate_safe("Hello", source_lang="en", target_lang="es")
+
+        assert result.success is True
+        assert result.value == "Translated"
+
+    @patch('src.managers.translation_manager.settings_manager')
+    def test_translate_safe_failure_returns_error_result(self, mock_settings):
+        """Test that translation failure returns failure result, not exception."""
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'translation': {'patient_language': 'es', 'doctor_language': 'en'}
+        }.get(key, default)
+
+        self.mock_provider.detect_language.return_value = "en"
+        self.mock_provider.translate.side_effect = RuntimeError("API down")
+
+        result = self.manager.translate_safe("Hello")
+
+        assert result.success is False
+        assert result.error_code == "TRANSLATION_ERROR"
+        assert "API down" in result.error
+
+
+class TestDetectLanguageSafe:
+    """Tests for detect_language_safe (OperationResult variant)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from src.managers.translation_manager import TranslationManager
+
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            mock_security.return_value = Mock()
+            self.manager = TranslationManager()
+
+        self.mock_provider = Mock()
+        self.manager._provider_instance = self.mock_provider
+        self.manager._current_provider = 'deep_translator:google'
+
+    def test_detect_language_safe_empty_text(self):
+        """Test that empty text returns failure."""
+        result = self.manager.detect_language_safe("")
+
+        assert result.success is False
+        assert result.error_code == "EMPTY_TEXT"
+
+    def test_detect_language_safe_success(self):
+        """Test successful detection returns success result."""
+        self.mock_provider.detect_language.return_value = "de"
+
+        result = self.manager.detect_language_safe("Guten Tag")
+
+        assert result.success is True
+        assert result.value == "de"
+
+    def test_detect_language_safe_no_result(self):
+        """Test detection returning None yields failure."""
+        self.mock_provider.detect_language.return_value = None
+
+        result = self.manager.detect_language_safe("???")
+
+        assert result.success is False
+        assert result.error_code == "DETECTION_FAILED"
+
+    def test_detect_language_safe_exception(self):
+        """Test exception returns error result."""
+        self.mock_provider.detect_language.side_effect = RuntimeError("API err")
+
+        result = self.manager.detect_language_safe("Hello")
+
+        assert result.success is False
+        assert result.error_code == "DETECTION_ERROR"
+        assert "API err" in result.error
+
+
+class TestGetSupportedLanguagesSafe:
+    """Tests for get_supported_languages_safe (OperationResult variant)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from src.managers.translation_manager import TranslationManager
+
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            mock_security.return_value = Mock()
+            self.manager = TranslationManager()
+
+        self.mock_provider = Mock()
+        self.manager._provider_instance = self.mock_provider
+        self.manager._current_provider = 'deep_translator:google'
+
+    def test_get_supported_languages_safe_success(self):
+        """Test successful language listing returns success result."""
+        expected = [("en", "English"), ("es", "Spanish")]
+        self.mock_provider.get_supported_languages.return_value = expected
+
+        result = self.manager.get_supported_languages_safe()
+
+        assert result.success is True
+        assert result.value == expected
+
+    def test_get_supported_languages_safe_failure(self):
+        """Test failure returns error result."""
+        self.mock_provider.get_supported_languages.side_effect = RuntimeError("timeout")
+
+        result = self.manager.get_supported_languages_safe()
+
+        assert result.success is False
+        assert result.error_code == "LANGUAGES_ERROR"
+
+
+class TestTestConnectionSafe:
+    """Tests for test_connection_safe (OperationResult variant)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from src.managers.translation_manager import TranslationManager
+
+        with patch('src.managers.translation_manager.get_security_manager') as mock_security:
+            mock_security.return_value = Mock()
+            self.manager = TranslationManager()
+
+        self.mock_provider = Mock()
+        self.manager._provider_instance = self.mock_provider
+        self.manager._current_provider = 'deep_translator:google'
+
+    def test_test_connection_safe_success(self):
+        """Test successful connection returns success result."""
+        self.mock_provider.test_connection.return_value = True
+
+        result = self.manager.test_connection_safe()
+
+        assert result.success is True
+        assert result.value is True
+
+    def test_test_connection_safe_failed_connection(self):
+        """Test failed connection returns failure result."""
+        self.mock_provider.test_connection.return_value = False
+
+        result = self.manager.test_connection_safe()
+
+        assert result.success is False
+        assert result.error_code == "CONNECTION_FAILED"
+
+    def test_test_connection_safe_exception(self):
+        """Test connection exception returns error result."""
+        self.mock_provider.test_connection.side_effect = RuntimeError("network error")
+
+        result = self.manager.test_connection_safe()
+
+        assert result.success is False
+        assert result.error_code == "CONNECTION_ERROR"
+        assert "network error" in result.error
+
+
 @pytest.fixture(autouse=True)
 def reset_singleton():
     """Reset singleton before each test."""

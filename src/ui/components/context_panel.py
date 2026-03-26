@@ -12,7 +12,6 @@ from ui.tooltip import ToolTip
 
 logger = get_logger(__name__)
 from ui.scaling_utils import ui_scaler
-from settings.settings import SETTINGS
 from settings.settings_manager import settings_manager
 from ui.ui_constants import Icons
 
@@ -56,7 +55,7 @@ class ContextPanel:
         self.components = parent_ui.components
 
         # Set colors based on current theme
-        current_theme = SETTINGS.get("theme", "flatly")
+        current_theme = settings_manager.get("theme", "flatly")
         is_dark = current_theme in ("darkly", "cyborg", "vapor", "solar", "superhero")
         self.COLORS = self.DARK_COLORS.copy() if is_dark else self.LIGHT_COLORS.copy()
 
@@ -115,8 +114,8 @@ class ContextPanel:
 
         # Get theme-aware colors for search entry
         from ui.ui_constants import Colors
-        from settings.settings import SETTINGS
-        current_theme = SETTINGS.get("theme", "flatly")
+
+        current_theme = settings_manager.get("theme", "flatly")
         is_dark = current_theme in ["darkly", "cyborg", "vapor", "solar", "superhero"]
         theme_colors = Colors.get_theme_colors(is_dark)
         entry_bg = theme_colors["bg"] if is_dark else "#ffffff"
@@ -282,8 +281,8 @@ class ContextPanel:
             self._search_entry.delete(0, tk.END)
             # Use theme-aware colors
             from ui.ui_constants import Colors
-            from settings.settings import SETTINGS
-            current_theme = SETTINGS.get("theme", "flatly")
+    
+            current_theme = settings_manager.get("theme", "flatly")
             is_dark = current_theme in ["darkly", "cyborg", "vapor", "solar", "superhero"]
             theme_colors = Colors.get_theme_colors(is_dark)
             self._search_entry.config(fg=theme_colors["fg"])
@@ -294,8 +293,8 @@ class ContextPanel:
             self._search_entry.insert(0, "Search templates...")
             # Use theme-aware colors
             from ui.ui_constants import Colors
-            from settings.settings import SETTINGS
-            current_theme = SETTINGS.get("theme", "flatly")
+    
+            current_theme = settings_manager.get("theme", "flatly")
             is_dark = current_theme in ["darkly", "cyborg", "vapor", "solar", "superhero"]
             theme_colors = Colors.get_theme_colors(is_dark)
             self._search_entry.config(fg=theme_colors["fg_muted"])
@@ -369,7 +368,7 @@ class ContextPanel:
         self._template_item_frames.clear()
 
         # Get favorite template names from settings
-        favorite_templates = set(SETTINGS.get("context_template_favorites", []))
+        favorite_templates = set(settings_manager.get("context_template_favorites", []))
 
         # Collect all templates with favorite status
         all_templates = []
@@ -380,7 +379,7 @@ class ContextPanel:
             all_templates.append((name, text, True, is_favorite))  # (name, text, is_builtin, is_favorite)
 
         # Add custom templates
-        custom_templates = SETTINGS.get("custom_context_templates", {})
+        custom_templates = settings_manager.get("custom_context_templates", {})
         if custom_templates:
             for template_name, template_text in custom_templates.items():
                 is_favorite = template_name in favorite_templates
@@ -436,7 +435,7 @@ class ContextPanel:
 
         def toggle_favorite(e=None):
             """Toggle favorite status for this template."""
-            favorite_templates = set(SETTINGS.get("context_template_favorites", []))
+            favorite_templates = set(settings_manager.get("context_template_favorites", []))
             if name in favorite_templates:
                 favorite_templates.discard(name)
                 star_label.config(text="☆", fg=self.COLORS["text_muted"])

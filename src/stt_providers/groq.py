@@ -10,13 +10,14 @@ from typing import Optional
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
+from utils.constants import STT_GROQ
 from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from utils.resilience import resilient_api_call
 from utils.http_client_manager import get_http_client_manager
 from core.config import get_config
 from utils.security_decorators import secure_api_call
 from utils.security import get_security_manager
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 # API endpoint constants
 GROQ_API_BASE_URL = "https://api.groq.com/openai/v1"
@@ -28,7 +29,7 @@ class GroqProvider(BaseSTTProvider):
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
-        return "groq"
+        return STT_GROQ
 
     @property
     def supports_diarization(self) -> bool:
@@ -44,7 +45,7 @@ class GroqProvider(BaseSTTProvider):
         """
         super().__init__(api_key, language)
 
-    @secure_api_call("groq")
+    @secure_api_call(STT_GROQ)
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,
@@ -134,16 +135,16 @@ class GroqProvider(BaseSTTProvider):
 
             # Get API key from secure storage if needed
             security_manager = get_security_manager()
-            api_key = self.api_key or security_manager.get_api_key("groq")
+            api_key = self.api_key or security_manager.get_api_key(STT_GROQ)
             if not api_key:
                 raise TranscriptionError("GROQ API key not found")
 
             # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
-            http_client = get_http_client_manager().get_httpx_client("groq", timeout_seconds)
+            http_client = get_http_client_manager().get_httpx_client(STT_GROQ, timeout_seconds)
             client = OpenAI(api_key=api_key, base_url=GROQ_API_BASE_URL, http_client=http_client)
 
             # Get Groq settings
-            groq_settings = SETTINGS.get("groq", {})
+            groq_settings = settings_manager.get(STT_GROQ, {})
             model = groq_settings.get("model", "whisper-large-v3-turbo")
             # Use language from settings if set, otherwise use instance language
             language = groq_settings.get("language", "") or self.language.split('-')[0]

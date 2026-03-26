@@ -4,7 +4,14 @@ Google Text-to-Speech (gTTS) provider implementation.
 
 import io
 from typing import List, Dict, Optional
-from gtts import gTTS, lang
+try:
+    from gtts import gTTS, lang
+    GTTS_AVAILABLE = True
+except ImportError:
+    gTTS = None
+    lang = None
+    GTTS_AVAILABLE = False
+
 from pydub import AudioSegment
 
 from .base import BaseTTSProvider
@@ -20,6 +27,11 @@ class GoogleTTSProvider(BaseTTSProvider):
         Args:
             api_key: Not required for gTTS (uses free API)
         """
+        if not GTTS_AVAILABLE:
+            raise ImportError(
+                "gTTS package is required for Google TTS. "
+                "Install it with: pip install gTTS"
+            )
         super().__init__(api_key)
         self._supported_languages = None
     

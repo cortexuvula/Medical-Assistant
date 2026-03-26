@@ -1,15 +1,20 @@
 """
 Audio File Operations Mixin
 
-Provides file loading, saving, and audio segment operations for the AudioHandler class.
+Provides file loading, saving, and validation for the AudioHandler class.
 """
 
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from pydub import AudioSegment
 
+if TYPE_CHECKING:
+    from stt_providers.base import TranscriptionResult
+
+from settings.settings_manager import settings_manager
+from utils.error_handling import ErrorContext
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -20,37 +25,31 @@ class FileMixin:
 
     This mixin expects the following methods on the class:
     - transcribe_audio(segment): Transcribe an audio segment
+    - transcribe_audio_with_metadata(segment): Transcribe with metadata
+    - combine_audio_segments(segments): Combine audio segments
     """
 
-    def combine_audio_segments(self, segments: List[AudioSegment]) -> Optional[AudioSegment]:
-        """Combine multiple audio segments into a single segment efficiently.
+    @staticmethod
+    def validate_audio_file_size(file_path: str, max_size_mb: float = None) -> tuple[bool, float, float]:
+        """Validate that an audio file is within the allowed size limit.
 
         Args:
-            segments: List of AudioSegment objects
+            file_path: Path to the audio file.
+            max_size_mb: Maximum allowed size in MB. Reads from settings_manager if None.
 
         Returns:
-            Combined AudioSegment or None if list is empty
+            Tuple of (is_valid, file_size_mb, max_mb).
         """
-        if not segments:
-            logger.warning("combine_audio_segments called with empty list")
-            return None
-
+        if max_size_mb is None:
+            max_size_mb = settings_manager.get("max_audio_file_size_mb", 500)
         try:
-            # Start with the first segment to ensure correct parameters
-            combined = segments[0]
-            if len(segments) > 1:
-                combined = sum(segments[1:], start=combined)
-            return combined
-        except Exception as e:
-            logger.error(f"Error combining audio segments: {e}", exc_info=True)
-            # Fallback to iterative concatenation
-            logger.info("Falling back to iterative concatenation due to error.")
-            combined_fallback = segments[0]
-            for segment in segments[1:]:
-                combined_fallback += segment
-            return combined_fallback
+            file_size_bytes = os.path.getsize(file_path)
+        except OSError:
+            return True, 0.0, max_size_mb  # Let downstream handle missing files
+        file_size_mb = file_size_bytes / (1024 * 1024)
+        return file_size_mb <= max_size_mb, round(file_size_mb, 1), max_size_mb
 
-    def load_audio_file(self, file_path: str) -> Tuple[Optional[AudioSegment], str]:
+    def load_audio_file(self, file_path: str) -> tuple[Optional[AudioSegment], str]:
         """Load and transcribe audio from a file.
 
         Args:
@@ -59,20 +58,56 @@ class FileMixin:
         Returns:
             Tuple of (AudioSegment, transcription_text)
         """
+        result = self.load_audio_file_with_metadata(file_path)
+        return result[0], result[1]
+
+    def load_audio_file_with_metadata(self, file_path: str) -> tuple[Optional[AudioSegment], str, Optional[dict]]:
+        """Load and transcribe audio from a file, capturing metadata.
+
+        Uses transcribe_audio_with_metadata() to capture emotion data
+        from providers like Modulate.ai.
+
+        Args:
+            file_path: Path to audio file
+
+        Returns:
+            Tuple of (AudioSegment, transcription_text, metadata_dict_or_None)
+        """
         try:
-            if file_path.lower().endswith(".mp3"):
+            # Validate file size before loading into memory
+            is_valid, file_size_mb, max_mb = self.validate_audio_file_size(file_path)
+            if not is_valid:
+                raise ValueError(
+                    f"Audio file is too large ({file_size_mb} MB). "
+                    f"Maximum allowed size is {max_mb} MB. "
+                    f"Please use a smaller file or increase the limit in Settings."
+                )
+
+            if (file_path.lower().endswith(".mp3")):
                 seg = AudioSegment.from_file(file_path, format="mp3")
-            elif file_path.lower().endswith(".wav"):
+            elif (file_path.lower().endswith(".wav")):
                 seg = AudioSegment.from_file(file_path, format="wav")
             else:
                 raise ValueError("Unsupported audio format. Only .wav and .mp3 supported.")
 
+            # Use metadata-aware transcription to capture emotion data
+            result = self.transcribe_audio_with_metadata(seg)
+            if result.success and result.text:
+                return seg, result.text, result.metadata
+
+            # Fallback to plain transcription
             transcript = self.transcribe_audio(seg)
-            return seg, transcript
+            return seg, transcript, None
 
         except Exception as e:
-            logger.error(f"Error loading audio file: {str(e)}", exc_info=True)
-            return None, ""
+            ctx = ErrorContext.capture(
+                operation="Load audio file",
+                exception=e,
+                error_code="AUDIO_FILE_LOAD_ERROR",
+                file_path=file_path
+            )
+            ctx.log()
+            return None, "", None
 
     def save_audio(self, segments: List[AudioSegment], file_path: str) -> bool:
         """Save combined audio segments to file.
@@ -112,7 +147,14 @@ class FileMixin:
                 return True
             return False
         except Exception as e:
-            logger.error(f"Error saving audio: {str(e)}", exc_info=True)
+            ctx = ErrorContext.capture(
+                operation="Save audio file",
+                exception=e,
+                error_code="AUDIO_FILE_SAVE_ERROR",
+                file_path=file_path,
+                segment_count=len(segments) if segments else 0
+            )
+            ctx.log()
             return False
 
 

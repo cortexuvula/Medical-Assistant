@@ -69,11 +69,11 @@ def call_ai_streaming(
                   result.is_success to check status. str(result) returns
                   text or error string for backward compatibility.
     """
-    from settings.settings import load_settings
-    current_settings = load_settings()
+    from settings.settings_manager import settings_manager
+    current_settings = settings_manager.get_all()
 
     VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GROQ, PROVIDER_CEREBRAS}
-    provider = current_settings.get("ai_provider", "openai")
+    provider = current_settings.get("ai_provider", PROVIDER_OPENAI)
 
     model_key = get_model_key_for_task(system_message, prompt)
 
@@ -114,12 +114,12 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
                   result.is_success to check status. str(result) returns
                   text or error string for backward compatibility.
     """
-    from settings.settings import SETTINGS, load_settings
+    from settings.settings_manager import settings_manager
     from utils.validation import sanitize_for_logging
 
     # Save prompt to debug file (only in debug mode to protect PHI/PII)
     # SECURITY: This logs medical data - only enable for development debugging
-    if SETTINGS.get("enable_llm_debug_logging", False):
+    if settings_manager.get("enable_llm_debug_logging", False):
         try:
             from datetime import datetime
             from managers.data_folder_manager import data_folder_manager
@@ -141,7 +141,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
             logger.debug(f"Failed to save prompt to debug file: {e}")
 
     # Reload settings from file to ensure we have the latest provider selection
-    current_settings = load_settings()
+    current_settings = settings_manager.get_all()
 
     # Validate provider against allowed list to prevent arbitrary key access
     VALID_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS}
@@ -151,7 +151,7 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
 
     # Use passed-in provider if specified, otherwise use global setting
     if not provider_explicitly_set:
-        provider = current_settings.get("ai_provider", "openai")
+        provider = current_settings.get("ai_provider", PROVIDER_OPENAI)
 
     if provider not in VALID_PROVIDERS:
         logger.warning(f"Invalid AI provider '{provider}', falling back to OpenAI")

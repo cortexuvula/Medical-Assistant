@@ -216,6 +216,5 @@ def show_already_running_message():
 
     except Exception as e:
         # Fallback to console message
-        print("Medical Assistant is already running.")
-        print("Please check your taskbar/dock for the existing window.")
+        logger.info("Medical Assistant is already running. Please check your taskbar/dock for the existing window.")
         logger.info(f"Could not show GUI message: {e}")

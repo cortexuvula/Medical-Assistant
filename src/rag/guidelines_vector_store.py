@@ -64,8 +64,8 @@ class GuidelinesVectorStore:
 
         # Try settings
         try:
-            from settings.settings import SETTINGS
-            guidelines_settings = SETTINGS.get("clinical_guidelines", {})
+            from settings.settings_manager import settings_manager
+            guidelines_settings = settings_manager.get("clinical_guidelines", {})
             conn_str = guidelines_settings.get("database_url")
             if conn_str:
                 return conn_str

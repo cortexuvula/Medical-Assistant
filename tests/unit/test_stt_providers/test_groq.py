@@ -63,20 +63,20 @@ class TestGroqProvider:
         """Test diarization support property."""
         assert provider.supports_diarization is False
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_transcribe_success(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_transcribe_success(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test successful transcription."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        mock_settings_manager.get.return_value = {
             "model": "whisper-large-v3-turbo",
             "language": "",
             "prompt": ""
@@ -122,20 +122,20 @@ class TestGroqProvider:
 
         assert "API key not configured" in str(exc_info.value)
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_transcribe_api_key_not_found(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_transcribe_api_key_not_found(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test transcription when API key is not found in secure storage."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings
-        mock_settings.get.return_value = {}
+        # Mock settings_manager
+        mock_settings_manager.get.return_value = {}
 
         # Mock security manager returning None
         mock_security_manager = Mock()
@@ -150,15 +150,15 @@ class TestGroqProvider:
 
         assert "API key not configured" in str(exc_info.value)
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_transcribe_timeout_calculation(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_transcribe_timeout_calculation(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test timeout calculation based on buffer size."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        mock_settings_manager.get.return_value = {
             "model": "whisper-large-v3-turbo",
             "language": "",
             "prompt": ""
@@ -191,20 +191,20 @@ class TestGroqProvider:
         call_args = mock_client.audio.transcriptions.create.call_args
         assert call_args[1]["timeout"] >= 60
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_transcribe_api_error(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_transcribe_api_error(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test handling of API errors."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings
-        mock_settings.get.return_value = {}
+        # Mock settings_manager
+        mock_settings_manager.get.return_value = {}
 
         # Mock security manager
         mock_security_manager = Mock()
@@ -226,20 +226,20 @@ class TestGroqProvider:
         # Error goes through retry logic and is wrapped as "GROQ transcription failed"
         assert "GROQ transcription failed" in str(exc_info.value) or "API Error" in str(exc_info.value)
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_transcribe_unexpected_response_format(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_transcribe_unexpected_response_format(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test handling of unexpected response format."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings
-        mock_settings.get.return_value = {}
+        # Mock settings_manager
+        mock_settings_manager.get.return_value = {}
 
         # Mock security manager
         mock_security_manager = Mock()
@@ -261,20 +261,20 @@ class TestGroqProvider:
 
         assert "Unexpected response format from GROQ API" in str(exc_info.value)
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_language_code_extraction(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, mock_audio_segment):
+    def test_language_code_extraction(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, mock_audio_segment):
         """Test language code extraction from full language tags."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings with no language override
-        mock_settings.get.return_value = {
+        # Mock settings_manager with no language override
+        mock_settings_manager.get.return_value = {
             "model": "whisper-large-v3-turbo",
             "language": "",
             "prompt": ""
@@ -325,20 +325,20 @@ class TestGroqProvider:
         assert hasattr(provider, 'language')
         assert hasattr(provider, 'logger')
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_uses_settings_model(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_uses_settings_model(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test that the model from settings is used."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings with custom model
-        mock_settings.get.return_value = {
+        # Mock settings_manager with custom model
+        mock_settings_manager.get.return_value = {
             "model": "whisper-large-v3",
             "language": "",
             "prompt": ""
@@ -366,20 +366,20 @@ class TestGroqProvider:
         call_args = mock_client.audio.transcriptions.create.call_args
         assert call_args[1]["model"] == "whisper-large-v3"
 
-    @patch('stt_providers.groq.SETTINGS')
+    @patch('stt_providers.groq.settings_manager')
     @patch('stt_providers.groq.get_config')
     @patch('stt_providers.groq.get_security_manager')
     @patch('stt_providers.groq.get_http_client_manager')
     @patch('openai.OpenAI')
-    def test_uses_prompt_from_settings(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings, provider, mock_audio_segment):
+    def test_uses_prompt_from_settings(self, mock_openai_class, mock_get_http_manager, mock_get_security_manager, mock_get_config, mock_settings_manager, provider, mock_audio_segment):
         """Test that prompt from settings is used for context."""
         # Mock config
         mock_config = Mock()
         mock_config.api.timeout = 60
         mock_get_config.return_value = mock_config
 
-        # Mock settings with prompt
-        mock_settings.get.return_value = {
+        # Mock settings_manager with prompt
+        mock_settings_manager.get.return_value = {
             "model": "whisper-large-v3-turbo",
             "language": "",
             "prompt": "Medical terminology: hypertension, diabetes"

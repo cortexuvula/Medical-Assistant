@@ -11,6 +11,7 @@ from pydub import AudioSegment
 
 from .base import BaseSTTProvider
 from settings.settings_manager import settings_manager
+from utils.constants import STT_ELEVENLABS
 from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
@@ -34,7 +35,7 @@ class ElevenLabsProvider(BaseSTTProvider):
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
-        return "elevenlabs"
+        return STT_ELEVENLABS
 
     @property
     def supports_diarization(self) -> bool:
@@ -50,7 +51,7 @@ class ElevenLabsProvider(BaseSTTProvider):
         """
         super().__init__(api_key, language)
 
-    @secure_api_call("elevenlabs")
+    @secure_api_call(STT_ELEVENLABS)
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,
@@ -82,7 +83,7 @@ class ElevenLabsProvider(BaseSTTProvider):
 
         try:
             # Use pooled HTTP session for connection reuse
-            session = get_http_client_manager().get_requests_session("elevenlabs")
+            session = get_http_client_manager().get_requests_session(STT_ELEVENLABS)
             response = session.post(
                 url,
                 headers=headers,
@@ -180,7 +181,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             self.logger.info(f"Setting ElevenLabs timeout to {timeout_seconds} seconds for {file_size_kb:.2f} KB file")
             
             # Get settings
-            elevenlabs_settings = settings_manager.get("elevenlabs", {})
+            elevenlabs_settings = settings_manager.get(STT_ELEVENLABS, {})
 
             # Prepare data for request - model_id from settings (scribe_v2 is new default)
             data = {
@@ -359,7 +360,8 @@ class ElevenLabsProvider(BaseSTTProvider):
                 
                 # Log unique speakers found for diagnostics
                 if has_speaker_info and diarization_location and diarization_location.startswith("words."):
-                    speaker_field_name = diarization_location.split('.')[1]
+                    parts = diarization_location.split('.', 1)
+                    speaker_field_name = parts[1] if len(parts) > 1 else "speaker_id"
                     unique_speakers = set()
                     for w in result['words']:
                         sid = w.get(speaker_field_name)
@@ -380,7 +382,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                         diag_parts.append("num_speakers: auto-detect")
                     if 'diarization_threshold' in data:
                         diag_parts.append(f"threshold: {data['diarization_threshold']}")
-                    print(" | ".join(diag_parts))
+                    self.logger.info(" | ".join(diag_parts))
 
                     # Per-speaker word count for diagnostics
                     speaker_counts = {}
@@ -389,7 +391,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                         if sid is not None:
                             speaker_counts[sid] = speaker_counts.get(sid, 0) + 1
                     for sid, count in sorted(speaker_counts.items()):
-                        print(f"  {sid}: {count} words")
+                        self.logger.info(f"  {sid}: {count} words")
 
                 # Based on our findings, determine if and how to process diarization
                 if has_speaker_info:
@@ -397,7 +399,8 @@ class ElevenLabsProvider(BaseSTTProvider):
                     
                     # Method 1: If we have word-level speaker info
                     if diarization_location and diarization_location.startswith("words."):
-                        speaker_field = diarization_location.split('.')[1]
+                        field_parts = diarization_location.split('.', 1)
+                        speaker_field = field_parts[1] if len(field_parts) > 1 else "speaker_id"
                         transcript = self._format_diarized_transcript_with_field(result['words'], speaker_field)
                     
                     # Method 2: If we have a separate diarization structure, build transcript accordingly
@@ -435,8 +438,8 @@ class ElevenLabsProvider(BaseSTTProvider):
                         "(4) Check that 'num_speakers' is not being forced to a fixed value.",
                     ]
                     self.logger.warning(" ".join(tips))
-                    print(f"[ElevenLabs Diarization] WARNING: Only 1 speaker detected. "
-                          f"Try leaving 'Number of Speakers' empty in ElevenLabs Settings.")
+                    self.logger.warning("[ElevenLabs Diarization] Only 1 speaker detected. "
+                          "Try leaving 'Number of Speakers' empty in ElevenLabs Settings.")
 
             else:
                 error_msg = f"ElevenLabs API error: {response.status_code} - {response.text}"
@@ -475,7 +478,7 @@ class ElevenLabsProvider(BaseSTTProvider):
                     f"channels={audio_details.get('channels')}, sample_width={audio_details.get('sample_width')}"
                 )
                 # Try file-based fallback if enabled
-                elevenlabs_settings = settings_manager.get("elevenlabs", {})
+                elevenlabs_settings = settings_manager.get(STT_ELEVENLABS, {})
                 if elevenlabs_settings.get("retry_with_file", False):
                     self.logger.info("Attempting file-based transcription fallback...")
                     fallback_transcript = self._transcribe_via_temp_file(segment, diarize_override=diarize_override)
@@ -515,7 +518,7 @@ class ElevenLabsProvider(BaseSTTProvider):
             url = ELEVENLABS_STT_URL
             headers = {'xi-api-key': self.api_key}
 
-            elevenlabs_settings = settings_manager.get("elevenlabs", {})
+            elevenlabs_settings = settings_manager.get(STT_ELEVENLABS, {})
             diarize = diarize_override if diarize_override is not None else elevenlabs_settings.get("diarize", True)
 
             data = {
@@ -600,7 +603,7 @@ class ElevenLabsProvider(BaseSTTProvider):
         Returns:
             Dictionary of form-data parameters for the API request.
         """
-        elevenlabs_settings = settings_manager.get("elevenlabs", {})
+        elevenlabs_settings = settings_manager.get(STT_ELEVENLABS, {})
 
         data = {
             'model_id': elevenlabs_settings.get("model_id", "scribe_v2")
@@ -677,7 +680,8 @@ class ElevenLabsProvider(BaseSTTProvider):
 
             # Log unique speakers
             if has_speaker_info and diarization_location and diarization_location.startswith("words."):
-                speaker_field_name = diarization_location.split('.')[1]
+                _parts = diarization_location.split('.', 1)
+                speaker_field_name = _parts[1] if len(_parts) > 1 else "speaker_id"
                 unique_speakers = set()
                 for w in result['words']:
                     sid = w.get(speaker_field_name)
@@ -693,11 +697,12 @@ class ElevenLabsProvider(BaseSTTProvider):
                     if sid is not None:
                         speaker_counts[sid] = speaker_counts.get(sid, 0) + 1
                 for sid, count in sorted(speaker_counts.items()):
-                    print(f"  {sid}: {count} words")
+                    self.logger.info(f"  {sid}: {count} words")
 
         if has_speaker_info:
             if diarization_location and diarization_location.startswith("words."):
-                speaker_field = diarization_location.split('.')[1]
+                _parts = diarization_location.split('.', 1)
+                speaker_field = _parts[1] if len(_parts) > 1 else "speaker_id"
                 return self._format_diarized_transcript_with_field(result['words'], speaker_field)
             elif diarization_location == "root.diarization" and 'diarization' in result:
                 return self._format_diarized_transcript_from_segments(result)
@@ -936,38 +941,38 @@ class ElevenLabsProvider(BaseSTTProvider):
         """
         if not result or 'diarization' not in result:
             return ""
-        
+
         diarization = result['diarization']
         if not diarization:
             return ""
-        
-        result = []
+
+        output_lines = []
         current_speaker = None
         current_text = []
-        
+
         for segment in diarization:
             speaker = segment.get("speaker")
-            
+
             # If we can't find any speaker info, skip this segment or use default
             if speaker is None:
                 # For debugging, print the problematic segment data
                 self.logger.debug(f"Warning: No speaker info found in segment data: {segment}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker = current_speaker if current_speaker is not None else "Unknown"
-            
+
             # Get the actual segment text
             text = segment.get("text", "")
-            
+
             # Skip empty segments
             if not text.strip():
                 continue
-            
+
             # If new speaker, start a new paragraph
             if speaker != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
                     speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
-                    result.append(f"{speaker_label}{''.join(current_text)}")
+                    output_lines.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
 
                 current_speaker = speaker
@@ -978,9 +983,9 @@ class ElevenLabsProvider(BaseSTTProvider):
         # Add the last paragraph
         if current_text:
             speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
-            result.append(f"{speaker_label}{''.join(current_text)}")
+            output_lines.append(f"{speaker_label}{''.join(current_text)}")
 
-        return "\n\n".join(result)
+        return "\n\n".join(output_lines)
 
     def _format_diarized_transcript_from_speakers(self, result: dict) -> str:
         """Format diarized transcript from ElevenLabs speakers.
@@ -993,32 +998,32 @@ class ElevenLabsProvider(BaseSTTProvider):
         """
         if not result or 'speakers' not in result:
             return ""
-        
+
         speakers = result['speakers']
         if not speakers:
             return ""
-        
-        result = []
+
+        output_lines = []
         current_speaker = None
         current_text = []
-        
+
         for speaker in speakers:
             speaker_id = speaker.get("id")
             segments = speaker.get("segments", [])
-            
+
             # If we can't find any speaker info, skip this speaker or use default
             if speaker_id is None:
                 # For debugging, print the problematic speaker data
                 self.logger.debug(f"Warning: No speaker info found in speaker data: {speaker}")
                 # Use previous speaker if available, otherwise use "Unknown"
                 speaker_id = current_speaker if current_speaker is not None else "Unknown"
-            
+
             # If new speaker, start a new paragraph
             if speaker_id != current_speaker:
                 # Add previous paragraph if it exists
                 if current_text:
                     speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
-                    result.append(f"{speaker_label}{''.join(current_text)}")
+                    output_lines.append(f"{speaker_label}{''.join(current_text)}")
                     current_text = []
 
                 current_speaker = speaker_id
@@ -1031,6 +1036,6 @@ class ElevenLabsProvider(BaseSTTProvider):
         # Add the last paragraph
         if current_text:
             speaker_label = f"Speaker {self._clean_speaker_label(current_speaker)}: " if current_speaker is not None else ""
-            result.append(f"{speaker_label}{''.join(current_text)}")
-        
-        return "\n\n".join(result)
+            output_lines.append(f"{speaker_label}{''.join(current_text)}")
+
+        return "\n\n".join(output_lines)

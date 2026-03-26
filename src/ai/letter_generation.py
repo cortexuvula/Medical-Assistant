@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 from ai.providers.router import call_ai, call_ai_streaming
 from ai.text_processing import clean_text
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 def create_referral_with_openai(text: str, conditions: str = "") -> str:
@@ -26,7 +26,7 @@ def create_referral_with_openai(text: str, conditions: str = "") -> str:
     """
     from utils.error_codes import get_error_message
 
-    model = SETTINGS.get("referral", {}).get("model", "gpt-4")
+    model = settings_manager.get_nested("referral.model", "gpt-4")
 
     # Add conditions to the prompt if provided
     if conditions:
@@ -359,7 +359,7 @@ def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str =
     # Use configured provider/model instead of hardcoded gpt-4o
     provider = settings_manager.get_ai_provider()
     model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
-    temperature = SETTINGS.get("letter", {}).get("temperature", 0.7)
+    temperature = settings_manager.get_nested("letter.temperature", 0.7)
 
     result = call_ai(model, system_message, prompt, temperature)
 
@@ -397,7 +397,7 @@ def create_letter_streaming(
     # Use configured provider/model instead of hardcoded gpt-4o
     provider = settings_manager.get_ai_provider()
     model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
-    temperature = SETTINGS.get("letter", {}).get("temperature", 0.7)
+    temperature = settings_manager.get_nested("letter.temperature", 0.7)
 
     # Use streaming API call
     if on_chunk:

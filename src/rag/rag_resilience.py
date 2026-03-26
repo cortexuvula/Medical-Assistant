@@ -36,8 +36,8 @@ def get_neo4j_circuit_breaker() -> CircuitBreaker:
         recovery_timeout = 30
 
         try:
-            from settings.settings import SETTINGS
-            resilience_config = SETTINGS.get("rag_resilience", {})
+            from settings.settings_manager import settings_manager
+            resilience_config = settings_manager.get("rag_resilience", {})
             failure_threshold = resilience_config.get("neo4j_failure_threshold", 3)
             recovery_timeout = resilience_config.get("neo4j_recovery_timeout", 30)
         except Exception:
@@ -73,8 +73,8 @@ def get_neon_circuit_breaker() -> CircuitBreaker:
         recovery_timeout = 30
 
         try:
-            from settings.settings import SETTINGS
-            resilience_config = SETTINGS.get("rag_resilience", {})
+            from settings.settings_manager import settings_manager
+            resilience_config = settings_manager.get("rag_resilience", {})
             failure_threshold = resilience_config.get("neon_failure_threshold", 5)
             recovery_timeout = resilience_config.get("neon_recovery_timeout", 30)
         except Exception:
@@ -110,8 +110,8 @@ def get_openai_embedding_circuit_breaker() -> CircuitBreaker:
         recovery_timeout = 60
 
         try:
-            from settings.settings import SETTINGS
-            resilience_config = SETTINGS.get("rag_resilience", {})
+            from settings.settings_manager import settings_manager
+            resilience_config = settings_manager.get("rag_resilience", {})
             failure_threshold = resilience_config.get("embedding_failure_threshold", 5)
             recovery_timeout = resilience_config.get("embedding_recovery_timeout", 60)
         except Exception:

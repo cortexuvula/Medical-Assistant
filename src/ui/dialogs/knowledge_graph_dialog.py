@@ -12,6 +12,7 @@ from typing import Optional
 
 from rag.graph_data_provider import EntityType, GraphData, GraphDataProvider, GraphNode
 from ui.components.graph_canvas import GraphCanvas
+from utils.constants import DEFAULT_NEO4J_BOLT_URL
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -450,7 +451,7 @@ class KnowledgeGraphDialog(tk.Toplevel):
                     "2. Scroll to find Neo4j settings\n"
                     "3. Enter your Neo4j URI and password\n\n"
                     "Or set environment variables:\n"
-                    "  NEO4J_URI=bolt://localhost:7687\n"
+                    f"  NEO4J_URI={DEFAULT_NEO4J_BOLT_URL}\n"
                     "  NEO4J_PASSWORD=your_password",
                     parent=self
                 )
@@ -459,7 +460,7 @@ class KnowledgeGraphDialog(tk.Toplevel):
                 messagebox.showinfo(
                     "Configure Neo4j",
                     "To enable the Knowledge Graph, add these to your .env file:\n\n"
-                    "NEO4J_URI=bolt://localhost:7687\n"
+                    f"NEO4J_URI={DEFAULT_NEO4J_BOLT_URL}\n"
                     "NEO4J_USER=neo4j\n"
                     "NEO4J_PASSWORD=your_password\n\n"
                     "Then restart the application.",

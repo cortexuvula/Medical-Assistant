@@ -148,8 +148,8 @@ def get_search_quality_config() -> SearchQualityConfig:
     with _default_config_lock:
         if _default_config is None:
             try:
-                from settings.settings import SETTINGS
-                config_dict = SETTINGS.get("rag_search_quality", {})
+                from settings.settings_manager import settings_manager
+                config_dict = settings_manager.get("rag_search_quality", {})
                 _default_config = SearchQualityConfig.from_dict(config_dict)
             except Exception:
                 _default_config = SearchQualityConfig()

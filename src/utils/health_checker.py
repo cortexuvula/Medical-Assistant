@@ -286,10 +286,11 @@ def _check_stt_provider() -> ServiceHealthResult:
     """Check configured STT provider connectivity."""
     start_time = time.perf_counter()
     try:
-        from settings.settings import SETTINGS
+        from settings.settings_manager import settings_manager
         from stt_providers.factory import get_stt_provider
 
-        provider_name = SETTINGS.get("stt_provider", "groq")
+        from utils.constants import STT_GROQ
+        provider_name = settings_manager.get("stt_provider", STT_GROQ)
         provider = get_stt_provider(provider_name)
 
         if provider is None:

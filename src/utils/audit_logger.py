@@ -122,8 +122,8 @@ class AuditLogger:
 
         # Load rotation settings
         try:
-            from settings.settings import SETTINGS
-            audit_cfg = SETTINGS.get("audit_log", {})
+            from settings.settings_manager import settings_manager
+            audit_cfg = settings_manager.get("audit_log", {})
         except Exception:
             audit_cfg = {}
         max_size_mb = audit_cfg.get("max_size_mb", 100)

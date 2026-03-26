@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from utils.structured_logging import get_logger, timed
 
 from rag.models import EmbeddingRequest, EmbeddingResponse
+from utils.constants import PROVIDER_OPENAI
 from rag.exceptions import (
     EmbeddingError,
     RateLimitError as RAGRateLimitError,
@@ -109,7 +110,7 @@ class EmbeddingManager:
                     try:
                         from managers.api_key_manager import get_api_key_manager
                         manager = get_api_key_manager()
-                        api_key = manager.get_key("openai")
+                        api_key = manager.get_key(PROVIDER_OPENAI)
                     except Exception as e:
                         logger.debug(f"Could not get OpenAI API key from api_key_manager: {e}")
 
@@ -332,7 +333,7 @@ class EmbeddingManager:
                 try:
                     from managers.api_key_manager import get_api_key_manager
                     manager = get_api_key_manager()
-                    api_key = manager.get_key("openai")
+                    api_key = manager.get_key(PROVIDER_OPENAI)
                 except Exception as e:
                     logger.debug(f"Could not get OpenAI API key from api_key_manager (async): {e}")
 

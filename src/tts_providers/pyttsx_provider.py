@@ -2,7 +2,13 @@
 Pyttsx3 TTS provider for offline text-to-speech synthesis.
 """
 
-import pyttsx3
+try:
+    import pyttsx3
+    PYTTSX3_AVAILABLE = True
+except ImportError:
+    pyttsx3 = None
+    PYTTSX3_AVAILABLE = False
+
 import tempfile
 import os
 from typing import List, Dict, Optional
@@ -10,7 +16,7 @@ from pydub import AudioSegment
 import threading
 
 from .base import BaseTTSProvider
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class PyttsxProvider(BaseTTSProvider):
@@ -47,6 +53,11 @@ class PyttsxProvider(BaseTTSProvider):
         Args:
             api_key: Not used for offline TTS
         """
+        if not PYTTSX3_AVAILABLE:
+            raise ImportError(
+                "pyttsx3 package is required for offline TTS. "
+                "Install it with: pip install pyttsx3"
+            )
         super().__init__(api_key)
         self._engine = None
         self._lock = threading.Lock()  # Thread safety for engine access
@@ -59,7 +70,7 @@ class PyttsxProvider(BaseTTSProvider):
                 self._engine = pyttsx3.init()
                 
                 # Get TTS settings
-                tts_settings = SETTINGS.get("tts", {})
+                tts_settings = settings_manager.get("tts", {})
                 
                 # Set voice properties
                 rate = tts_settings.get("rate", 150)

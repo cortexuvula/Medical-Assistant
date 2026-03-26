@@ -12,8 +12,11 @@ class focused on core queue operations.
 
 import json
 import os
+import time
+import threading
 from typing import Any, Dict, Optional, List
 
+from settings.settings_manager import settings_manager
 from utils.error_handling import ErrorContext
 from utils.exceptions import DatabaseError
 from utils.structured_logging import get_logger
@@ -72,18 +75,30 @@ class ReprocessingMixin:
             audio_data = None
 
             if audio_path and os.path.exists(audio_path):
-                try:
-                    from pydub import AudioSegment
-                    audio_data = AudioSegment.from_mp3(audio_path)
-                    logger.info("Loaded audio for reprocessing", audio_path=audio_path, recording_id=recording_id)
-                except Exception as e:
-                    logger.error(
-                        "Failed to load audio for reprocessing",
+                # Validate file size before loading into memory
+                from audio.audio import AudioHandler
+                is_valid, size_mb, max_mb = AudioHandler.validate_audio_file_size(audio_path)
+                if not is_valid:
+                    logger.warning(
+                        "Audio file too large for reprocessing, using existing transcript",
                         audio_path=audio_path,
+                        size_mb=size_mb,
+                        max_mb=max_mb,
                         recording_id=recording_id,
-                        error=str(e)
                     )
-                    # Continue without audio - transcript might be available
+                else:
+                    try:
+                        from pydub import AudioSegment
+                        audio_data = AudioSegment.from_mp3(audio_path)
+                        logger.info("Loaded audio for reprocessing", audio_path=audio_path, recording_id=recording_id)
+                    except Exception as e:
+                        logger.error(
+                            "Failed to load audio for reprocessing",
+                            audio_path=audio_path,
+                            recording_id=recording_id,
+                            error=str(e)
+                        )
+                        # Continue without audio - transcript might be available
 
             # Reset processing fields
             self.app.db.update_recording(
@@ -101,7 +116,7 @@ class ReprocessingMixin:
                 'audio_data': audio_data,
                 'transcript': recording.get('transcript', ''),  # Use existing transcript if available
                 'patient_name': recording.get('patient_name', 'Patient'),
-                'context': self._extract_context_from_metadata(recording.get('metadata')),
+                'context': recording.get('metadata', {}).get('context', '') if isinstance(recording.get('metadata'), dict) else '',
                 'process_options': {
                     'generate_soap': not bool(recording.get('soap_note')),
                     'generate_referral': not bool(recording.get('referral')),
@@ -170,9 +185,11 @@ class ReprocessingMixin:
         Returns:
             True if retry should be attempted
         """
-        max_retries = recording_data.get("max_retries", 3)
-        retry_count = recording_data.get("retry_count", 0)
-        return retry_count < max_retries
+        if not settings_manager.get("auto_retry_failed", True):
+            return False
+
+        max_retries = settings_manager.get("max_retry_attempts", 3)
+        return recording_data.get("retry_count", 0) < max_retries
 
     def _retry_task(self, task_id: str, recording_data: Dict, error_msg: str):
         """Retry a failed task with exponential backoff.
@@ -184,32 +201,21 @@ class ReprocessingMixin:
         """
         retry_count = recording_data.get("retry_count", 0) + 1
         recording_data["retry_count"] = retry_count
+        recording_data["last_error"] = error_msg
 
-        # Exponential backoff: 2^retry * base_delay (max 60 seconds)
-        base_delay = 2
-        delay = min(60, base_delay ** retry_count)
+        # Calculate backoff delay - faster recovery for better UX
+        # 0.5s, 1s, 2s, 4s... up to 30s (instead of 2s, 4s, 8s... up to 5 min)
+        delay = min(30, 0.5 * (2 ** retry_count))
 
-        logger.info(
-            "Scheduling task retry",
-            task_id=task_id,
-            retry_count=retry_count,
-            delay_seconds=delay,
-            error=error_msg
-        )
-
-        # Update stats
         with self.lock:
             self.stats["total_retried"] += 1
 
-        # Re-add to queue after delay (in background)
-        import threading
+        logger.info("Retrying task", task_id=task_id, attempt=retry_count, delay_seconds=delay)
 
-        def delayed_requeue():
-            import time
+        # Schedule retry
+        def delayed_retry():
             time.sleep(delay)
             if not self.shutdown_event.is_set():
-                self.queue.put((task_id, recording_data))
-                logger.info("Task requeued after retry delay", task_id=task_id)
+                self.queue.put((recording_data["priority"] - 1, task_id, recording_data))
 
-        retry_thread = threading.Thread(target=delayed_requeue, daemon=True)
-        retry_thread.start()
+        threading.Thread(target=delayed_retry, daemon=True).start()

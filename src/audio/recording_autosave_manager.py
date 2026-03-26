@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from audio.audio_state_manager import AudioStateManager
 
 from managers.data_folder_manager import data_folder_manager
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +62,7 @@ class RecordingAutoSaveManager:
         self._save_complete.set()  # Initially set (no save in progress)
 
         # Configuration
-        self._interval_seconds = interval_seconds or SETTINGS.get("recording_autosave_interval", 60)
+        self._interval_seconds = interval_seconds or settings_manager.get("recording_autosave_interval", 60)
 
         # Session state (protected by _lock)
         self._is_running = False
@@ -112,7 +112,7 @@ class RecordingAutoSaveManager:
                 return
 
             # Check if enabled in settings
-            if not SETTINGS.get("recording_autosave_enabled", True):
+            if not settings_manager.get("recording_autosave_enabled", True):
                 logger.info("Recording auto-save is disabled in settings")
                 return
 
@@ -394,7 +394,7 @@ class RecordingAutoSaveManager:
                             # This session should have been cleaned up - try again
                             logger.info(f"Cleaning up leftover completed session: {session_dir.name}")
                             self._cleanup_session(session_dir)
-                    except Exception as e:
+                    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                         logger.warning(f"Error reading session metadata: {e}")
 
         return False
@@ -431,7 +431,7 @@ class RecordingAutoSaveManager:
                                 "sample_width": metadata.get("sample_width"),
                                 "channels": metadata.get("channels"),
                             }
-                    except Exception as e:
+                    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                         logger.warning(f"Error reading session for recovery info: {e}")
 
         return None

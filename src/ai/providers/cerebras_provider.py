@@ -33,11 +33,12 @@ from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
 from utils.timeout_config import get_timeout
 from utils.http_client_manager import get_http_client_manager
+from utils.constants import PROVIDER_CEREBRAS
 
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 
 
-@secure_api_call("cerebras")
+@secure_api_call(PROVIDER_CEREBRAS)
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -60,15 +61,15 @@ def _cerebras_api_call(model: str, messages: List[Dict[str, str]], temperature: 
         APIError: On API failures
         APITimeoutError: On request timeout
     """
-    timeout_seconds = get_timeout("cerebras")
+    timeout_seconds = get_timeout(PROVIDER_CEREBRAS)
 
     try:
         security_manager = get_security_manager()
-        api_key = security_manager.get_api_key("cerebras")
+        api_key = security_manager.get_api_key(PROVIDER_CEREBRAS)
         if not api_key:
             raise AuthenticationError("Cerebras API key not configured")
 
-        http_client = get_http_client_manager().get_httpx_client("cerebras", timeout_seconds)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_CEREBRAS, timeout_seconds)
         client = OpenAI(
             api_key=api_key,
             base_url=CEREBRAS_BASE_URL,
@@ -85,7 +86,7 @@ def _cerebras_api_call(model: str, messages: List[Dict[str, str]], temperature: 
         raise APITimeoutError(
             f"Cerebras request timed out after {timeout_seconds}s: {e}",
             timeout_seconds=timeout_seconds,
-            service="cerebras"
+            service=PROVIDER_CEREBRAS
         )
     except Exception as e:
         error_msg = str(e)
@@ -97,7 +98,7 @@ def _cerebras_api_call(model: str, messages: List[Dict[str, str]], temperature: 
             raise APITimeoutError(
                 f"Cerebras request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
-                service="cerebras"
+                service=PROVIDER_CEREBRAS
             )
         else:
             raise APIError(f"Cerebras API error: {error_msg}")
@@ -117,7 +118,7 @@ def call_cerebras(model: str, system_message: str, prompt: str, temperature: flo
     """
     security_manager = get_security_manager()
 
-    is_valid, error = validate_model_name(model, "cerebras")
+    is_valid, error = validate_model_name(model, PROVIDER_CEREBRAS)
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return AIResult.failure(message, error_code=title)
@@ -141,14 +142,14 @@ def call_cerebras(model: str, system_message: str, prompt: str, temperature: flo
         if not content:
             return AIResult.failure("Cerebras returned empty content (model may have returned tool calls only)", error_code="API_EMPTY_RESPONSE")
         text = content.strip()
-        return AIResult.success(text, model=model, provider="cerebras")
+        return AIResult.success(text, model=model, provider=PROVIDER_CEREBRAS)
     except APITimeoutError as e:
         logger.error(f"Cerebras API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logger.error(f"Cerebras API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("cerebras", e)
+        error_code, details = format_api_error(PROVIDER_CEREBRAS, e)
         title, message = get_error_message(error_code, details, model)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
@@ -178,7 +179,7 @@ def call_cerebras_streaming(
     """
     security_manager = get_security_manager()
 
-    is_valid, error = validate_model_name(model, "cerebras")
+    is_valid, error = validate_model_name(model, PROVIDER_CEREBRAS)
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         result = AIResult.failure(message, error_code=title)
@@ -192,14 +193,14 @@ def call_cerebras_streaming(
         logger.info(f"Making streaming Cerebras API call with model: {model}")
         log_api_call_debug("Cerebras (streaming)", model, temperature, system_message, prompt)
 
-        api_key = security_manager.get_api_key("cerebras")
+        api_key = security_manager.get_api_key(PROVIDER_CEREBRAS)
         if not api_key:
             result = AIResult.failure("Cerebras API key not configured", error_code="AUTH_ERROR")
             on_chunk(str(result))
             return result
 
-        timeout_seconds = get_timeout("cerebras")
-        http_client = get_http_client_manager().get_httpx_client("cerebras", timeout_seconds)
+        timeout_seconds = get_timeout(PROVIDER_CEREBRAS)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_CEREBRAS, timeout_seconds)
         client = OpenAI(
             api_key=api_key,
             base_url=CEREBRAS_BASE_URL,
@@ -224,7 +225,7 @@ def call_cerebras_streaming(
                     full_response += text
                     on_chunk(text)
 
-        return AIResult.success(full_response.strip(), model=model, provider="cerebras")
+        return AIResult.success(full_response.strip(), model=model, provider=PROVIDER_CEREBRAS)
 
     except Exception as e:
         logger.error(f"Streaming Cerebras error with model {model}: {str(e)}")

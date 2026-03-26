@@ -226,11 +226,19 @@ class RAGConversationManager:
             if not row:
                 return None
 
+            def _safe_json_list(val):
+                if not val:
+                    return []
+                try:
+                    return json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    return []
+
             session = ConversationSession(
                 session_id=row[0],
                 summary_text=row[1] or "",
-                key_topics=json.loads(row[2]) if row[2] else [],
-                key_entities=json.loads(row[3]) if row[3] else [],
+                key_topics=_safe_json_list(row[2]),
+                key_entities=_safe_json_list(row[3]),
             )
 
             # Load exchanges
@@ -249,7 +257,7 @@ class RAGConversationManager:
                     exchange_index=erow[0],
                     query_text=erow[1],
                     response_summary=erow[2] or "",
-                    extracted_entities=json.loads(erow[3]) if erow[3] else [],
+                    extracted_entities=_safe_json_list(erow[3]),
                     is_followup=bool(erow[4]),
                     followup_confidence=erow[5] or 0.0,
                     intent_type=erow[6] or "new_topic",

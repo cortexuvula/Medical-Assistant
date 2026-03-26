@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Optional, List
 
 from ai.ai import call_ai
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.constants import PROVIDER_OPENAI
 
 
 @dataclass
@@ -78,11 +79,10 @@ Return ONLY the refined translation, nothing else."""
 
     def _load_settings(self):
         """Load refinement settings from application settings."""
-        translation_settings = SETTINGS.get("translation", {})
-        self.refinement_enabled = translation_settings.get("llm_refinement_enabled", False)
-        self.refinement_provider = translation_settings.get("refinement_provider", "openai")
-        self.refinement_model = translation_settings.get("refinement_model", "gpt-3.5-turbo")
-        self.refinement_temperature = translation_settings.get("refinement_temperature", 0.1)
+        self.refinement_enabled = settings_manager.get_nested("translation.llm_refinement_enabled", False)
+        self.refinement_provider = settings_manager.get_nested("translation.refinement_provider", PROVIDER_OPENAI)
+        self.refinement_model = settings_manager.get_nested("translation.refinement_model", "gpt-3.5-turbo")
+        self.refinement_temperature = settings_manager.get_nested("translation.refinement_temperature", 0.1)
 
     def reload_settings(self):
         """Reload settings from application settings."""

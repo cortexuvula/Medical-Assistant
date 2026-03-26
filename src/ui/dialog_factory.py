@@ -95,8 +95,8 @@ class BaseDialog:
     def _detect_dark_theme(self) -> bool:
         """Detect if dark theme is active."""
         try:
-            from settings.settings import SETTINGS
-            theme = SETTINGS.get("theme", "flatly")
+            from settings.settings_manager import settings_manager
+            theme = settings_manager.get("theme", "flatly")
             return theme in ["darkly", "solar", "cyborg", "superhero"]
         except Exception:
             return False

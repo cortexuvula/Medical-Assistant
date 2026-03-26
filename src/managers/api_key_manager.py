@@ -10,6 +10,11 @@ import tkinter as tk
 from typing import Dict, Optional
 from managers.data_folder_manager import data_folder_manager
 from utils.structured_logging import get_logger
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_MODULATE,
+)
 
 logger = get_logger(__name__)
 
@@ -19,14 +24,14 @@ class APIKeyManager:
 
     # Provider name mappings for secure storage
     PROVIDER_KEYS = {
-        'openai': 'OPENAI_API_KEY',
-        'deepgram': 'DEEPGRAM_API_KEY',
-        'anthropic': 'ANTHROPIC_API_KEY',
-        'elevenlabs': 'ELEVENLABS_API_KEY',
-        'groq': 'GROQ_API_KEY',
-        'gemini': 'GEMINI_API_KEY',
-        'cerebras': 'CEREBRAS_API_KEY',
-        'modulate': 'MODULATE_API_KEY',
+        PROVIDER_OPENAI: 'OPENAI_API_KEY',
+        STT_DEEPGRAM: 'DEEPGRAM_API_KEY',
+        PROVIDER_ANTHROPIC: 'ANTHROPIC_API_KEY',
+        STT_ELEVENLABS: 'ELEVENLABS_API_KEY',
+        PROVIDER_GROQ: 'GROQ_API_KEY',
+        PROVIDER_GEMINI: 'GEMINI_API_KEY',
+        PROVIDER_CEREBRAS: 'CEREBRAS_API_KEY',
+        STT_MODULATE: 'MODULATE_API_KEY',
     }
 
     def __init__(self):
@@ -50,11 +55,11 @@ class APIKeyManager:
         security_mgr = self._get_security_manager()
 
         # Check for AI provider keys
-        ai_providers = ['openai', 'anthropic', 'gemini', 'groq', 'cerebras']
+        ai_providers = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS]
         has_ai_key = any(security_mgr.get_api_key(p) for p in ai_providers)
 
         # Check for STT provider keys
-        stt_providers = ['deepgram', 'elevenlabs', 'groq', 'modulate']
+        stt_providers = [STT_DEEPGRAM, STT_ELEVENLABS, PROVIDER_GROQ, STT_MODULATE]
         has_stt_key = any(security_mgr.get_api_key(p) for p in stt_providers)
 
         return has_ai_key and has_stt_key
@@ -210,13 +215,13 @@ class APIKeyManager:
 
             # Store keys securely using encryption
             keys_to_store = {
-                'openai': openai_key,
-                'deepgram': deepgram_key,
-                'anthropic': anthropic_key,
-                'gemini': gemini_key,
-                'elevenlabs': elevenlabs_key,
-                'groq': groq_key,
-                'cerebras': cerebras_key,
+                PROVIDER_OPENAI: openai_key,
+                STT_DEEPGRAM: deepgram_key,
+                PROVIDER_ANTHROPIC: anthropic_key,
+                PROVIDER_GEMINI: gemini_key,
+                STT_ELEVENLABS: elevenlabs_key,
+                PROVIDER_GROQ: groq_key,
+                PROVIDER_CEREBRAS: cerebras_key,
             }
 
             stored_count = 0

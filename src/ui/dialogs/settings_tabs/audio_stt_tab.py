@@ -11,6 +11,7 @@ import ttkbootstrap as ttk
 
 from ui.tooltip import ToolTip
 from settings.settings_manager import settings_manager
+from utils.constants import STT_ELEVENLABS, STT_DEEPGRAM, STT_GROQ, STT_MODULATE, TTS_ELEVENLABS, TTS_SYSTEM
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,8 +57,8 @@ class AudioSttTabMixin:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="ElevenLabs")
 
-        elevenlabs_settings = settings_manager.get("elevenlabs", {})
-        defaults = settings_manager.get_default("elevenlabs", {})
+        elevenlabs_settings = settings_manager.get(STT_ELEVENLABS, {})
+        defaults = settings_manager.get_default(STT_ELEVENLABS, {})
 
         self.widgets['audio_stt']['elevenlabs'] = {}
         row = 0
@@ -179,8 +180,8 @@ class AudioSttTabMixin:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Deepgram")
 
-        deepgram_settings = settings_manager.get("deepgram", {})
-        defaults = settings_manager.get_default("deepgram", {})
+        deepgram_settings = settings_manager.get(STT_DEEPGRAM, {})
+        defaults = settings_manager.get_default(STT_DEEPGRAM, {})
 
         self.widgets['audio_stt']['deepgram'] = {}
         row = 0
@@ -236,8 +237,8 @@ class AudioSttTabMixin:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Groq")
 
-        groq_settings = settings_manager.get("groq", {})
-        defaults = settings_manager.get_default("groq", {})
+        groq_settings = settings_manager.get(STT_GROQ, {})
+        defaults = settings_manager.get_default(STT_GROQ, {})
 
         self.widgets['audio_stt']['groq'] = {}
         row = 0
@@ -271,8 +272,8 @@ class AudioSttTabMixin:
         frame = ttk.Frame(parent_notebook, padding=15)
         parent_notebook.add(frame, text="Modulate")
 
-        modulate_settings = settings_manager.get("modulate", {})
-        defaults = settings_manager.get_default("modulate", {})
+        modulate_settings = settings_manager.get(STT_MODULATE, {})
+        defaults = settings_manager.get_default(STT_MODULATE, {})
 
         self.widgets['audio_stt']['modulate'] = {}
         row = 0
@@ -347,10 +348,10 @@ class AudioSttTabMixin:
         provider_label = ttk.Label(frame, text="TTS Provider:")
         provider_label.grid(row=row, column=0, sticky="w", pady=10)
         ToolTip(provider_label, "Text-to-speech service provider")
-        provider_var = tk.StringVar(value=tts_settings.get("provider", defaults.get("provider", "elevenlabs")))
+        provider_var = tk.StringVar(value=tts_settings.get("provider", defaults.get("provider", TTS_ELEVENLABS)))
         self.widgets['audio_stt']['tts']['provider'] = provider_var
         provider_combo = ttk.Combobox(frame, textvariable=provider_var, width=30,
-                                      values=["elevenlabs", "system"])
+                                      values=[TTS_ELEVENLABS, TTS_SYSTEM])
         provider_combo.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=10)
         ToolTip(provider_combo, "elevenlabs: high-quality AI voices; system: OS built-in voices")
         row += 1

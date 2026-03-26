@@ -25,6 +25,7 @@ from ui.dialogs.sub_agent_dialog import SubAgentDialog
 from ui.dialogs.template_selection_dialog import TemplateSelectionDialog
 from ui.dialogs.save_template_dialog import SaveTemplateDialog
 from ai.model_provider import model_provider
+from utils.constants import PROVIDER_OPENAI
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
 
@@ -102,7 +103,7 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         # AI Provider selection
         ttk.Label(parent, text="AI Provider:").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
         
-        current_provider = config.get("provider", self.settings.get("ai_provider", "openai"))
+        current_provider = config.get("provider", self.settings.get("ai_provider", PROVIDER_OPENAI))
         provider_var = tk.StringVar(value=current_provider)
         self.widgets[agent_key]["provider"] = provider_var
         
@@ -579,7 +580,7 @@ class AdvancedAgentSettingsDialog(AgentSettingsDialog):
         # Get basic config with safe defaults
         config = {
             "enabled": widgets.get("enabled", tk.BooleanVar(value=False)).get() if "enabled" in widgets else False,
-            "provider": widgets.get("provider", tk.StringVar(value="openai")).get() if "provider" in widgets else "openai",
+            "provider": widgets.get("provider", tk.StringVar(value=PROVIDER_OPENAI)).get() if "provider" in widgets else PROVIDER_OPENAI,
             "model": widgets.get("model", tk.StringVar(value="gpt-4")).get() if "model" in widgets else "gpt-4",
             "temperature": round(widgets.get("temperature", tk.DoubleVar(value=0.7)).get(), 2) if "temperature" in widgets else 0.7,
             "max_tokens": widgets.get("max_tokens", tk.IntVar(value=300)).get() if "max_tokens" in widgets else 300,

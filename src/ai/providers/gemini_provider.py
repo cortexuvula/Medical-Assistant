@@ -34,9 +34,10 @@ from utils.resilience import resilient_api_call
 from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
 from utils.timeout_config import get_timeout
+from utils.constants import PROVIDER_GEMINI
 
 
-@secure_api_call("gemini")
+@secure_api_call(PROVIDER_GEMINI)
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -69,7 +70,7 @@ def _gemini_api_call(
         APIError: On API failures
         APITimeoutError: On request timeout
     """
-    timeout_seconds = get_timeout("gemini")
+    timeout_seconds = get_timeout(PROVIDER_GEMINI)
 
     try:
         # Build generation config
@@ -102,7 +103,7 @@ def _gemini_api_call(
             raise APITimeoutError(
                 f"Gemini request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
-                service="gemini"
+                service=PROVIDER_GEMINI
             )
         else:
             raise APIError(f"Gemini API error: {error_msg}")
@@ -133,7 +134,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
     security_manager = get_security_manager()
 
     # Get API key from secure storage or environment
-    api_key = security_manager.get_api_key("gemini")
+    api_key = security_manager.get_api_key(PROVIDER_GEMINI)
     if not api_key:
         api_key = os.getenv("GEMINI_API_KEY")
 
@@ -143,7 +144,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
         return AIResult.failure(message, error_code=title)
 
     # Validate API key format
-    is_valid, error = validate_api_key("gemini", api_key)
+    is_valid, error = validate_api_key(PROVIDER_GEMINI, api_key)
     if not is_valid:
         logger.error(f"Invalid Gemini API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
@@ -170,7 +171,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
             system_message=system_message,
             temperature=temperature
         )
-        return AIResult.success(response_text.strip(), model=model_name, provider="gemini")
+        return AIResult.success(response_text.strip(), model=model_name, provider=PROVIDER_GEMINI)
 
     except APITimeoutError as e:
         logger.error(f"Gemini API timeout with model {model_name}: {str(e)}")
@@ -178,7 +179,7 @@ def call_gemini(model_name: str, system_message: str, prompt: str, temperature: 
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logger.error(f"Gemini API error with model {model_name}: {str(e)}")
-        error_code, details = format_api_error("gemini", e)
+        error_code, details = format_api_error(PROVIDER_GEMINI, e)
         title, message = get_error_message(error_code, details, model_name)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:

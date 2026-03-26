@@ -11,7 +11,8 @@ from pydub import AudioSegment
 from deepgram import DeepgramClient, PrerecordedOptions
 
 from .base import BaseSTTProvider
-from settings.settings import SETTINGS, _DEFAULT_SETTINGS
+from settings.settings_manager import settings_manager
+from utils.constants import STT_DEEPGRAM
 from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from utils.resilience import resilient_api_call, retry
 from core.config import get_config
@@ -23,7 +24,7 @@ class DeepgramProvider(BaseSTTProvider):
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
-        return "deepgram"
+        return STT_DEEPGRAM
 
     @property
     def supports_diarization(self) -> bool:
@@ -40,7 +41,7 @@ class DeepgramProvider(BaseSTTProvider):
         super().__init__(api_key, language)
         self.client = DeepgramClient(api_key=api_key) if api_key else None
     
-    @secure_api_call("deepgram")
+    @secure_api_call(STT_DEEPGRAM)
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,
@@ -91,8 +92,8 @@ class DeepgramProvider(BaseSTTProvider):
         if not self.client:
             raise TranscriptionError("Deepgram client not initialized - check API key")
         
-        # Get Deepgram settings from SETTINGS
-        deepgram_settings = SETTINGS.get("deepgram", _DEFAULT_SETTINGS["deepgram"])
+        # Get Deepgram settings
+        deepgram_settings = settings_manager.get(STT_DEEPGRAM, settings_manager.get_default(STT_DEEPGRAM, {}))
         
         # Prepare a buffer
         buf = None

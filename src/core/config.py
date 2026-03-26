@@ -15,6 +15,11 @@ from utils.structured_logging import get_logger
 
 from utils.exceptions import ConfigurationError
 from utils.validation import validate_api_key, validate_model_name
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_MODULATE,
+)
 
 
 class Environment(Enum):
@@ -187,9 +192,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.0,
                 provider_models={
-                    "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514",
-                    "gemini": "gemini-1.5-pro"
+                    PROVIDER_OLLAMA: "llama3",
+                    PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
+                    PROVIDER_GEMINI: "gemini-1.5-pro"
                 }
             ),
             "improve_text": AITaskConfig(
@@ -197,9 +202,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514",
-                    "gemini": "gemini-1.5-pro"
+                    PROVIDER_OLLAMA: "llama3",
+                    PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
+                    PROVIDER_GEMINI: "gemini-1.5-pro"
                 }
             ),
             "soap_note": AITaskConfig(
@@ -208,9 +213,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514",
-                    "gemini": "gemini-1.5-pro"
+                    PROVIDER_OLLAMA: "llama3",
+                    PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
+                    PROVIDER_GEMINI: "gemini-1.5-pro"
                 }
             ),
             "referral": AITaskConfig(
@@ -218,9 +223,9 @@ class Config:
                 model="gpt-3.5-turbo",
                 temperature=0.7,
                 provider_models={
-                    "ollama": "llama3",
-                    "anthropic": "claude-sonnet-4-20250514",
-                    "gemini": "gemini-1.5-pro"
+                    PROVIDER_OLLAMA: "llama3",
+                    PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
+                    PROVIDER_GEMINI: "gemini-1.5-pro"
                 }
             )
         }
@@ -306,7 +311,7 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception as e:
+        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
             self.logger.error(f"Error loading config file {file_path}: {e}")
             return {}
     
@@ -355,13 +360,13 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
                     setattr(self.transcription, key, value)
         
         # Apply provider-specific configurations
-        if "deepgram" in config:
-            for key, value in config["deepgram"].items():
+        if STT_DEEPGRAM in config:
+            for key, value in config[STT_DEEPGRAM].items():
                 if hasattr(self.deepgram, key):
                     setattr(self.deepgram, key, value)
-        
-        if "elevenlabs" in config:
-            for key, value in config["elevenlabs"].items():
+
+        if STT_ELEVENLABS in config:
+            for key, value in config[STT_ELEVENLABS].items():
                 if hasattr(self.elevenlabs, key):
                     setattr(self.elevenlabs, key, value)
         
@@ -412,7 +417,7 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
         
         # Validate AI models
         for task_name, task_config in self.ai_tasks.items():
-            is_valid, error = validate_model_name(task_config.model, "openai")
+            is_valid, error = validate_model_name(task_config.model, PROVIDER_OPENAI)
             if not is_valid:
                 errors.append(f"Invalid model for {task_name}: {error}")
         
@@ -443,8 +448,8 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
             "storage": asdict(self.storage),
             "ui": asdict(self.ui),
             "transcription": asdict(self.transcription),
-            "deepgram": asdict(self.deepgram),
-            "elevenlabs": asdict(self.elevenlabs),
+            STT_DEEPGRAM: asdict(self.deepgram),
+            STT_ELEVENLABS: asdict(self.elevenlabs),
             "ai_tasks": {
                 name: asdict(config) for name, config in self.ai_tasks.items()
             }
@@ -453,12 +458,14 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
     def get_api_key(self, provider: str) -> Optional[str]:
         """Get API key for a provider from environment variables."""
         key_mapping = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "deepgram": "DEEPGRAM_API_KEY",
-            "elevenlabs": "ELEVENLABS_API_KEY",
+            PROVIDER_OPENAI: "OPENAI_API_KEY",
+            PROVIDER_ANTHROPIC: "ANTHROPIC_API_KEY",
+            PROVIDER_GEMINI: "GEMINI_API_KEY",
+            PROVIDER_GROQ: "GROQ_API_KEY",
+            STT_DEEPGRAM: "DEEPGRAM_API_KEY",
+            STT_ELEVENLABS: "ELEVENLABS_API_KEY",
+            STT_MODULATE: "MODULATE_API_KEY",
+            PROVIDER_CEREBRAS: "CEREBRAS_API_KEY",
         }
 
         env_var = key_mapping.get(provider.lower())
@@ -473,8 +480,8 @@ Your role is to craft detailed SOAP notes using a step-by-step thought process, 
 
         # AI providers and STT providers
         all_providers = [
-            "openai", "anthropic", "gemini",  # AI
-            "groq", "deepgram", "elevenlabs"  # STT
+            PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,  # AI
+            PROVIDER_GROQ, STT_DEEPGRAM, STT_ELEVENLABS  # STT
         ]
 
         for provider in all_providers:

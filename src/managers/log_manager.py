@@ -57,9 +57,8 @@ def _get_logging_settings() -> dict:
                     logging_settings = settings.get("logging", {})
                     # Merge with defaults
                     return {**defaults, **logging_settings}
-    except Exception as e:
-        import sys
-        print(f"Warning: Failed to load logging settings: {e}", file=sys.stderr)
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Failed to load logging settings: {e}")
 
     return defaults
 

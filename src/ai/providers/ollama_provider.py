@@ -22,7 +22,8 @@ from utils.error_codes import get_error_message
 from utils.validation import sanitize_prompt
 from utils.exceptions import AIResult
 from utils.http_client_manager import get_http_client_manager
-from settings.settings import SETTINGS
+from utils.constants import PROVIDER_OLLAMA
+from settings.settings_manager import settings_manager
 
 
 _cached_models = {"models": None, "timestamp": 0}
@@ -71,19 +72,20 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
     system_message = sanitize_prompt(system_message)
 
     # Get pooled session for connection reuse
-    session = get_http_client_manager().get_requests_session("ollama")
+    session = get_http_client_manager().get_requests_session(PROVIDER_OLLAMA)
 
-    # Get Ollama API URL from environment or use default
-    ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+    # Get Ollama API URL from environment, settings, or default
+    from utils.constants import get_ollama_url
+    ollama_url = get_ollama_url()
     base_url = ollama_url.rstrip("/")  # Remove trailing slash if present
 
     # Get model from settings based on the task
     model_key = get_model_key_for_task(system_message, prompt)
-    model = SETTINGS.get(model_key, {}).get("ollama_model", "")
+    model = settings_manager.get_nested(f"{model_key}.ollama_model", "")
 
     # If no task-specific model configured, use global default or auto-detect
     if not model:
-        model = SETTINGS.get("ollama_default_model", "")
+        model = settings_manager.get("ollama_default_model", "")
     if not model:
         model = _get_first_available_model(session, base_url)
     if not model:
@@ -166,10 +168,10 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
 
                 # Chat API format
                 if "message" in result and "content" in result["message"]:
-                    return AIResult.success(result["message"]["content"].strip(), model=model, provider="ollama")
+                    return AIResult.success(result["message"]["content"].strip(), model=model, provider=PROVIDER_OLLAMA)
                 # Generate API format
                 if "response" in result:
-                    return AIResult.success(result["response"].strip(), model=model, provider="ollama")
+                    return AIResult.success(result["response"].strip(), model=model, provider=PROVIDER_OLLAMA)
 
                 logger.warning(f"Unexpected Ollama response keys: {list(result.keys())}")
                 last_error = f"Unexpected response format from /api/{endpoint_name}"
@@ -231,10 +233,11 @@ def fallback_ollama_generate(model: str, system_message: str, prompt: str, tempe
     Returns:
         AIResult: Type-safe result wrapper.
     """
-    ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+    from utils.constants import get_ollama_url
+    ollama_url = get_ollama_url()
     base_url = ollama_url.rstrip("/")
 
-    session = get_http_client_manager().get_requests_session("ollama")
+    session = get_http_client_manager().get_requests_session(PROVIDER_OLLAMA)
 
     logger.info(f"Trying fallback generate API for Ollama model: {model}")
 
@@ -258,7 +261,7 @@ def fallback_ollama_generate(model: str, system_message: str, prompt: str, tempe
         try:
             result = json.loads(response.text.strip())
             if "response" in result:
-                return AIResult.success(result["response"].strip(), model=model, provider="ollama")
+                return AIResult.success(result["response"].strip(), model=model, provider=PROVIDER_OLLAMA)
             else:
                 return AIResult.failure(
                     f"Unable to get proper response from Ollama. Raw response: {response.text[:100]}...",

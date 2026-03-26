@@ -65,7 +65,7 @@ class AIProcessor:
             self.api_key = api_key
         else:
             security_manager = get_security_manager()
-            self.api_key = security_manager.get_api_key("openai")
+            self.api_key = security_manager.get_api_key(PROVIDER_OPENAI)
         
     @handle_errors(ErrorSeverity.ERROR, error_message="Failed to refine text", return_type="result")
     def refine_text(self, text: str) -> OperationResult[Dict[str, str]]:
@@ -558,7 +558,7 @@ class AIProcessor:
             ai_provider = analysis_provider
             logger.info("Advanced Analysis using specific provider", provider=ai_provider)
         else:
-            ai_provider = current_settings.get("ai_provider", "openai")
+            ai_provider = current_settings.get("ai_provider", PROVIDER_OPENAI)
             logger.info("Advanced Analysis using global provider", provider=ai_provider)
 
         # Select the appropriate model based on provider
@@ -570,8 +570,9 @@ class AIProcessor:
                 # Auto-detect from Ollama if no task-specific model configured
                 from ai.providers.ollama_provider import _get_first_available_model
                 from utils.http_client_manager import get_http_client_manager
-                _session = get_http_client_manager().get_requests_session("ollama")
-                _base = os.getenv("OLLAMA_API_URL", "http://localhost:11434").rstrip("/")
+                _session = get_http_client_manager().get_requests_session(PROVIDER_OLLAMA)
+                from utils.constants import get_ollama_url
+                _base = get_ollama_url().rstrip("/")
                 model = _get_first_available_model(_session, _base) or "llama3"
         elif ai_provider == PROVIDER_ANTHROPIC:
             model = analysis_settings.get("anthropic_model", "claude-sonnet-4-20250514")

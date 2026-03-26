@@ -6,10 +6,25 @@ This module provides consistent error handling patterns across the application:
 1. OperationResult - Standard return type for operations that can fail
 2. ErrorSeverity - Classification of error severity for handling
 3. handle_errors decorator - Automatic error handling based on severity
-4. UIErrorHandler - Context manager for UI operations with progress/cleanup
-5. safe_execute - Wrapper for safe execution with logging
-6. safe_ui_update - Thread-safe UI update wrapper
-7. ErrorContext - Detailed error context for debugging
+4. ui_error_context - Context manager for UI operations with progress/cleanup
+5. AsyncUIErrorHandler - Handler for async UI ops with thread-safe error handling
+6. safe_execute - Wrapper for safe execution with logging
+7. safe_ui_update / SafeUIUpdater - Thread-safe UI update wrappers
+8. ErrorContext - Detailed error context for debugging
+9. show_error_dialog - User-friendly "Problem + Action" error dialogs
+
+Error Handling Conventions:
+    - logger.error()   — User-facing operation failures (API calls, generation, processing)
+    - logger.warning() — Recoverable issues (retries, fallbacks, missing optional config)
+    - logger.debug()   — Non-critical state issues (UI layout, sash positions, widget state)
+    - @handle_errors   — For methods returning OperationResult or Optional/bool
+    - show_error_dialog() — For user-visible failures that need action suggestions
+
+Exception Specificity:
+    - Use specific exception types where known:
+      json.JSONDecodeError for JSON parsing, FileNotFoundError/OSError for file I/O,
+      ConnectionError/TimeoutError for network, AuthenticationError/RateLimitError for APIs
+    - Reserve bare `except Exception` for genuinely unknown error conditions or cleanup code
 
 Usage Examples:
 
@@ -28,8 +43,8 @@ Usage Examples:
     def analyze_text(text: str) -> dict:
         return {"analysis": "result"}
 
-    # Using UIErrorHandler for UI operations
-    with UIErrorHandler(app, button, "Processing"):
+    # Using ui_error_context for UI operations
+    with ui_error_context(app.status_manager, button, progress_bar, "Processing"):
         result = long_running_operation()
         display_result(result)
 

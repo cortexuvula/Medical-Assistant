@@ -16,7 +16,7 @@ from openai import OpenAI
 from anthropic import Anthropic
 
 from utils.security import get_security_manager
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
     PROVIDER_GROQ, PROVIDER_CEREBRAS
@@ -329,7 +329,8 @@ class ModelProvider:
         """Fetch available models from Ollama."""
         try:
             # Check if Ollama is running locally
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            from utils.constants import get_ollama_url
+            response = requests.get(f"{get_ollama_url()}/api/tags", timeout=5)
             
             if response.status_code == 200:
                 data = response.json()
@@ -387,7 +388,7 @@ class ModelProvider:
     def _fetch_groq_models(self) -> Optional[List[str]]:
         """Fetch available models from Groq via OpenAI-compatible API."""
         try:
-            api_key = self._security_manager.get_api_key("groq")
+            api_key = self._security_manager.get_api_key(PROVIDER_GROQ)
             if not api_key:
                 return None
 
@@ -411,7 +412,7 @@ class ModelProvider:
     def _fetch_cerebras_models(self) -> Optional[List[str]]:
         """Fetch available models from Cerebras via OpenAI-compatible API."""
         try:
-            api_key = self._security_manager.get_api_key("cerebras")
+            api_key = self._security_manager.get_api_key(PROVIDER_CEREBRAS)
             if not api_key:
                 return None
 

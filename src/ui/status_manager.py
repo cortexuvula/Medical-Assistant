@@ -3,6 +3,7 @@ from ttkbootstrap.constants import RIGHT
 from utils.structured_logging import get_logger
 
 from ui.ui_constants import Colors, Fonts, Animation
+from utils.constants import PROVIDER_OPENAI, STT_DEEPGRAM
 
 logger = get_logger(__name__)
 
@@ -82,9 +83,9 @@ class StatusManager:
     def update_provider_info(self):
         """Update the provider indicator with current AI and STT providers."""
         try:
-            from settings.settings import SETTINGS
-            provider = SETTINGS.get("ai_provider", "openai").capitalize()
-            stt_provider = SETTINGS.get("stt_provider", "deepgram").capitalize()
+            from settings.settings_manager import settings_manager
+            provider = settings_manager.get("ai_provider", PROVIDER_OPENAI).capitalize()
+            stt_provider = settings_manager.get("stt_provider", STT_DEEPGRAM).capitalize()
             self.provider_indicator.config(text=f"Using: {provider} | STT: {stt_provider}")
         except Exception as e:
             logger.error(f"Error updating provider info: {e}", exc_info=True)

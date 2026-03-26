@@ -8,10 +8,11 @@ from typing import List, Dict, Optional
 from pydub import AudioSegment
 
 from .base import BaseTTSProvider
+from utils.constants import TTS_ELEVENLABS
 from utils.exceptions import APIError, RateLimitError, AuthenticationError
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class ElevenLabsTTSProvider(BaseTTSProvider):
@@ -77,7 +78,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         self._voices_cache = None
         self._default_voice_id = None
     
-    @secure_api_call("elevenlabs")
+    @secure_api_call(TTS_ELEVENLABS)
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,
@@ -162,7 +163,7 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
                 raise ValueError(f"No suitable voice found for language: {language}")
             
             # Get model from settings or kwargs
-            tts_settings = SETTINGS.get("tts", {})
+            tts_settings = settings_manager.get("tts", {})
             
             # Check for model in kwargs first, then settings, then use defaults
             if "model_id" in kwargs:
@@ -332,8 +333,8 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             return self._default_voice_id
 
         # Get voice from settings
-        from settings.settings import SETTINGS
-        tts_settings = SETTINGS.get("tts", {})
+        from settings.settings_manager import settings_manager
+        tts_settings = settings_manager.get("tts", {})
         voice_id = tts_settings.get("voice", None)
 
         self.logger.info(f"Voice from settings: {voice_id}")

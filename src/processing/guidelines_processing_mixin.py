@@ -12,7 +12,7 @@ This mixin extends ProcessingQueue to handle guideline uploads in the background
 allowing the UI to remain responsive during long-running bulk uploads.
 """
 
-from typing import Dict, Optional, Callable, Any, List
+from typing import Dict, Optional, Callable, Any, List, TypedDict
 from datetime import datetime, timedelta
 import uuid
 import os
@@ -21,6 +21,41 @@ from threading import Event
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class GuidelineBatchStatus(TypedDict, total=False):
+    """Typed structure for guideline batch processing status."""
+    batch_id: str
+    total_files: int
+    processed: int
+    successful: int
+    failed: int
+    skipped: int
+    status: str
+    task_ids: List[str]
+    file_paths: List[str]
+    options: dict
+    created_at: float
+    completed_at: Optional[float]
+    errors: List[dict]
+    skipped_files: List[str]
+
+
+class GuidelineTaskData(TypedDict, total=False):
+    """Typed structure for individual guideline processing task data."""
+    task_id: str
+    task_type: str
+    batch_id: str
+    file_path: str
+    filename: str
+    options: dict
+    status: str
+    progress_status: str
+    progress_percent: float
+    queued_at: float
+    started_at: Optional[float]
+    completed_at: Optional[float]
+    error_message: Optional[str]
 
 
 class GuidelinesProcessingMixin:

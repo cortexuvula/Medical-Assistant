@@ -14,6 +14,11 @@ from typing import Dict, Optional
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS
+)
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,27 +40,27 @@ class HTTPClientManager:
 
     # Pool configuration per provider
     POOL_CONFIG = {
-        "openai": {"max_connections": 10, "max_keepalive": 5},
-        "anthropic": {"max_connections": 10, "max_keepalive": 5},
-        "ollama": {"max_connections": 3, "max_keepalive": 2},
-        "gemini": {"max_connections": 5, "max_keepalive": 3},
-        "elevenlabs": {"max_connections": 5, "max_keepalive": 3},
-        "deepgram": {"max_connections": 5, "max_keepalive": 3},
-        "groq": {"max_connections": 5, "max_keepalive": 3},
-        "cerebras": {"max_connections": 5, "max_keepalive": 3},
+        PROVIDER_OPENAI: {"max_connections": 10, "max_keepalive": 5},
+        PROVIDER_ANTHROPIC: {"max_connections": 10, "max_keepalive": 5},
+        PROVIDER_OLLAMA: {"max_connections": 3, "max_keepalive": 2},
+        PROVIDER_GEMINI: {"max_connections": 5, "max_keepalive": 3},
+        STT_ELEVENLABS: {"max_connections": 5, "max_keepalive": 3},
+        STT_DEEPGRAM: {"max_connections": 5, "max_keepalive": 3},
+        PROVIDER_GROQ: {"max_connections": 5, "max_keepalive": 3},
+        PROVIDER_CEREBRAS: {"max_connections": 5, "max_keepalive": 3},
         "rag": {"max_connections": 3, "max_keepalive": 2},
     }
 
     # Default timeouts per provider (connect, read)
     PROVIDER_TIMEOUTS = {
-        "openai": (5.0, 60.0),
-        "anthropic": (5.0, 60.0),
-        "ollama": (5.0, 120.0),  # Local, may be slower
-        "gemini": (5.0, 60.0),
-        "elevenlabs": (5.0, 90.0),  # TTS can be slower
-        "deepgram": (5.0, 120.0),  # Long audio transcription
-        "groq": (5.0, 60.0),
-        "cerebras": (5.0, 30.0),
+        PROVIDER_OPENAI: (5.0, 60.0),
+        PROVIDER_ANTHROPIC: (5.0, 60.0),
+        PROVIDER_OLLAMA: (5.0, 120.0),  # Local, may be slower
+        PROVIDER_GEMINI: (5.0, 60.0),
+        STT_ELEVENLABS: (5.0, 90.0),  # TTS can be slower
+        STT_DEEPGRAM: (5.0, 120.0),  # Long audio transcription
+        PROVIDER_GROQ: (5.0, 60.0),
+        PROVIDER_CEREBRAS: (5.0, 30.0),
         "rag": (5.0, 30.0),
     }
 

@@ -143,8 +143,8 @@ class TestAudioHandlerErrorHandling:
         mock_soundcard = Mock()
         mock_soundcard.all_microphones.side_effect = OSError("Device error")
 
-        with patch('audio.audio.soundcard', mock_soundcard):
-            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
+        with patch('audio.mixins.device_mixin.soundcard', mock_soundcard):
+            with patch('audio.mixins.device_mixin.SOUNDCARD_AVAILABLE', True):
                 with caplog.at_level(logging.ERROR):
                     devices = audio_handler.get_input_devices()
 
@@ -369,9 +369,9 @@ class TestSpeechRecognitionMethods:
         audio_handler.recording = True
         audio_handler.callback_function = Mock()
         
-        # Patch the soundcard module
-        with patch('audio.audio.soundcard', mock_soundcard):
-            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
+        # Patch the soundcard module in the recording mixin where it is used
+        with patch('audio.mixins.recording_mixin.soundcard', mock_soundcard):
+            with patch('audio.mixins.recording_mixin.SOUNDCARD_AVAILABLE', True):
                 # Run in a thread and stop after a short time
                 thread = threading.Thread(
                     target=audio_handler._background_recording_thread,
@@ -393,8 +393,8 @@ class TestSpeechRecognitionMethods:
         mock_soundcard = Mock()
         mock_soundcard.get_microphone.return_value = None
 
-        with patch('audio.audio.soundcard', mock_soundcard):
-            with patch('audio.audio.SOUNDCARD_AVAILABLE', True):
+        with patch('audio.mixins.recording_mixin.soundcard', mock_soundcard):
+            with patch('audio.mixins.recording_mixin.SOUNDCARD_AVAILABLE', True):
                 with caplog.at_level(logging.ERROR):
                     audio_handler._background_recording_thread(0, 1.0)
 
@@ -666,25 +666,27 @@ class TestPrefixAudioHandling:
         # Mock the path to use our temp file
         with patch('os.path.dirname', return_value=str(tmp_path)):
             with patch('os.path.exists', return_value=True):
-                with patch.object(AudioSegment, 'from_file', return_value=prefix_audio):
-                    # Reset the cache flags
-                    audio_handler._prefix_audio_checked = False
-                    audio_handler._prefix_audio_cache = None
-                    
-                    # Create test segment
-                    test_segment = AudioSegment.silent(duration=1000)
-                    
-                    # Mock transcription
-                    with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value="Test") as mock_transcribe:
-                        result = audio_handler.transcribe_audio(test_segment)
-                        
-                        # Should have loaded and cached the prefix
-                        assert audio_handler._prefix_audio_cache is not None
-                        assert audio_handler._prefix_audio_checked is True
-                        
-                        # Transcribe should be called with combined audio
-                        call_args = mock_transcribe.call_args[0][0]
-                        assert len(call_args) == 1500  # 500ms prefix + 1000ms test
+                with patch('os.path.getmtime', return_value=99999.0):
+                    with patch.object(AudioSegment, 'from_file', return_value=prefix_audio):
+                        # Reset the cache flags
+                        audio_handler._prefix_audio_checked = False
+                        audio_handler._prefix_audio_cache = None
+                        audio_handler._prefix_audio_mtime = None
+
+                        # Create test segment
+                        test_segment = AudioSegment.silent(duration=1000)
+
+                        # Mock transcription
+                        with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value="Test") as mock_transcribe:
+                            result = audio_handler.transcribe_audio(test_segment)
+
+                            # Should have loaded and cached the prefix
+                            assert audio_handler._prefix_audio_cache is not None
+                            assert audio_handler._prefix_audio_checked is True
+
+                            # Transcribe should be called with combined audio
+                            call_args = mock_transcribe.call_args[0][0]
+                            assert len(call_args) == 1500  # 500ms prefix + 1000ms test
     
     def test_transcribe_audio_prefix_load_error(self, audio_handler, caplog):
         """Test transcribe_audio when prefix audio fails to load."""
@@ -712,19 +714,23 @@ class TestPrefixAudioHandling:
         # Create mock prefix that will fail when combined
         # We need to patch the AudioSegment.__add__ method to fail
         with patch.object(AudioSegment, '__add__', side_effect=Exception("Combine error")):
-            # Set up the prefix cache
+            # Set up the prefix cache (including mtime to prevent reload)
             audio_handler._prefix_audio_checked = True
             audio_handler._prefix_audio_cache = AudioSegment.silent(duration=100)
+            audio_handler._prefix_audio_mtime = 12345.0
 
-            with caplog.at_level(logging.ERROR):
-                with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value="Test") as mock_transcribe:
-                    result = audio_handler.transcribe_audio(test_segment)
+            # Patch os.path to prevent _prefix_audio_needs_reload from clearing cache
+            with patch('os.path.exists', return_value=True), \
+                 patch('os.path.getmtime', return_value=12345.0):
+                with caplog.at_level(logging.ERROR):
+                    with patch.object(audio_handler.deepgram_provider, 'transcribe', return_value="Test") as mock_transcribe:
+                        result = audio_handler.transcribe_audio(test_segment)
 
-                    # Should log error but continue with original segment
-                    assert "Combine error" in caplog.text or "prefix" in caplog.text.lower()
+                        # Should log error but continue with original segment
+                        assert "Combine error" in caplog.text or "prefix" in caplog.text.lower()
 
-                    # Should transcribe original segment
-                    mock_transcribe.assert_called_with(test_segment)
+                        # Should transcribe original segment
+                        mock_transcribe.assert_called_with(test_segment)
 
 
 class TestFallbackMechanism:

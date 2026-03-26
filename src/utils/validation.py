@@ -10,6 +10,7 @@ from utils.structured_logging import get_logger
 logger = get_logger(__name__)
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    PROVIDER_CEREBRAS, PROVIDER_OLLAMA,
     STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ
 )
 
@@ -30,12 +31,14 @@ API_KEY_PATTERNS = {
     PROVIDER_ANTHROPIC: re.compile(r'^sk-ant-[a-zA-Z0-9\-_]{80,}$'),
     # Google Gemini keys start with AIza - typically 39 characters total
     PROVIDER_GEMINI: re.compile(r'^AIza[a-zA-Z0-9\-_]{30,}$'),
+    # Cerebras keys start with csk-
+    PROVIDER_CEREBRAS: re.compile(r'^csk-[a-zA-Z0-9\-_]{20,}$'),
 }
 
 # Maximum lengths for input validation
 MAX_PROMPT_LENGTH = 10000  # Maximum characters for user prompts
 MAX_FILE_PATH_LENGTH = 260  # Windows MAX_PATH limitation
-MAX_API_KEY_LENGTH = 200  # Reasonable maximum for API keys
+MAX_API_KEY_LENGTH = 500  # Reasonable maximum for API keys
 
 # Patterns for sensitive data that should be redacted from logs
 SENSITIVE_PATTERNS = [
@@ -44,6 +47,8 @@ SENSITIVE_PATTERNS = [
     (re.compile(r'sk-ant-[a-zA-Z0-9\-_]{10,}'), '[ANTHROPIC_KEY_REDACTED]'),
     (re.compile(r'sk_[a-zA-Z0-9]{10,}'), '[ELEVENLABS_KEY_REDACTED]'),
     (re.compile(r'gsk_[a-zA-Z0-9]{10,}'), '[GROQ_KEY_REDACTED]'),
+    (re.compile(r'csk-[a-zA-Z0-9\-_]{10,}'), '[CEREBRAS_KEY_REDACTED]'),
+    (re.compile(r'AIza[a-zA-Z0-9\-_]{10,}'), '[GEMINI_KEY_REDACTED]'),
     # Authorization headers
     (re.compile(r'Bearer\s+[a-zA-Z0-9\-_\.]+', re.IGNORECASE), 'Bearer [TOKEN_REDACTED]'),
     (re.compile(r'Authorization:\s*[^\n]+', re.IGNORECASE), 'Authorization: [REDACTED]'),
@@ -703,12 +708,12 @@ def validate_model_name(model_name: str, provider: str) -> Tuple[bool, Optional[
         return False, "Model name too long"
     
     # Provider-specific validation
-    if provider.lower() == "openai":
+    if provider.lower() == PROVIDER_OPENAI:
         valid_prefixes = ['gpt-3.5', 'gpt-4', 'text-', 'davinci', 'curie', 'babbage', 'ada']
         if not any(model_name.startswith(prefix) for prefix in valid_prefixes):
             logger.warning(f"Unusual OpenAI model name: {model_name}")
-    
-    elif provider.lower() == "ollama":
+
+    elif provider.lower() == PROVIDER_OLLAMA:
         # Ollama models should not contain special characters
         if not re.match(r'^[a-zA-Z0-9_\-:\.]+$', model_name):
             return False, "Invalid Ollama model name format"

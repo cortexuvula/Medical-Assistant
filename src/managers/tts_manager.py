@@ -7,7 +7,13 @@ both exception-based (original) and OperationResult-based (safe) variants
 for flexibility in error handling.
 """
 
-import pygame
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    pygame = None
+    PYGAME_AVAILABLE = False
+
 import threading
 from typing import Optional, Dict, Any, List
 from pydub import AudioSegment
@@ -21,6 +27,7 @@ from tts_providers.google_tts import GoogleTTSProvider
 from settings.settings_manager import settings_manager
 from utils.security import get_security_manager
 from utils.exceptions import APIError
+from utils.constants import TTS_ELEVENLABS
 from utils.error_handling import OperationResult
 
 
@@ -32,7 +39,7 @@ class TTSManager:
         self.logger = get_logger(__name__)
         self.providers = {
             "pyttsx3": PyttsxProvider,
-            "elevenlabs": ElevenLabsTTSProvider,
+            TTS_ELEVENLABS: ElevenLabsTTSProvider,
             "google": GoogleTTSProvider,
         }
         self._current_provider = None
@@ -40,12 +47,16 @@ class TTSManager:
         self.security_manager = get_security_manager()
         
         # Initialize pygame mixer for audio playback
-        try:
-            pygame.mixer.init()
-            self._pygame_available = True
-        except (pygame.error, RuntimeError, OSError) as e:
+        if PYGAME_AVAILABLE:
+            try:
+                pygame.mixer.init()
+                self._pygame_available = True
+            except (pygame.error, RuntimeError, OSError) as e:
+                self._pygame_available = False
+                self.logger.warning(f"pygame mixer not available, will use pydub for playback: {e}")
+        else:
             self._pygame_available = False
-            self.logger.warning(f"pygame mixer not available, will use pydub for playback: {e}")
+            self.logger.warning("pygame not installed, will use pydub for playback")
     
     def get_provider(self) -> BaseTTSProvider:
         """Get the current TTS provider instance.
@@ -86,8 +97,8 @@ class TTSManager:
         
         # Get API key if needed
         api_key = ""
-        if provider_name == "elevenlabs":
-            api_key = self.security_manager.get_api_key("elevenlabs") or ""
+        if provider_name == TTS_ELEVENLABS:
+            api_key = self.security_manager.get_api_key(TTS_ELEVENLABS) or ""
         elif provider_name == "google_cloud":  # Future Google Cloud TTS
             api_key = self.security_manager.get_api_key("google_cloud") or ""
         

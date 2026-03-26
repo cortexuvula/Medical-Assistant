@@ -9,6 +9,9 @@ import logging
 import os
 from typing import Dict, Any, List, Callable, Optional
 from utils.structured_logging import get_logger
+from utils.constants import (
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_WHISPER, STT_MODULATE,
+)
 
 logger = get_logger(__name__)
 
@@ -209,9 +212,9 @@ class BatchProcessor:
 
                 # Step 1: Transcribe the audio file
                 # Get selected STT provider from settings
-                from settings.settings import SETTINGS
+                from settings.settings_manager import settings_manager
                 from pydub import AudioSegment
-                stt_provider = SETTINGS.get("stt_provider", "groq")
+                stt_provider = settings_manager.get("stt_provider", STT_GROQ)
 
                 # Use the app's existing audio handler which has initialized STT providers
                 audio_handler = self.app.audio_handler
@@ -226,15 +229,15 @@ class BatchProcessor:
 
                     # Use the appropriate STT provider (handle case variations)
                     stt_provider_lower = stt_provider.lower()
-                    if stt_provider_lower == "deepgram":
+                    if stt_provider_lower == STT_DEEPGRAM:
                         transcript = audio_handler.deepgram_provider.transcribe(audio_segment)
-                    elif stt_provider_lower == "elevenlabs":
+                    elif stt_provider_lower == STT_ELEVENLABS:
                         transcript = audio_handler.elevenlabs_provider.transcribe(audio_segment)
-                    elif stt_provider_lower == "groq":
+                    elif stt_provider_lower == STT_GROQ:
                         transcript = audio_handler.groq_provider.transcribe(audio_segment)
-                    elif stt_provider_lower in ["local whisper", "whisper"]:
+                    elif stt_provider_lower in ["local whisper", STT_WHISPER]:
                         transcript = audio_handler.whisper_provider.transcribe(audio_segment)
-                    elif stt_provider_lower == "modulate":
+                    elif stt_provider_lower == STT_MODULATE:
                         transcript = audio_handler.modulate_provider.transcribe(audio_segment)
                     else:
                         error_msg = f"Unknown STT provider: {stt_provider}"

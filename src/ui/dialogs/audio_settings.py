@@ -36,7 +36,8 @@ def test_ollama_connection(_: tk.Tk, ollama_url: str = None) -> bool:
     import requests
 
     if ollama_url is None:
-        ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+        from utils.constants import get_ollama_url
+        ollama_url = get_ollama_url()
 
     base_url = ollama_url.rstrip("/")
 

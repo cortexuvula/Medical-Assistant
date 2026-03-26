@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 from pydub import AudioSegment
 
 from stt_providers.base import BaseSTTProvider, TranscriptionResult
+from utils.constants import STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS, STT_MODULATE
 from utils.structured_logging import get_logger
 
 
@@ -260,13 +261,14 @@ def create_failover_manager_from_settings() -> STTFailoverManager:
     Returns:
         Configured STTFailoverManager with providers based on settings.
     """
-    from settings.settings import SETTINGS
+    from utils.security import get_security_manager
+    security_mgr = get_security_manager()
 
     providers = []
 
     # Try to create Deepgram provider
     try:
-        deepgram_key = SETTINGS.get("deepgram", {}).get("api_key", "")
+        deepgram_key = security_mgr.get_api_key(STT_DEEPGRAM) or ""
         if deepgram_key:
             from stt_providers.deepgram import DeepgramProvider
             providers.append(DeepgramProvider(api_key=deepgram_key))
@@ -276,7 +278,7 @@ def create_failover_manager_from_settings() -> STTFailoverManager:
 
     # Try to create Groq provider
     try:
-        groq_key = SETTINGS.get("groq", {}).get("api_key", "")
+        groq_key = security_mgr.get_api_key(STT_GROQ) or ""
         if groq_key:
             from stt_providers.groq import GroqProvider
             providers.append(GroqProvider(api_key=groq_key))
@@ -286,7 +288,7 @@ def create_failover_manager_from_settings() -> STTFailoverManager:
 
     # Try to create ElevenLabs STT provider
     try:
-        elevenlabs_key = SETTINGS.get("elevenlabs", {}).get("api_key", "")
+        elevenlabs_key = security_mgr.get_api_key(STT_ELEVENLABS) or ""
         if elevenlabs_key:
             from stt_providers.elevenlabs import ElevenLabsSTTProvider
             providers.append(ElevenLabsSTTProvider(api_key=elevenlabs_key))
@@ -296,8 +298,7 @@ def create_failover_manager_from_settings() -> STTFailoverManager:
 
     # Try to create Modulate provider
     try:
-        from utils.security import get_security_manager
-        modulate_key = get_security_manager().get_api_key("modulate") or ""
+        modulate_key = security_mgr.get_api_key(STT_MODULATE) or ""
         if modulate_key:
             from stt_providers.modulate import ModulateProvider
             providers.append(ModulateProvider(api_key=modulate_key))

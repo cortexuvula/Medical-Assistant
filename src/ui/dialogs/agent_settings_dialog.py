@@ -17,6 +17,10 @@ from ai.agents.synopsis import SynopsisAgent
 from ai.model_provider import model_provider
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
+    PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS,
+)
 
 logger = get_logger(__name__)
 
@@ -93,12 +97,12 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
     
     # This will be populated dynamically, but keep as fallback
     FALLBACK_MODELS = {
-        "openai": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
-        "anthropic": ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-4-20250514"],
-        "ollama": ["llama3", "mistral", "codellama"],
-        "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"],
-        "groq": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
-        "cerebras": ["llama-3.3-70b", "llama3.1-8b", "qwen-3-32b"]
+        PROVIDER_OPENAI: ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
+        PROVIDER_ANTHROPIC: ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-4-20250514"],
+        PROVIDER_OLLAMA: ["llama3", "mistral", "codellama"],
+        PROVIDER_GEMINI: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro-exp", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash-exp"],
+        PROVIDER_GROQ: ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+        PROVIDER_CEREBRAS: ["llama-3.3-70b", "llama3.1-8b", "qwen-3-32b"]
     }
     
     def __init__(self, parent):
@@ -209,7 +213,7 @@ Provide clear, step-by-step guidance while maintaining flexibility for clinical 
         ttk.Label(tab_frame, text="AI Provider:").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
 
         # Get current provider from agent config, then fall back to global ai_provider
-        current_provider = current_config.get("provider", self.settings.get("ai_provider", "openai"))
+        current_provider = current_config.get("provider", self.settings.get("ai_provider", PROVIDER_OPENAI))
         provider_var = tk.StringVar(value=current_provider)
         self.widgets[agent_key]["provider"] = provider_var
         

@@ -11,6 +11,10 @@ import tkinter as tk
 import ttkbootstrap as ttk
 
 from ui.tooltip import ToolTip
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_MODULATE
+)
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -64,10 +68,10 @@ class ApiKeysTabMixin:
 
         row = 1
         api_keys_config = [
-            ("openai", "OpenAI API Key:", "OPENAI_API_KEY", "API key from platform.openai.com"),
-            ("anthropic", "Anthropic API Key:", "ANTHROPIC_API_KEY", "API key from console.anthropic.com"),
-            ("gemini", "Google Gemini API Key:", "GEMINI_API_KEY", "API key from Google AI Studio"),
-            ("cerebras", "Cerebras API Key:", "CEREBRAS_API_KEY", "API key from cloud.cerebras.ai - Ultra-fast inference (no HIPAA BAA)"),
+            (PROVIDER_OPENAI, "OpenAI API Key:", "OPENAI_API_KEY", "API key from platform.openai.com"),
+            (PROVIDER_ANTHROPIC, "Anthropic API Key:", "ANTHROPIC_API_KEY", "API key from console.anthropic.com"),
+            (PROVIDER_GEMINI, "Google Gemini API Key:", "GEMINI_API_KEY", "API key from Google AI Studio"),
+            (PROVIDER_CEREBRAS, "Cerebras API Key:", "CEREBRAS_API_KEY", "API key from cloud.cerebras.ai - Ultra-fast inference (no HIPAA BAA)"),
         ]
 
         for key_id, label, env_var, tooltip in api_keys_config:
@@ -77,13 +81,15 @@ class ApiKeysTabMixin:
         # Ollama URL (not a secret)
         ollama_label = ttk.Label(scrollable_frame, text="Ollama API URL:")
         ollama_label.grid(row=row, column=0, sticky="w", pady=10)
-        ToolTip(ollama_label, "URL for local Ollama server (default: http://localhost:11434)")
+        from utils.constants import DEFAULT_OLLAMA_URL
+        ToolTip(ollama_label, f"URL for local Ollama server (default: {DEFAULT_OLLAMA_URL})")
 
-        ollama_var = tk.StringVar(value=os.getenv("OLLAMA_API_URL", "http://localhost:11434"))
+        from utils.constants import get_ollama_url
+        ollama_var = tk.StringVar(value=get_ollama_url())
         self.widgets['api_keys']['ollama_url'] = ollama_var
         ollama_entry = ttk.Entry(scrollable_frame, textvariable=ollama_var, width=50)
         ollama_entry.grid(row=row, column=1, sticky="ew", padx=(10, 5), pady=10)
-        ToolTip(ollama_entry, "URL for local Ollama server (default: http://localhost:11434)")
+        ToolTip(ollama_entry, f"URL for local Ollama server (default: {DEFAULT_OLLAMA_URL})")
 
         # Test Ollama button
         from ui.dialogs.audio_settings import test_ollama_connection
@@ -105,10 +111,10 @@ class ApiKeysTabMixin:
         row += 1
 
         stt_keys_config = [
-            ("deepgram", "Deepgram API Key:", "DEEPGRAM_API_KEY", "API key for Deepgram speech-to-text (nova-2-medical model)"),
-            ("elevenlabs", "ElevenLabs API Key:", "ELEVENLABS_API_KEY", "API key for ElevenLabs STT and TTS"),
-            ("groq", "Groq API Key:", "GROQ_API_KEY", "API key for Groq ultra-fast Whisper transcription"),
-            ("modulate", "Modulate API Key:", "MODULATE_API_KEY", "API key for Modulate Velma Transcribe (emotion detection, diarization)"),
+            (STT_DEEPGRAM, "Deepgram API Key:", "DEEPGRAM_API_KEY", "API key for Deepgram speech-to-text (nova-2-medical model)"),
+            (STT_ELEVENLABS, "ElevenLabs API Key:", "ELEVENLABS_API_KEY", "API key for ElevenLabs STT and TTS"),
+            (STT_GROQ, "Groq API Key:", "GROQ_API_KEY", "API key for Groq ultra-fast Whisper transcription"),
+            (STT_MODULATE, "Modulate API Key:", "MODULATE_API_KEY", "API key for Modulate Velma Transcribe (emotion detection, diarization)"),
         ]
 
         for key_id, label, env_var, tooltip in stt_keys_config:

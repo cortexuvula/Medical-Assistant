@@ -292,8 +292,8 @@ class BatchProcessingDialog:
         if files:
             # Validate file sizes before accepting
             from audio.audio import AudioHandler
-            from settings.settings import SETTINGS
-            max_mb = SETTINGS.get("max_audio_file_size_mb", 500)
+            from settings.settings_manager import settings_manager
+            max_mb = settings_manager.get("max_audio_file_size_mb", 500)
             valid_files = []
             skipped_files = []
             for f in files:

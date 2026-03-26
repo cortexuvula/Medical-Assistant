@@ -9,6 +9,7 @@ from typing import Optional
 from pydub import AudioSegment
 
 from .base import BaseSTTProvider
+from utils.constants import STT_WHISPER
 
 
 def _ensure_whisper_assets():
@@ -58,7 +59,7 @@ class WhisperProvider(BaseSTTProvider):
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
-        return "whisper"
+        return STT_WHISPER
 
     @property
     def requires_api_key(self) -> bool:

@@ -10,13 +10,14 @@ import ttkbootstrap as ttk
 
 from settings import settings_manager
 from ui.dialogs.dialog_utils import create_toplevel_dialog
+from utils.constants import STT_DEEPGRAM
 
 
 def show_deepgram_settings_dialog(parent: tk.Tk) -> None:
     """Show dialog to configure Deepgram speech-to-text settings."""
     # Get current Deepgram settings with fallback to defaults
     deepgram_settings = settings_manager.get_deepgram_settings()
-    default_settings = settings_manager.get_default("deepgram", {})
+    default_settings = settings_manager.get_default(STT_DEEPGRAM, {})
 
     dialog = create_toplevel_dialog(parent, "Deepgram Settings", "700x900")
 

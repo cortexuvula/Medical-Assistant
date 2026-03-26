@@ -12,7 +12,6 @@ from utils.structured_logging import get_logger
 from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Icons, SidebarConfig, Fonts
-from settings.settings import SETTINGS
 from settings.settings_manager import settings_manager
 
 from ui.components.sidebar_scroll_mixin import SidebarScrollMixin
@@ -33,11 +32,11 @@ class SidebarNavigation(SidebarScrollMixin):
         self.parent = parent_ui.parent
         self.components = parent_ui.components
 
-        self._collapsed = SETTINGS.get("sidebar_collapsed", False)
-        self._tools_expanded = SETTINGS.get("sidebar_tools_expanded", True)
-        self._generate_expanded = SETTINGS.get("sidebar_generate_expanded", True)
-        self._file_expanded = SETTINGS.get("sidebar_file_expanded", True)
-        self._soap_expanded = SETTINGS.get("sidebar_soap_expanded", True)
+        self._collapsed = settings_manager.get("sidebar_collapsed", False)
+        self._tools_expanded = settings_manager.get("sidebar_tools_expanded", True)
+        self._generate_expanded = settings_manager.get("sidebar_generate_expanded", True)
+        self._file_expanded = settings_manager.get("sidebar_file_expanded", True)
+        self._soap_expanded = settings_manager.get("sidebar_soap_expanded", True)
         self._active_item = "record"
         self._is_dark = False
 
@@ -157,7 +156,7 @@ class SidebarNavigation(SidebarScrollMixin):
 
     def _detect_dark_theme(self) -> bool:
         """Detect if dark theme is currently active."""
-        current_theme = SETTINGS.get("theme", "darkly")
+        current_theme = settings_manager.get("theme", "darkly")
         dark_themes = ["darkly", "solar", "cyborg", "superhero", "vapor"]
         return current_theme.lower() in dark_themes
 

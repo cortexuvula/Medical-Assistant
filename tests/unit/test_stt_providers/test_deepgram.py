@@ -94,11 +94,11 @@ class TestDeepgramProvider:
         assert provider.client is None
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_transcribe_success(self, mock_settings, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_success(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
         """Test successful transcription."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -107,6 +107,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()
@@ -120,11 +122,11 @@ class TestDeepgramProvider:
         assert result == "This is a test transcription"
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_transcribe_with_diarization(self, mock_settings, mock_get_config, provider, mock_audio_segment):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_with_diarization(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment):
         """Test transcription with diarization enabled."""
-        # Mock settings with diarization
-        mock_settings.get.return_value = {
+        # Mock settings_manager with diarization
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -133,6 +135,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()
@@ -180,11 +184,11 @@ class TestDeepgramProvider:
         assert "client not initialized" in str(exc_info.value)
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_transcribe_api_error(self, mock_settings, mock_get_config, provider, mock_audio_segment):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_api_error(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment):
         """Test handling of API errors."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -193,6 +197,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()
@@ -276,11 +282,11 @@ class TestDeepgramProvider:
         assert "Deepgram API error" in str(exc_info.value)
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_transcribe_empty_transcript(self, mock_settings, mock_get_config, provider, mock_audio_segment):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_empty_transcript(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment):
         """Test handling of empty transcript in response."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -289,6 +295,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()
@@ -312,11 +320,11 @@ class TestDeepgramProvider:
         assert "No transcript found" in str(exc_info.value)
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_transcribe_invalid_response_structure(self, mock_settings, mock_get_config, provider, mock_audio_segment):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_invalid_response_structure(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment):
         """Test handling of invalid response structure."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -325,6 +333,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()
@@ -377,12 +387,11 @@ class TestDeepgramProvider:
         assert result == ""  # Should skip words without speaker info
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    @patch('stt_providers.deepgram._DEFAULT_SETTINGS')
-    def test_transcribe_with_custom_settings(self, mock_default_settings, mock_settings, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_transcribe_with_custom_settings(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment, mock_deepgram_response):
         """Test transcription with custom settings."""
-        # Mock custom settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager with custom settings
+        custom_settings = {
             "model": "custom-model",
             "language": "es-ES",
             "smart_format": False,
@@ -391,18 +400,17 @@ class TestDeepgramProvider:
             "redact": True,
             "alternatives": 3
         }
-        
+        mock_settings_manager.get.return_value = custom_settings
+
         # Mock default settings (fallback)
-        mock_default_settings.__getitem__.return_value = {
-            "deepgram": {
-                "model": "nova-2-medical",
-                "language": "en-US",
-                "smart_format": True,
-                "diarize": False,
-                "profanity_filter": False,
-                "redact": False,
-                "alternatives": 1
-            }
+        mock_settings_manager.get_default.return_value = {
+            "model": "nova-2-medical",
+            "language": "en-US",
+            "smart_format": True,
+            "diarize": False,
+            "profanity_filter": False,
+            "redact": False,
+            "alternatives": 1
         }
         
         # Mock config
@@ -430,11 +438,11 @@ class TestDeepgramProvider:
         assert captured_options.alternatives == 3
     
     @patch('stt_providers.deepgram.get_config')
-    @patch('stt_providers.deepgram.SETTINGS')
-    def test_buffer_cleanup_on_error(self, mock_settings, mock_get_config, provider, mock_audio_segment):
+    @patch('stt_providers.deepgram.settings_manager')
+    def test_buffer_cleanup_on_error(self, mock_settings_manager, mock_get_config, provider, mock_audio_segment):
         """Test that buffer is cleaned up even on error."""
-        # Mock settings
-        mock_settings.get.return_value = {
+        # Mock settings_manager
+        deepgram_settings = {
             "model": "nova-2-medical",
             "language": "en-US",
             "smart_format": True,
@@ -443,6 +451,8 @@ class TestDeepgramProvider:
             "redact": False,
             "alternatives": 1
         }
+        mock_settings_manager.get.return_value = deepgram_settings
+        mock_settings_manager.get_default.return_value = deepgram_settings
         
         # Mock config
         mock_config = Mock()

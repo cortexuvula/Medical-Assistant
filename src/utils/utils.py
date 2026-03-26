@@ -1,4 +1,10 @@
-import soundcard
+try:
+    import soundcard
+    SOUNDCARD_AVAILABLE = True
+except (ImportError, AssertionError, OSError):
+    soundcard = None
+    SOUNDCARD_AVAILABLE = False
+
 import sounddevice as sd
 import platform
 

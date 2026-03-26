@@ -10,10 +10,14 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from utils.structured_logging import get_logger
 
-from docx import Document
-from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.style import WD_STYLE_TYPE
+try:
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.style import WD_STYLE_TYPE
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 
 from exporters.base_exporter import BaseExporter
 
@@ -38,6 +42,11 @@ class DocxExporter(BaseExporter):
             clinic_name: Name of the clinic for letterhead
             doctor_name: Name of the doctor for letterhead
         """
+        if not DOCX_AVAILABLE:
+            raise ImportError(
+                "python-docx package is required for Word export. "
+                "Install it with: pip install python-docx"
+            )
         super().__init__()
         self.clinic_name = clinic_name
         self.doctor_name = doctor_name

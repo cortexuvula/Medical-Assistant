@@ -179,7 +179,7 @@ class MLEntityClassifier:
                             logger.debug(f"Unknown entity type in prototypes: {type_name}")
                 self._prototypes_loaded = True
                 logger.info(f"Loaded {len(self._type_prototypes)} entity type prototypes")
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load entity prototypes: {e}")
 
     def _cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:

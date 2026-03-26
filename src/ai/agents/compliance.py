@@ -342,6 +342,7 @@ Rules for JSON output:
             parsed = json.loads(cleaned)
             conditions_list = parsed.get('conditions', [])
         except Exception as e:
+            # Broad catch needed: _call_ai can raise API/network errors, json.loads can raise JSONDecodeError
             logger.warning(f"LLM condition extraction failed: {e}")
 
         return conditions_list

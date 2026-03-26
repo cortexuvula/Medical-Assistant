@@ -8,7 +8,7 @@ toggles, color updates, and component styling.
 import tkinter as tk
 import ttkbootstrap as ttk
 from utils.structured_logging import get_logger
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 from ui.ui_constants import Colors, Icons
 from ui.theme_observer import notify_theme_change
 
@@ -62,9 +62,8 @@ class ThemeManager:
         self.app.current_theme = new_theme
         
         # Update settings
-        SETTINGS["theme"] = new_theme
         try:
-            save_settings(SETTINGS)
+            settings_manager.set("theme", new_theme)
         except Exception as e:
             logger.warning(f"Failed to save theme setting: {e}")
         

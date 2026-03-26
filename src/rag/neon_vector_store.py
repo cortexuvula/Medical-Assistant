@@ -91,8 +91,8 @@ class NeonVectorStore:
 
         # Try settings
         try:
-            from settings.settings import SETTINGS
-            conn_str = SETTINGS.get("neon_database_url")
+            from settings.settings_manager import settings_manager
+            conn_str = settings_manager.get("neon_database_url")
             if conn_str:
                 return conn_str
         except Exception:

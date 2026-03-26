@@ -69,9 +69,10 @@ from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
 from utils.timeout_config import get_timeout
 from utils.http_client_manager import get_http_client_manager
+from utils.constants import PROVIDER_ANTHROPIC
 
 
-@secure_api_call("anthropic")
+@secure_api_call(PROVIDER_ANTHROPIC)
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -96,7 +97,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
         APIError: On API failures
         APITimeoutError: On request timeout
     """
-    timeout_seconds = get_timeout("anthropic")
+    timeout_seconds = get_timeout(PROVIDER_ANTHROPIC)
 
     try:
         # Convert OpenAI-style messages to Anthropic format
@@ -124,7 +125,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
         raise APITimeoutError(
             f"Anthropic request timed out after {timeout_seconds}s: {e}",
             timeout_seconds=timeout_seconds,
-            service="anthropic"
+            service=PROVIDER_ANTHROPIC
         )
     except Exception as e:
         error_msg = str(e)
@@ -136,7 +137,7 @@ def _anthropic_api_call(client: Anthropic, model: str, messages: List[Dict[str, 
             raise APITimeoutError(
                 f"Anthropic request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
-                service="anthropic"
+                service=PROVIDER_ANTHROPIC
             )
         else:
             raise APIError(f"Anthropic API error: {error_msg}")
@@ -163,21 +164,21 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
     security_manager = get_security_manager()
 
     # Get API key from secure storage or environment
-    api_key = security_manager.get_api_key("anthropic")
+    api_key = security_manager.get_api_key(PROVIDER_ANTHROPIC)
     if not api_key:
         logger.error("Anthropic API key not provided")
         title, message = get_error_message("API_KEY_MISSING", "Anthropic API key not found")
         return AIResult.failure(message, error_code=title)
 
     # Validate API key format
-    is_valid, error = validate_api_key("anthropic", api_key)
+    is_valid, error = validate_api_key(PROVIDER_ANTHROPIC, api_key)
     if not is_valid:
         logger.error(f"Invalid Anthropic API key: {error}")
         title, message = get_error_message("API_KEY_INVALID", error)
         return AIResult.failure(message, error_code=title)
 
     # Validate model name
-    is_valid, error = validate_model_name(model, "anthropic")
+    is_valid, error = validate_model_name(model, PROVIDER_ANTHROPIC)
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return AIResult.failure(message, error_code=title)
@@ -193,8 +194,8 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         log_api_call_debug("Anthropic", model, temperature, system_message, prompt)
 
         # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
-        timeout_seconds = get_timeout("anthropic")
-        http_client = get_http_client_manager().get_httpx_client("anthropic", timeout_seconds)
+        timeout_seconds = get_timeout(PROVIDER_ANTHROPIC)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_ANTHROPIC, timeout_seconds)
         client = Anthropic(
             api_key=api_key,
             http_client=http_client
@@ -213,14 +214,14 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         if not text:
             return AIResult.failure("Anthropic returned non-text content block (e.g., tool_use)", error_code="API_EMPTY_RESPONSE")
         text = text.strip()
-        return AIResult.success(text, model=model, provider="anthropic")
+        return AIResult.success(text, model=model, provider=PROVIDER_ANTHROPIC)
     except APITimeoutError as e:
         logger.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logger.error(f"Anthropic API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("anthropic", e)
+        error_code, details = format_api_error(PROVIDER_ANTHROPIC, e)
         title, message = get_error_message(error_code, details, model)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
@@ -259,20 +260,20 @@ def call_anthropic_streaming(
     security_manager = get_security_manager()
 
     # Get API key
-    api_key = security_manager.get_api_key("anthropic")
+    api_key = security_manager.get_api_key(PROVIDER_ANTHROPIC)
     if not api_key:
         result = AIResult.failure("Anthropic API key not found", error_code="API_KEY_MISSING")
         on_chunk(str(result))
         return result
 
     # Validate inputs
-    is_valid, error = validate_api_key("anthropic", api_key)
+    is_valid, error = validate_api_key(PROVIDER_ANTHROPIC, api_key)
     if not is_valid:
         result = AIResult.failure(f"Invalid Anthropic API key: {error}", error_code="API_KEY_INVALID")
         on_chunk(str(result))
         return result
 
-    is_valid, error = validate_model_name(model, "anthropic")
+    is_valid, error = validate_model_name(model, PROVIDER_ANTHROPIC)
     if not is_valid:
         result = AIResult.failure(f"Invalid model: {error}", error_code="CFG_INVALID_SETTINGS")
         on_chunk(str(result))
@@ -286,8 +287,8 @@ def call_anthropic_streaming(
         logger.info(f"Making streaming Anthropic API call with model: {model}")
         log_api_call_debug("Anthropic (streaming)", model, temperature, system_message, prompt)
 
-        timeout_seconds = get_timeout("anthropic")
-        http_client = get_http_client_manager().get_httpx_client("anthropic", timeout_seconds)
+        timeout_seconds = get_timeout(PROVIDER_ANTHROPIC)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_ANTHROPIC, timeout_seconds)
         client = Anthropic(api_key=api_key, http_client=http_client)
 
         full_response = ""
@@ -302,7 +303,7 @@ def call_anthropic_streaming(
                 full_response += text
                 on_chunk(text)
 
-        return AIResult.success(full_response.strip(), model=model, provider="anthropic")
+        return AIResult.success(full_response.strip(), model=model, provider=PROVIDER_ANTHROPIC)
 
     except Exception as e:
         logger.error(f"Streaming Anthropic error with model {model}: {str(e)}")

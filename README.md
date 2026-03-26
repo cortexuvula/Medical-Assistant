@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-Medical Assistant is a comprehensive desktop application for medical documentation, designed to transcribe and refine spoken medical notes. It leverages multiple AI providers (OpenAI, Anthropic/Claude, Google Gemini, and Ollama) with a modular architecture for efficient audio-to-text conversion, clinical note generation, and intelligent medical analysis.
+Medical Assistant is a comprehensive desktop application for medical documentation, designed to transcribe and refine spoken medical notes. It leverages multiple AI providers (OpenAI, Anthropic/Claude, Google Gemini, Groq, Cerebras, and Ollama) with a modular, mixin-based architecture (~150K LOC across 400+ modules) for efficient audio-to-text conversion, clinical note generation, and intelligent medical analysis.
 
 ## Table of Contents
 
@@ -13,6 +13,7 @@ Medical Assistant is a comprehensive desktop application for medical documentati
   - [Core Features](#core-features)
   - [Medical Documentation](#medical-documentation)
   - [AI Agents](#ai-agents)
+  - [RAG & Knowledge Graph](#rag--knowledge-graph)
   - [Referral & Address Book](#referral--address-book)
   - [Bidirectional Translation](#bidirectional-translation-assistant)
   - [AI & Transcription](#ai--transcription)
@@ -42,7 +43,9 @@ Medical Assistant is a comprehensive desktop application for medical documentati
 | **Workflow-Based Interface** | Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Chat) plus 6 text editor tabs |
 | **Unified Preferences** | Comprehensive settings dialog (`Ctrl+,`) with tabbed interface for API keys, audio settings, AI models, prompts, and storage |
 | **AI-Powered Chat** | ChatGPT-style interface with context-aware suggestions for interacting with your medical notes |
-| **RAG Document Search** | Search your document database using local vector storage with markdown rendering |
+| **RAG Document Search** | Hybrid vector + keyword search with medical query expansion, adaptive thresholds, and MMR diversity |
+| **Knowledge Graph** | Interactive visualization of medical entities and relationships from Neo4j |
+| **RSVP Reader** | Speed-reading interface for SOAP notes with ORP highlighting and section navigation |
 | **Advanced Recording** | Record medical conversations with visual feedback, waveform display, timer, and pause/resume capabilities |
 | **Real-Time Analysis** | Optional periodic analysis during recording generates differential diagnoses every 2 minutes |
 | **Queue System** | Background processing queue with "Quick Continue Mode" for efficient multi-patient recording sessions |
@@ -80,10 +83,12 @@ Medical Assistant includes specialized AI agents for different clinical tasks:
 |-------|-------------|
 | **Medication Analysis** | Extract medications from text, check drug-drug interactions with severity levels, validate dosing appropriateness, suggest alternatives, generate prescriptions |
 | **Diagnostic Agent** | Analyze symptoms, generate differential diagnoses ranked by likelihood, provide ICD codes, suggest diagnostic workups |
+| **Compliance Agent** | Audit SOAP notes against clinical documentation standards, flag missing elements, score completeness |
 | **Data Extraction** | Extract structured clinical data (vitals, labs, medications, diagnoses, allergies) from unstructured text |
 | **Clinical Workflow** | Step-by-step guidance for patient intake, diagnostic workups, treatment protocols, and follow-up care with interactive checklists |
 | **Referral Agent** | Generate professional referral letters with address book integration and specialty inference |
 | **Synopsis Agent** | Generate concise SOAP note summaries for quick review |
+| **Chat Agent** | Conversational AI with tool use for document editing, context-aware responses |
 
 ### Referral & Address Book
 
@@ -92,6 +97,17 @@ Medical Assistant includes specialized AI agents for different clinical tasks:
 - **Searchable Recipients:** Quick search and selection when creating referrals
 - **Smart Specialty Inference:** Automatically suggests appropriate specialists based on clinical content
 - **Contact Categories:** Organize by specialty, facility type, or custom categories
+
+### RAG & Knowledge Graph
+
+- **Hybrid Search:** Combines vector similarity (pgvector), BM25 keyword search, and knowledge graph traversal with configurable weights
+- **Medical Query Expansion:** Automatic expansion of medical abbreviations (HTN, COPD, MI) and synonyms for better recall
+- **Adaptive Thresholds:** Dynamically adjusts similarity cutoffs based on query length and score distribution
+- **MMR Reranking:** Maximal Marginal Relevance ensures diverse, non-redundant results
+- **Knowledge Graph Visualization:** Interactive pan/zoom/drag graph canvas showing entities (medications, conditions, procedures) and relationships from Neo4j
+- **Clinical Guidelines:** Upload and search clinical guideline PDFs with chunking, OCR support, and recommendation extraction
+- **Streaming Responses:** Progressive result display with cancellation support
+- **Conversation Context:** Semantic follow-up detection maintains context across queries
 
 ### Bidirectional Translation Assistant
 
@@ -110,12 +126,15 @@ Real-time medical translation for multilingual patient consultations:
 
 | Provider | Models | Features |
 |----------|--------|----------|
-| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo, GPT-3.5 Turbo | Streaming, function calling |
-| **Anthropic** | Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku, Claude 3.5 Haiku | Extended context, vision |
-| **Google Gemini** | Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash | Multimodal, long context |
-| **Ollama** | Llama 3, Mistral, Qwen, CodeLlama, Phi-3, etc. | Local/offline, privacy-focused |
+| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo | Streaming, function calling, dynamic model fetch |
+| **Anthropic** | Claude Opus 4, Claude Sonnet 4, Claude Haiku 4 | Extended context, dynamic model fetch |
+| **Google Gemini** | Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash | Multimodal, long context, dynamic model fetch |
+| **Groq** | Llama 3.3 70B, Mixtral 8x7B, Gemma2 9B | Ultra-fast inference, dynamic model fetch |
+| **Cerebras** | Llama 3.3 70B, Qwen 3 32B | Wafer-scale inference, dynamic model fetch |
+| **Ollama** | Llama 3, Mistral, Qwen, Phi-3, etc. | Local/offline, privacy-focused, auto-detect |
 
 - **Intelligent Provider Routing:** Automatic fallback and provider selection based on model configuration
+- **Dynamic Model Lists:** Models fetched from provider APIs with TTL caching (1 hour) and fallback lists
 - **Streaming Support:** Real-time response streaming for faster perceived performance
 
 #### Speech-to-Text Providers
@@ -136,14 +155,20 @@ Real-time medical translation for multilingual patient consultations:
 
 ### Technical Features
 
-- **Secure API Key Storage:** Fernet encryption with machine-specific key derivation
-- **Security Decorators:** Rate limiting, input sanitization, and secure API call wrappers
-- **Database Storage:** SQLite with FTS5 full-text search, automatic migrations, and connection pooling
-- **Resilient API Calls:** Circuit breaker pattern, exponential backoff, and automatic retry on transient failures
+- **Mixin-Based Architecture:** Large classes decomposed into focused mixins (AudioHandler: 5 mixins, ProcessingQueue: 3 mixins, RagProcessor: 4 mixins) with Protocol contracts
+- **Type Safety:** TypedDict definitions for processing queue tasks, chat context, and guideline batches; runtime-checkable AppProtocol for mixin boundaries
+- **Secure API Key Storage:** Fernet encryption with PBKDF2 key derivation, per-installation salt, machine-specific keys, legacy salt migration
+- **Security Decorators:** Rate limiting, input sanitization with prompt injection detection, and secure API call wrappers
+- **PHI Redaction:** Automatic redaction of 60+ sensitive field types in application logs and audit trail
+- **Audit Logging:** Append-only HIPAA-compliant audit log tracking API key access, data exports, and recording operations
+- **Database Storage:** SQLite with FTS5 full-text search, versioned migrations (8+ versions), connection pooling with health checks
+- **Resilient API Calls:** Circuit breaker pattern, exponential backoff, automatic retry, and STT provider failover chain
 - **Export Functionality:** Export recordings and documents in PDF, DOCX, and text formats
-- **FHIR Support:** Export clinical data in HL7 FHIR R4 format for healthcare interoperability
-- **Performance Optimizations:** HTTP/2 support, connection pooling, latency optimizations (50-200ms savings per API call)
+- **FHIR Support:** Export clinical data in HL7 FHIR R4 format (Patient, Encounter, Condition, Observation, MedicationStatement, DocumentReference)
+- **Performance Optimizations:** HTTP/2 support, connection pooling, thread pool executors, background processing queue with priority scheduling
+- **Import Guards:** Optional dependencies (pygame, soundcard, fhir.resources, docx, reportlab) guarded with availability flags
 - **Cross-Platform:** Windows, macOS, and Linux with platform-specific optimizations
+- **Comprehensive Test Suite:** 1,850+ tests (unit + integration) with 50%+ critical path coverage
 - **Modern UI/UX:** Built with Tkinter and ttkbootstrap featuring animations, visual indicators, dark/light themes
 
 ---
@@ -164,7 +189,7 @@ python main.py
 # 4. Configure API keys via Settings → API Keys (keys are encrypted)
 ```
 
-**Minimum Requirements:** At least one LLM provider API key (OpenAI, Anthropic, or Gemini) and one STT provider API key (Deepgram, ElevenLabs, Groq, or Modulate).
+**Minimum Requirements:** At least one LLM provider API key (OpenAI, Anthropic, Gemini, Groq, or Cerebras) and one STT provider API key (Deepgram, ElevenLabs, Groq, or Modulate). Local Whisper and Ollama work without API keys.
 
 ---
 
@@ -213,18 +238,24 @@ python main.py
    OPENAI_API_KEY=sk-...
    ANTHROPIC_API_KEY=sk-ant-...
    GEMINI_API_KEY=AI...
+   GROQ_API_KEY=gsk_...
+   CEREBRAS_API_KEY=csk-...
 
    # Speech-to-Text Providers
    DEEPGRAM_API_KEY=...
    ELEVENLABS_API_KEY=...
-   GROQ_API_KEY=gsk_...
    MODULATE_API_KEY=...
 
    # Optional: Local Models
    OLLAMA_API_URL=http://localhost:11434
 
-   # Optional: RAG Integration (Neon PostgreSQL with pgvector)
+   # Optional: RAG Integration
    NEON_DATABASE_URL=postgresql://user:pass@host/database?sslmode=require
+
+   # Optional: Knowledge Graph
+   NEO4J_BOLT_URL=bolt://localhost:7687
+   NEO4J_USERNAME=neo4j
+   NEO4J_PASSWORD=...
    ```
 
 5. **Install FFmpeg**
@@ -385,13 +416,15 @@ For multilingual patient consultations:
 
 ### RAG Document Search
 
-Query your document database:
+Query your document database with hybrid search:
 
 1. Navigate to the **RAG** tab
-2. Enter your search query
-3. Results rendered in markdown format
+2. Enter your search query (medical abbreviations are automatically expanded)
+3. Results rendered in markdown with source attribution
 4. Copy responses with the copy button
-5. Session persistence for follow-up queries
+5. Follow-up queries maintain conversation context
+6. Click **Knowledge Graph** to visualize entity relationships
+7. Upload clinical guidelines via the **Guidelines** tab for searchable reference
 
 ---
 
@@ -403,7 +436,7 @@ Access all settings through the comprehensive Preferences dialog:
 
 | Tab | Settings |
 |-----|----------|
-| **API Keys** | All LLM keys (OpenAI, Anthropic, Gemini, Grok) and STT keys (Deepgram, ElevenLabs, Groq, Modulate) |
+| **API Keys** | All LLM keys (OpenAI, Anthropic, Gemini, Groq, Cerebras) and STT keys (Deepgram, ElevenLabs, Groq, Modulate) |
 | **Audio & STT** | Provider settings (ElevenLabs, Deepgram, Groq, Modulate), TTS voice selection, audio quality |
 | **AI Models** | Temperature settings per task, model selection, translation provider configuration |
 | **Prompts** | Customize Refine, Improve, SOAP, Referral, and Advanced Analysis prompts |
@@ -471,18 +504,24 @@ See [SHORTCUTS.md](SHORTCUTS.md) for the complete list.
 
 ### API Key Protection
 
-- **Encrypted Storage:** API keys are encrypted using Fernet symmetric encryption
-- **Machine-Specific Keys:** Encryption keys are derived from machine-specific identifiers
+- **Fernet Encryption:** API keys encrypted at rest using `cryptography` library with PBKDF2 (100K iterations)
+- **Per-Installation Salt:** Unique 256-bit salt per installation (stored in `salt.bin`)
+- **Machine-Specific Keys:** Encryption keys derived from machine identifiers (machine-id, filesystem UUID)
+- **Legacy Migration:** Automatic migration from old static salt to per-install salt with version tracking
 - **No Plaintext Storage:** Keys are never stored in plaintext on disk
-- **Memory Protection:** Keys are cleared from memory when not in use
 
 ### Security Features
 
-- **Rate Limiting:** Built-in rate limiting for API calls to prevent abuse
-- **Input Sanitization:** All user inputs are sanitized before processing
-- **Secure API Wrappers:** Decorators ensure secure handling of API calls
-- **No Data Transmission:** Patient data is only sent to configured AI providers
-- **Local Processing Options:** Use Ollama for completely offline operation
+- **Rate Limiting:** Per-provider rate limiting with configurable limits (e.g., 60 calls/minute for Anthropic)
+- **Input Sanitization:** Prompt injection detection with optional strict mode that rejects dangerous content
+- **API Key Validation:** Format validation with regex patterns for known provider key formats (OpenAI, Anthropic, Groq, Cerebras, Gemini)
+- **PHI Redaction:** 60+ sensitive field types automatically redacted in application logs
+- **Audit Logging:** Append-only audit trail tracking sensitive operations (API key access, data exports)
+- **Database Protection:** POSIX 0600 permissions and Windows ACL enforcement on database files
+- **Path Traversal Protection:** File paths validated after resolution to prevent encoded traversal attacks
+- **Secure HTTP:** Explicit TLS verification on all HTTPS clients via centralized client manager
+- **No Data Transmission:** Patient data only sent to configured AI providers
+- **Local Processing Options:** Use Ollama + local Whisper for completely offline operation
 
 ### Best Practices
 
@@ -490,6 +529,7 @@ See [SHORTCUTS.md](SHORTCUTS.md) for the complete list.
 2. Keep API keys confidential and rotate them periodically
 3. Use local Whisper or Ollama for sensitive data when possible
 4. Review provider privacy policies for HIPAA compliance requirements
+5. Monitor the audit log (`audit.log`) for unexpected access patterns
 
 ---
 
@@ -524,99 +564,139 @@ Medical Assistant supports HL7 FHIR R4 for healthcare interoperability:
 ```
 Medical-Assistant/
 ├── main.py                    # Application entry point
-├── src/
+├── src/                       # ~150K LOC across 400+ modules
 │   ├── ai/                    # AI providers and processors
-│   │   ├── agents/           # Specialized AI agents
-│   │   │   ├── base.py       # Base agent class
-│   │   │   ├── medication.py # Medication analysis
-│   │   │   ├── diagnostic.py # Diagnostic suggestions
-│   │   │   ├── workflow.py   # Clinical workflows
-│   │   │   ├── synopsis.py   # SOAP summaries
-│   │   │   └── models.py     # Pydantic data models
-│   │   ├── providers/        # Modular AI provider implementations
+│   │   ├── agents/            # 10 specialized AI agents
+│   │   │   ├── base.py        # Base agent with caching, validation
+│   │   │   ├── medication.py  # Drug interactions, dosing
+│   │   │   ├── diagnostic.py  # Differential diagnosis
+│   │   │   ├── compliance.py  # Documentation audit
+│   │   │   ├── workflow.py    # Clinical workflows
+│   │   │   ├── chat.py        # Conversational with tool use
+│   │   │   └── models.py      # AgentConfig, AgentTask, AgentResponse
+│   │   ├── providers/         # Modular AI provider implementations
 │   │   │   ├── openai_provider.py
 │   │   │   ├── anthropic_provider.py
 │   │   │   ├── gemini_provider.py
+│   │   │   ├── groq_provider.py
+│   │   │   ├── cerebras_provider.py
 │   │   │   ├── ollama_provider.py
-│   │   │   └── router.py     # Intelligent provider routing
-│   │   ├── ai_processor.py   # Core AI processing logic
-│   │   ├── emotion_processor.py # Voice emotion analysis formatting
-│   │   ├── soap_generation.py
-│   │   ├── letter_generation.py
-│   │   ├── text_processing.py
-│   │   └── rag_processor.py  # RAG local integration
-│   ├── audio/                 # Audio recording and processing
-│   │   ├── audio.py          # Main audio handler
+│   │   │   └── router.py      # Intelligent provider routing
+│   │   ├── ai_processor.py    # Core AI processing logic
+│   │   ├── chat_processor.py  # Chat with TypedDict context
+│   │   ├── rag_processor.py   # RAG facade (4 mixins)
+│   │   ├── rag_query.py       # RagQueryMixin
+│   │   ├── rag_response.py    # RagResponseMixin
+│   │   ├── rag_ui.py          # RagUIMixin
+│   │   └── rag_feedback.py    # RagFeedbackMixin
+│   ├── audio/                  # Audio recording and processing
+│   │   ├── audio.py           # AudioHandler facade (5 mixins)
+│   │   ├── mixins/            # Decomposed audio functionality
+│   │   │   ├── transcription_mixin.py
+│   │   │   ├── recording_mixin.py
+│   │   │   ├── processing_mixin.py
+│   │   │   ├── device_mixin.py
+│   │   │   └── file_mixin.py
 │   │   ├── recording_manager.py
 │   │   └── periodic_analysis.py
-│   ├── core/                  # Application core
-│   │   ├── app.py            # Main application class
+│   ├── core/                   # Application core
+│   │   ├── app.py             # Main application class
+│   │   ├── protocols.py       # AppProtocol for mixin contracts
 │   │   ├── app_initializer.py
+│   │   ├── env_schema.py      # 35 env vars documented
 │   │   └── config.py
-│   ├── database/              # Data persistence
-│   │   ├── db_manager.py     # Database operations
-│   │   ├── db_migrations.py  # Schema migrations
-│   │   └── db_pool.py        # Connection pooling
-│   ├── managers/              # Singleton managers
+│   ├── database/               # Data persistence
+│   │   ├── database.py        # Database with file-level security
+│   │   ├── db_migrations.py   # 8+ versioned schema migrations
+│   │   ├── db_pool.py         # Connection pooling with health checks
+│   │   └── mixins/            # Query mixins (recordings, queue, diagnostics)
+│   ├── exporters/              # Document export
+│   │   ├── fhir_exporter.py   # HL7 FHIR R4
+│   │   ├── docx_exporter.py   # Word documents
+│   │   └── rag_exporter.py    # RAG document export
+│   ├── managers/               # Singleton managers
 │   │   ├── agent_manager.py
 │   │   ├── api_key_manager.py
 │   │   └── translation_manager.py
-│   ├── processing/            # Document processing
-│   │   ├── document_generators.py
-│   │   └── processing_queue.py
-│   ├── stt_providers/         # Speech-to-text
+│   ├── processing/             # Document processing
+│   │   ├── processing_queue.py # Queue facade (3 mixins)
+│   │   ├── queue_types.py     # TypedDict task definitions
+│   │   ├── task_executor_mixin.py
+│   │   ├── task_lifecycle_mixin.py
+│   │   ├── notification_mixin.py
+│   │   └── generators/        # SOAP, referral, letter, diagnostic, etc.
+│   ├── rag/                    # RAG subsystem (40 modules)
+│   │   ├── hybrid_retriever.py
+│   │   ├── streaming_retriever.py
+│   │   ├── query_expander.py   # Medical term expansion
+│   │   ├── bm25_search.py     # Full-text keyword search
+│   │   ├── adaptive_threshold.py
+│   │   ├── mmr_reranker.py    # Diversity reranking
+│   │   ├── conversation_manager.py
+│   │   ├── graph_data_provider.py  # Neo4j knowledge graph
+│   │   ├── guidelines_upload_manager.py
+│   │   └── neon_vector_store.py
+│   ├── stt_providers/          # Speech-to-text (5 providers + failover)
 │   │   ├── base.py
-│   │   ├── deepgram.py
-│   │   ├── elevenlabs.py
-│   │   ├── groq.py
-│   │   ├── modulate.py       # Velma Transcribe with emotion detection
-│   │   └── whisper.py
-│   ├── tts_providers/         # Text-to-speech
-│   │   ├── base.py
-│   │   └── elevenlabs_tts.py
-│   ├── translation/           # Translation providers
-│   │   ├── base.py
-│   │   └── deep_translator_provider.py
-│   ├── ui/                    # User interface
-│   │   ├── workflow_ui.py    # Main UI orchestration
-│   │   ├── chat_ui.py        # Chat interface
-│   │   ├── menu_manager.py   # Application menus
-│   │   ├── theme_manager.py  # Theme handling
-│   │   ├── dialogs/          # All dialog windows
-│   │   └── components/       # Reusable UI components
-│   └── utils/                 # Utilities
-│       ├── security.py       # Encryption, key storage
-│       ├── security_decorators.py
-│       ├── resilience.py     # Circuit breaker, retry
-│       └── validators.py
-├── config/                    # Configuration files
-├── tests/                     # Test suites
-│   ├── unit/
-│   ├── integration/
-│   └── regression/
-└── scripts/                   # Build scripts
+│   │   ├── deepgram.py        # Nova-2 Medical
+│   │   ├── elevenlabs.py      # Scribe v2, diarization
+│   │   ├── groq.py            # Whisper Large v3 Turbo
+│   │   ├── modulate.py        # Velma with emotion detection
+│   │   ├── whisper.py         # Local Whisper
+│   │   └── failover.py        # Automatic provider failover
+│   ├── tts_providers/          # Text-to-speech
+│   │   ├── elevenlabs_tts.py  # Flash v2.5, Turbo v2.5, Multilingual v2
+│   │   └── pyttsx_provider.py # Offline fallback
+│   ├── translation/            # Translation providers
+│   │   └── deep_translator_provider.py  # Google, DeepL, Microsoft
+│   ├── ui/                     # User interface
+│   │   ├── workflow_ui.py     # Main UI orchestration
+│   │   ├── chat_ui.py         # Chat interface
+│   │   ├── menu_manager.py    # Application menus
+│   │   ├── theme_manager.py   # Dark/light themes
+│   │   ├── dialogs/           # 25+ dialog windows
+│   │   └── components/        # Reusable UI components
+│   └── utils/                  # Utilities
+│       ├── security.py        # SecurityManager facade
+│       ├── security/          # Encryption, key storage, validators, rate limiting
+│       ├── resilience.py      # Circuit breaker, retry, backoff
+│       ├── validation.py      # API key patterns, input validation
+│       ├── audit_logger.py    # HIPAA-compliant audit trail
+│       └── structured_logging.py  # PHI redaction in logs
+├── config/                     # Configuration files
+├── tests/                      # 1,850+ tests
+│   ├── unit/                  # Component tests
+│   └── integration/           # End-to-end tests
+└── scripts/                    # Build scripts (Windows, macOS, Linux)
 ```
 
 ### Key Design Patterns
 
 | Pattern | Usage |
 |---------|-------|
+| **Mixin/Facade** | Large classes decomposed into focused mixins; facades preserve backward compatibility |
+| **Protocol Contracts** | `AppProtocol` defines the ~50 attributes mixins expect from the app object |
+| **TypedDict Schemas** | `ProcessingTask`, `ChatContextData`, `BatchTaskStatus` etc. for type-safe dict structures |
 | **Provider Pattern** | All AI, STT, and TTS providers inherit from base classes for consistent interfaces |
 | **Singleton Managers** | Agent, translation, and API key managers ensure single instances |
 | **Circuit Breaker** | Resilient API calls with automatic failure detection and recovery |
 | **Security Decorators** | Rate limiting and input sanitization applied via decorators |
 | **Migration System** | Database schema evolution with versioned migrations |
-| **Observer Pattern** | UI updates via event-driven architecture |
-| **Queue System** | Background processing with priority and status tracking |
+| **Observer Pattern** | UI updates via event-driven architecture with thread-safe scheduling |
+| **Queue System** | Background processing with priority, stale task eviction, and batch tracking |
 
 ### Data Flow
 
 ```
-Audio Input → STT Provider → Transcript → AI Processing → Document Generation
-                  ↓                            ↓
-           Emotion Data*              Agent System
-                  ↓                            ↓
-           SOAP Integration          Database Storage → Export (PDF/DOCX/FHIR)
+Audio Input → STT Provider (failover chain) → Transcript → AI Processing → Document Generation
+                  ↓                                              ↓
+           Emotion Data*                                  Agent System (10 agents)
+                  ↓                                              ↓
+           SOAP Integration                         Database Storage → Export (PDF/DOCX/FHIR)
+                                                         ↓
+                                                  RAG Vector Store → Knowledge Graph (Neo4j)
+                                                         ↓
+                                                  Hybrid Search (vector + BM25 + graph)
 
 * Voice emotion analysis available with Modulate (Velma) STT provider
 ```
@@ -632,28 +712,35 @@ Audio Input → STT Provider → Transcript → AI Processing → Document Gener
 pip install -r requirements-dev.txt
 
 # Run all tests with pytest
-pytest
+PYTHONPATH=src pytest tests/unit/ tests/integration/
 
 # Run with coverage report
-pytest --cov=src --cov-report=html
+PYTHONPATH=src pytest --cov=src --cov-report=html
 
 # Run specific test suites
-pytest tests/unit/
-pytest tests/integration/
-pytest tests/regression/
+PYTHONPATH=src pytest tests/unit/
+PYTHONPATH=src pytest tests/integration/
 
 # Run specific test files
-pytest tests/unit/test_db_migrations.py
-pytest tests/unit/test_processing_queue.py
+PYTHONPATH=src pytest tests/unit/test_audio_extended.py
+PYTHONPATH=src pytest tests/unit/test_processing_queue.py
+PYTHONPATH=src pytest tests/unit/test_stt_providers/
 ```
 
-### Test Categories
+### Test Suite (1,850+ tests)
 
-| Suite | Purpose |
-|-------|---------|
-| **Unit Tests** | Test individual components in isolation |
-| **Integration Tests** | Test component interactions |
-| **Regression Tests** | Ensure fixes don't break existing functionality |
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| **Audio & Recording** | 101 | Audio handler, prefix caching, mixin decomposition |
+| **STT Providers** | 150+ | Deepgram, ElevenLabs, Groq, Modulate, Whisper, failover |
+| **Processing Queue** | 90+ | Task lifecycle, batch processing, stale eviction, thread safety |
+| **Security** | 50+ | Encryption, key migration, validation, rate limiting |
+| **Exporters** | 137 | PDF, DOCX, FHIR R4, RAG export |
+| **RAG & Documents** | 57 | Document CRUD, hybrid search, query expansion |
+| **Letter Generation** | 50 | All letter types, edge cases, template rendering |
+| **Periodic Analysis** | 57 | Timer management, segment extraction, cleanup |
+| **TTS & Translation** | 77 | Provider management, safe methods, fallbacks |
+| **Integration** | 29 | Settings roundtrip, API key crypto, DB migrations |
 
 ### CI/CD
 
@@ -702,10 +789,11 @@ set LOG_LEVEL=DEBUG     # Windows
 |-------------|---------|-------------|
 | **Operating System** | Windows 10, macOS 10.14, Ubuntu 20.04 | Windows 11, macOS 13+, Ubuntu 22.04 |
 | **Python** | 3.10 | 3.11+ |
-| **Memory** | 4GB RAM | 8GB RAM |
-| **Storage** | 500MB | 1GB+ for recordings |
-| **Internet** | Required for cloud AI | Optional with Ollama |
+| **Memory** | 4GB RAM | 8GB+ RAM (16GB with local Whisper) |
+| **Storage** | 500MB | 2GB+ for recordings and RAG database |
+| **Internet** | Required for cloud AI | Optional with Ollama + local Whisper |
 | **Audio** | Any microphone | USB condenser microphone |
+| **Optional** | - | PostgreSQL (Neon) for RAG, Neo4j for knowledge graph |
 
 ---
 
@@ -761,14 +849,17 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
 ## Acknowledgments
 
-- [OpenAI](https://openai.com) - GPT models
+- [OpenAI](https://openai.com) - GPT models and Whisper
 - [Anthropic](https://anthropic.com) - Claude models
 - [Google AI](https://ai.google.dev) - Gemini models
-- [Deepgram](https://deepgram.com) - Speech-to-text
-- [ElevenLabs](https://elevenlabs.io) - Text-to-speech and STT
-- [Groq](https://groq.com) - Fast inference
-- [Modulate.ai](https://modulate.ai) - Voice emotion detection
+- [Deepgram](https://deepgram.com) - Nova-2 Medical STT
+- [ElevenLabs](https://elevenlabs.io) - Scribe STT and TTS
+- [Groq](https://groq.com) - Fast LLM and Whisper inference
+- [Cerebras](https://cerebras.ai) - Wafer-scale LLM inference
+- [Modulate.ai](https://modulate.ai) - Velma voice emotion detection
 - [Ollama](https://ollama.ai) - Local model hosting
+- [Neon](https://neon.tech) - Serverless PostgreSQL with pgvector
+- [Neo4j](https://neo4j.com) - Knowledge graph database
 - [ttkbootstrap](https://ttkbootstrap.readthedocs.io) - Modern UI themes
 
 ---

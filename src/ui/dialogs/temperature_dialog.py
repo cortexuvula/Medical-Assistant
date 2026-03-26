@@ -3,6 +3,10 @@ from tkinter import messagebox
 from ui.scaling_utils import ui_scaler
 import ttkbootstrap as ttk
 from settings.settings_manager import settings_manager
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
+    PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS,
+)
 
 def show_temperature_settings_dialog(parent):
     """
@@ -35,7 +39,7 @@ def show_temperature_settings_dialog(parent):
     provider_frames = {}
     sliders = []  # Move sliders list outside the loop
     
-    for provider in ["openai", "ollama", "anthropic", "gemini", "groq", "cerebras"]:
+    for provider in [PROVIDER_OPENAI, PROVIDER_OLLAMA, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS]:
         provider_display = provider.capitalize()
         provider_frames[provider] = ttk.Frame(notebook, padding=10)
         notebook.add(provider_frames[provider], text=provider_display)

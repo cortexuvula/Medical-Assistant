@@ -7,7 +7,8 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Colors, Fonts, Spacing
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.constants import PROVIDER_OPENAI, STT_GROQ
 
 
 class StatusBar:
@@ -53,8 +54,8 @@ class StatusBar:
         status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(ui_scaler.get_padding(Spacing.SM), 0))
 
         # Provider indicator
-        provider = SETTINGS.get("ai_provider", "openai").capitalize()
-        stt_provider = SETTINGS.get("stt_provider", "groq").upper()
+        provider = settings_manager.get("ai_provider", PROVIDER_OPENAI).capitalize()
+        stt_provider = settings_manager.get("stt_provider", STT_GROQ).upper()
         provider_indicator = ttk.Label(
             status_frame,
             text=f"AI: {provider} | STT: {stt_provider}",

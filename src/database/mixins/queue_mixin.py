@@ -202,7 +202,10 @@ class QueueMixin:
 
                 # Parse options JSON
                 if batch_data['options']:
-                    batch_data['options'] = json.loads(batch_data['options'])
+                    try:
+                        batch_data['options'] = json.loads(batch_data['options'])
+                    except (json.JSONDecodeError, TypeError):
+                        batch_data['options'] = {}
 
                 return batch_data
 

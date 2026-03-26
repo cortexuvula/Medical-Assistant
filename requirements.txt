@@ -1,50 +1,82 @@
-SpeechRecognition>=3.10.0  # For speech recognition functionality
+# === Core AI Providers ===
+openai>=1.0.0,<3.0.0  # OpenAI API client
+anthropic>=0.40.0,<1.0.0  # Anthropic Claude models (updated lower bound for current API)
+google-genai>=1.0.0,<2.0.0  # Google Gemini models (new unified SDK)
+groq>=0.4.0,<2.0.0  # Groq API access
+
+# === Speech-to-Text ===
+SpeechRecognition>=3.10.0,<4.0.0  # Speech recognition functionality
 openai-whisper>=20250625  # Local Whisper STT with turbo model support
 deepgram-sdk>=3.0.0,<5.0.0  # v3/v4 API, v5 has breaking changes
-ttkbootstrap>=1.10.0  # For themed tkinter widgets
-Jinja2>=3.1.6  # Template engine (CVE-2025-27516 sandbox breakout fix)
-python-dotenv>=1.0.0  # For environment variable management
-openai>=1.0.0
-httpx>=0.25.0  # For HTTP connection pooling
-anthropic>=0.18.1  # For Anthropic Claude models
-google-genai>=1.0.0  # For Google Gemini models (new unified SDK)
-pyaudio>=0.2.14  # For audio I/O operations
-requests>=2.32.0  # For HTTP requests (CVE-2024-35195 fix)
-numpy>=1.24.0  # For numerical operations
-groq>=0.4.0  # For Groq API access
-typing-extensions>=4.8.0
-soundcard>=0.4.2  # For audio device enumeration
-sounddevice>=0.4.6  # For audio playback/recording
-concurrent-log-handler>=0.9.1 # Use a specific version or latest as appropriate
-pyinstaller>=6.3.0
-cryptography>=45.0.0  # For secure API key storage
-Pillow>=10.3.0  # Required for ttkbootstrap image support (CVE buffer overflow fix)
-pydantic>=2.5.0  # For agent system and structured data models
-pyperclip>=1.8.2  # For clipboard operations in diagnostic results
-websockets>=12.0  # For WebSocket server/client implementation
-aiohttp>=3.9.4  # For async HTTP/WebSocket support (CVE-2024-27306 XSS fix)
-webrtcvad>=2.0.10  # For voice activity detection
-elevenlabs>=2.27.0  # For TTS/STT functionality (v2 SDK, Dec 2025)
-pydub>=0.25.1  # For audio manipulation
-reportlab>=4.0.0  # For PDF generation and export functionality
-deep-translator>=1.11.0  # For multi-provider translation support
-pyttsx3>=2.90  # For offline text-to-speech
-gtts>=2.5.0  # For Google text-to-speech
-pygame>=2.5.0  # For audio playback in TTS
-simpleeval>=0.9.13  # For safe expression evaluation (replaces unsafe eval)
-fhir.resources>=8.0.0  # For FHIR R4 resource models (healthcare interoperability)
-python-docx>=0.8.11  # For Word document (.docx) export
-pdfplumber>=0.10.0  # Text-based PDF extraction for RSVP Reader
-pytesseract>=0.3.10  # OCR for scanned PDFs in RSVP Reader
-pdf2image>=1.16.0  # Convert PDF pages to images for OCR
-azure-ai-formrecognizer>=3.3.0  # Azure Document Intelligence for high-quality OCR
-psycopg[binary]>=3.1.0  # PostgreSQL async driver for Neon RAG
-psycopg-pool>=3.1.0  # Connection pooling for Neon RAG
-pgvector>=0.2.0  # pgvector Python bindings for vector search
-tiktoken>=0.5.0  # Token counting for semantic chunking
-graphiti-core>=0.3.0  # Zep AI Graphiti for knowledge graphs
-neo4j>=5.0.0  # Neo4j Python driver (Graphiti dependency)
-redis>=4.0.0  # Optional: Redis for distributed embedding cache
-sentry-sdk>=2.0.0  # Error monitoring and performance tracking
-networkx>=3.0  # Graph layout for knowledge graph visualization
+elevenlabs>=2.27.0,<3.0.0  # TTS/STT functionality (v2 SDK, Dec 2025)
+
+# === Text-to-Speech ===
+pyttsx3>=2.90,<3.0.0  # Offline text-to-speech
+gtts>=2.5.0,<3.0.0  # Google text-to-speech
+pygame>=2.5.0,<3.0.0  # Audio playback for TTS
+
+# === Audio ===
+pyaudio>=0.2.14  # Audio I/O operations
+soundcard>=0.4.2,<1.0.0  # Audio device enumeration
+sounddevice>=0.4.6,<1.0.0  # Audio playback/recording
+pydub>=0.25.1,<1.0.0  # Audio manipulation
+# webrtcvad removed — no imports found in src/
+
+# === UI ===
+ttkbootstrap>=1.10.0,<2.0.0  # Themed tkinter widgets
+Pillow>=10.3.0,<12.0.0  # ttkbootstrap image support (CVE buffer overflow fix)
+
+# === HTTP & Networking ===
+httpx>=0.25.0,<1.0.0  # HTTP connection pooling
+requests>=2.32.0,<3.0.0  # HTTP requests (CVE-2024-35195 fix)
+# aiohttp and websockets removed — no imports found in src/
+
+# === Data & Serialization ===
+pydantic>=2.5.0,<3.0.0  # Agent system and structured data models
+# Jinja2 removed — no imports found in src/
+typing-extensions>=4.8.0,<5.0.0
+numpy>=1.24.0,<3.0.0  # Numerical operations
+
+# === Security ===
+cryptography>=45.0.0,<47.0.0  # Secure API key storage
+
+# === Document Export ===
+reportlab>=4.0.0,<5.0.0  # PDF generation and export
+python-docx>=0.8.11,<2.0.0  # Word document (.docx) export
+fhir.resources>=8.0.0,<9.0.0  # FHIR R4 resource models (healthcare interoperability)
+
+# === PDF/OCR Processing ===
+pdfplumber>=0.10.0,<1.0.0  # Text-based PDF extraction for RSVP Reader
+pytesseract>=0.3.10,<1.0.0  # OCR for scanned PDFs in RSVP Reader
+pdf2image>=1.16.0,<2.0.0  # Convert PDF pages to images for OCR
+azure-ai-formrecognizer>=3.3.0,<4.0.0  # Azure Document Intelligence for high-quality OCR
+
+# === RAG & Knowledge Graph ===
+psycopg[binary]>=3.1.0,<4.0.0  # PostgreSQL async driver for Neon RAG
+psycopg-pool>=3.1.0,<4.0.0  # Connection pooling for Neon RAG
+pgvector>=0.2.0,<1.0.0  # pgvector Python bindings for vector search
+tiktoken>=0.5.0,<1.0.0  # Token counting for semantic chunking
+graphiti-core>=0.3.0,<1.0.0  # Zep AI Graphiti for knowledge graphs
+neo4j>=5.0.0,<7.0.0  # Neo4j Python driver (Graphiti dependency)
+networkx>=3.0,<4.0.0  # Graph layout for knowledge graph visualization
+
+# === Translation ===
+deep-translator>=1.11.0,<2.0.0  # Multi-provider translation support
+
+# === Utilities ===
+python-dotenv>=1.0.0,<2.0.0  # Environment variable management
+pyperclip>=1.8.2,<2.0.0  # Clipboard operations
+simpleeval>=0.9.13,<1.0.0  # Safe expression evaluation (replaces unsafe eval)
+concurrent-log-handler>=0.9.1,<1.0.0  # Concurrent-safe log handler
+
+# === Monitoring ===
+sentry-sdk>=2.0.0,<3.0.0  # Error monitoring and performance tracking
+
+# === Optional ===
+redis>=4.0.0,<8.0.0  # Optional: Redis for distributed embedding cache
+
+# === Build ===
+pyinstaller>=6.3.0,<7.0.0
+
+# === Platform-specific ===
 pyobjc-framework-Cocoa>=9.0; sys_platform == 'darwin'  # macOS dock icon fix

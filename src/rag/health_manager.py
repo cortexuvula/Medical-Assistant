@@ -22,6 +22,7 @@ from typing import Dict, Optional
 
 from dotenv import load_dotenv
 
+from utils.constants import PROVIDER_OPENAI
 from utils.timeout_config import get_timeout
 
 # Load environment variables from multiple possible locations
@@ -100,8 +101,8 @@ class RAGHealthManager:
 
         # Load TTL from settings if available
         try:
-            from settings.settings import SETTINGS
-            resilience_config = SETTINGS.get("rag_resilience", {})
+            from settings.settings_manager import settings_manager
+            resilience_config = settings_manager.get("rag_resilience", {})
             self._cache_ttl = resilience_config.get(
                 "health_check_cache_ttl", cache_ttl_seconds
             )
@@ -282,7 +283,7 @@ class RAGHealthManager:
             ServiceHealth for OpenAI
         """
         if not force:
-            cached = self._get_cached("openai")
+            cached = self._get_cached(PROVIDER_OPENAI)
             if cached:
                 return cached
 
@@ -295,7 +296,7 @@ class RAGHealthManager:
 
             if circuit_state == "open":
                 return self._cache_result(
-                    "openai",
+                    PROVIDER_OPENAI,
                     healthy=False,
                     error_message="Circuit breaker open",
                     circuit_state=circuit_state,
@@ -314,13 +315,13 @@ class RAGHealthManager:
                 try:
                     from managers.api_key_manager import get_api_key_manager
                     manager = get_api_key_manager()
-                    api_key = manager.get_key("openai")
+                    api_key = manager.get_key(PROVIDER_OPENAI)
                 except Exception:
                     pass
 
             if not api_key:
                 return self._cache_result(
-                    "openai",
+                    PROVIDER_OPENAI,
                     healthy=False,
                     error_message="API key not configured",
                     circuit_state=circuit_state,
@@ -338,7 +339,7 @@ class RAGHealthManager:
             latency_ms = (time.time() - start_time) * 1000
 
             return self._cache_result(
-                "openai",
+                PROVIDER_OPENAI,
                 healthy=True,
                 latency_ms=latency_ms,
                 circuit_state=circuit_state,
@@ -346,7 +347,7 @@ class RAGHealthManager:
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
             return self._cache_result(
-                "openai",
+                PROVIDER_OPENAI,
                 healthy=False,
                 error_message=str(e),
                 latency_ms=latency_ms,
@@ -365,7 +366,7 @@ class RAGHealthManager:
         return {
             "neo4j": self.check_neo4j(force=force),
             "neon": self.check_neon(force=force),
-            "openai": self.check_openai(force=force),
+            PROVIDER_OPENAI: self.check_openai(force=force),
         }
 
     def get_summary(self) -> dict:

@@ -322,7 +322,7 @@ class AutoSaveManager:
                         data = json.load(f)
                     logger.info(f"Loaded auto-save from {filename}")
                     return data
-                except Exception as e:
+                except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                     logger.error(f"Failed to load {filename}: {e}")
                     continue
         
@@ -365,7 +365,7 @@ class AutoSaveManager:
                     "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                     "timestamp": data.get("timestamp")
                 })
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 logger.error(f"Error reading save info for {file}: {e}")
         
         return info

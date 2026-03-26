@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Optional, Dict
 
 from ui.tooltip import ToolTip
 from utils.structured_logging import get_logger, StructuredLogger
+from utils.constants import STT_GROQ, STT_DEEPGRAM, STT_ELEVENLABS, STT_WHISPER
 
 if TYPE_CHECKING:
     pass
@@ -144,8 +145,8 @@ class UIBuilderMixin:
 
         # Available STT providers
         stt_providers = ["Use Main Setting", "Groq", "Deepgram", "ElevenLabs", "Whisper"]
-        stt_provider_map = {"Use Main Setting": "", "Groq": "groq", "Deepgram": "deepgram",
-                           "ElevenLabs": "elevenlabs", "Whisper": "whisper"}
+        stt_provider_map = {"Use Main Setting": "", "Groq": STT_GROQ, "Deepgram": STT_DEEPGRAM,
+                           "ElevenLabs": STT_ELEVENLABS, "Whisper": STT_WHISPER}
         self._stt_provider_map = stt_provider_map
         self._stt_provider_reverse_map = {v: k for k, v in stt_provider_map.items()}
 

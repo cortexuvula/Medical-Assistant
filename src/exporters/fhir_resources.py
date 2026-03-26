@@ -12,19 +12,23 @@ from typing import Dict, Any, Optional, List
 from html import escape as html_escape
 from utils.structured_logging import get_logger
 
-from fhir.resources.composition import Composition, CompositionSection
-from fhir.resources.documentreference import DocumentReference, DocumentReferenceContent
-from fhir.resources.bundle import Bundle, BundleEntry
-from fhir.resources.patient import Patient
-from fhir.resources.practitioner import Practitioner
-from fhir.resources.organization import Organization
-from fhir.resources.narrative import Narrative
-from fhir.resources.codeableconcept import CodeableConcept
-from fhir.resources.coding import Coding
-from fhir.resources.identifier import Identifier
-from fhir.resources.humanname import HumanName
-from fhir.resources.attachment import Attachment
-from fhir.resources.reference import Reference
+try:
+    from fhir.resources.composition import Composition, CompositionSection
+    from fhir.resources.documentreference import DocumentReference, DocumentReferenceContent
+    from fhir.resources.bundle import Bundle, BundleEntry
+    from fhir.resources.patient import Patient
+    from fhir.resources.practitioner import Practitioner
+    from fhir.resources.organization import Organization
+    from fhir.resources.narrative import Narrative
+    from fhir.resources.codeableconcept import CodeableConcept
+    from fhir.resources.coding import Coding
+    from fhir.resources.identifier import Identifier
+    from fhir.resources.humanname import HumanName
+    from fhir.resources.attachment import Attachment
+    from fhir.resources.reference import Reference
+    FHIR_AVAILABLE = True
+except ImportError:
+    FHIR_AVAILABLE = False
 
 from exporters.fhir_config import (
     FHIRExportConfig,
@@ -51,7 +55,15 @@ class FHIRResourceBuilder:
 
         Args:
             config: Optional FHIR export configuration
+
+        Raises:
+            ImportError: If fhir.resources package is not installed
         """
+        if not FHIR_AVAILABLE:
+            raise ImportError(
+                "fhir.resources package is required for FHIR export. "
+                "Install it with: pip install fhir.resources"
+            )
         self.config = config or FHIRExportConfig()
         self._resource_index = 0
 

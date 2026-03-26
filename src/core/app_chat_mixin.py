@@ -124,8 +124,8 @@ class AppChatMixin:
         has_content = bool(content)
 
         # Get custom suggestions from settings
-        from settings.settings import SETTINGS
-        custom_suggestions = SETTINGS.get("custom_chat_suggestions", {})
+        from settings.settings_manager import settings_manager
+        custom_suggestions = settings_manager.get("custom_chat_suggestions", {})
 
         # Helper to normalize suggestion to object format
         def normalize_suggestion(s: Any) -> Optional[Dict[str, Any]]:
@@ -186,7 +186,7 @@ class AppChatMixin:
 
     def _get_builtin_suggestions(self, current_tab: int, has_content: bool) -> List[str]:
         """Get built-in suggestions for the given context."""
-        from settings.settings import SETTINGS
+        from settings.settings_manager import settings_manager
 
         if current_tab == 0:  # Transcript
             if has_content:
@@ -249,7 +249,7 @@ class AppChatMixin:
                 ]
             else:
                 # Include tool examples if tools are enabled
-                chat_config = SETTINGS.get("chat_interface", {})
+                chat_config = settings_manager.get("chat_interface", {})
                 if chat_config.get("enable_tools", True):
                     return [
                         "Calculate BMI for 70kg, 175cm",

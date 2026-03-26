@@ -90,6 +90,16 @@ try:
     except Exception as e:
         logger.warning(f"Startup diagnostics failed (non-critical): {e}")
 
+    # Validate environment variables and log warnings
+    try:
+        from core.env_schema import validate_environment
+        env_warnings = validate_environment()
+        if env_warnings:
+            for w in env_warnings:
+                logger.warning(w)
+    except Exception as e:
+        logger.warning(f"Environment validation failed (non-critical): {e}")
+
 except ConfigurationError as e:
     logger.error(f"Configuration error: {e}")
     logger.error("Please check your configuration files in the 'config' directory.")

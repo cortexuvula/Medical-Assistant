@@ -448,10 +448,10 @@ class GraphDataProvider:
 
             if not uri or not password:
                 try:
-                    from settings.settings import SETTINGS
-                    uri = uri or SETTINGS.get("graphiti_neo4j_uri")
-                    user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
-                    password = password or SETTINGS.get("graphiti_neo4j_password")
+                    from settings.settings_manager import settings_manager
+                    uri = uri or settings_manager.get("graphiti_neo4j_uri")
+                    user = user or settings_manager.get("graphiti_neo4j_user", "neo4j")
+                    password = password or settings_manager.get("graphiti_neo4j_password")
                 except Exception:
                     pass
 

@@ -89,6 +89,9 @@ class SecureKeyStorage:
         # Lock for thread safety
         self._lock = Lock()
 
+        # Track migration failures (populated by _migrate_legacy_keys_if_needed)
+        self._migration_failures: list = []
+
         # Initialize encryption with unique salt
         self._init_encryption()
 
@@ -256,7 +259,7 @@ class SecureKeyStorage:
         Returns:
             List of provider names that failed migration, or empty list if none
         """
-        return getattr(self, '_migration_failures', [])
+        return self._migration_failures
 
     def _update_metadata_version(self, keys: Dict[str, Any]):
         """Update metadata version without full migration.
@@ -501,7 +504,7 @@ class SecureKeyStorage:
         try:
             with open(self.key_file, 'r') as f:
                 return json.load(f)
-        except Exception as e:
+        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
             logger.error(f"Failed to load keys: {e}")
             return {}
 

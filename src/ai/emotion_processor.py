@@ -10,6 +10,7 @@ Supports both v1 (legacy continuous-score format) and v2 (categorical, per-speak
 """
 
 from utils.structured_logging import get_logger
+from utils.constants import STT_MODULATE
 
 logger = get_logger(__name__)
 
@@ -303,7 +304,7 @@ def _format_soap_v2(emotion_data: dict) -> str:
     """V2 SOAP formatting — per-speaker observational summary (opt-in)."""
     from settings.settings_manager import settings_manager
 
-    if not settings_manager.get("modulate", {}).get("emotion_in_soap", False):
+    if not settings_manager.get(STT_MODULATE, {}).get("emotion_in_soap", False):
         return ""
 
     from ai.emotion_speaker_analyzer import SpeakerEmotionAnalyzer

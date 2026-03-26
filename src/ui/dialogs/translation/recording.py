@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Callable, List
 
 from settings.settings_manager import settings_manager
+from utils.constants import STT_GROQ
 from utils.structured_logging import get_logger
 from utils.error_handling import ErrorContext
 
@@ -183,7 +184,7 @@ class RecordingMixin:
                         logger.info(f"Selected STT provider: display={selected_stt_display}, provider={selected_provider}")
 
                         # Save current provider and switch if needed
-                        original_provider = settings_manager.get("stt_provider", "groq")
+                        original_provider = settings_manager.get("stt_provider", STT_GROQ)
                         if selected_provider:
                             settings_manager.set("stt_provider", selected_provider, auto_save=False)
                             self.logger.info(f"Using STT provider: {selected_provider}")
@@ -381,7 +382,7 @@ class RecordingMixin:
                         selected_stt_display = self.selected_stt_provider.get()
                         selected_provider = self._stt_provider_map.get(selected_stt_display, "")
 
-                        original_provider = settings_manager.get("stt_provider", "groq")
+                        original_provider = settings_manager.get("stt_provider", STT_GROQ)
                         if selected_provider:
                             settings_manager.set("stt_provider", selected_provider, auto_save=False)
 

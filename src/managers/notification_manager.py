@@ -14,7 +14,7 @@ import threading
 from queue import Queue, Empty
 import time
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -105,7 +105,7 @@ class NotificationManager:
         }
         
         # Progress updates are lower priority
-        if SETTINGS.get("show_progress_notifications", True):
+        if settings_manager.get("show_progress_notifications", True):
             self.notification_queue.put(notification)
     
     def _process_notifications(self) -> None:
@@ -125,7 +125,7 @@ class NotificationManager:
     
     def _display_notification(self, notification: Dict[str, Any]) -> None:
         """Display notification based on user preferences."""
-        style = SETTINGS.get("notification_style", "toast")
+        style = settings_manager.get("notification_style", "toast")
         
         if style == "toast":
             self._show_toast_notification(notification)

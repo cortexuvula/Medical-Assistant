@@ -4,8 +4,10 @@ Model Providers Module
 Functions for fetching available AI models from various providers.
 """
 
+import json
 import os
 import time
+import threading
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,11 +17,16 @@ from functools import lru_cache
 
 from openai import OpenAI
 
+from utils.constants import (
+    PROVIDER_ANTHROPIC, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS
+)
+
 # Cache TTL constant (seconds)
 MODEL_CACHE_TTL_SECONDS = 3600  # 1 hour
 
-# Cache for model lists with TTL
+# Cache for model lists with TTL — protected by lock for thread safety
 _model_cache: Dict[str, Tuple[float, List[str]]] = {}
+_model_cache_lock = threading.Lock()
 _cache_ttl = MODEL_CACHE_TTL_SECONDS
 
 
@@ -29,15 +36,15 @@ def clear_model_cache(provider: str = None) -> None:
     Args:
         provider: Specific provider to clear cache for, or None to clear all
     """
-    global _model_cache
-    if provider:
-        cache_key = f"{provider}_models"
-        if cache_key in _model_cache:
-            del _model_cache[cache_key]
-            logger.info(f"Cleared model cache for {provider}")
-    else:
-        _model_cache.clear()
-        logger.info("Cleared all model caches")
+    with _model_cache_lock:
+        if provider:
+            cache_key = f"{provider}_models"
+            if cache_key in _model_cache:
+                del _model_cache[cache_key]
+                logger.info(f"Cleared model cache for {provider}")
+        else:
+            _model_cache.clear()
+            logger.info("Cleared all model caches")
 
 
 def get_openai_models() -> List[str]:
@@ -93,19 +100,18 @@ def get_ollama_models() -> List[str]:
     """Fetch available models from Ollama API."""
     try:
         # Make a request to the Ollama API to list models
-        response = requests.get("http://localhost:11434/api/tags")
+        from utils.constants import get_ollama_url
+        response = requests.get(f"{get_ollama_url()}/api/tags")
 
         if response.status_code == 200:
-            # Parse the response as JSON
-            data = response.json()
-
-            # Extract model names from the response
-            models = [model["name"] for model in data["models"]]
-
-            # Sort models alphabetically
-            models.sort()
-
-            return models
+            try:
+                data = response.json()
+                models = [model.get("name", "") for model in data.get("models", []) if model.get("name")]
+                models.sort()
+                return models
+            except (ValueError, json.JSONDecodeError, TypeError) as e:
+                logger.error(f"Error parsing Ollama response: {e}")
+                return []
         else:
             logger.error(f"Error fetching Ollama models: {response.status_code}")
             return []
@@ -116,13 +122,14 @@ def get_ollama_models() -> List[str]:
 
 def get_anthropic_models() -> List[str]:
     """Return a list of Anthropic models, fetched dynamically if possible."""
-    # Check cache first
+    # Check cache first (under lock)
     cache_key = "anthropic_models"
-    if cache_key in _model_cache:
-        cached_time, cached_models = _model_cache[cache_key]
-        if time.time() - cached_time < _cache_ttl:
-            logger.info("Using cached Anthropic models")
-            return cached_models
+    with _model_cache_lock:
+        if cache_key in _model_cache:
+            cached_time, cached_models = _model_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                logger.info("Using cached Anthropic models")
+                return cached_models
 
     try:
         # Try to fetch models dynamically from Anthropic API
@@ -130,7 +137,7 @@ def get_anthropic_models() -> List[str]:
         from utils.security import get_security_manager
 
         security_manager = get_security_manager()
-        api_key = security_manager.get_api_key("anthropic")
+        api_key = security_manager.get_api_key(PROVIDER_ANTHROPIC)
 
         if api_key:
             logger.info("Attempting to fetch Anthropic models from API")
@@ -160,8 +167,9 @@ def get_anthropic_models() -> List[str]:
                     5 if 'claude-instant' in x else
                     6
                 ))
-                # Cache the results
-                _model_cache[cache_key] = (time.time(), model_ids)
+                # Cache the results (under lock)
+                with _model_cache_lock:
+                    _model_cache[cache_key] = (time.time(), model_ids)
                 return model_ids
             else:
                 logger.warning("No models found in API response, using fallback list")
@@ -193,20 +201,21 @@ def get_fallback_anthropic_models() -> List[str]:
 
 def get_gemini_models() -> List[str]:
     """Fetch available models from Google Gemini API."""
-    # Check cache first
+    # Check cache first (under lock)
     cache_key = "gemini_models"
-    if cache_key in _model_cache:
-        cached_time, cached_models = _model_cache[cache_key]
-        if time.time() - cached_time < _cache_ttl:
-            logger.info("Using cached Gemini models")
-            return cached_models
+    with _model_cache_lock:
+        if cache_key in _model_cache:
+            cached_time, cached_models = _model_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                logger.info("Using cached Gemini models")
+                return cached_models
 
     try:
         from google import genai
         from utils.security import get_security_manager
 
         security_manager = get_security_manager()
-        api_key = security_manager.get_api_key("gemini")
+        api_key = security_manager.get_api_key(PROVIDER_GEMINI)
 
         if not api_key:
             api_key = os.getenv("GEMINI_API_KEY")
@@ -236,8 +245,9 @@ def get_gemini_models() -> List[str]:
                     3 if "1.5" in x else
                     4
                 ))
-                # Cache the results
-                _model_cache[cache_key] = (time.time(), models)
+                # Cache the results (under lock)
+                with _model_cache_lock:
+                    _model_cache[cache_key] = (time.time(), models)
                 return models
             else:
                 logger.warning("No models found in API response, using fallback list")
@@ -269,17 +279,18 @@ def get_fallback_gemini_models() -> List[str]:
 def get_groq_models() -> List[str]:
     """Fetch available models from Groq API via OpenAI-compatible endpoint."""
     cache_key = "groq_models"
-    if cache_key in _model_cache:
-        cached_time, cached_models = _model_cache[cache_key]
-        if time.time() - cached_time < _cache_ttl:
-            logger.info("Using cached Groq models")
-            return cached_models
+    with _model_cache_lock:
+        if cache_key in _model_cache:
+            cached_time, cached_models = _model_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                logger.info("Using cached Groq models")
+                return cached_models
 
     try:
         from utils.security import get_security_manager
 
         security_manager = get_security_manager()
-        api_key = security_manager.get_api_key("groq")
+        api_key = security_manager.get_api_key(PROVIDER_GROQ)
 
         if api_key:
             logger.info("Attempting to fetch Groq models from API")
@@ -294,7 +305,8 @@ def get_groq_models() -> List[str]:
 
             if models:
                 logger.info(f"Successfully fetched {len(models)} Groq models from API")
-                _model_cache[cache_key] = (time.time(), models)
+                with _model_cache_lock:
+                    _model_cache[cache_key] = (time.time(), models)
                 return models
 
         return get_fallback_groq_models()
@@ -319,17 +331,18 @@ def get_fallback_groq_models() -> List[str]:
 def get_cerebras_models() -> List[str]:
     """Fetch available models from Cerebras API via OpenAI-compatible endpoint."""
     cache_key = "cerebras_models"
-    if cache_key in _model_cache:
-        cached_time, cached_models = _model_cache[cache_key]
-        if time.time() - cached_time < _cache_ttl:
-            logger.info("Using cached Cerebras models")
-            return cached_models
+    with _model_cache_lock:
+        if cache_key in _model_cache:
+            cached_time, cached_models = _model_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                logger.info("Using cached Cerebras models")
+                return cached_models
 
     try:
         from utils.security import get_security_manager
 
         security_manager = get_security_manager()
-        api_key = security_manager.get_api_key("cerebras")
+        api_key = security_manager.get_api_key(PROVIDER_CEREBRAS)
 
         if api_key:
             logger.info("Attempting to fetch Cerebras models from API")
@@ -344,7 +357,8 @@ def get_cerebras_models() -> List[str]:
 
             if models:
                 logger.info(f"Successfully fetched {len(models)} Cerebras models from API")
-                _model_cache[cache_key] = (time.time(), models)
+                with _model_cache_lock:
+                    _model_cache[cache_key] = (time.time(), models)
                 return models
 
         return get_fallback_cerebras_models()

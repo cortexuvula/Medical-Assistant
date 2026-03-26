@@ -250,6 +250,51 @@ ALL_AI_PROVIDERS = AIProvider.values()
 ALL_STT_PROVIDERS = STTProvider.values()
 ALL_TTS_PROVIDERS = TTSProvider.values()
 
+# =============================================================================
+# Default Service URLs
+# =============================================================================
+
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_NEO4J_BOLT_URL = "bolt://localhost:7687"
+
+
+def get_ollama_url() -> str:
+    """Get the Ollama API URL from env var, settings, or default.
+
+    Precedence: OLLAMA_API_URL env var > settings.json > default constant.
+    """
+    import os
+    env_val = os.getenv("OLLAMA_API_URL")
+    if env_val:
+        return env_val
+    try:
+        from settings.settings_manager import settings_manager
+        stored = settings_manager.get("ollama_url", "")
+        if stored:
+            return stored
+    except Exception:
+        pass
+    return DEFAULT_OLLAMA_URL
+
+
+def get_neo4j_uri() -> str:
+    """Get the Neo4j bolt URI from env var, settings, or default.
+
+    Precedence: NEO4J_URI env var > settings.json > default constant.
+    """
+    import os
+    env_val = os.getenv("NEO4J_URI")
+    if env_val:
+        return env_val
+    try:
+        from settings.settings_manager import settings_manager
+        stored = settings_manager.get("neo4j_uri", "")
+        if stored:
+            return stored
+    except Exception:
+        pass
+    return DEFAULT_NEO4J_BOLT_URL
+
 
 # =============================================================================
 # Provider Lists for UI Dropdowns

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 from ui.ui_constants import Icons, SidebarConfig, Fonts
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 
 from ui.components.notebook_rag_mixin import NotebookRagMixin
 from ui.components.notebook_guidelines_mixin import NotebookGuidelinesMixin
@@ -380,11 +380,11 @@ class NotebookTabs(NotebookRagMixin, NotebookGuidelinesMixin, NotebookAnalysisMi
         self.components['analysis_bottom_frame'] = bottom_frame
 
         # Get initial collapse state from settings
-        is_collapsed = SETTINGS.get("analysis_panel_collapsed", False)
+        is_collapsed = settings_manager.get("analysis_panel_collapsed", False)
         self._analysis_collapsed = is_collapsed
 
         # Header with collapse button on the left
-        is_dark = SETTINGS.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
+        is_dark = settings_manager.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
         sidebar_colors = SidebarConfig.get_sidebar_colors(is_dark)
 
         header_frame = tk.Frame(bottom_frame, bg=sidebar_colors["bg"])

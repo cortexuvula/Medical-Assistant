@@ -7,7 +7,6 @@ except ImportError:
 from string import punctuation
 import os
 import sys
-import concurrent.futures
 import tkinter as tk
 from tkinter import messagebox, TOP, BOTTOM, LEFT, RIGHT, NORMAL, DISABLED
 import ttkbootstrap as ttk
@@ -16,15 +15,17 @@ from managers.data_folder_manager import data_folder_manager
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
 from typing import Callable, Optional, Dict, Any, List
 import threading
-from pydub import AudioSegment
 from datetime import datetime
 from utils.cleanup_utils import clear_all_content, clear_content_except_context
 from utils.security import get_security_manager
 from utils.error_handling import sanitize_error_for_user
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_MODULATE,
+)
 from database.database import Database
 from audio.audio import AudioHandler
-from audio.periodic_analysis import PeriodicAnalyzer, AudioSegmentExtractor
-
 # Initialize structured logging
 from utils.structured_logging import get_logger
 
@@ -32,7 +33,7 @@ logger = get_logger(__name__)
 
 
 from utils.utils import get_valid_microphones
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 from ui.dialogs.dialogs import show_settings_dialog, show_api_keys_dialog, show_shortcuts_dialog, show_about_dialog, show_letter_options_dialog
 from ui.tooltip import ToolTip
 from ui.ui_constants import Icons, SidebarConfig, Fonts
@@ -345,14 +346,14 @@ class MedicalDictationApp(
         self.ui.components['bottom_section'] = bottom_section
 
         # Create header row with single collapse button for entire bottom section
-        is_dark = SETTINGS.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
+        is_dark = settings_manager.get("theme", "darkly") in ("darkly", "superhero", "cyborg", "vapor", "solar")
         sidebar_colors = SidebarConfig.get_sidebar_colors(is_dark)
 
         bottom_header = tk.Frame(bottom_section, bg=sidebar_colors["bg"])
         bottom_header.pack(fill=tk.X, padx=10, pady=(8, 5))
 
         # Single collapse button for both panels — use tk.Label for clean minimal look
-        self._bottom_collapsed = SETTINGS.get("bottom_section_collapsed", False)
+        self._bottom_collapsed = settings_manager.get("bottom_section_collapsed", False)
         # Icon shows the ACTION: when collapsed show expand icon (▼), when expanded show collapse icon (▲)
         collapse_icon = Icons.EXPAND if self._bottom_collapsed else Icons.COLLAPSE
         self._bottom_collapse_btn = tk.Label(
@@ -557,16 +558,18 @@ class MedicalDictationApp(
         # Define provider configurations
         provider_configs = {
             "ai": [
-                ("openai", "OpenAI"),
-                ("anthropic", "Anthropic"),
-                ("gemini", "Gemini"),
-                ("ollama", "Ollama"),
+                (PROVIDER_OPENAI, "OpenAI"),
+                (PROVIDER_ANTHROPIC, "Anthropic"),
+                (PROVIDER_GEMINI, "Gemini"),
+                (PROVIDER_GROQ, "Groq"),
+                (PROVIDER_CEREBRAS, "Cerebras"),
+                (PROVIDER_OLLAMA, "Ollama"),
             ],
             "stt": [
-                ("groq", "GROQ"),
-                ("elevenlabs", "ElevenLabs"),
-                ("deepgram", "Deepgram"),
-                ("modulate", "Modulate (Velma)"),
+                (STT_GROQ, "GROQ"),
+                (STT_ELEVENLABS, "ElevenLabs"),
+                (STT_DEEPGRAM, "Deepgram"),
+                (STT_MODULATE, "Modulate (Velma)"),
             ]
         }
 
@@ -575,7 +578,7 @@ class MedicalDictationApp(
         display_names = []
 
         for provider_key, display_name in all_providers:
-            if provider_key == "ollama":
+            if provider_key == PROVIDER_OLLAMA:
                 # Ollama uses a URL, not an API key — it defaults to localhost:11434
                 available.append(provider_key)
                 display_names.append(display_name)
@@ -1001,7 +1004,7 @@ class MedicalDictationApp(
             "duration": duration,
             "soap_note": soap_note,
             "metadata": {
-                "provider": SETTINGS.get("selected_stt_provider", "unknown"),
+                "provider": settings_manager.get("selected_stt_provider", "unknown"),
                 "language": self.recognition_language,
                 "filename": filename
             }

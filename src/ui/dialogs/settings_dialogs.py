@@ -19,6 +19,10 @@ from ui.dialogs.model_providers import (
     get_groq_models,
     get_cerebras_models,
 )
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
+    PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS,
+)
 
 
 def _create_prompt_tab(parent: ttk.Frame, current_prompt: str, current_system_prompt: str) -> Tuple[tk.Text, tk.Text]:
@@ -176,37 +180,37 @@ def _create_models_tab(parent: ttk.Frame, current_model: str,
     # OpenAI Model
     ttk.Label(parent, text="OpenAI Model:").grid(row=0, column=0, sticky="nw", pady=(10, 5))
     openai_model_var = tk.StringVar(value=current_model)
-    model_vars['openai'] = openai_model_var
+    model_vars[PROVIDER_OPENAI] = openai_model_var
     create_model_selector(parent, parent, openai_model_var, "OpenAI", get_openai_models, row=0)
 
     # Ollama Model
     ttk.Label(parent, text="Ollama Model:").grid(row=1, column=0, sticky="nw", pady=(5, 5))
     ollama_model_var = tk.StringVar(value=current_ollama)
-    model_vars['ollama'] = ollama_model_var
+    model_vars[PROVIDER_OLLAMA] = ollama_model_var
     create_model_selector(parent, parent, ollama_model_var, "Ollama", get_ollama_models, row=1)
 
     # Anthropic Model
     ttk.Label(parent, text="Anthropic Model:").grid(row=2, column=0, sticky="nw", pady=(5, 5))
     anthropic_model_var = tk.StringVar(value=current_anthropic)
-    model_vars['anthropic'] = anthropic_model_var
+    model_vars[PROVIDER_ANTHROPIC] = anthropic_model_var
     create_model_selector(parent, parent, anthropic_model_var, "Anthropic", get_anthropic_models, row=2)
 
     # Gemini Model
     ttk.Label(parent, text="Gemini Model:").grid(row=3, column=0, sticky="nw", pady=(5, 5))
     gemini_model_var = tk.StringVar(value=current_gemini)
-    model_vars['gemini'] = gemini_model_var
+    model_vars[PROVIDER_GEMINI] = gemini_model_var
     create_model_selector(parent, parent, gemini_model_var, "Gemini", get_gemini_models, row=3)
 
     # Groq Model
     ttk.Label(parent, text="Groq Model:").grid(row=4, column=0, sticky="nw", pady=(5, 5))
     groq_model_var = tk.StringVar(value=current_groq)
-    model_vars['groq'] = groq_model_var
+    model_vars[PROVIDER_GROQ] = groq_model_var
     create_model_selector(parent, parent, groq_model_var, "Groq", get_groq_models, row=4)
 
     # Cerebras Model
     ttk.Label(parent, text="Cerebras Model:").grid(row=5, column=0, sticky="nw", pady=(5, 10))
     cerebras_model_var = tk.StringVar(value=current_cerebras)
-    model_vars['cerebras'] = cerebras_model_var
+    model_vars[PROVIDER_CEREBRAS] = cerebras_model_var
     create_model_selector(parent, parent, cerebras_model_var, "Cerebras", get_cerebras_models, row=5)
 
     return model_vars
@@ -328,12 +332,12 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
 
         provider_options = [
             ("", "Use Global Setting"),
-            ("openai", "OpenAI"),
-            ("anthropic", "Anthropic"),
-            ("ollama", "Ollama"),
-            ("gemini", "Gemini"),
-            ("groq", "Groq"),
-            ("cerebras", "Cerebras")
+            (PROVIDER_OPENAI, "OpenAI"),
+            (PROVIDER_ANTHROPIC, "Anthropic"),
+            (PROVIDER_OLLAMA, "Ollama"),
+            (PROVIDER_GEMINI, "Gemini"),
+            (PROVIDER_GROQ, "Groq"),
+            (PROVIDER_CEREBRAS, "Cerebras")
         ]
 
         # Create combobox with display names
@@ -549,12 +553,12 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
                 system_prompt_text.insert("1.0", default_system)
 
         # Reset model fields to defaults
-        model_vars['openai'].set(config.get("model", default.get("model", "gpt-3.5-turbo")))
-        model_vars['ollama'].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
-        model_vars['anthropic'].set(config.get("anthropic_model", default.get("anthropic_model", "claude-sonnet-4-20250514")))
-        model_vars['gemini'].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
-        model_vars['groq'].set(config.get("groq_model", default.get("groq_model", "llama-3.3-70b-versatile")))
-        model_vars['cerebras'].set(config.get("cerebras_model", default.get("cerebras_model", "llama-3.3-70b")))
+        model_vars[PROVIDER_OPENAI].set(config.get("model", default.get("model", "gpt-3.5-turbo")))
+        model_vars[PROVIDER_OLLAMA].set(config.get("ollama_model", default.get("ollama_model", "llama3")))
+        model_vars[PROVIDER_ANTHROPIC].set(config.get("anthropic_model", default.get("anthropic_model", "claude-sonnet-4-20250514")))
+        model_vars[PROVIDER_GEMINI].set(config.get("gemini_model", default.get("gemini_model", "gemini-1.5-flash")))
+        model_vars[PROVIDER_GROQ].set(config.get("groq_model", default.get("groq_model", "llama-3.3-70b-versatile")))
+        model_vars[PROVIDER_CEREBRAS].set(config.get("cerebras_model", default.get("cerebras_model", "llama-3.3-70b")))
 
         # Reset temperature
         temp_scale.set(default_temp)
@@ -590,12 +594,12 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             # Build arguments for SOAP save callback (different signature)
             save_args = [
                 prompt_text.get("1.0", tk.END).strip(),
-                model_vars['openai'].get().strip(),
-                model_vars['ollama'].get().strip(),
-                model_vars['anthropic'].get().strip(),
-                model_vars['gemini'].get().strip(),
-                model_vars['groq'].get().strip(),
-                model_vars['cerebras'].get().strip(),
+                model_vars[PROVIDER_OPENAI].get().strip(),
+                model_vars[PROVIDER_OLLAMA].get().strip(),
+                model_vars[PROVIDER_ANTHROPIC].get().strip(),
+                model_vars[PROVIDER_GEMINI].get().strip(),
+                model_vars[PROVIDER_GROQ].get().strip(),
+                model_vars[PROVIDER_CEREBRAS].get().strip(),
                 icd_version_var.get(),
                 provider_msgs  # Dict of per-provider system messages
             ]
@@ -603,13 +607,13 @@ def show_settings_dialog(parent: tk.Tk, title: str, config: dict, default: dict,
             # Standard save for non-SOAP dialogs
             save_args = [
                 prompt_text.get("1.0", tk.END).strip(),
-                model_vars['openai'].get().strip(),
-                model_vars['ollama'].get().strip(),
+                model_vars[PROVIDER_OPENAI].get().strip(),
+                model_vars[PROVIDER_OLLAMA].get().strip(),
                 system_prompt_text.get("1.0", tk.END).strip() if system_prompt_text else "",
-                model_vars['anthropic'].get().strip(),
-                model_vars['gemini'].get().strip(),
-                model_vars['groq'].get().strip(),
-                model_vars['cerebras'].get().strip()
+                model_vars[PROVIDER_ANTHROPIC].get().strip(),
+                model_vars[PROVIDER_GEMINI].get().strip(),
+                model_vars[PROVIDER_GROQ].get().strip(),
+                model_vars[PROVIDER_CEREBRAS].get().strip()
             ]
 
             # Add ICD version for SOAP settings (backward compat for non per-provider mode)

@@ -8,15 +8,6 @@ This module consolidates recording-related controllers:
 
 This is the single source of truth for all recording state and operations.
 The actual logic is delegated to specialized handlers for better separation of concerns.
-
-Migration Guide:
-    # Old imports (deprecated)
-    from core.recording_controller import RecordingController
-    from core.periodic_analysis_controller import PeriodicAnalysisController
-    from core.recording_recovery_controller import RecordingRecoveryController
-
-    # New import
-    from core.controllers.recording_controller import RecordingController
 """
 
 import threading

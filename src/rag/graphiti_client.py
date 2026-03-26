@@ -25,6 +25,7 @@ from typing import Any, Callable, Optional
 from dotenv import load_dotenv
 
 from rag.models import GraphSearchResult
+from utils.constants import PROVIDER_OPENAI
 from utils.timeout_config import get_timeout
 
 # Load environment variables from multiple possible locations
@@ -204,18 +205,18 @@ class GraphitiClient:
 
         if not uri or not password:
             try:
-                from settings.settings import SETTINGS
-                uri = uri or SETTINGS.get("graphiti_neo4j_uri")
-                user = user or SETTINGS.get("graphiti_neo4j_user", "neo4j")
-                password = password or SETTINGS.get("graphiti_neo4j_password")
+                from settings.settings_manager import settings_manager
+                uri = uri or settings_manager.get("graphiti_neo4j_uri")
+                user = user or settings_manager.get("graphiti_neo4j_user", "neo4j")
+                password = password or settings_manager.get("graphiti_neo4j_password")
             except Exception as e:
-                logger.debug(f"Could not load Neo4j settings from SETTINGS: {e}")
+                logger.debug(f"Could not load Neo4j settings from settings_manager: {e}")
 
         if not openai_key:
             try:
                 from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
-                openai_key = manager.get_key("openai")
+                openai_key = manager.get_key(PROVIDER_OPENAI)
             except Exception as e:
                 logger.debug(f"Could not load OpenAI API key from api_key_manager: {e}")
 
@@ -607,10 +608,10 @@ def get_graphiti_client() -> Optional[GraphitiClient]:
             uri = os.environ.get("NEO4J_URI")
             if not uri:
                 try:
-                    from settings.settings import SETTINGS
-                    uri = SETTINGS.get("graphiti_neo4j_uri")
+                    from settings.settings_manager import settings_manager
+                    uri = settings_manager.get("graphiti_neo4j_uri")
                 except Exception as e:
-                    logger.debug(f"Could not load graphiti_neo4j_uri from SETTINGS: {e}")
+                    logger.debug(f"Could not load graphiti_neo4j_uri from settings_manager: {e}")
 
             if not uri:
                 logger.debug("Graphiti not configured - Neo4j URI not found")

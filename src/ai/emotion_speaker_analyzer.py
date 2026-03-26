@@ -18,6 +18,7 @@ from ai.emotion_processor import _format_timestamp
 from settings.settings_manager import settings_manager
 from stt_providers.modulate import EMOTION_TO_CLINICAL
 from utils.structured_logging import get_logger
+from utils.constants import STT_MODULATE
 
 
 class SpeakerRole(str, Enum):
@@ -134,7 +135,7 @@ class SpeakerEmotionAnalyzer:
             # Only detect clusters for non-clinician speakers
             if role != SpeakerRole.CLINICIAN:
                 window = settings_manager.get(
-                    "modulate", {}
+                    STT_MODULATE, {}
                 ).get("emotion_cluster_window_seconds", 120)
                 clusters = self._detect_clusters(deviations, window_seconds=window)
                 for c in clusters:
@@ -195,7 +196,7 @@ class SpeakerEmotionAnalyzer:
         - If both identical baseline: both UNKNOWN
         - 3+ speakers: infer clinician, rest UNKNOWN
         """
-        overrides = settings_manager.get("modulate", {}).get(
+        overrides = settings_manager.get(STT_MODULATE, {}).get(
             "speaker_role_overrides", {}
         )
 
@@ -458,7 +459,7 @@ class SpeakerEmotionAnalyzer:
 
     def _get_disclaimer(self) -> str:
         """Get disclaimer text from settings or use default."""
-        settings = settings_manager.get("modulate", {})
+        settings = settings_manager.get(STT_MODULATE, {})
         return settings.get(
             "emotion_disclaimer",
             "Voice emotion analysis is observational only and based on acoustic "

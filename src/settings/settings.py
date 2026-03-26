@@ -20,6 +20,11 @@ from utils.structured_logging import get_logger
 from core.config import get_config
 from settings.settings_migration import get_migrator
 from managers.data_folder_manager import data_folder_manager
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_MODULATE,
+)
 
 logger = get_logger(__name__)
 
@@ -33,8 +38,8 @@ SETTINGS_CACHE_TTL = 60.0  # Cache valid for 60 seconds
 
 # Global defaults
 DEFAULT_STORAGE_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Medical-Dictation", "Storage")
-DEFAULT_AI_PROVIDER = "openai"
-DEFAULT_STT_PROVIDER = "elevenlabs"
+DEFAULT_AI_PROVIDER = PROVIDER_OPENAI
+DEFAULT_STT_PROVIDER = STT_ELEVENLABS
 DEFAULT_THEME = "flatly"
 
 
@@ -98,7 +103,7 @@ _DEFAULTS_AI_CONFIG = {
 _DEFAULTS_AGENT_CONFIG = {
     "synopsis": {
         "enabled": True,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-4",
         "temperature": 0.3,
         "max_tokens": 300,
@@ -116,7 +121,7 @@ _DEFAULTS_AGENT_CONFIG = {
     },
     "diagnostic": {
         "enabled": False,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-4",
         "temperature": 0.1,
         "max_tokens": 800,
@@ -167,7 +172,7 @@ Format your response as:
     },
     "medication": {
         "enabled": False,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-4",
         "temperature": 0.2,
         "max_tokens": 400,
@@ -175,7 +180,7 @@ Format your response as:
     },
     "referral": {
         "enabled": True,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-4",
         "temperature": 0.3,
         "max_tokens": 350,
@@ -183,7 +188,7 @@ Format your response as:
     },
     "data_extraction": {
         "enabled": False,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-3.5-turbo",
         "temperature": 0.0,
         "max_tokens": 300,
@@ -191,7 +196,7 @@ Format your response as:
     },
     "workflow": {
         "enabled": False,
-        "provider": "openai",
+        "provider": PROVIDER_OPENAI,
         "model": "gpt-4",
         "temperature": 0.3,
         "max_tokens": 500,
@@ -327,7 +332,7 @@ Analysis #{number} | Elapsed: {time}""",
 
 # STT provider defaults
 _DEFAULTS_STT_PROVIDERS = {
-    "elevenlabs": {
+    STT_ELEVENLABS: {
         "model_id": "scribe_v2",
         "language_code": "",  # Auto-detection
         "tag_audio_events": True,
@@ -337,7 +342,7 @@ _DEFAULTS_STT_PROVIDERS = {
         "entity_detection": [],
         "keyterms": []
     },
-    "deepgram": {
+    STT_DEEPGRAM: {
         "model": "nova-2-medical",
         "language": "en-US",
         "smart_format": True,
@@ -346,7 +351,7 @@ _DEFAULTS_STT_PROVIDERS = {
         "redact": False,
         "alternatives": 1
     },
-    "modulate": {
+    STT_MODULATE: {
         "model": "default",
         "language": "en-US",
         "enable_emotions": True,
@@ -427,7 +432,7 @@ _DEFAULTS_TRANSLATION_TTS = {
         "input_device": "",
         "output_device": "",
         "llm_refinement_enabled": False,
-        "refinement_provider": "openai",
+        "refinement_provider": PROVIDER_OPENAI,
         "refinement_model": "gpt-3.5-turbo",
         "refinement_temperature": 0.1
     },
@@ -706,7 +711,7 @@ def load_settings(force_refresh: bool = False, validate: bool = True) -> dict:
                     _settings_cache = merged
                     _settings_cache_time = current_time
                     return merged
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 logger.error("Error loading settings", exc_info=True)
 
         result = _DEFAULT_SETTINGS.copy()

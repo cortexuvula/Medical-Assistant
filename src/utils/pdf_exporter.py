@@ -16,27 +16,41 @@ from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, KeepTogether, Image, HRFlowable
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
-from reportlab.pdfgen import canvas
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        PageBreak, KeepTogether, Image, HRFlowable
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+    from reportlab.pdfgen import canvas
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 
 class PDFExporter:
     """Handles PDF generation for medical documents with professional formatting."""
     
-    def __init__(self, page_size=letter):
+    def __init__(self, page_size=None):
         """Initialize PDF exporter with default settings.
-        
+
         Args:
             page_size: Page size (default: letter, can be A4)
+
+        Raises:
+            ImportError: If reportlab package is not installed
         """
+        if not REPORTLAB_AVAILABLE:
+            raise ImportError(
+                "reportlab package is required for PDF export. "
+                "Install it with: pip install reportlab"
+            )
+        if page_size is None:
+            page_size = letter
         self.page_size = page_size
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()

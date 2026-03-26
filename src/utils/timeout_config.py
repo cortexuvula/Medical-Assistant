@@ -19,10 +19,11 @@ Usage:
 """
 
 from typing import Dict, Optional
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
-    PROVIDER_GROQ, PROVIDER_CEREBRAS
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
 )
 from utils.structured_logging import get_logger
 
@@ -40,9 +41,9 @@ DEFAULT_TIMEOUTS: Dict[str, float] = {
     PROVIDER_CEREBRAS: 30.0,    # Cerebras LLM API calls (ultra-fast inference)
 
     # STT Provider timeouts (for transcription)
-    "deepgram": 120.0,        # Deepgram STT (long audio files)
-    "groq": 60.0,             # Groq Whisper STT (fast)
-    "elevenlabs": 90.0,       # ElevenLabs STT
+    STT_DEEPGRAM: 120.0,        # Deepgram STT (long audio files)
+    STT_GROQ: 60.0,             # Groq Whisper STT (fast)
+    STT_ELEVENLABS: 90.0,       # ElevenLabs STT
 
     # Neo4j/Knowledge Graph timeouts
     "neo4j": 30.0,            # Neo4j operations (reduced from 300s)
@@ -106,7 +107,7 @@ class TimeoutConfig:
     def _load_from_settings(self) -> None:
         """Load timeout settings from application settings if available."""
         try:
-            timeout_settings = SETTINGS.get("timeouts", {})
+            timeout_settings = settings_manager.get("timeouts", {})
 
             # Load service-specific timeouts
             for service, timeout in timeout_settings.items():

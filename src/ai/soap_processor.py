@@ -20,6 +20,7 @@ from typing import List, Any, Dict, Optional
 
 from ai.ai import create_soap_note_with_openai
 from settings.settings_manager import settings_manager
+from utils.constants import STT_ELEVENLABS, STT_MODULATE
 from utils.safe_ui import schedule_ui_update
 
 
@@ -161,14 +162,14 @@ class SOAPProcessor:
                 transcript = None
                 emotion_data = None
                 emotion_context = ""
-                selected_provider = settings_manager.get("stt_provider", "elevenlabs")
+                selected_provider = settings_manager.get("stt_provider", STT_ELEVENLABS)
 
                 # Breadcrumb logging for transcription path diagnosis
                 logger.info(f"STT provider: {selected_provider}, save_result={save_result}, "
                             f"audio_path_exists={os.path.exists(audio_path) if audio_path else False}")
 
                 # For Modulate, use direct file transcription for best diarization quality
-                if selected_provider == "modulate":
+                if selected_provider == STT_MODULATE:
                     modulate = getattr(self.audio_handler, 'modulate_provider', None)
                     logger.info(f"Modulate provider available: {modulate is not None}, "
                                 f"has_transcribe_file: {hasattr(modulate, 'transcribe_file') if modulate else False}")

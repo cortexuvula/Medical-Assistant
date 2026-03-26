@@ -18,6 +18,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Literal
 from enum import Enum
 
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_WHISPER, STT_MODULATE
+)
+
 try:
     from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
     PYDANTIC_AVAILABLE = True
@@ -207,7 +213,7 @@ if PYDANTIC_AVAILABLE:
         model_config = ConfigDict(extra="allow")
 
         enabled: bool = False
-        provider: str = "openai"
+        provider: str = PROVIDER_OPENAI
         model: str = "gpt-4"
         temperature: float = Field(default=0.3, ge=0.0, le=2.0)
         max_tokens: int = Field(default=500, ge=50, le=16000)
@@ -236,7 +242,7 @@ if PYDANTIC_AVAILABLE:
         input_device: str = ""
         output_device: str = ""
         llm_refinement_enabled: bool = False
-        refinement_provider: str = "openai"
+        refinement_provider: str = PROVIDER_OPENAI
         refinement_model: str = "gpt-3.5-turbo"
         refinement_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
 
@@ -285,8 +291,8 @@ if PYDANTIC_AVAILABLE:
         model_config = ConfigDict(extra="allow")
 
         # Core settings
-        ai_provider: str = "openai"
-        stt_provider: str = "groq"
+        ai_provider: str = PROVIDER_OPENAI
+        stt_provider: str = STT_GROQ
         theme: str = "flatly"
         storage_folder: str = ""
         default_folder: str = ""
@@ -358,7 +364,7 @@ if PYDANTIC_AVAILABLE:
         @classmethod
         def validate_ai_provider(cls, v):
             """Validate AI provider is a known value."""
-            known_providers = {"openai", "anthropic", "ollama", "gemini", "grok", "deepseek", "groq", "cerebras"}
+            known_providers = {PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI, "grok", "deepseek", PROVIDER_GROQ, PROVIDER_CEREBRAS}
             if v.lower() not in known_providers:
                 # Warning but don't fail - might be a new provider
                 pass
@@ -368,7 +374,7 @@ if PYDANTIC_AVAILABLE:
         @classmethod
         def validate_stt_provider(cls, v):
             """Validate STT provider is a known value."""
-            known_providers = {"groq", "deepgram", "elevenlabs", "whisper", "google", "modulate"}
+            known_providers = {STT_GROQ, STT_DEEPGRAM, STT_ELEVENLABS, STT_WHISPER, "google", STT_MODULATE}
             if v.lower() not in known_providers:
                 pass
             return v

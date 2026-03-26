@@ -15,7 +15,7 @@ import threading
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 from managers.data_folder_manager import data_folder_manager
 from utils.vocabulary_corrector import VocabularyCorrector, CorrectionResult
 from utils.structured_logging import get_logger
@@ -63,7 +63,7 @@ class VocabularyManager:
 
     def _load_settings(self) -> None:
         """Load vocabulary config from SETTINGS and corrections from vocabulary.json."""
-        vocab_settings = SETTINGS.get("custom_vocabulary", {})
+        vocab_settings = settings_manager.get("custom_vocabulary", {})
         self._enabled = vocab_settings.get("enabled", True)
         self._default_specialty = vocab_settings.get("default_specialty", "general")
         self._categories = vocab_settings.get("categories", [
@@ -97,12 +97,12 @@ class VocabularyManager:
                         }
                 self.logger.info(f"Loaded {len(corrections)} corrections from {VOCABULARY_FILE}")
                 return corrections
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 self.logger.error(f"Failed to load vocabulary.json: {e}")
                 return {}
 
         # 2. Check settings.json for legacy corrections to migrate
-        vocab_settings = SETTINGS.get("custom_vocabulary", {})
+        vocab_settings = settings_manager.get("custom_vocabulary", {})
         legacy_corrections = vocab_settings.get("corrections", {})
         if legacy_corrections:
             self.logger.info(f"Migrating {len(legacy_corrections)} corrections from settings.json to vocabulary.json")
@@ -111,8 +111,7 @@ class VocabularyManager:
             # Remove corrections key from settings.json
             if "corrections" in vocab_settings:
                 del vocab_settings["corrections"]
-                SETTINGS["custom_vocabulary"] = vocab_settings
-                save_settings(SETTINGS)
+                settings_manager.set("custom_vocabulary", vocab_settings)
                 self.logger.info("Removed legacy corrections from settings.json")
             return legacy_corrections
 
@@ -121,13 +120,12 @@ class VocabularyManager:
 
     def _save_settings(self) -> None:
         """Save config to settings.json and corrections to vocabulary.json."""
-        SETTINGS["custom_vocabulary"] = {
+        settings_manager.set("custom_vocabulary", {
             "enabled": self._enabled,
             "default_specialty": self._default_specialty,
             "categories": self._categories,
             "specialties": self._specialties,
-        }
-        save_settings(SETTINGS)
+        })
         self._save_corrections_file()
         self.logger.info("Vocabulary settings saved")
 

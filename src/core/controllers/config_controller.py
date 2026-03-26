@@ -15,6 +15,11 @@ from typing import TYPE_CHECKING, Tuple, List
 
 from settings import settings_manager
 from utils.structured_logging import get_logger
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_MODULATE,
+)
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -44,6 +49,7 @@ class ConfigController:
         """
         self.app = app
         self._refreshing = False  # For microphone refresh animation
+        self._cerebras_hipaa_acknowledged = False
 
     # =========================================================================
     # AI Provider Methods
@@ -60,11 +66,11 @@ class ConfigController:
 
         # All possible AI providers with their display names
         all_providers = [
-            ("openai", "OpenAI"),
-            ("anthropic", "Anthropic"),
-            ("gemini", "Gemini"),
-            ("groq", "Groq"),
-            ("cerebras", "Cerebras"),
+            (PROVIDER_OPENAI, "OpenAI"),
+            (PROVIDER_ANTHROPIC, "Anthropic"),
+            (PROVIDER_GEMINI, "Gemini"),
+            (PROVIDER_GROQ, "Groq"),
+            (PROVIDER_CEREBRAS, "Cerebras"),
         ]
 
         available = []
@@ -99,10 +105,10 @@ class ConfigController:
 
         # All possible STT providers with their display names
         all_providers = [
-            ("groq", "GROQ"),
-            ("elevenlabs", "ElevenLabs"),
-            ("deepgram", "Deepgram"),
-            ("modulate", "Modulate (Velma)"),
+            (STT_GROQ, "GROQ"),
+            (STT_ELEVENLABS, "ElevenLabs"),
+            (STT_DEEPGRAM, "Deepgram"),
+            (STT_MODULATE, "Modulate (Velma)"),
         ]
 
         available = []
@@ -170,8 +176,8 @@ class ConfigController:
             display_name = self.app._ai_display_names[selected_index]
 
             # Show HIPAA warning for Cerebras (no BAA available)
-            if selected_provider == "cerebras":
-                if not getattr(self, '_cerebras_hipaa_acknowledged', False):
+            if selected_provider == PROVIDER_CEREBRAS:
+                if not self._cerebras_hipaa_acknowledged:
                     messagebox.showwarning(
                         "HIPAA Notice - Cerebras",
                         "Cerebras does not currently offer a HIPAA Business Associate "
@@ -261,11 +267,11 @@ class ConfigController:
         """
         # Create readable provider names for display
         provider_names = {
-            "elevenlabs": "ElevenLabs",
-            "deepgram": "Deepgram",
-            "groq": "GROQ",
+            STT_ELEVENLABS: "ElevenLabs",
+            STT_DEEPGRAM: "Deepgram",
+            STT_GROQ: "GROQ",
             "google": "Google",
-            "modulate": "Modulate (Velma)"
+            STT_MODULATE: "Modulate (Velma)"
         }
 
         primary_display = provider_names.get(primary_provider, primary_provider)
@@ -276,7 +282,7 @@ class ConfigController:
 
         # Update STT provider dropdown to reflect actual service being used
         try:
-            stt_providers = ["groq", "elevenlabs", "deepgram", "modulate"]
+            stt_providers = [STT_GROQ, STT_ELEVENLABS, STT_DEEPGRAM, STT_MODULATE]
             fallback_index = stt_providers.index(fallback_provider)
             self.app.after(0, lambda: [
                 self.app.status_manager.warning(message),

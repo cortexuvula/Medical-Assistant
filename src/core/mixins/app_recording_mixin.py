@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import messagebox
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.cleanup_utils import clear_content_except_context
 from utils.structured_logging import get_logger
 
@@ -47,7 +47,7 @@ class AppRecordingMixin:
             return
 
         # Check if quick continue mode is enabled
-        if SETTINGS.get("quick_continue_mode", True):
+        if settings_manager.get("quick_continue_mode", True):
             # Queue for background processing
             self._queue_recording_for_processing(recording_data)
             # Reset UI immediately

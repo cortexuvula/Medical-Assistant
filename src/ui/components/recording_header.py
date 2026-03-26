@@ -15,7 +15,7 @@ from ui.tooltip import ToolTip
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Colors
 from ui.theme_observer import ThemeObserver
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class RecordingHeader:
@@ -201,7 +201,7 @@ class RecordingHeader:
 
         # Set initial selection
         if mic_names:
-            saved_mic = SETTINGS.get("selected_microphone", "")
+            saved_mic = settings_manager.get("selected_microphone", "")
             if saved_mic and saved_mic in mic_names:
                 self._device_combo.set(saved_mic)
             else:
@@ -299,11 +299,9 @@ class RecordingHeader:
     def _on_device_change(self, event):
         """Handle device selection change."""
         selected = self._device_combo.get()
-        SETTINGS["selected_microphone"] = selected
 
         try:
-            from settings.settings import save_settings
-            save_settings(SETTINGS)
+            settings_manager.set("selected_microphone", selected)
         except Exception as e:
             logger.error(f"Error saving microphone setting: {e}")
 

@@ -7,6 +7,11 @@ Handles initialization of API keys and security managers.
 from typing import TYPE_CHECKING
 
 from .base import BaseSetup
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_MODULATE,
+)
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
@@ -37,16 +42,18 @@ class SecuritySetup(BaseSetup):
         """Load API keys from secure storage."""
         try:
             # Get API keys from security manager
-            self.app.openai_api_key = self.app.security_manager.get_api_key("openai") or ""
-            self.app.groq_api_key = self.app.security_manager.get_api_key("groq") or ""
-            self.app.deepgram_api_key = self.app.security_manager.get_api_key("deepgram") or ""
-            self.app.elevenlabs_api_key = self.app.security_manager.get_api_key("elevenlabs") or ""
-            self.app.anthropic_api_key = self.app.security_manager.get_api_key("anthropic") or ""
-            self.app.gemini_api_key = self.app.security_manager.get_api_key("gemini") or ""
+            self.app.openai_api_key = self.app.security_manager.get_api_key(PROVIDER_OPENAI) or ""
+            self.app.groq_api_key = self.app.security_manager.get_api_key(PROVIDER_GROQ) or ""
+            self.app.deepgram_api_key = self.app.security_manager.get_api_key(STT_DEEPGRAM) or ""
+            self.app.elevenlabs_api_key = self.app.security_manager.get_api_key(STT_ELEVENLABS) or ""
+            self.app.anthropic_api_key = self.app.security_manager.get_api_key(PROVIDER_ANTHROPIC) or ""
+            self.app.gemini_api_key = self.app.security_manager.get_api_key(PROVIDER_GEMINI) or ""
+            self.app.modulate_api_key = self.app.security_manager.get_api_key(STT_MODULATE) or ""
+            self.app.cerebras_api_key = self.app.security_manager.get_api_key(PROVIDER_CEREBRAS) or ""
 
             # Log which keys are configured (without revealing values)
             configured_keys = []
-            for provider in ['openai', 'groq', 'deepgram', 'elevenlabs', 'anthropic', 'gemini']:
+            for provider in [PROVIDER_OPENAI, PROVIDER_GROQ, STT_DEEPGRAM, STT_ELEVENLABS, PROVIDER_ANTHROPIC, PROVIDER_GEMINI, STT_MODULATE, PROVIDER_CEREBRAS]:
                 if self.app.security_manager.get_api_key(provider):
                     configured_keys.append(provider)
 
@@ -64,6 +71,8 @@ class SecuritySetup(BaseSetup):
             self.app.elevenlabs_api_key = ""
             self.app.anthropic_api_key = ""
             self.app.gemini_api_key = ""
+            self.app.modulate_api_key = ""
+            self.app.cerebras_api_key = ""
 
     def cleanup(self) -> None:
         """Clean up security resources."""

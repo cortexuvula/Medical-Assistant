@@ -17,6 +17,7 @@ from pydub import AudioSegment
 
 from .base import BaseSTTProvider, TranscriptionResult
 from settings.settings_manager import settings_manager
+from utils.constants import STT_MODULATE
 from utils.exceptions import TranscriptionError, APIError, RateLimitError, ServiceUnavailableError
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
@@ -87,7 +88,7 @@ class ModulateProvider(BaseSTTProvider):
     @property
     def provider_name(self) -> str:
         """Return the provider identifier."""
-        return "modulate"
+        return STT_MODULATE
 
     @property
     def supports_diarization(self) -> bool:
@@ -104,7 +105,7 @@ class ModulateProvider(BaseSTTProvider):
         """
         super().__init__(api_key, language)
 
-    @secure_api_call("modulate")
+    @secure_api_call(STT_MODULATE)
     @resilient_api_call(
         max_retries=3,
         initial_delay=1.0,
@@ -133,7 +134,7 @@ class ModulateProvider(BaseSTTProvider):
         import requests
 
         try:
-            session = get_http_client_manager().get_requests_session("modulate")
+            session = get_http_client_manager().get_requests_session(STT_MODULATE)
             response = session.post(
                 url,
                 headers=headers,
@@ -192,7 +193,7 @@ class ModulateProvider(BaseSTTProvider):
 
     def _get_modulate_settings(self) -> dict:
         """Get Modulate.ai settings from settings manager."""
-        return settings_manager.get("modulate", {})
+        return settings_manager.get(STT_MODULATE, {})
 
     def _build_request(self, segment: AudioSegment, settings: dict) -> tuple:
         """Build the API request components.
@@ -708,7 +709,7 @@ class ModulateProvider(BaseSTTProvider):
             silent_segment.export(audio_buffer, format="wav")
             audio_buffer.seek(0)
 
-            session = get_http_client_manager().get_requests_session("modulate")
+            session = get_http_client_manager().get_requests_session(STT_MODULATE)
             response = session.post(
                 MODULATE_BATCH_ENGLISH_URL,
                 headers={'X-API-Key': self.api_key},

@@ -1,4 +1,6 @@
 {
+  "ollama_url": "http://localhost:11434",
+  "neo4j_bolt_url": "bolt://localhost:7687",
   "api": {
     "timeout": 60,
     "max_retries": 3,

@@ -18,6 +18,10 @@ from ui.dialogs.unified_settings_dialog import (
     show_unified_settings_dialog,
     UnifiedSettingsDialog,
 )
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    STT_ELEVENLABS, STT_DEEPGRAM, STT_GROQ, STT_MODULATE
+)
 from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
@@ -46,9 +50,9 @@ class AppDialogMixin:
         from utils.security import get_security_manager
         security_manager = get_security_manager()
         has_any_llm = any([
-            security_manager.get_api_key("openai"),
-            security_manager.get_api_key("anthropic"),
-            security_manager.get_api_key("gemini"),
+            security_manager.get_api_key(PROVIDER_OPENAI),
+            security_manager.get_api_key(PROVIDER_ANTHROPIC),
+            security_manager.get_api_key(PROVIDER_GEMINI),
             os.getenv("OLLAMA_API_URL")
         ])
 
@@ -123,10 +127,12 @@ class AppDialogMixin:
 
     def _refresh_audio_handler(self) -> None:
         """Refresh the audio handler after settings changes."""
-        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
-        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
-        self.modulate_api_key = os.getenv("MODULATE_API_KEY", "")
+        from utils.security import get_security_manager
+        security_manager = get_security_manager()
+        self.elevenlabs_api_key = security_manager.get_api_key(STT_ELEVENLABS) or ""
+        self.deepgram_api_key = security_manager.get_api_key(STT_DEEPGRAM) or ""
+        self.groq_api_key = security_manager.get_api_key(STT_GROQ) or ""
+        self.modulate_api_key = security_manager.get_api_key(STT_MODULATE) or ""
         from audio.audio import AudioHandler
         self.audio_handler = AudioHandler(
             elevenlabs_api_key=self.elevenlabs_api_key,

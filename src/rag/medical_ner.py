@@ -195,7 +195,7 @@ class MedicalNERExtractor:
             try:
                 with open(data_path, "r") as f:
                     return json.load(f)
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load conditions.json: {e}")
 
         # Built-in conditions dictionary (term -> normalized name)
@@ -340,7 +340,7 @@ class MedicalNERExtractor:
             try:
                 with open(data_path, "r") as f:
                     return json.load(f)
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load medications.json: {e}")
 
         # Built-in medications dictionary (term -> normalized/generic name)

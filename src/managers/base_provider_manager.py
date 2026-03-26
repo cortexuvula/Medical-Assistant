@@ -121,8 +121,8 @@ class ProviderManager(ABC, Generic[T]):
         Returns:
             Provider name from settings, or default if not set
         """
-        from settings.settings import SETTINGS
-        settings = SETTINGS.get(self._get_settings_key(), {})
+        from settings.settings_manager import settings_manager
+        settings = settings_manager.get(self._get_settings_key(), {})
         return settings.get("provider", self._get_default_provider())
 
     def _get_default_provider(self) -> str:

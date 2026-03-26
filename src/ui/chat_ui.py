@@ -44,8 +44,8 @@ class ChatUI:
         self.on_send_callback = None
 
         # Configuration from settings
-        from settings.settings import SETTINGS
-        chat_config = SETTINGS.get("chat_interface", {})
+        from settings.settings_manager import settings_manager
+        chat_config = settings_manager.get("chat_interface", {})
         self.max_input_length = chat_config.get("max_input_length", 2000)
         self.min_input_lines = 2
         self.max_input_lines = 5
@@ -193,8 +193,8 @@ class ChatUI:
         ToolTip(self.settings_btn, "Manage custom suggestions")
 
         # Tool toggle checkbox
-        from settings.settings import SETTINGS
-        self.tools_enabled_var = tk.BooleanVar(value=SETTINGS.get("chat_interface", {}).get("enable_tools", True))
+        from settings.settings_manager import settings_manager
+        self.tools_enabled_var = tk.BooleanVar(value=settings_manager.get_nested("chat_interface.enable_tools", True))
         self.tools_checkbox = ttk.Checkbutton(
             bottom_row,
             text="Enable Tools",
@@ -260,8 +260,8 @@ class ChatUI:
             current_theme = self.app.current_theme
         else:
             # Fallback to settings
-            from settings.settings import SETTINGS
-            current_theme = SETTINGS.get("theme", "flatly")
+            from settings.settings_manager import settings_manager
+            current_theme = settings_manager.get("theme", "flatly")
         
         # Define dark themes list
         dark_themes = ["darkly", "solar", "cyborg", "superhero"]
@@ -552,10 +552,9 @@ class ChatUI:
         self.is_collapsed = not self.is_collapsed
 
         # Save the state to settings
-        from settings.settings import SETTINGS, save_settings
-        SETTINGS.setdefault("chat_interface", {})["collapsed"] = self.is_collapsed
+        from settings.settings_manager import settings_manager
         try:
-            save_settings(SETTINGS)
+            settings_manager.set_nested("chat_interface.collapsed", self.is_collapsed)
         except Exception as e:
             logger.warning(f"Failed to save chat collapse state: {e}")
 
@@ -606,8 +605,8 @@ class ChatUI:
                 return
 
             # Check if analysis panel is collapsed
-            from settings.settings import SETTINGS
-            analysis_collapsed = SETTINGS.get("advanced_analysis_collapsed", False)
+            from settings.settings_manager import settings_manager
+            analysis_collapsed = settings_manager.get("advanced_analysis_collapsed", False)
 
             # Get the total height of the content_paned
             content_paned.update_idletasks()
@@ -657,10 +656,9 @@ class ChatUI:
         enabled = self.tools_enabled_var.get()
         
         # Update settings
-        from settings.settings import SETTINGS, save_settings
-        SETTINGS.setdefault("chat_interface", {})["enable_tools"] = enabled
+        from settings.settings_manager import settings_manager
         try:
-            save_settings(SETTINGS)
+            settings_manager.set_nested("chat_interface.enable_tools", enabled)
         except Exception as e:
             logger.warning(f"Failed to save chat tools setting: {e}")
         
@@ -690,10 +688,10 @@ class ChatUI:
         try:
             from ui.dialogs.mcp_config_dialog import show_mcp_config_dialog
             from ai.mcp.mcp_manager import mcp_manager
-            from settings.settings import SETTINGS
-            
+            from settings.settings_manager import settings_manager
+
             # Show configuration dialog
-            if show_mcp_config_dialog(self.app, mcp_manager, SETTINGS):
+            if show_mcp_config_dialog(self.app, mcp_manager, settings_manager.get_all()):
                 # Configuration was saved, reload MCP tools
                 if hasattr(self.app, 'chat_processor') and self.app.chat_processor:
                     self.app.chat_processor.reload_mcp_tools()

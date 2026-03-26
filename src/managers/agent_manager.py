@@ -34,6 +34,7 @@ from ai.agents.chat import ChatAgent
 from ai.agents.compliance import ComplianceAgent
 from settings.settings_manager import settings_manager
 from utils.safe_eval import safe_eval
+from utils.constants import PROVIDER_OPENAI, PROVIDER_ANTHROPIC
 
 
 class AgentInitializationError(Exception):
@@ -200,18 +201,18 @@ class AgentManager:
             is_anthropic_model = model.startswith("claude")
             provider_lower = provider.lower()
 
-            if provider_lower == "anthropic" and is_openai_model:
+            if provider_lower == PROVIDER_ANTHROPIC and is_openai_model:
                 logger.warning(
                     f"Agent {agent_type.value}: provider 'anthropic' incompatible with "
                     f"model '{model}', switching provider to 'openai'"
                 )
-                provider = "openai"
-            elif provider_lower == "openai" and is_anthropic_model:
+                provider = PROVIDER_OPENAI
+            elif provider_lower == PROVIDER_OPENAI and is_anthropic_model:
                 logger.warning(
                     f"Agent {agent_type.value}: provider 'openai' incompatible with "
                     f"model '{model}', switching provider to 'anthropic'"
                 )
-                provider = "anthropic"
+                provider = PROVIDER_ANTHROPIC
 
         config = AgentConfig(
             name=agent_type.value,

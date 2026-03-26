@@ -280,16 +280,21 @@ ICD_CODE_INSTRUCTIONS = {
 }
 
 # Supported AI providers for per-provider SOAP prompts
-SOAP_PROVIDERS = ["openai", "anthropic", "ollama", "gemini", "groq", "cerebras"]
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
+    PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS,
+)
+
+SOAP_PROVIDERS = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS]
 
 # Provider display names for UI
 SOAP_PROVIDER_NAMES = {
-    "openai": "OpenAI",
-    "anthropic": "Anthropic",
-    "ollama": "Ollama",
-    "gemini": "Gemini",
-    "groq": "Groq",
-    "cerebras": "Cerebras",
+    PROVIDER_OPENAI: "OpenAI",
+    PROVIDER_ANTHROPIC: "Anthropic",
+    PROVIDER_OLLAMA: "Ollama",
+    PROVIDER_GEMINI: "Gemini",
+    PROVIDER_GROQ: "Groq",
+    PROVIDER_CEREBRAS: "Cerebras",
 }
 
 
@@ -310,7 +315,7 @@ def get_soap_system_message(icd_version: str = "ICD-9", provider: str = None) ->
     instruction, label = ICD_CODE_INSTRUCTIONS[icd_version]
 
     # Use Anthropic-specific template for Claude models
-    if provider == "anthropic":
+    if provider == PROVIDER_ANTHROPIC:
         return SOAP_SYSTEM_MESSAGE_ANTHROPIC_TEMPLATE.format(
             ICD_CODE_INSTRUCTION=instruction,
             ICD_CODE_LABEL=label

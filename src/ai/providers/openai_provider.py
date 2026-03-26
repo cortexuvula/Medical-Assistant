@@ -30,9 +30,10 @@ from utils.security import get_security_manager
 from utils.security_decorators import secure_api_call
 from utils.timeout_config import get_timeout
 from utils.http_client_manager import get_http_client_manager
+from utils.constants import PROVIDER_OPENAI
 
 
-@secure_api_call("openai")
+@secure_api_call(PROVIDER_OPENAI)
 @resilient_api_call(
     max_retries=3,
     initial_delay=1.0,
@@ -55,11 +56,11 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
         APIError: On API failures
         APITimeoutError: On request timeout
     """
-    timeout_seconds = get_timeout("openai")
+    timeout_seconds = get_timeout(PROVIDER_OPENAI)
 
     try:
         # Use pooled HTTP client for connection reuse (saves 50-200ms per call)
-        http_client = get_http_client_manager().get_httpx_client("openai", timeout_seconds)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_OPENAI, timeout_seconds)
         client = OpenAI(http_client=http_client)
 
         response = client.chat.completions.create(
@@ -72,7 +73,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
         raise APITimeoutError(
             f"OpenAI request timed out after {timeout_seconds}s: {e}",
             timeout_seconds=timeout_seconds,
-            service="openai"
+            service=PROVIDER_OPENAI
         )
     except Exception as e:
         error_msg = str(e)
@@ -84,7 +85,7 @@ def _openai_api_call(model: str, messages: List[Dict[str, str]], temperature: fl
             raise APITimeoutError(
                 f"OpenAI request timeout: {error_msg}",
                 timeout_seconds=timeout_seconds,
-                service="openai"
+                service=PROVIDER_OPENAI
             )
         else:
             raise APIError(f"OpenAI API error: {error_msg}")
@@ -108,7 +109,7 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
     security_manager = get_security_manager()
 
     # Validate inputs
-    is_valid, error = validate_model_name(model, "openai")
+    is_valid, error = validate_model_name(model, PROVIDER_OPENAI)
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         return AIResult.failure(message, error_code=title)
@@ -135,14 +136,14 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         if not content:
             return AIResult.failure("OpenAI returned empty content (model may have returned tool calls only)", error_code="API_EMPTY_CONTENT")
         text = content.strip()
-        return AIResult.success(text, model=model, provider="openai")
+        return AIResult.success(text, model=model, provider=PROVIDER_OPENAI)
     except APITimeoutError as e:
         logger.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")
         return AIResult.failure(message, error_code=title, exception=e)
     except (APIError, ServiceUnavailableError) as e:
         logger.error(f"OpenAI API error with model {model}: {str(e)}")
-        error_code, details = format_api_error("openai", e)
+        error_code, details = format_api_error(PROVIDER_OPENAI, e)
         title, message = get_error_message(error_code, details, model)
         return AIResult.failure(message, error_code=title, exception=e)
     except Exception as e:
@@ -178,7 +179,7 @@ def call_openai_streaming(
     security_manager = get_security_manager()
 
     # Validate inputs
-    is_valid, error = validate_model_name(model, "openai")
+    is_valid, error = validate_model_name(model, PROVIDER_OPENAI)
     if not is_valid:
         title, message = get_error_message("CFG_INVALID_SETTINGS", error)
         result = AIResult.failure(message, error_code=title)
@@ -193,8 +194,8 @@ def call_openai_streaming(
         logger.info(f"Making streaming OpenAI API call with model: {model}")
         log_api_call_debug("OpenAI (streaming)", model, temperature, system_message, prompt)
 
-        timeout_seconds = get_timeout("openai")
-        http_client = get_http_client_manager().get_httpx_client("openai", timeout_seconds)
+        timeout_seconds = get_timeout(PROVIDER_OPENAI)
+        http_client = get_http_client_manager().get_httpx_client(PROVIDER_OPENAI, timeout_seconds)
         client = OpenAI(http_client=http_client)
 
         messages = [
@@ -215,7 +216,7 @@ def call_openai_streaming(
                     full_response += text
                     on_chunk(text)
 
-        return AIResult.success(full_response.strip(), model=model, provider="openai")
+        return AIResult.success(full_response.strip(), model=model, provider=PROVIDER_OPENAI)
 
     except Exception as e:
         logger.error(f"Streaming OpenAI error with model {model}: {str(e)}")

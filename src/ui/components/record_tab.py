@@ -14,7 +14,7 @@ from ui.tooltip import ToolTip
 logger = get_logger(__name__)
 from ui.scaling_utils import ui_scaler
 from ui.ui_constants import Icons
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 
 
 class RecordTab:
@@ -75,7 +75,7 @@ class RecordTab:
         content_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
 
         # Get initial collapse state from settings - always expanded when unified button is used
-        self._analysis_results_collapsed = SETTINGS.get("advanced_analysis_collapsed", False) if show_collapse_button else False
+        self._analysis_results_collapsed = settings_manager.get("advanced_analysis_collapsed", False) if show_collapse_button else False
 
         # Create header frame with title and optional collapse button
         if show_collapse_button:
@@ -354,9 +354,8 @@ class RecordTab:
         self._analysis_results_collapsed = not self._analysis_results_collapsed
 
         # Save state to settings
-        SETTINGS["advanced_analysis_collapsed"] = self._analysis_results_collapsed
         try:
-            save_settings(SETTINGS)
+            settings_manager.set("advanced_analysis_collapsed", self._analysis_results_collapsed)
         except Exception as e:
             logger.warning(f"Failed to save analysis collapsed state: {e}")
 
@@ -396,7 +395,7 @@ class RecordTab:
                 return
 
             # Check if chat is collapsed
-            chat_collapsed = SETTINGS.get("chat_interface", {}).get("collapsed", False)
+            chat_collapsed = settings_manager.get("chat_interface", {}).get("collapsed", False)
 
             # Get the total height of the content_paned
             content_paned.update_idletasks()

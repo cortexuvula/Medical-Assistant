@@ -21,6 +21,7 @@ from rag.guidelines_models import (
 from rag.guidelines_vector_store import get_guidelines_vector_store
 from rag.guidelines_graphiti_client import get_guidelines_graphiti_client
 
+from utils.constants import PROVIDER_OPENAI
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -123,7 +124,7 @@ class GuidelinesRetriever:
             if not api_key:
                 from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
-                api_key = manager.get_key("openai")
+                api_key = manager.get_key(PROVIDER_OPENAI)
 
             if not api_key:
                 raise ValueError("OpenAI API key not found")

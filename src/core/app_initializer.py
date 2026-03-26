@@ -17,8 +17,12 @@ from tkinter import messagebox
 from tkinter.constants import DISABLED
 import ttkbootstrap as ttk
 
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from ui.dialogs.unified_settings_dialog import show_unified_settings_dialog
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GEMINI,
+    STT_DEEPGRAM, STT_ELEVENLABS, STT_GROQ, STT_MODULATE,
+)
 from audio.audio import AudioHandler
 from processing.text_processor import TextProcessor
 from ui.workflow_ui import WorkflowUI
@@ -94,7 +98,7 @@ class AppInitializer:
     def _configure_window(self):
         """Configure window appearance, size, and positioning."""
         # Get theme from settings or use default
-        self.app.current_theme = SETTINGS.get("theme", "flatly")
+        self.app.current_theme = settings_manager.get("theme", "flatly")
 
         # Initialize the ttk.Window with theme
         ttk.Window.__init__(self.app, themename=self.app.current_theme)
@@ -120,8 +124,8 @@ class AppInitializer:
         ui_scaler.initialize(self.app)
         
         # Check if we have saved window dimensions in settings
-        saved_width = SETTINGS.get("window_width", 0)
-        saved_height = SETTINGS.get("window_height", 0)
+        saved_width = settings_manager.get("window_width", 0)
+        saved_height = settings_manager.get("window_height", 0)
         
         if saved_width > 0 and saved_height > 0:
             # Use saved dimensions if they exist and are valid
@@ -298,16 +302,16 @@ class AppInitializer:
         security_manager = get_security_manager()
 
         # Initialize API keys from security manager (checks env vars + encrypted storage)
-        self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
-        self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
-        self.app.groq_api_key = security_manager.get_api_key("groq") or ""
-        self.app.modulate_api_key = security_manager.get_api_key("modulate") or ""
+        self.app.deepgram_api_key = security_manager.get_api_key(STT_DEEPGRAM) or ""
+        self.app.elevenlabs_api_key = security_manager.get_api_key(STT_ELEVENLABS) or ""
+        self.app.groq_api_key = security_manager.get_api_key(STT_GROQ) or ""
+        self.app.modulate_api_key = security_manager.get_api_key(STT_MODULATE) or ""
         self.app.recognition_language = os.getenv("RECOGNITION_LANGUAGE", "en-US")
 
         # Check for necessary API keys using security manager
-        openai_key = security_manager.get_api_key("openai")
-        anthropic_key = security_manager.get_api_key("anthropic")
-        gemini_key = security_manager.get_api_key("gemini")
+        openai_key = security_manager.get_api_key(PROVIDER_OPENAI)
+        anthropic_key = security_manager.get_api_key(PROVIDER_ANTHROPIC)
+        gemini_key = security_manager.get_api_key(PROVIDER_GEMINI)
         ollama_url = os.getenv("OLLAMA_API_URL")
 
         # Check if we have at least one LLM and one STT provider
@@ -328,10 +332,10 @@ class AppInitializer:
             result = show_unified_settings_dialog(self.app, initial_tab="API Keys")
             if result:
                 # Update the keys after dialog closes (re-check encrypted storage)
-                self.app.deepgram_api_key = security_manager.get_api_key("deepgram") or ""
-                self.app.elevenlabs_api_key = security_manager.get_api_key("elevenlabs") or ""
-                self.app.groq_api_key = security_manager.get_api_key("groq") or ""
-                self.app.modulate_api_key = security_manager.get_api_key("modulate") or ""
+                self.app.deepgram_api_key = security_manager.get_api_key(STT_DEEPGRAM) or ""
+                self.app.elevenlabs_api_key = security_manager.get_api_key(STT_ELEVENLABS) or ""
+                self.app.groq_api_key = security_manager.get_api_key(STT_GROQ) or ""
+                self.app.modulate_api_key = security_manager.get_api_key(STT_MODULATE) or ""
                 
     def _initialize_audio_handler(self):
         """Initialize the audio handler and text processor."""
@@ -376,7 +380,7 @@ class AppInitializer:
         
         # Quick continue mode variable for menu checkbox
         self.app.quick_continue_var = tk.BooleanVar()
-        self.app.quick_continue_var.set(SETTINGS.get("quick_continue_mode", True))
+        self.app.quick_continue_var.set(settings_manager.get("quick_continue_mode", True))
         
     def _initialize_database(self):
         """Initialize database instance."""
@@ -482,7 +486,7 @@ class AppInitializer:
         # Note: queue_processing_controller is an alias for processing_controller
 
         self.app.ai_processor = AIProcessor()  # Uses security manager internally
-        self.app.file_manager = FileManager(SETTINGS.get("default_folder", ""))
+        self.app.file_manager = FileManager(settings_manager.get("default_folder", ""))
         self.app.db_manager = DatabaseManager()
         self.app.recordings_dialog_manager = RecordingsDialogManager(self.app)
         self.app.audio_dialog_manager = AudioDialogManager(self.app)
@@ -693,7 +697,7 @@ class AppInitializer:
         conn_str = os.environ.get("CLINICAL_GUIDELINES_DATABASE_URL")
         if not conn_str:
             try:
-                guidelines_settings = SETTINGS.get("clinical_guidelines", {})
+                guidelines_settings = settings_manager.get("clinical_guidelines", {})
                 conn_str = guidelines_settings.get("database_url")
             except Exception as e:
                 logger.debug(f"Guidelines settings not available: {e}")
@@ -735,9 +739,9 @@ class AppInitializer:
         # Check if any LLM provider is configured
         security_manager = get_security_manager()
         has_any_llm = any([
-            security_manager.get_api_key("openai"),
-            security_manager.get_api_key("anthropic"),
-            security_manager.get_api_key("gemini"),
+            security_manager.get_api_key(PROVIDER_OPENAI),
+            security_manager.get_api_key(PROVIDER_ANTHROPIC),
+            security_manager.get_api_key(PROVIDER_GEMINI),
             os.getenv("OLLAMA_API_URL")
         ])
         if not has_any_llm:
@@ -848,7 +852,7 @@ class AppInitializer:
         """
         try:
             # Check if UI should be updated based on settings
-            if not SETTINGS.get('auto_update_ui_on_completion', True):
+            if not settings_manager.get('auto_update_ui_on_completion', True):
                 return
 
             # Only update if the UI is not currently busy with another recording

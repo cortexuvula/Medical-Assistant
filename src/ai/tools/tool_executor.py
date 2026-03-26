@@ -10,7 +10,7 @@ import traceback
 
 from .base_tool import ToolResult
 from .tool_registry import tool_registry
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,11 +31,10 @@ class ToolExecutor:
         self._execution_history = []
         
         # Load settings
-        tool_settings = SETTINGS.get("tool_execution", {})
-        self.timeout_seconds = tool_settings.get("timeout_seconds", 30)
-        self.require_confirmation = tool_settings.get("require_confirmation", True)
-        self.log_executions = tool_settings.get("log_executions", True)
-        self.max_retries = tool_settings.get("max_retries", 2)
+        self.timeout_seconds = settings_manager.get_nested("tool_execution.timeout_seconds", 30)
+        self.require_confirmation = settings_manager.get_nested("tool_execution.require_confirmation", True)
+        self.log_executions = settings_manager.get_nested("tool_execution.log_executions", True)
+        self.max_retries = settings_manager.get_nested("tool_execution.max_retries", 2)
         
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
         """

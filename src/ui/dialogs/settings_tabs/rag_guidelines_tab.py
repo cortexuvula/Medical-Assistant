@@ -100,7 +100,8 @@ class RagGuidelinesTabMixin:
         # Neo4j URI
         uri_label = ttk.Label(scrollable_frame, text="Neo4j URI:")
         uri_label.grid(row=row, column=0, sticky="w", pady=10)
-        ToolTip(uri_label, "Neo4j connection URI (e.g., bolt://localhost:7687)")
+        from utils.constants import DEFAULT_NEO4J_BOLT_URL
+        ToolTip(uri_label, f"Neo4j connection URI (e.g., {DEFAULT_NEO4J_BOLT_URL})")
         uri_var = tk.StringVar(value=neo4j_uri)
         self.widgets['rag_guidelines']['neo4j_uri'] = uri_var
         ttk.Entry(scrollable_frame, textvariable=uri_var, width=50).grid(

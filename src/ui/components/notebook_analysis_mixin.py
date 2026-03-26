@@ -16,7 +16,7 @@ import ttkbootstrap as ttk
 from utils.structured_logging import get_logger
 
 from ui.ui_constants import Icons
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 
 logger = get_logger(__name__)
 
@@ -77,9 +77,8 @@ class NotebookAnalysisMixin:
         self._analysis_collapsed = not self._analysis_collapsed
 
         # Save state to settings
-        SETTINGS["analysis_panel_collapsed"] = self._analysis_collapsed
         try:
-            save_settings(SETTINGS)
+            settings_manager.set("analysis_panel_collapsed", self._analysis_collapsed)
         except Exception as e:
             logger.warning(f"Failed to save analysis panel collapsed state: {e}")
 

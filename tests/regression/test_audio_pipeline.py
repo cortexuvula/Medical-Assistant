@@ -141,21 +141,20 @@ class TestProviderSelection:
         """set_stt_provider should change the active provider setting."""
         from src.audio.audio import AudioHandler
 
-        # Mock the STT providers and settings
+        # Mock the STT providers and settings_manager
         with patch('src.audio.audio.ElevenLabsProvider'), \
              patch('src.audio.audio.DeepgramProvider'), \
              patch('src.audio.audio.GroqProvider'), \
              patch('src.audio.audio.WhisperProvider'), \
-             patch('settings.settings.SETTINGS', {'stt_provider': 'deepgram'}) as mock_settings, \
-             patch('settings.settings.save_settings') as mock_save:
+             patch('audio.mixins.transcription_mixin.settings_manager') as mock_sm:
+            mock_sm.get.return_value = 'deepgram'
             handler = AudioHandler()
 
             # Call set_stt_provider
             handler.set_stt_provider('groq')
 
-            # Verify settings were updated
-            assert mock_settings['stt_provider'] == 'groq'
-            mock_save.assert_called_once()
+            # Verify settings_manager.set was called with new provider
+            mock_sm.set.assert_called_once_with('stt_provider', 'groq')
 
 
 class TestAudioStateManager:

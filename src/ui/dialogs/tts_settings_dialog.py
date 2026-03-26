@@ -16,6 +16,7 @@ from typing import Dict, List
 
 from settings import settings_manager
 from ui.dialogs.dialog_utils import create_toplevel_dialog
+from utils.constants import PROVIDER_OPENAI, TTS_ELEVENLABS, STT_ELEVENLABS
 
 
 def _fetch_tts_voices(provider: str) -> List[Dict[str, str]]:
@@ -30,14 +31,14 @@ def _fetch_tts_voices(provider: str) -> List[Dict[str, str]]:
     try:
         from voice.tts_providers import OpenAITTSProvider, ElevenLabsTTSProvider
 
-        if provider == "openai":
+        if provider == PROVIDER_OPENAI:
             api_key = os.getenv("OPENAI_API_KEY", "")
             if not api_key:
                 return []
             tts_provider = OpenAITTSProvider(api_key)
             voices = tts_provider.get_voices()
 
-        elif provider == "elevenlabs":
+        elif provider == TTS_ELEVENLABS:
             api_key = os.getenv("ELEVENLABS_API_KEY", "")
             if not api_key:
                 return []
@@ -71,7 +72,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     ttk.Label(frame, text="TTS Provider:").grid(row=1, column=0, sticky="w", pady=10)
     provider_var = tk.StringVar(value=tts_settings.get("provider", default_settings.get("provider", "pyttsx3")))
     provider_combo = ttk.Combobox(frame, textvariable=provider_var, width=30, state="readonly")
-    provider_combo['values'] = ["pyttsx3", "elevenlabs", "google"]
+    provider_combo['values'] = ["pyttsx3", TTS_ELEVENLABS, "google"]
     provider_combo.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
     ttk.Label(frame, text="pyttsx3 is offline, ElevenLabs requires API key, Google is free online",
               wraplength=400, foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=(20, 0))
@@ -144,7 +145,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
                 from utils.security import get_security_manager
 
                 security_manager = get_security_manager()
-                api_key = security_manager.get_api_key("elevenlabs")
+                api_key = security_manager.get_api_key(STT_ELEVENLABS)
 
                 if not api_key:
                     dialog.after(0, lambda: [
@@ -158,7 +159,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
 
                 tts_manager = get_tts_manager()
                 original_provider = settings_manager.get_nested("tts.provider", "pyttsx3")
-                settings_manager.set_nested("tts.provider", "elevenlabs", auto_save=False)
+                settings_manager.set_nested("tts.provider", TTS_ELEVENLABS, auto_save=False)
                 tts_manager._current_provider = None
                 voices = tts_manager.get_available_voices()
                 settings_manager.set_nested("tts.provider", original_provider, auto_save=False)
@@ -225,7 +226,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     def on_provider_change(*args):
         provider = provider_var.get()
 
-        if provider == "elevenlabs":
+        if provider == TTS_ELEVENLABS:
             voice_entry.pack_forget()
             voice_combo.pack(side=tk.LEFT)
             fetch_button.pack(side=tk.LEFT, padx=(10, 0))
@@ -251,7 +252,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     provider_combo.bind("<<ComboboxSelected>>", on_provider_change)
     on_provider_change()
 
-    if provider_var.get() == "elevenlabs" and voice_var.get() and voice_var.get() != "default":
+    if provider_var.get() == TTS_ELEVENLABS and voice_var.get() and voice_var.get() != "default":
         dialog.after(100, fetch_elevenlabs_voices)
 
     # Default language
@@ -267,7 +268,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
     model_combo.grid(row=9, column=1, sticky="w", padx=(10, 0), pady=10)
     model_desc_label.grid(row=10, column=0, columnspan=2, sticky="w", padx=(20, 0))
 
-    if provider_var.get() != "elevenlabs":
+    if provider_var.get() != TTS_ELEVENLABS:
         model_label.grid_remove()
         model_combo.grid_remove()
         model_desc_label.grid_remove()
@@ -280,7 +281,7 @@ def show_tts_settings_dialog(parent: tk.Tk) -> None:
         provider = provider_var.get()
         voice_value = voice_var.get()
 
-        if provider == "elevenlabs" and voice_value in voices_data:
+        if provider == TTS_ELEVENLABS and voice_value in voices_data:
             voice_value = voices_data[voice_value]
 
         settings_manager.set_tts_settings({

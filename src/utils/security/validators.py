@@ -10,6 +10,7 @@ from utils.structured_logging import get_logger
 
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_CEREBRAS,
+    PROVIDER_GEMINI,
     STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
 )
 
@@ -34,6 +35,7 @@ class APIKeyValidator:
             STT_ELEVENLABS: {"prefix": "sk_", "min_length": 30, "max_length": 100, "chars": "alnum"},
             PROVIDER_ANTHROPIC: {"prefix": "sk-ant-", "min_length": 90, "max_length": 200, "chars": "alnum_dash"},
             PROVIDER_CEREBRAS: {"prefix": "csk-", "min_length": 20, "max_length": 100, "chars": "alnum_dash"},
+            PROVIDER_GEMINI: {"prefix": "AIza", "min_length": 35, "max_length": 100, "chars": "alnum_dash"},
         }
 
         # Provider-specific validators
@@ -44,6 +46,7 @@ class APIKeyValidator:
             STT_GROQ: self._validate_groq_key,
             PROVIDER_ANTHROPIC: self._validate_anthropic_key,
             PROVIDER_CEREBRAS: self._validate_cerebras_key,
+            PROVIDER_GEMINI: self._validate_gemini_key,
         }
 
     def validate(self, provider: str, api_key: str) -> Tuple[bool, Optional[str]]:
@@ -146,6 +149,10 @@ class APIKeyValidator:
     def _validate_cerebras_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
         """Validate Cerebras API key format."""
         return self._validate_key_format(api_key, PROVIDER_CEREBRAS)
+
+    def _validate_gemini_key(self, api_key: str) -> Tuple[bool, Optional[str]]:
+        """Validate Gemini API key format."""
+        return self._validate_key_format(api_key, PROVIDER_GEMINI)
 
     def update_format(self, provider: str, prefix: Optional[str] = None,
                       min_length: Optional[int] = None, max_length: Optional[int] = None,

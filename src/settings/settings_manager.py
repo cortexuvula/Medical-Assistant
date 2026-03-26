@@ -22,6 +22,7 @@ Usage:
 
 from typing import Any, Dict, Optional, TypeVar, cast
 from utils.structured_logging import get_logger
+from utils.constants import PROVIDER_OPENAI, STT_GROQ, STT_DEEPGRAM, STT_ELEVENLABS
 from settings.settings_types import (
     ModelConfig, AgentConfig, SOAPNoteConfig, TranslationSettings,
     TTSSettings, ElevenLabsSettings, DeepgramSettings, GroqSettings,
@@ -192,7 +193,7 @@ class SettingsManager:
 
     def get_ai_provider(self) -> str:
         """Get the current AI provider."""
-        return self.get("ai_provider", "openai")
+        return self.get("ai_provider", PROVIDER_OPENAI)
 
     def set_ai_provider(self, provider: str) -> None:
         """Set the AI provider."""
@@ -200,7 +201,7 @@ class SettingsManager:
 
     def get_stt_provider(self) -> str:
         """Get the current STT provider."""
-        return self.get("stt_provider", "groq")
+        return self.get("stt_provider", STT_GROQ)
 
     def set_stt_provider(self, provider: str) -> None:
         """Set the STT provider."""
@@ -326,29 +327,29 @@ class SettingsManager:
 
     def get_elevenlabs_settings(self) -> ElevenLabsSettings:
         """Get ElevenLabs settings."""
-        return cast(ElevenLabsSettings, self._settings.get("elevenlabs", {}))
+        return cast(ElevenLabsSettings, self._settings.get(STT_ELEVENLABS, {}))
 
     def set_elevenlabs_settings(self, settings: ElevenLabsSettings) -> None:
         """Set ElevenLabs settings."""
-        self._settings["elevenlabs"] = dict(settings)
+        self._settings[STT_ELEVENLABS] = dict(settings)
         self._save()
 
     def get_deepgram_settings(self) -> DeepgramSettings:
         """Get Deepgram settings."""
-        return cast(DeepgramSettings, self._settings.get("deepgram", {}))
+        return cast(DeepgramSettings, self._settings.get(STT_DEEPGRAM, {}))
 
     def set_deepgram_settings(self, settings: DeepgramSettings) -> None:
         """Set Deepgram settings."""
-        self._settings["deepgram"] = dict(settings)
+        self._settings[STT_DEEPGRAM] = dict(settings)
         self._save()
 
     def get_groq_settings(self) -> GroqSettings:
         """Get Groq settings."""
-        return cast(GroqSettings, self._settings.get("groq", {}))
+        return cast(GroqSettings, self._settings.get(STT_GROQ, {}))
 
     def set_groq_settings(self, settings: GroqSettings) -> None:
         """Set Groq settings."""
-        self._settings["groq"] = dict(settings)
+        self._settings[STT_GROQ] = dict(settings)
         self._save()
 
     # =========================================================================

@@ -4,22 +4,32 @@ Deep Translator provider implementation supporting multiple translation services
 
 from typing import List, Tuple, Optional
 from utils.structured_logging import get_logger
-from deep_translator import GoogleTranslator, DeeplTranslator, MicrosoftTranslator
+
+try:
+    from deep_translator import GoogleTranslator, DeeplTranslator, MicrosoftTranslator
+    from deep_translator.exceptions import (
+        NotValidLength,
+        RequestError,
+        TooManyRequests,
+        LanguageNotSupportedException
+    )
+    DEEP_TRANSLATOR_AVAILABLE = True
+except ImportError:
+    DEEP_TRANSLATOR_AVAILABLE = False
+    # Define exception placeholders so except clauses don't fail at class definition
+    NotValidLength = Exception
+    RequestError = Exception
+    TooManyRequests = Exception
+    LanguageNotSupportedException = Exception
 
 logger = get_logger(__name__)
-from deep_translator.exceptions import (
-    NotValidLength, 
-    RequestError, 
-    TooManyRequests,
-    LanguageNotSupportedException
-)
 
 from .base import BaseTranslationProvider
 from utils.exceptions import TranslationError, APIError, RateLimitError
 from utils.error_handling import ErrorContext
 from utils.resilience import resilient_api_call
 from utils.security_decorators import secure_api_call
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
 
 
 class DeepTranslatorProvider(BaseTranslationProvider):
@@ -139,6 +149,11 @@ class DeepTranslatorProvider(BaseTranslationProvider):
             provider_type: Type of translator backend ('google', 'deepl', 'microsoft')
             api_key: API key for the translation service (required for DeepL and Microsoft)
         """
+        if not DEEP_TRANSLATOR_AVAILABLE:
+            raise ImportError(
+                "deep-translator package is required for translation. "
+                "Install it with: pip install deep-translator"
+            )
         super().__init__(api_key)
         self.logger = get_logger(__name__)
         self.provider_type = provider_type.lower()

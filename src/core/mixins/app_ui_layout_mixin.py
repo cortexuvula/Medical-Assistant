@@ -9,7 +9,7 @@ Extracted from app.py for better separation of concerns.
 import tkinter as tk
 from typing import Optional, TYPE_CHECKING
 
-from settings.settings import SETTINGS, save_settings
+from settings.settings_manager import settings_manager
 from utils.structured_logging import get_logger
 from ui.ui_constants import Icons
 
@@ -37,8 +37,7 @@ class AppUiLayoutMixin:
         self._bottom_collapsed = not self._bottom_collapsed
 
         # Save state to settings
-        SETTINGS["bottom_section_collapsed"] = self._bottom_collapsed
-        save_settings(SETTINGS)
+        settings_manager.set("bottom_section_collapsed", self._bottom_collapsed)
 
         if self._bottom_collapsed:
             # Collapse: hide the content

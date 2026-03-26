@@ -13,7 +13,8 @@ logger = get_logger(__name__)
 from ai.providers.router import call_ai, call_ai_streaming
 from ai.text_processing import clean_text
 from ai.prompts import SOAP_PROMPT_TEMPLATE, get_soap_system_message
-from settings.settings import SETTINGS
+from settings.settings_manager import settings_manager
+from utils.constants import PROVIDER_OPENAI
 
 
 def format_soap_paragraphs(text: str) -> str:
@@ -110,7 +111,7 @@ def _prepare_soap_generation(text: str, context: str, settings: dict = None, emo
     Args:
         text: Transcript text to convert
         context: Optional medical context
-        settings: Settings dict (uses SETTINGS global if None)
+        settings: Settings dict (uses settings_manager if None)
         emotion_context: Optional voice emotion analysis summary from Modulate STT
 
     Returns:
@@ -120,11 +121,11 @@ def _prepare_soap_generation(text: str, context: str, settings: dict = None, emo
 
     # Use provided settings or global
     if settings is None:
-        settings = SETTINGS
+        settings = settings_manager.get_all()
 
     model = settings.get("soap_note", {}).get("model", "gpt-4")
     icd_version = settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
-    current_provider = settings.get("ai_provider", "openai")
+    current_provider = settings.get("ai_provider", PROVIDER_OPENAI)
 
     # Get dynamic system message based on ICD code preference and provider
     system_message = get_soap_system_message(icd_version, provider=current_provider)
@@ -212,7 +213,7 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
                 if not agent_manager.is_agent_enabled(AgentType.SYNOPSIS):
                     logger.info("Synopsis generation is disabled")
                 else:
-                    logger.warning("Synopsis generation failed")
+                    logger.error("Synopsis generation failed")
         except Exception as e:
             logger.error(f"Error with synopsis generation: {e}")
     else:
@@ -241,10 +242,8 @@ def create_soap_note_streaming(
     Returns:
         Complete SOAP note text
     """
-    from settings.settings import load_settings
-
     # Reload settings to get latest
-    current_settings = load_settings()
+    current_settings = settings_manager.get_all()
 
     # Prepare generation parameters
     model, system_message, full_prompt, temperature = _prepare_soap_generation(
@@ -276,7 +275,7 @@ def create_soap_note_with_openai(text: str, context: str = "", emotion_context: 
     """
     # Prepare generation parameters
     model, system_message, full_prompt, temperature = _prepare_soap_generation(
-        text, context, settings=SETTINGS, emotion_context=emotion_context
+        text, context, settings=settings_manager.get_all(), emotion_context=emotion_context
     )
 
     result = call_ai(model, system_message, full_prompt, temperature)

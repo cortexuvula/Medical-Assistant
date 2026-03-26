@@ -12,6 +12,10 @@ from typing import Dict, Any, Optional
 from utils.structured_logging import get_logger
 
 from core.config import Config, get_config
+from utils.constants import (
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS, STT_DEEPGRAM, STT_ELEVENLABS
+)
 
 logger = get_logger(__name__)
 
@@ -52,33 +56,33 @@ class SettingsMigrator:
 
                 # Update provider-specific models
                 if "ollama_model" in task_settings:
-                    ai_task.provider_models["ollama"] = task_settings["ollama_model"]
+                    ai_task.provider_models[PROVIDER_OLLAMA] = task_settings["ollama_model"]
                 if "anthropic_model" in task_settings:
-                    ai_task.provider_models["anthropic"] = task_settings["anthropic_model"]
+                    ai_task.provider_models[PROVIDER_ANTHROPIC] = task_settings["anthropic_model"]
                 if "gemini_model" in task_settings:
-                    ai_task.provider_models["gemini"] = task_settings["gemini_model"]
+                    ai_task.provider_models[PROVIDER_GEMINI] = task_settings["gemini_model"]
                 if "groq_model" in task_settings:
-                    ai_task.provider_models["groq"] = task_settings["groq_model"]
+                    ai_task.provider_models[PROVIDER_GROQ] = task_settings["groq_model"]
                 if "cerebras_model" in task_settings:
-                    ai_task.provider_models["cerebras"] = task_settings["cerebras_model"]
+                    ai_task.provider_models[PROVIDER_CEREBRAS] = task_settings["cerebras_model"]
 
                 # Update provider-specific temperatures
-                for provider in ["openai", "anthropic", "ollama", "gemini", "groq", "cerebras"]:
+                for provider in [PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS]:
                     temp_key = f"{provider}_temperature"
                     if temp_key in task_settings:
                         ai_task.provider_temperatures[provider] = task_settings[temp_key]
 
         # Migrate Deepgram settings
-        if "deepgram" in old_settings:
-            deepgram_settings = old_settings["deepgram"]
+        if STT_DEEPGRAM in old_settings:
+            deepgram_settings = old_settings[STT_DEEPGRAM]
             for key in ["model", "language", "smart_format", "diarize",
                         "profanity_filter", "redact", "alternatives"]:
                 if key in deepgram_settings:
                     setattr(self.config.deepgram, key, deepgram_settings[key])
 
         # Migrate ElevenLabs settings
-        if "elevenlabs" in old_settings:
-            elevenlabs_settings = old_settings["elevenlabs"]
+        if STT_ELEVENLABS in old_settings:
+            elevenlabs_settings = old_settings[STT_ELEVENLABS]
             for key in ["model_id", "language_code", "tag_audio_events",
                         "num_speakers", "timestamps_granularity", "diarize"]:
                 if key in elevenlabs_settings:
@@ -128,7 +132,7 @@ class SettingsMigrator:
                 legacy[task_name][f"{provider}_temperature"] = temp
 
         # Convert Deepgram settings
-        legacy["deepgram"] = {
+        legacy[STT_DEEPGRAM] = {
             "model": self.config.deepgram.model,
             "language": self.config.deepgram.language,
             "smart_format": self.config.deepgram.smart_format,
@@ -139,7 +143,7 @@ class SettingsMigrator:
         }
 
         # Convert ElevenLabs settings
-        legacy["elevenlabs"] = {
+        legacy[STT_ELEVENLABS] = {
             "model_id": self.config.elevenlabs.model_id,
             "language_code": self.config.elevenlabs.language_code,
             "tag_audio_events": self.config.elevenlabs.tag_audio_events,
@@ -150,7 +154,7 @@ class SettingsMigrator:
 
         # Convert other settings
         legacy["storage_folder"] = self.config.storage.base_folder
-        legacy["ai_provider"] = "openai"  # Default
+        legacy["ai_provider"] = PROVIDER_OPENAI  # Default
         legacy["stt_provider"] = self.config.transcription.default_provider
         legacy["theme"] = self.config.ui.theme
         legacy["window_width"] = self.config.ui.window_width
@@ -205,7 +209,7 @@ def migrate_settings() -> None:
         with open(settings_file, 'r', encoding='utf-8') as f:
             old_settings = json.load(f)
         logger.info(f"Loaded settings from {settings_file}")
-    except Exception as e:
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
         logger.error(f"Error loading settings.json: {e}")
         return
 

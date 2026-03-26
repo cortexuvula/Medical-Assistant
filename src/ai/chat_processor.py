@@ -32,7 +32,7 @@ from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 import time
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, TypedDict
 from datetime import datetime
 
 from settings.settings_manager import settings_manager
@@ -53,6 +53,21 @@ from utils.constants import (
 # Resilience patterns
 from utils.resilience import CircuitBreaker, CircuitState
 from utils.exceptions import ServiceUnavailableError
+
+
+class ChatContextData(TypedDict):
+    """Typed structure for chat context extracted from UI tabs."""
+    tab_name: str
+    tab_index: int
+    content: str
+    content_length: int
+    has_content: bool
+
+
+class ToolInfo(TypedDict, total=False):
+    """Typed structure for tool execution metadata."""
+    tool_calls: Any  # List of tool call objects
+    metadata: Any
 
 
 class ChatProcessor:
@@ -110,7 +125,7 @@ class ChatProcessor:
             self.chat_agent = None
         
     def process_message(self, user_message: str, callback: Optional[Callable] = None,
-                        context_data: Optional[Dict[str, Any]] = None):
+                        context_data: Optional[ChatContextData] = None):
         """
         Process a chat message from the user.
 
@@ -133,7 +148,7 @@ class ChatProcessor:
         thread.start()
         
     def _process_message_async(self, user_message: str, callback: Optional[Callable],
-                               context_data: Optional[Dict[str, Any]] = None):
+                               context_data: Optional[ChatContextData] = None):
         """Async processing of chat message."""
         try:
             self.is_processing = True
@@ -187,7 +202,7 @@ class ChatProcessor:
             if callback:
                 self.app.after(0, callback)
                 
-    def _extract_context(self) -> Dict[str, Any]:
+    def _extract_context(self) -> ChatContextData:
         """Fallback context extraction.
 
         WARNING: This method accesses Tkinter widgets, so it must only be
@@ -236,7 +251,7 @@ class ChatProcessor:
             
         return context
         
-    def _construct_prompt(self, user_message: str, context_data: Dict[str, Any]) -> tuple[str, str]:
+    def _construct_prompt(self, user_message: str, context_data: ChatContextData) -> tuple[str, str]:
         """Construct the system message and prompt to send to the AI.
 
         Returns:
@@ -365,8 +380,8 @@ class ChatProcessor:
     
     def _get_ai_response_with_tools(self, prompt: str,
                                      system_message: str = None,
-                                     context_data: Optional[Dict[str, Any]] = None,
-                                     ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+                                     context_data: Optional[ChatContextData] = None,
+                                     ) -> tuple[Optional[str], Optional[ToolInfo]]:
         """Get response from AI provider, possibly using tools."""
         response_text, tool_info = self._get_ai_response(
             prompt, system_message=system_message, context_data=context_data
@@ -375,8 +390,8 @@ class ChatProcessor:
     
     def _get_ai_response(self, prompt: str, max_retries: int = 3,
                          system_message: str = None,
-                         context_data: Optional[Dict[str, Any]] = None,
-                         ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+                         context_data: Optional[ChatContextData] = None,
+                         ) -> tuple[Optional[str], Optional[ToolInfo]]:
         """Get response from AI provider with retry logic and circuit breaker.
 
         Args:
@@ -528,7 +543,7 @@ class ChatProcessor:
 
         return None, None
         
-    def _process_ai_response(self, user_message: str, ai_response: str, context_data: Dict[str, Any], tool_info: Dict[str, Any] = None):
+    def _process_ai_response(self, user_message: str, ai_response: str, context_data: ChatContextData, tool_info: Optional[ToolInfo] = None):
         """Process the AI response and apply changes if needed."""
         
         # Show the response to the user first
@@ -622,7 +637,7 @@ class ChatProcessor:
         }
         return widget_map.get(tab_index)
 
-    def _apply_response_to_document(self, ai_response: str, context_data: Dict[str, Any]):
+    def _apply_response_to_document(self, ai_response: str, context_data: ChatContextData):
         """Apply the AI response to the current document automatically."""
 
         def apply_changes():
@@ -661,7 +676,7 @@ class ChatProcessor:
         # Apply on main thread
         self.app.after(0, apply_changes)
         
-    def _apply_response_with_confirmation(self, ai_response: str, context_data: Dict[str, Any]):
+    def _apply_response_with_confirmation(self, ai_response: str, context_data: ChatContextData):
         """Apply the AI response to the current document with user confirmation."""
 
         def apply_changes():
@@ -880,7 +895,7 @@ class ChatProcessor:
             logger.error(f"Error showing tool confirmation: {e}")
             return False  # Deny on error
     
-    def _append_to_chat_tab(self, user_message: str, ai_response: str, tool_info: Dict[str, Any] = None):
+    def _append_to_chat_tab(self, user_message: str, ai_response: str, tool_info: Optional[ToolInfo] = None):
         """Append conversation to chat tab in ChatGPT style."""
         def append_chat():
             try:

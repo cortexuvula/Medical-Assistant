@@ -18,8 +18,8 @@ from core.config import get_config
 logger = get_logger(__name__)
 from utils.constants import (
     PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA,
-    PROVIDER_GROQ, PROVIDER_CEREBRAS,
-    STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS
+    PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS,
+    STT_DEEPGRAM, STT_GROQ, STT_ELEVENLABS, STT_MODULATE
 )
 
 
@@ -85,6 +85,8 @@ class RateLimiter:
             PROVIDER_OLLAMA: (1000, 60),     # Local, so higher limit
             PROVIDER_GROQ: (30, 60),         # Groq LLM (shared with STT key)
             PROVIDER_CEREBRAS: (60, 60),     # Cerebras LLM
+            PROVIDER_GEMINI: (60, 60),       # Gemini LLM
+            STT_MODULATE: (50, 60),          # Modulate STT
             # Embedding API rate limits (OpenAI Tier 1)
             "openai_embeddings": (3000, 60),      # 3000 requests per minute
             "openai_embeddings_tokens": (1000000, 60),  # 1M tokens per minute

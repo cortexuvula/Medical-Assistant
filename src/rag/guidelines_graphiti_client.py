@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from rag.guidelines_env import load_guidelines_env
 from rag.guidelines_models import GuidelineSearchResult
+from utils.constants import PROVIDER_OPENAI
 from utils.timeout_config import get_timeout
 
 load_guidelines_env()
@@ -190,8 +191,8 @@ class GuidelinesGraphitiClient:
         # Fall back to settings if not in env
         if not uri or not password:
             try:
-                from settings.settings import SETTINGS
-                guidelines_settings = SETTINGS.get("clinical_guidelines", {})
+                from settings.settings_manager import settings_manager
+                guidelines_settings = settings_manager.get("clinical_guidelines", {})
                 uri = uri or guidelines_settings.get("neo4j_uri")
                 user = user or guidelines_settings.get("neo4j_user", "neo4j")
                 password = password or guidelines_settings.get("neo4j_password")
@@ -203,7 +204,7 @@ class GuidelinesGraphitiClient:
             try:
                 from managers.api_key_manager import get_api_key_manager
                 manager = get_api_key_manager()
-                openai_key = manager.get_key("openai")
+                openai_key = manager.get_key(PROVIDER_OPENAI)
             except Exception:
                 pass
 
@@ -584,8 +585,8 @@ def get_guidelines_graphiti_client() -> Optional[GuidelinesGraphitiClient]:
         uri = os.environ.get("CLINICAL_GUIDELINES_NEO4J_URI")
         if not uri:
             try:
-                from settings.settings import SETTINGS
-                guidelines_settings = SETTINGS.get("clinical_guidelines", {})
+                from settings.settings_manager import settings_manager
+                guidelines_settings = settings_manager.get("clinical_guidelines", {})
                 uri = guidelines_settings.get("neo4j_uri")
             except Exception:
                 pass
