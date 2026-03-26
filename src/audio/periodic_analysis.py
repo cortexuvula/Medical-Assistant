@@ -293,7 +293,7 @@ class PeriodicAnalyzer:
                 if remaining <= 0:
                     break
 
-                if callback:
+                if callback and not self._stop_event.is_set():
                     try:
                         callback(remaining)
                     except Exception as e:

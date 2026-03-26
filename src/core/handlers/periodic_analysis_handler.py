@@ -128,6 +128,11 @@ class PeriodicAnalysisHandler:
         session_id = None
         try:
             if self.app.periodic_analyzer and self.app.periodic_analyzer.is_running:
+                # Link to recording ID before saving (may have been set during finalization)
+                recording_id = getattr(self.app, 'current_recording_id', None)
+                if recording_id and self._current_recording_id != recording_id:
+                    self.set_recording_id(recording_id)
+
                 # Save history before stopping
                 if save_to_database:
                     session_id = self._save_periodic_history()
@@ -525,25 +530,29 @@ class PeriodicAnalysisHandler:
     def clear_advanced_analysis_text(self) -> None:
         """Clear the Advanced Analysis Results text area and show empty state."""
         try:
-            # Clear differential tracker
+            # Clear differential tracker (thread-safe, has its own lock)
             self.differential_tracker.clear()
 
-            # Clear analyzer history if available
+            # Clear analyzer history if available (thread-safe via lock)
             if self.app.periodic_analyzer:
                 self.app.periodic_analyzer.clear_history()
 
-            # Use RecordTab's clear method which shows empty state hint
-            if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
-                record_tab = self.app.ui.record_tab
-                if hasattr(record_tab, '_clear_analysis'):
-                    record_tab._clear_analysis()
-                    logger.info("Cleared advanced analysis text, differential tracker, and history")
-                    return
+            # UI updates must run on the main thread
+            def _clear_ui():
+                try:
+                    if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'record_tab'):
+                        record_tab = self.app.ui.record_tab
+                        if hasattr(record_tab, '_clear_analysis'):
+                            record_tab._clear_analysis()
+                            return
+                    # Fallback to direct clear
+                    if 'record_notes_text' in self.app.ui.components:
+                        self.app.ui.components['record_notes_text'].delete('1.0', tk.END)
+                except Exception as e:
+                    logger.error(f"Error clearing analysis UI: {e}")
 
-            # Fallback to direct clear
-            if 'record_notes_text' in self.app.ui.components:
-                self.app.ui.components['record_notes_text'].delete('1.0', tk.END)
-                logger.info("Cleared advanced analysis text, differential tracker, and history")
+            schedule_ui_update(self.app, _clear_ui)
+            logger.info("Cleared advanced analysis text, differential tracker, and history")
         except Exception as e:
             logger.error(f"Error clearing advanced analysis text: {e}")
 

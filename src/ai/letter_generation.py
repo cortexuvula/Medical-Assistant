@@ -348,17 +348,21 @@ def create_letter_with_ai(text: str, recipient_type: str = "other", specs: str =
     Returns:
         Complete formatted letter
     """
+    from settings.settings_manager import settings_manager
+
     # Build the prompt with recipient-specific guidance
     prompt = _build_letter_prompt(text, recipient_type, specs)
 
     # Get recipient-specific system message
     system_message = _get_letter_system_message(recipient_type)
 
-    # Make the AI call
-    result = call_ai("gpt-4o", system_message, prompt, 0.7)
+    # Use configured provider/model instead of hardcoded gpt-4o
+    provider = settings_manager.get_ai_provider()
+    model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
+    temperature = SETTINGS.get("letter", {}).get("temperature", 0.7)
 
-    # Clean up any markdown formatting and citations from the result
-    # Use result.text to get the text content from AIResult
+    result = call_ai(model, system_message, prompt, temperature)
+
     return clean_text(result.text)
 
 
@@ -382,19 +386,23 @@ def create_letter_streaming(
     Returns:
         Complete formatted letter
     """
+    from settings.settings_manager import settings_manager
+
     # Build the prompt with recipient-specific guidance
     prompt = _build_letter_prompt(text, recipient_type, specs)
 
     # Get recipient-specific system message
     system_message = _get_letter_system_message(recipient_type)
 
+    # Use configured provider/model instead of hardcoded gpt-4o
+    provider = settings_manager.get_ai_provider()
+    model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
+    temperature = SETTINGS.get("letter", {}).get("temperature", 0.7)
+
     # Use streaming API call
     if on_chunk:
-        result = call_ai_streaming("gpt-4o", system_message, prompt, 0.7, on_chunk)
+        result = call_ai_streaming(model, system_message, prompt, temperature, on_chunk)
     else:
-        # Fall back to non-streaming if no callback provided
-        result = call_ai("gpt-4o", system_message, prompt, 0.7)
+        result = call_ai(model, system_message, prompt, temperature)
 
-    # Clean up any markdown formatting and citations from the result
-    # Use result.text to get the text content from AIResult
     return clean_text(result.text)

@@ -38,6 +38,9 @@ class LetterGeneratorMixin:
         if source == "transcript":
             text = self.app.transcript_text.get("1.0", "end").strip()
             source_name = "Transcript"
+        elif source == "context":
+            text = self.app.context_text.get("1.0", "end").strip() if hasattr(self.app, 'context_text') else ""
+            source_name = "Context"
         else:  # source == "soap"
             text = self.app.soap_text.get("1.0", "end").strip()
             source_name = "SOAP"
@@ -96,6 +99,9 @@ class LetterGeneratorMixin:
                 if result.startswith("[Error"):
                     raise Exception(result)
 
+                # Store result for finalize closure
+                letter_text = result
+
                 # Schedule UI finalization on main thread
                 def finalize():
                     # Stop progress indicator
@@ -106,11 +112,35 @@ class LetterGeneratorMixin:
                     if self.app.letter_button:
                         self.app.letter_button.config(state=NORMAL)
 
-                    # Add edit separator for undo support
-                    try:
-                        self.app.letter_text.edit_separator()
-                    except Exception as e:
-                        logger.debug(f"Failed to add edit separator: {e}")
+                    # Replace streaming content with final cleaned version
+                    self._update_text_widget_content(self.app.letter_text, letter_text)
+
+                    # Save to database
+                    if hasattr(self.app, 'current_recording_id') and self.app.current_recording_id:
+                        try:
+                            success = self.app.db.update_recording(
+                                self.app.current_recording_id,
+                                letter=letter_text
+                            )
+                            if success:
+                                logger.info(f"Saved letter to recording {self.app.current_recording_id}")
+                            else:
+                                logger.warning(f"Failed to save letter to recording {self.app.current_recording_id}")
+                        except Exception as e:
+                            logger.error(f"Error saving letter to database: {e}")
+                    else:
+                        # Create a new recording entry for standalone letters
+                        try:
+                            rec_id = self.app.db.add_recording(
+                                filename="Letter",
+                                letter=letter_text
+                            )
+                            if rec_id:
+                                self.app.current_recording_id = rec_id
+                                self.app.selected_recording_id = rec_id
+                                logger.info(f"Created new recording {rec_id} for standalone letter")
+                        except Exception as e:
+                            logger.warning(f"Failed to save standalone letter: {e}")
 
                     # Update status
                     self.app.status_manager.success(f"Letter to {recipient_display} generated from {source_name}")

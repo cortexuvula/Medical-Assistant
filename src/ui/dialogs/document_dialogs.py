@@ -35,6 +35,7 @@ def show_letter_options_dialog(parent: tk.Tk) -> tuple:
     source_var = tk.StringVar(value="transcript")
     ttk.Radiobutton(source_frame, text="Use text from Transcript tab", variable=source_var, value="transcript").pack(anchor="w", padx=20, pady=5)
     ttk.Radiobutton(source_frame, text="Use text from SOAP tab", variable=source_var, value="soap").pack(anchor="w", padx=20, pady=5)
+    ttk.Radiobutton(source_frame, text="Use text from Context panel", variable=source_var, value="context").pack(anchor="w", padx=20, pady=5)
 
     # Recipient type selection (NEW)
     ttk.Label(main_frame, text="Letter recipient type:", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 5))

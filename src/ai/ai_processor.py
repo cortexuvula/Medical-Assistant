@@ -44,7 +44,8 @@ from managers.agent_manager import agent_manager
 from ai.agents.models import AgentTask, AgentType
 from utils.error_handling import OperationResult, handle_errors, ErrorSeverity, sanitize_error_for_user
 from utils.constants import (
-    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI
+    PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_OLLAMA, PROVIDER_GEMINI,
+    PROVIDER_GROQ, PROVIDER_CEREBRAS
 )
 from utils.validation import sanitize_prompt
 
@@ -576,6 +577,10 @@ class AIProcessor:
             model = analysis_settings.get("anthropic_model", "claude-sonnet-4-20250514")
         elif ai_provider == PROVIDER_GEMINI:
             model = analysis_settings.get("gemini_model", "gemini-1.5-pro")
+        elif ai_provider == PROVIDER_GROQ:
+            model = analysis_settings.get("groq_model", "llama-3.3-70b-versatile")
+        elif ai_provider == PROVIDER_CEREBRAS:
+            model = analysis_settings.get("cerebras_model", "llama-3.3-70b")
         else:
             # Fallback to OpenAI model
             model = analysis_settings.get("model", "gpt-4")
