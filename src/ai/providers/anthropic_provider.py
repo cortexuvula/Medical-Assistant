@@ -214,7 +214,16 @@ def call_anthropic(model: str, system_message: str, prompt: str, temperature: fl
         if not text:
             return AIResult.failure("Anthropic returned non-text content block (e.g., tool_use)", error_code="API_EMPTY_RESPONSE")
         text = text.strip()
-        return AIResult.success(text, model=model, provider=PROVIDER_ANTHROPIC)
+        usage_data = {}
+        if response.usage:
+            prompt_tokens = getattr(response.usage, 'input_tokens', 0)
+            completion_tokens = getattr(response.usage, 'output_tokens', 0)
+            usage_data = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            }
+        return AIResult.success(text, usage=usage_data, model=model, provider=PROVIDER_ANTHROPIC)
     except APITimeoutError as e:
         logger.error(f"Anthropic API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")

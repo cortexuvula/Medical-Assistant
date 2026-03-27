@@ -223,17 +223,18 @@ class AIResult:
     """
 
     def __init__(self, text: str = None, error: str = None, error_code: str = None,
-                 exception: Exception = None, context: dict = None):
+                 exception: Exception = None, context: dict = None, usage: dict = None):
         self._text = text
         self._error = error
         self._error_code = error_code
         self._exception = exception
         self._context = context or {}
+        self._usage = usage or {}
 
     @classmethod
-    def success(cls, text: str, **context) -> 'AIResult':
+    def success(cls, text: str, usage: dict = None, **context) -> 'AIResult':
         """Create a successful result with generated text."""
-        return cls(text=text, context=context)
+        return cls(text=text, context=context, usage=usage)
 
     @classmethod
     def failure(cls, error: str, error_code: str = None,
@@ -276,6 +277,11 @@ class AIResult:
     def context(self) -> dict:
         """Get additional context information."""
         return self._context
+
+    @property
+    def usage(self) -> dict:
+        """Get token usage information (prompt_tokens, completion_tokens, total_tokens)."""
+        return self._usage
 
     def __str__(self) -> str:
         """Return text for successful results, error message for failures.

@@ -46,6 +46,74 @@ from utils.constants import (
 )
 from utils.exceptions import AIResult
 
+# Provider fallback chain — tried in order when primary fails.
+# Ollama (local) and Gemini excluded: different availability characteristics.
+FALLBACK_CHAIN = [PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GROQ, PROVIDER_CEREBRAS]
+
+
+def _call_provider(provider: str, model: str, system_message: str, prompt: str,
+                   temperature: float, current_settings: dict, model_key: str,
+                   provider_explicitly_set: bool) -> AIResult:
+    """Dispatch a single AI call to a specific provider.
+
+    This is a pure extraction of the provider dispatch logic from call_ai(),
+    enabling the fallback chain to retry with different providers.
+    """
+    if provider == PROVIDER_OLLAMA:
+        return call_ollama(system_message, prompt, temperature)
+    elif provider == PROVIDER_ANTHROPIC:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
+        return call_anthropic(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_GEMINI:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
+        return call_gemini(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_GROQ:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("groq_model", "llama-3.3-70b-versatile")
+        return call_groq(actual_model, system_message, prompt, temperature)
+    elif provider == PROVIDER_CEREBRAS:
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("cerebras_model", "llama-3.3-70b")
+        return call_cerebras(actual_model, system_message, prompt, temperature)
+    else:  # OpenAI is the default
+        if provider_explicitly_set and model:
+            actual_model = model
+        else:
+            actual_model = current_settings.get(model_key, {}).get("model", model)
+        return call_openai(actual_model, system_message, prompt, temperature)
+
+
+def _log_usage(result: AIResult, provider: str, model: str) -> AIResult:
+    """Log token usage from an AI result if present.
+
+    Args:
+        result: The AIResult from a provider call
+        provider: Provider name (for log context)
+        model: Model name (for log context)
+
+    Returns:
+        The same AIResult, unchanged
+    """
+    if result.is_success and result.usage:
+        prompt_tokens = result.usage.get("prompt_tokens", 0)
+        completion_tokens = result.usage.get("completion_tokens", 0)
+        total_tokens = result.usage.get("total_tokens", 0)
+        logger.info(
+            f"Token usage [{provider}/{model}]: "
+            f"prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
+        )
+    return result
+
 
 @timed("ai_call_streaming", level=logging.INFO)
 def call_ai_streaming(
@@ -172,46 +240,41 @@ def call_ai(model: str, system_message: str, prompt: str, temperature: float,
         if generic_temp is not None:
             temperature = generic_temp
 
-    # Handle different providers and get appropriate model
-    # When provider is explicitly set, use the passed-in model; otherwise look it up from settings
-    if provider == PROVIDER_OLLAMA:
-        logger.info(f"Using provider: Ollama for task: {model_key}")
-        # Debug logging will happen in the actual API call
-        return call_ollama(system_message, prompt, temperature)
-    elif provider == PROVIDER_ANTHROPIC:
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("anthropic_model", "claude-sonnet-4-20250514")
-        logger.info(f"Using provider: Anthropic with model: {actual_model}")
-        # Debug logging will happen in the actual API call
-        return call_anthropic(actual_model, system_message, prompt, temperature)
-    elif provider == PROVIDER_GEMINI:
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("gemini_model", "gemini-1.5-flash")
-        logger.info(f"Using provider: Gemini with model: {actual_model}")
-        return call_gemini(actual_model, system_message, prompt, temperature)
-    elif provider == PROVIDER_GROQ:
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("groq_model", "llama-3.3-70b-versatile")
-        logger.info(f"Using provider: Groq with model: {actual_model}")
-        return call_groq(actual_model, system_message, prompt, temperature)
-    elif provider == PROVIDER_CEREBRAS:
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("cerebras_model", "llama-3.3-70b")
-        logger.info(f"Using provider: Cerebras with model: {actual_model}")
-        return call_cerebras(actual_model, system_message, prompt, temperature)
-    else:  # OpenAI is the default
-        if provider_explicitly_set and model:
-            actual_model = model
-        else:
-            actual_model = current_settings.get(model_key, {}).get("model", model)
-        logger.info(f"Using provider: OpenAI with model: {actual_model}")
-        # Debug logging will happen in the actual API call
-        return call_openai(actual_model, system_message, prompt, temperature)
+    # Try primary provider, then fallback chain if it fails
+    result = _call_provider(provider, model, system_message, prompt, temperature,
+                            current_settings, model_key, provider_explicitly_set)
+
+    if result.is_success:
+        return _log_usage(result, provider, model)
+
+    # If provider was explicitly set by caller, respect that choice — no fallback
+    if provider_explicitly_set:
+        return result
+
+    # Fallback chain: try other providers that have API keys configured
+    logger.warning(f"Primary provider {provider} failed: {result.error}. Trying fallbacks...")
+
+    from utils.security import get_security_manager
+    security_manager = get_security_manager()
+
+    for fallback_provider in FALLBACK_CHAIN:
+        if fallback_provider == provider:
+            continue  # Already tried
+
+        # Check if API key exists for this provider
+        api_key = security_manager.get_api_key(fallback_provider)
+        if not api_key:
+            continue
+
+        logger.info(f"Attempting fallback provider: {fallback_provider}")
+        fallback_result = _call_provider(fallback_provider, model, system_message, prompt,
+                                         temperature, current_settings, model_key,
+                                         provider_explicitly_set=False)
+        if fallback_result.is_success:
+            logger.info(f"Fallback to {fallback_provider} succeeded")
+            return _log_usage(fallback_result, fallback_provider, model)
+        logger.warning(f"Fallback {fallback_provider} also failed: {fallback_result.error}")
+
+    # All providers failed
+    logger.error("All providers in fallback chain failed")
+    return result  # Return original error

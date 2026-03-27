@@ -136,7 +136,14 @@ def call_openai(model: str, system_message: str, prompt: str, temperature: float
         if not content:
             return AIResult.failure("OpenAI returned empty content (model may have returned tool calls only)", error_code="API_EMPTY_CONTENT")
         text = content.strip()
-        return AIResult.success(text, model=model, provider=PROVIDER_OPENAI)
+        usage_data = {}
+        if response.usage:
+            usage_data = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+        return AIResult.success(text, usage=usage_data, model=model, provider=PROVIDER_OPENAI)
     except APITimeoutError as e:
         logger.error(f"OpenAI API timeout with model {model}: {str(e)}")
         title, message = get_error_message("CONN_TIMEOUT", f"Request timed out after {e.timeout_seconds}s")

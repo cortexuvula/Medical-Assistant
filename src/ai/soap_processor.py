@@ -18,7 +18,7 @@ from ttkbootstrap.constants import LEFT
 from datetime import datetime as dt
 from typing import List, Any, Dict, Optional
 
-from ai.ai import create_soap_note_with_openai
+from ai.ai import create_soap_note_with_openai, create_soap_note_streaming
 from settings.settings_manager import settings_manager
 from utils.constants import STT_ELEVENLABS, STT_MODULATE
 from utils.safe_ui import schedule_ui_update
@@ -248,14 +248,30 @@ class SOAPProcessor:
 
                 # context_text was extracted on the main thread before task() was submitted
 
-                # Use IO executor for the AI API call (I/O-bound operation)
+                # Stream SOAP note progressively to the UI
+                def on_soap_chunk(chunk: str):
+                    """Callback for streaming SOAP chunks to UI."""
+                    # Build full text from what's already displayed + new chunk
+                    try:
+                        current = self.app.soap_text.get("1.0", "end-1c")
+                    except (tk.TclError, AttributeError):
+                        current = ""
+                    # on_chunk receives individual chunks, not cumulative text
+                    # Append chunk to current content
+                    schedule_ui_update(self.app, lambda c=chunk: [
+                        self.app.soap_text.insert(tk.END, c),
+                        self.app.soap_text.see(tk.END),
+                    ])
+
+                # Use IO executor for the streaming AI API call
                 future = self.io_executor.submit(
-                    create_soap_note_with_openai,
+                    create_soap_note_streaming,
                     transcript,
                     context_text,
+                    on_soap_chunk,
                     emotion_context
                 )
-                
+
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 

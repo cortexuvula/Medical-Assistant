@@ -15,6 +15,8 @@ from ai.text_processing import clean_text
 from ai.prompts import SOAP_PROMPT_TEMPLATE, get_soap_system_message
 from settings.settings_manager import settings_manager
 from utils.constants import PROVIDER_OPENAI
+from utils.validation import sanitize_prompt
+from utils.icd_validator import extract_icd_codes, validate_code
 
 
 def format_soap_paragraphs(text: str) -> str:
@@ -127,6 +129,11 @@ def _prepare_soap_generation(text: str, context: str, settings: dict = None, emo
     icd_version = settings.get("soap_note", {}).get("icd_code_version", "ICD-9")
     current_provider = settings.get("ai_provider", PROVIDER_OPENAI)
 
+    # Sanitize inputs to prevent prompt injection via transcript content
+    text = sanitize_prompt(text)
+    if context:
+        context = sanitize_prompt(context)
+
     # Get dynamic system message based on ICD code preference and provider
     system_message = get_soap_system_message(icd_version, provider=current_provider)
 
@@ -222,6 +229,51 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
     return cleaned_soap
 
 
+def _validate_soap_output(soap_text: str) -> str:
+    """Validate clinical content in SOAP note and append warnings.
+
+    Checks ICD codes against the static dictionary and flags invalid ones.
+    This is a lightweight post-generation validation — it does NOT make
+    additional AI calls.
+
+    Args:
+        soap_text: Completed SOAP note text
+
+    Returns:
+        SOAP note text with validation warnings appended (if any)
+    """
+    if not soap_text:
+        return soap_text
+
+    warnings = []
+
+    # Validate ICD codes against static dictionary
+    extracted_codes = extract_icd_codes(soap_text)
+    for code in extracted_codes:
+        result = validate_code(code)
+        if not result.is_valid:
+            warnings.append(
+                f"ICD code '{code}': invalid format — {result.warning or 'does not match ICD-9 or ICD-10 pattern'}"
+            )
+        elif not result.description:
+            # Valid format but not in common codes database
+            warnings.append(
+                f"ICD code '{code}': valid format but not in common codes database — please verify"
+            )
+
+    if not warnings:
+        return soap_text
+
+    # Append warnings section
+    warning_lines = ["\n\n--- Validation Warnings ---"]
+    for w in warnings:
+        warning_lines.append(f"\u26a0 {w}")
+    warning_lines.append("--- End Warnings ---")
+
+    logger.info(f"SOAP validation: {len(warnings)} warning(s) appended")
+    return soap_text + "\n".join(warning_lines)
+
+
 def create_soap_note_streaming(
     text: str,
     context: str = "",
@@ -259,7 +311,14 @@ def create_soap_note_streaming(
 
     # Extract text from AIResult for post-processing
     result_text = result.text if hasattr(result, 'text') else str(result)
-    return _postprocess_soap_result(result_text, context, on_chunk)
+    soap_text = _postprocess_soap_result(result_text, context, on_chunk)
+
+    # Validate ICD codes and append warnings
+    validated = _validate_soap_output(soap_text)
+    # Stream the validation warnings if any were added
+    if on_chunk and len(validated) > len(soap_text):
+        on_chunk(validated[len(soap_text):])
+    return validated
 
 
 def create_soap_note_with_openai(text: str, context: str = "", emotion_context: str = "") -> str:
@@ -282,4 +341,7 @@ def create_soap_note_with_openai(text: str, context: str = "", emotion_context: 
 
     # Extract text from AIResult for post-processing
     result_text = result.text if hasattr(result, 'text') else str(result)
-    return _postprocess_soap_result(result_text, context)
+    soap_text = _postprocess_soap_result(result_text, context)
+
+    # Validate ICD codes and append warnings
+    return _validate_soap_output(soap_text)
