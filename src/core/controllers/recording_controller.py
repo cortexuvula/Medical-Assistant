@@ -67,11 +67,6 @@ class RecordingController:
         else:
             raise ValueError("RecordingController requires either app or registry")
 
-    @property
-    def app(self):
-        """Backward-compatible access to app for widget/Tk operations."""
-        return self._app
-
         # ========================================
         # Shared State
         # ========================================
@@ -85,6 +80,11 @@ class RecordingController:
         self._pause_resume_handler = PauseResumeHandler(self._app, self._state_lock)
         self._periodic_analysis_handler = PeriodicAnalysisHandler(self._app)
         self._finalization_handler = FinalizationHandler(self._app)
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
     # ========================================
     # Recording Properties
