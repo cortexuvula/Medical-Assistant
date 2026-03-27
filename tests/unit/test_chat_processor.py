@@ -656,7 +656,7 @@ class TestMessageProcessing:
 
         original_process = processor._process_message_async
 
-        def tracking_process(msg, callback):
+        def tracking_process(msg, callback, context_data=None):
             was_processing[0] = processor.is_processing
             # Don't call original to avoid complex mocking
 
