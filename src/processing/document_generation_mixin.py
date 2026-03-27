@@ -44,7 +44,7 @@ class DocumentGenerationMixin:
             model = settings_manager.get_nested(f"{provider}.model", "gpt-4")
 
             # Generate SOAP note with context if provided
-            soap_note = create_soap_note_with_openai(transcript, context)
+            soap_note, _icd_warnings = create_soap_note_with_openai(transcript, context)
             return soap_note
         except (APIError, APITimeoutError) as e:
             ctx = ErrorContext.capture(

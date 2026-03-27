@@ -96,7 +96,7 @@ class TestAIProcessor:
     @patch('src.ai.ai_processor.get_possible_conditions')
     def test_create_soap_note_success(self, mock_conditions, mock_create_soap, ai_processor):
         """Test SOAP note generation."""
-        mock_create_soap.return_value = "S: Headache x3 days\nO: BP 120/80\nA: Tension headache\nP: Rest and hydration"
+        mock_create_soap.return_value = ("S: Headache x3 days\nO: BP 120/80\nA: Tension headache\nP: Rest and hydration", [])
         mock_conditions.return_value = "Tension headache, Hypertension"
 
         transcript = "Patient has headache for 3 days. Blood pressure is 120/80."
@@ -174,7 +174,7 @@ class TestAIProcessor:
     @patch('src.ai.ai_processor.get_possible_conditions')
     def test_context_inclusion_in_soap(self, mock_conditions, mock_create, ai_processor):
         """Test that context is properly included in SOAP notes."""
-        mock_create.return_value = "SOAP with context"
+        mock_create.return_value = ("SOAP with context", [])
         mock_conditions.return_value = ""
 
         transcript = "Patient follow-up visit"
@@ -218,7 +218,7 @@ class TestAIProcessor:
     @patch('src.ai.ai_processor.get_possible_conditions')
     def test_soap_note_without_conditions(self, mock_conditions, mock_create_soap, ai_processor):
         """Test SOAP note generation without possible conditions."""
-        mock_create_soap.return_value = "S: Headache\nO: Normal\nA: Migraine\nP: Medication"
+        mock_create_soap.return_value = ("S: Headache\nO: Normal\nA: Migraine\nP: Medication", [])
         mock_conditions.return_value = ""
 
         result = ai_processor.create_soap_note("Patient has headache")

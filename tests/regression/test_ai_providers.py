@@ -192,9 +192,12 @@ class TestSOAPNoteGeneration:
                 text="Patient has headache for 2 days"
             )
 
-        assert isinstance(result, str)
+        # Returns (soap_text, icd_warnings) tuple
+        soap_text, icd_warnings = result
+        assert isinstance(soap_text, str)
+        assert isinstance(icd_warnings, list)
         # Should contain SOAP sections
-        assert any(section in result for section in ['S:', 'Subjective', 'SUBJECTIVE'])
+        assert any(section in soap_text for section in ['S:', 'Subjective', 'SUBJECTIVE'])
 
     def test_soap_note_includes_context(self, mock_api_keys):
         """SOAP note generation should include context if provided."""

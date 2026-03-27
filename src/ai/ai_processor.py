@@ -151,8 +151,8 @@ class AIProcessor:
         # Get temperature setting
         temperature = settings_manager.get_nested("soap_note.temperature", 0.2)
 
-        # Generate SOAP note
-        soap_note = create_soap_note_with_openai(
+        # Generate SOAP note (warnings returned separately, discarded in batch path)
+        soap_note, _icd_warnings = create_soap_note_with_openai(
             full_transcript,
             soap_prompt,
             temperature=temperature

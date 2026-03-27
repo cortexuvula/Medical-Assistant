@@ -679,6 +679,48 @@ class NotebookTabs(NotebookRagMixin, NotebookGuidelinesMixin, NotebookAnalysisMi
         text_widgets['emotion_analysis'] = emotion_analysis_text
         self.components['emotion_analysis_text'] = emotion_analysis_text
 
+        # ----- Tab 5: ICD Validation -----
+        icd_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(icd_tab, text="  ICD Validation  ")
+
+        # ICD validation header with copy button
+        icd_header = ttk.Frame(icd_tab)
+        icd_header.pack(fill=tk.X, padx=5, pady=3)
+
+        icd_copy_btn = ttk.Button(
+            icd_header,
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(icd_validation_text)
+        )
+        icd_copy_btn.pack(side=tk.RIGHT, padx=2)
+
+        # ICD validation scrollbar and text widget
+        icd_content = ttk.Frame(icd_tab)
+        icd_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        icd_scroll = ttk.Scrollbar(icd_content)
+        icd_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        icd_validation_text = tk.Text(
+            icd_content,
+            wrap=tk.WORD,
+            yscrollcommand=icd_scroll.set,
+            state='disabled',
+            height=8
+        )
+        icd_validation_text.pack(fill=tk.BOTH, expand=True)
+        icd_scroll.config(command=icd_validation_text.yview)
+
+        # Initial placeholder message
+        icd_validation_text.config(state='normal')
+        icd_validation_text.insert('1.0', "ICD code validation results will appear here after SOAP note generation.")
+        icd_validation_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['icd_validation'] = icd_validation_text
+        self.components['icd_validation_text'] = icd_validation_text
+
         return soap_text
 
     def _copy_to_clipboard(self, text_widget: tk.Text) -> None:

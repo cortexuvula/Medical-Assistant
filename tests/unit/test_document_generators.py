@@ -135,14 +135,14 @@ class TestSOAPGeneratorMixin:
 
     def test_disables_button_during_generation(self, document_generators, mock_app):
         """Test that SOAP button is disabled during generation."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             mock_app.soap_button.config.assert_called()
 
     def test_shows_progress_bar(self, document_generators, mock_app):
         """Test that progress bar is shown during generation."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             mock_app.progress_bar.pack.assert_called()
@@ -150,7 +150,7 @@ class TestSOAPGeneratorMixin:
 
     def test_switches_to_soap_tab(self, document_generators, mock_app):
         """Test that notebook switches to SOAP tab."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             mock_app.notebook.select.assert_called()
@@ -162,7 +162,7 @@ class TestSOAPGeneratorMixin:
         def mock_streaming(transcript, context, on_chunk):
             on_chunk("Part 1")
             on_chunk("Part 2")
-            return "Part 1Part 2"
+            return ("Part 1Part 2", [])
 
         with patch('processing.generators.soap.create_soap_note_streaming', side_effect=mock_streaming):
             document_generators.create_soap_note()
@@ -172,7 +172,7 @@ class TestSOAPGeneratorMixin:
 
     def test_saves_to_database(self, document_generators, mock_app):
         """Test that SOAP note is saved to database."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="Generated SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("Generated SOAP", [])):
             document_generators.create_soap_note()
 
             mock_app.db.update_recording.assert_called_once()
@@ -317,7 +317,7 @@ class TestGeneratorContextHandling:
         def capture_context(transcript, context, on_chunk):
             nonlocal context_used
             context_used = context
-            return "SOAP"
+            return ("SOAP", [])
 
         with patch('processing.generators.soap.create_soap_note_streaming',
                    side_effect=capture_context):
@@ -364,7 +364,7 @@ class TestAutoAnalysisTrigger:
 
     def test_soap_triggers_medication_analysis(self, document_generators, mock_app):
         """Test that SOAP generation triggers medication analysis."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             with patch.object(document_generators, '_run_medication_to_panel') as mock_med:
                 document_generators.create_soap_note()
 
@@ -390,7 +390,7 @@ class TestWidgetStateManagement:
 
     def test_widgets_disabled_during_long_operations(self, document_generators, mock_app):
         """Test that widgets are disabled during long operations."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             # Button should have been configured (disabled)
@@ -398,7 +398,7 @@ class TestWidgetStateManagement:
 
     def test_widgets_reenabled_after_completion(self, document_generators, mock_app):
         """Test that widgets are re-enabled after operation completion."""
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             # Check that button was eventually re-enabled
@@ -413,7 +413,7 @@ class TestDatabaseIntegration:
         """Test that existing recording is updated, not created."""
         mock_app.current_recording_id = 123
 
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             document_generators.create_soap_note()
 
             mock_app.db.update_recording.assert_called_once()
@@ -424,7 +424,7 @@ class TestDatabaseIntegration:
         """Test that new recording is created when no current recording."""
         mock_app.current_recording_id = None
 
-        with patch('processing.generators.soap.create_soap_note_streaming', return_value="SOAP"):
+        with patch('processing.generators.soap.create_soap_note_streaming', return_value=("SOAP", [])):
             with patch.object(mock_app, '_save_soap_recording_to_database') as mock_save:
                 document_generators.create_soap_note()
 

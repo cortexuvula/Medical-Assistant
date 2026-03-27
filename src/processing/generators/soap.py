@@ -64,8 +64,8 @@ class SOAPGeneratorMixin:
                     on_chunk=on_chunk
                 )
 
-                # Store the values we need for database operations
-                soap_note = result
+                # Unpack SOAP text and ICD validation warnings (returned separately)
+                soap_note, icd_warnings = result
                 filename = "Transcript"
 
                 # Schedule UI finalization on main thread
@@ -134,6 +134,10 @@ class SOAPGeneratorMixin:
                     self.app.after(0, _safe_run("medication_analysis", self._run_medication_to_panel, soap_note))
                     self.app.after(0, _safe_run("diagnostic_analysis", self._run_diagnostic_to_panel, soap_note))
                     self.app.after(0, _safe_run("compliance_analysis", self._run_compliance_to_panel, soap_note))
+
+                    # Display ICD validation warnings in panel if any
+                    if icd_warnings:
+                        self.app.after(0, _safe_run("icd_validation", self._run_icd_validation_to_panel, icd_warnings))
 
                 self.app.after(0, finalize)
 

@@ -87,8 +87,9 @@ class TestSOAPOutputValidation:
             "ASSESSMENT:\n"
             "1. Acute upper respiratory infection (ICD-10: J06.9)\n"
         )
-        result = _validate_soap_output(soap)
-        assert "Validation Warnings" not in result
+        result, warnings = _validate_soap_output(soap)
+        assert result == soap  # SOAP text unchanged
+        assert len(warnings) == 0
 
     def test_invalid_format_flagged(self):
         """ICD code with invalid format should be flagged."""
@@ -98,9 +99,10 @@ class TestSOAPOutputValidation:
             "ASSESSMENT:\n"
             "1. Some condition (ICD-10: ZZZ.999)\n"
         )
-        result = _validate_soap_output(soap)
-        assert "Validation Warnings" in result
-        assert "invalid format" in result.lower() or "ZZZ.999" in result
+        result, warnings = _validate_soap_output(soap)
+        assert result == soap  # SOAP text unchanged
+        assert len(warnings) > 0
+        assert any("invalid format" in w.lower() or "not in common codes" in w.lower() for w in warnings)
 
     def test_valid_format_unknown_code_flagged(self):
         """ICD code with valid format but not in common database should be noted."""
@@ -111,10 +113,11 @@ class TestSOAPOutputValidation:
             "ASSESSMENT:\n"
             "1. Dependence on other enabling machines (ICD-10: Z99.89)\n"
         )
-        result = _validate_soap_output(soap)
+        result, warnings = _validate_soap_output(soap)
+        assert result == soap  # SOAP text unchanged
         # Should either pass cleanly (if in database) or flag as "verify"
         # Both outcomes are acceptable
-        assert isinstance(result, str)
+        assert isinstance(warnings, list)
 
     def test_no_codes_no_warnings(self):
         """SOAP note without ICD codes should pass through unchanged."""
@@ -126,14 +129,19 @@ class TestSOAPOutputValidation:
             "ASSESSMENT:\nAcute bronchitis.\n\n"
             "PLAN:\nRest and fluids."
         )
-        result = _validate_soap_output(soap)
+        result, warnings = _validate_soap_output(soap)
         assert result == soap  # No changes
+        assert len(warnings) == 0
 
     def test_empty_input_returns_empty(self):
         """Empty string should be returned unchanged."""
         from ai.soap_generation import _validate_soap_output
-        assert _validate_soap_output("") == ""
-        assert _validate_soap_output(None) is None
+        result, warnings = _validate_soap_output("")
+        assert result == ""
+        assert warnings == []
+        result2, warnings2 = _validate_soap_output(None)
+        assert result2 is None
+        assert warnings2 == []
 
     def test_multiple_codes_validated(self):
         """Multiple ICD codes should each be validated."""
@@ -145,10 +153,11 @@ class TestSOAPOutputValidation:
             "2. Type 2 diabetes (ICD-10: E11.9)\n"
             "3. Made up condition (ICD-10: Q99.999)\n"
         )
-        result = _validate_soap_output(soap)
+        result, warnings = _validate_soap_output(soap)
+        assert result == soap  # SOAP text unchanged
         # I10 and E11.9 are common codes — should pass
         # Q99.999 is unusual — should trigger a warning
-        assert isinstance(result, str)
+        assert isinstance(warnings, list)
 
     def test_icd9_codes_also_validated(self):
         """ICD-9 codes should also be validated."""
@@ -158,6 +167,7 @@ class TestSOAPOutputValidation:
             "ASSESSMENT:\n"
             "1. Hypertension (ICD-9: 401.9)\n"
         )
-        result = _validate_soap_output(soap)
+        result, warnings = _validate_soap_output(soap)
+        assert result == soap  # SOAP text unchanged
         # 401.9 is a valid common ICD-9 code
-        assert isinstance(result, str)
+        assert isinstance(warnings, list)

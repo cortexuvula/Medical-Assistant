@@ -47,8 +47,10 @@ class TestSOAPNoteGeneration:
 
             result = create_soap_note_with_openai(sample_transcript)
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        # Returns (soap_text, icd_warnings) tuple
+        soap_text, icd_warnings = result
+        assert isinstance(soap_text, str)
+        assert len(soap_text) > 0
 
     def test_soap_note_contains_sections(self, sample_transcript, mock_api_keys):
         """SOAP note should contain S, O, A, P sections."""
@@ -67,9 +69,10 @@ class TestSOAPNoteGeneration:
 
             result = create_soap_note_with_openai(sample_transcript)
 
+        soap_text, icd_warnings = result
         # Should contain SOAP sections (various formats accepted)
         soap_indicators = ['S:', 'O:', 'A:', 'P:', 'Subjective', 'Objective', 'Assessment', 'Plan']
-        assert any(indicator in result for indicator in soap_indicators)
+        assert any(indicator in soap_text for indicator in soap_indicators)
 
     def test_soap_note_with_context(self, sample_transcript, mock_api_keys):
         """SOAP note should incorporate context when provided."""
@@ -103,8 +106,9 @@ class TestSOAPNoteGeneration:
 
             result = create_soap_note_with_openai("")
 
-        # Should return something (empty or error message)
-        assert isinstance(result, str)
+        # Returns (soap_text, icd_warnings) tuple
+        soap_text, icd_warnings = result
+        assert isinstance(soap_text, str)
 
 
 class TestReferralGeneration:
@@ -336,7 +340,8 @@ class TestDocumentGenerationRegressionSuite:
 
             result = create_soap_note_with_openai(transcript)
 
-        assert isinstance(result, str)
+        soap_text, _ = result
+        assert isinstance(soap_text, str)
 
     def test_soap_note_handles_long_transcript(self, mock_api_keys):
         """SOAP note should handle long transcripts."""
@@ -353,7 +358,8 @@ class TestDocumentGenerationRegressionSuite:
 
             result = create_soap_note_with_openai(long_transcript)
 
-        assert isinstance(result, str)
+        soap_text, _ = result
+        assert isinstance(soap_text, str)
 
     def test_referral_handles_multiple_conditions(self, mock_api_keys):
         """Referral should handle multiple conditions."""
@@ -399,15 +405,20 @@ class TestDocumentGenerationRegressionSuite:
              patch('ai.text_processing.call_ai', return_value="Generated content"):
             mock_agent.generate_synopsis.return_value = None
             mock_agent.is_agent_enabled.return_value = False
-            results = [
-                create_soap_note_with_openai("test"),
+            # SOAP returns (text, warnings) tuple; others return str
+            soap_result = create_soap_note_with_openai("test")
+            soap_text, icd_warnings = soap_result
+            assert isinstance(soap_text, str)
+            assert isinstance(icd_warnings, list)
+
+            other_results = [
                 create_referral_with_openai("test"),
                 create_letter_with_ai("test"),
                 adjust_text_with_openai("test"),
                 improve_text_with_openai("test")
             ]
 
-        for result in results:
+        for result in other_results:
             assert isinstance(result, str)
 
     def test_document_generation_error_handling(self, mock_api_keys):
@@ -423,7 +434,12 @@ class TestDocumentGenerationRegressionSuite:
             # Should not raise exception, should return error message
             try:
                 result = create_soap_note_with_openai("test")
-                assert isinstance(result, str)
+                # Returns (soap_text, icd_warnings) tuple
+                if isinstance(result, tuple):
+                    soap_text, _ = result
+                    assert isinstance(soap_text, str)
+                else:
+                    assert isinstance(result, str)
             except Exception:
                 # If it does raise, that's also acceptable behavior
                 pass

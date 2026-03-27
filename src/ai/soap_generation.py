@@ -229,8 +229,8 @@ def _postprocess_soap_result(result: str, context: str, on_chunk: Callable[[str]
     return cleaned_soap
 
 
-def _validate_soap_output(soap_text: str) -> str:
-    """Validate clinical content in SOAP note and append warnings.
+def _validate_soap_output(soap_text: str) -> tuple:
+    """Validate clinical content in SOAP note and return warnings separately.
 
     Checks ICD codes against the static dictionary and flags invalid ones.
     This is a lightweight post-generation validation — it does NOT make
@@ -240,10 +240,10 @@ def _validate_soap_output(soap_text: str) -> str:
         soap_text: Completed SOAP note text
 
     Returns:
-        SOAP note text with validation warnings appended (if any)
+        Tuple of (soap_text unchanged, list of warning strings)
     """
     if not soap_text:
-        return soap_text
+        return (soap_text, [])
 
     warnings = []
 
@@ -261,17 +261,10 @@ def _validate_soap_output(soap_text: str) -> str:
                 f"ICD code '{code}': valid format but not in common codes database — please verify"
             )
 
-    if not warnings:
-        return soap_text
+    if warnings:
+        logger.info(f"SOAP validation: {len(warnings)} warning(s) found")
 
-    # Append warnings section
-    warning_lines = ["\n\n--- Validation Warnings ---"]
-    for w in warnings:
-        warning_lines.append(f"\u26a0 {w}")
-    warning_lines.append("--- End Warnings ---")
-
-    logger.info(f"SOAP validation: {len(warnings)} warning(s) appended")
-    return soap_text + "\n".join(warning_lines)
+    return (soap_text, warnings)
 
 
 def create_soap_note_streaming(
@@ -313,12 +306,9 @@ def create_soap_note_streaming(
     result_text = result.text if hasattr(result, 'text') else str(result)
     soap_text = _postprocess_soap_result(result_text, context, on_chunk)
 
-    # Validate ICD codes and append warnings
-    validated = _validate_soap_output(soap_text)
-    # Stream the validation warnings if any were added
-    if on_chunk and len(validated) > len(soap_text):
-        on_chunk(validated[len(soap_text):])
-    return validated
+    # Validate ICD codes (warnings returned separately, not appended to SOAP text)
+    soap_text, icd_warnings = _validate_soap_output(soap_text)
+    return soap_text, icd_warnings
 
 
 def create_soap_note_with_openai(text: str, context: str = "", emotion_context: str = "") -> str:
@@ -343,5 +333,5 @@ def create_soap_note_with_openai(text: str, context: str = "", emotion_context: 
     result_text = result.text if hasattr(result, 'text') else str(result)
     soap_text = _postprocess_soap_result(result_text, context)
 
-    # Validate ICD codes and append warnings
+    # Validate ICD codes (warnings returned separately, not appended to SOAP text)
     return _validate_soap_output(soap_text)

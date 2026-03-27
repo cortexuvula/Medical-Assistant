@@ -275,8 +275,8 @@ class SOAPProcessor:
                 # Get result with timeout to prevent hanging
                 result = future.result(timeout=120)
                 
-                # Store the values we need for database operations
-                soap_note = result
+                # Unpack SOAP text and ICD validation warnings (returned separately)
+                soap_note, icd_warnings = result
                 filename = "Transcript"
                 
                 # Schedule UI update on the main thread and save to database
@@ -313,6 +313,11 @@ class SOAPProcessor:
                             self.app.document_generators._run_diagnostic_to_panel(sn))
                         schedule_ui_update(self.app, lambda sn=soap_note:
                             self.app.document_generators._run_compliance_to_panel(sn))
+
+                        # Display ICD validation warnings in panel if any
+                        if icd_warnings:
+                            schedule_ui_update(self.app, lambda w=icd_warnings:
+                                self.app.document_generators._run_icd_validation_to_panel(w))
 
                         # Display emotion data in panel if available
                         if emotion_data:
@@ -458,8 +463,8 @@ class SOAPProcessor:
             
             # Generate SOAP note
             context_text = recording_data.get('context', '')
-            soap_note = create_soap_note_with_openai(transcript, context_text)
-            
+            soap_note, _icd_warnings = create_soap_note_with_openai(transcript, context_text)
+
             if not soap_note:
                 raise ValueError("Failed to generate SOAP note")
             
