@@ -24,6 +24,7 @@ class ExportMixin:
     """Mixin for export operations on diagnostic results."""
 
     parent: "tk.Tk"
+    _document_target: Optional[object]
     dialog: Optional["tk.Toplevel"]
     analysis_text: str
     source: str
@@ -53,13 +54,15 @@ class ExportMixin:
         Args:
             doc_type: Either 'soap' or 'letter'
         """
+        target = getattr(self, '_document_target', None) or self.parent
+
         # Get the appropriate text widget
         if doc_type == "soap":
-            text_widget = self.parent.soap_text
+            text_widget = target.soap_text
             doc_name = "SOAP Note"
             tab_index = 1
         else:
-            text_widget = self.parent.letter_text
+            text_widget = target.letter_text
             doc_name = "Letter"
             tab_index = 3
 
@@ -78,7 +81,7 @@ class ExportMixin:
         text_widget.config(state=NORMAL)
 
         # Switch to the appropriate tab
-        self.parent.notebook.select(tab_index)
+        target.notebook.select(tab_index)
 
         # Show confirmation
         messagebox.showinfo(

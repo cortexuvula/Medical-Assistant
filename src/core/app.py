@@ -945,8 +945,9 @@ class MedicalDictationApp(
                     except (json.JSONDecodeError, TypeError):
                         pass
 
-            # Show in results dialog
-            results_dialog = DiagnosticResultsDialog(self)
+            # Show in results dialog — use service_registry as document_target
+            doc_target = getattr(self, 'service_registry', None)
+            results_dialog = DiagnosticResultsDialog(self, document_target=doc_target)
             results_dialog.show_results(
                 analysis=analysis.get('result_text', ''),
                 source=analysis.get('source_type', 'History'),

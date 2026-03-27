@@ -236,8 +236,9 @@ class DiagnosticGeneratorMixin:
         if hasattr(self.app, 'selected_recording_id'):
             recording_id = self.app.selected_recording_id
 
-        # Show results in a dialog
-        dialog = DiagnosticResultsDialog(self.app)
+        # Show results in a dialog — pass service_registry as document_target
+        doc_target = getattr(self.app, 'service_registry', None)
+        dialog = DiagnosticResultsDialog(self.app, document_target=doc_target)
         dialog.show_results(
             analysis,
             source,

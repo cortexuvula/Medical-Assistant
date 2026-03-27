@@ -23,6 +23,7 @@ from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
+    from core.service_registry import ServiceRegistry
 
 logger = get_logger(__name__)
 
@@ -49,13 +50,27 @@ class RecordingController:
         for recording state.
     """
 
-    def __init__(self, app: 'MedicalDictationApp'):
+    def __init__(self, app: 'MedicalDictationApp' = None, *,
+                 registry: Optional['ServiceRegistry'] = None):
         """Initialize the recording controller.
 
         Args:
-            app: Reference to the main application instance
+            app: Reference to the main application instance (legacy)
+            registry: Typed service registry (preferred for new code)
         """
-        self.app = app
+        self._app = app
+        if registry is not None:
+            self._registry = registry
+        elif app is not None:
+            from core.service_registry import ServiceRegistry
+            self._registry = ServiceRegistry.from_app(app)
+        else:
+            raise ValueError("RecordingController requires either app or registry")
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
         # ========================================
         # Shared State
@@ -81,7 +96,7 @@ class RecordingController:
 
         Uses recording_manager as the single source of truth.
         """
-        return self.app.recording_manager.is_recording
+        return self._registry.recording_manager.is_recording
 
     @property
     def is_paused(self) -> bool:
@@ -89,7 +104,7 @@ class RecordingController:
 
         Uses recording_manager as the single source of truth.
         """
-        return self.app.recording_manager.is_paused
+        return self._registry.recording_manager.is_paused
 
     # ========================================
     # Handler Properties (for backward compatibility)
@@ -125,7 +140,7 @@ class RecordingController:
         Thread-safe: Uses lock to prevent race conditions during state transitions.
         """
         with self._state_lock:
-            if not self.app.recording_manager.is_recording:
+            if not self._registry.recording_manager.is_recording:
                 self._start_recording()
             else:
                 self._stop_recording()
@@ -145,25 +160,25 @@ class RecordingController:
         # Clear all text fields and audio segments before starting
         clear_all_content(self.app)
 
-        self.app.status_manager.info("Starting SOAP recording...")
+        self._registry.status_manager.info("Starting SOAP recording...")
 
         # Get selected device
         selected_device = self.app.mic_combobox.get()
 
         # Set up audio handler for SOAP mode
-        self.app.audio_handler.soap_mode = True
-        self.app.audio_handler.silence_threshold = 0.0001
+        self._registry.audio_handler.soap_mode = True
+        self._registry.audio_handler.silence_threshold = 0.0001
 
         # Start recording with callback - recording_manager handles state
-        if self.app.recording_manager.start_recording(self._soap_callback):
+        if self._registry.recording_manager.start_recording(self._soap_callback):
             # Update UI state after successful start
-            self.app.after(0, lambda: self.app.ui_state_manager.set_recording_state(
+            self.app.after(0, lambda: self._registry.ui_state_manager.set_recording_state(
                 recording=True, caller="recording_controller_start"
             ))
             self.app.play_recording_sound(start=True)
 
             # Store the stop function for pause/cancel functionality
-            self._soap_stop_listening_function = self.app.audio_handler.listen_in_background(
+            self._soap_stop_listening_function = self._registry.audio_handler.listen_in_background(
                 mic_name=selected_device,
                 callback=self._soap_callback,
                 phrase_time_limit=3
@@ -194,8 +209,8 @@ class RecordingController:
                 if hasattr(self.app.ui, 'shared_panel_manager') and self.app.ui.shared_panel_manager:
                     self.app.ui.shared_panel_manager.show_panel(SharedPanelManager.PANEL_ANALYSIS)
         else:
-            self.app.status_manager.error("Failed to start recording")
-            self.app.ui_state_manager.set_recording_state(
+            self._registry.status_manager.error("Failed to start recording")
+            self._registry.ui_state_manager.set_recording_state(
                 recording=False, caller="recording_controller_start_failed"
             )
 
@@ -205,7 +220,7 @@ class RecordingController:
         Note: Called within _state_lock context from toggle_recording().
         Uses recording_manager as single source of truth for state.
         """
-        self.app.status_manager.info("Stopping SOAP recording...")
+        self._registry.status_manager.info("Stopping SOAP recording...")
 
         # Temporarily disable the record button
         main_record_btn = self.app.ui.components.get('main_record_button')
@@ -222,20 +237,20 @@ class RecordingController:
         self.stop_periodic_analysis()
 
         # Reset audio handler settings
-        self.app.audio_handler.soap_mode = False
-        self.app.audio_handler.silence_threshold = 0.001
+        self._registry.audio_handler.soap_mode = False
+        self._registry.audio_handler.silence_threshold = 0.001
 
         # Stop recording auto-save (completed successfully)
         self.stop_autosave(completed_successfully=True)
 
         # Stop and get recording data - recording_manager handles state transition
-        recording_data = self.app.recording_manager.stop_recording()
+        recording_data = self._registry.recording_manager.stop_recording()
         if recording_data:
             self.app.play_recording_sound(start=False)
             self._finalization_handler.finalize_recording(recording_data)
         else:
-            self.app.status_manager.error("No recording data available")
-            self.app.ui_state_manager.set_recording_state(
+            self._registry.status_manager.error("No recording data available")
+            self._registry.ui_state_manager.set_recording_state(
                 recording=False, caller="recording_controller_stop_no_data"
             )
 
@@ -310,30 +325,30 @@ class RecordingController:
             self.stop_periodic_analysis()
 
             # Reset audio handler settings
-            self.app.audio_handler.soap_mode = False
-            self.app.audio_handler.silence_threshold = 0.001
+            self._registry.audio_handler.soap_mode = False
+            self._registry.audio_handler.silence_threshold = 0.001
 
             # Stop recording auto-save (not completed - cancelled)
             self.stop_autosave(completed_successfully=False)
 
             # Cancel the recording in RecordingManager
-            self.app.recording_manager.cancel_recording()
+            self._registry.recording_manager.cancel_recording()
 
             # Clear all UI fields
             from utils.cleanup_utils import clear_all_content
             clear_all_content(self.app)
 
             # Reset UI state
-            self.app.ui_state_manager.set_recording_state(
+            self._registry.ui_state_manager.set_recording_state(
                 recording=False, caller="cancel"
             )
-            self.app.status_manager.info("Recording cancelled")
+            self._registry.status_manager.info("Recording cancelled")
             logger.info("SOAP recording cancelled by user")
 
         except Exception as e:
             logger.error(f"Error cancelling recording: {e}", exc_info=True)
-            self.app.status_manager.error(f"Error cancelling: {str(e)}")
-            self.app.ui_state_manager.set_recording_state(
+            self._registry.status_manager.error(f"Error cancelling: {str(e)}")
+            self._registry.ui_state_manager.set_recording_state(
                 recording=False, caller="cancel_error"
             )
 

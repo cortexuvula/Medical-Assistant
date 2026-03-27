@@ -136,7 +136,8 @@ class ComplianceGeneratorMixin:
         # Try to show in a dialog if available
         try:
             from ui.dialogs.compliance_results_dialog import ComplianceResultsDialog
-            dialog = ComplianceResultsDialog(self.app)
+            doc_target = getattr(self.app, 'service_registry', None)
+            dialog = ComplianceResultsDialog(self.app, document_target=doc_target)
             dialog.show_results(analysis, metadata, recording_id=recording_id)
         except ImportError:
             # Fallback - just update status

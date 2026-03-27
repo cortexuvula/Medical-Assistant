@@ -69,13 +69,17 @@ class BaseResultsDialog(BaseDialog, ABC):
         metadata: Additional metadata about the results
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, document_target=None):
         """Initialize the base results dialog.
 
         Args:
             parent: Parent window
+            document_target: Optional narrow interface for document insertion.
+                Must have soap_text, letter_text, and notebook attributes.
+                Falls back to parent if not provided.
         """
         super().__init__(parent, modal=False)
+        self._document_target = document_target
         self.result_text: Optional[tk.Text] = None
         self.results: Any = None
         self.results_text: str = ""
@@ -443,6 +447,14 @@ class BaseResultsDialog(BaseDialog, ABC):
             self.logger.error(ctx.to_log_string())
             self._show_brief_feedback("Copy failed", error=True)
 
+    def _get_document_target(self):
+        """Get the document target for inserting results.
+
+        Returns the narrow document_target if provided, otherwise
+        falls back to self.parent (the app).
+        """
+        return self._document_target or self.parent
+
     def _add_to_document(self, doc_type: str) -> None:
         """Add the results to a document (SOAP note or letter).
 
@@ -450,11 +462,13 @@ class BaseResultsDialog(BaseDialog, ABC):
             doc_type: Type of document ('soap' or 'letter')
         """
         try:
+            target = self._get_document_target()
+
             if doc_type == "soap":
-                target_widget = self.parent.soap_text
+                target_widget = target.soap_text
                 doc_name = "SOAP Note"
             else:
-                target_widget = self.parent.letter_text
+                target_widget = target.letter_text
                 doc_name = "Letter"
 
             # Get current content
@@ -475,9 +489,9 @@ class BaseResultsDialog(BaseDialog, ABC):
 
             # Switch to the appropriate tab
             if doc_type == "soap":
-                self.parent.notebook.select(1)  # SOAP tab
+                target.notebook.select(1)  # SOAP tab
             else:
-                self.parent.notebook.select(3)  # Letter tab
+                target.notebook.select(3)  # Letter tab
 
             messagebox.showinfo(
                 "Added",

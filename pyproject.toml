@@ -98,6 +98,17 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+# follow_imports = "silent" for legacy code — boundary files get strict overrides below
+
+[[tool.mypy.overrides]]
+module = [
+    "core.interfaces",
+    "core.service_registry",
+    "core.protocols",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
 
 [tool.ruff]
 # Target Python 3.10+

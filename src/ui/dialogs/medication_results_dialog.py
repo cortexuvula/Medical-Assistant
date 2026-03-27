@@ -23,14 +23,15 @@ logger = get_logger(__name__)
 
 class MedicationResultsDialog:
     """Dialog for displaying medication analysis results."""
-    
-    def __init__(self, parent):
+
+    def __init__(self, parent, document_target=None):
         """Initialize the medication results dialog.
 
         Args:
             parent: Parent window
         """
         self.parent = parent
+        self._document_target = document_target
         self.analysis_text = ""
         self.result_text = None
         self.analysis_data = None
@@ -740,37 +741,39 @@ class MedicationResultsDialog:
     
     def _add_to_document(self, doc_type: str):
         """Add the analysis to a document (SOAP note or letter).
-        
+
         Args:
             doc_type: Type of document ('soap' or 'letter')
         """
         try:
+            target = self._document_target or self.parent
+
             if doc_type == "soap":
-                target_widget = self.parent.soap_text
+                target_widget = target.soap_text
                 doc_name = "SOAP Note"
             else:
-                target_widget = self.parent.letter_text
+                target_widget = target.letter_text
                 doc_name = "Letter"
-            
+
             # Get current content
             current_content = target_widget.get("1.0", "end").strip()
-            
+
             # Add analysis with separator
             if current_content:
                 new_content = f"{current_content}\n\n--- Medication Analysis ---\n\n{self.analysis_text}"
             else:
                 new_content = f"--- Medication Analysis ---\n\n{self.analysis_text}"
-            
+
             # Update the text widget
             target_widget.delete("1.0", tk.END)
             target_widget.insert("1.0", new_content)
-            
+
             # Switch to the appropriate tab
             if doc_type == "soap":
-                self.parent.notebook.select(1)  # SOAP tab
+                target.notebook.select(1)  # SOAP tab
             else:
-                self.parent.notebook.select(3)  # Letter tab
-            
+                target.notebook.select(3)  # Letter tab
+
             messagebox.showinfo(
                 "Added",
                 f"Analysis added to {doc_name}!",

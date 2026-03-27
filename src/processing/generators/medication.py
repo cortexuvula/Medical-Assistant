@@ -209,8 +209,10 @@ class MedicationGeneratorMixin:
         if hasattr(self.app, 'selected_recording_id'):
             recording_id = self.app.selected_recording_id
 
-        # Show results in a dialog
-        dialog = MedicationResultsDialog(self.app)
+        # Show results in a dialog — pass service_registry as document_target
+        # so the dialog doesn't need to reach into the full app object
+        doc_target = getattr(self.app, 'service_registry', None)
+        dialog = MedicationResultsDialog(self.app, document_target=doc_target)
         dialog.show_results(
             analysis,
             analysis_type,

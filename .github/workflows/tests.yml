@@ -78,6 +78,39 @@ jobs:
         # Full lint check (informational, doesn't fail build)
         echo "--- Full lint report (informational) ---"
         ruff check src/ || true
+
+    # Type check boundary files (protocols, service registry)
+    - name: Mypy boundary check
+      if: matrix.python-version == '3.10' && matrix.os == 'ubuntu-latest'
+      run: |
+        pip install mypy
+        MYPYPATH=src mypy src/core/interfaces.py src/core/service_registry.py --follow-imports=silent --config-file pyproject.toml
+
+    # Verify controllers don't import app at runtime (only in TYPE_CHECKING)
+    - name: Import boundary check
+      if: matrix.python-version == '3.10' && matrix.os == 'ubuntu-latest'
+      run: |
+        python -c "
+        import os, sys
+        violations = []
+        for root, dirs, files in os.walk('src/core/controllers'):
+            for f in files:
+                if not f.endswith('.py'): continue
+                path = os.path.join(root, f)
+                with open(path) as fh:
+                    in_tc = False
+                    for i, line in enumerate(fh, 1):
+                        s = line.strip()
+                        if s == 'if TYPE_CHECKING:': in_tc = True; continue
+                        if in_tc and s and not line[0].isspace(): in_tc = False
+                        if not in_tc and ('from core.app import' in line or 'from core import app' in line):
+                            violations.append(f'{path}:{i}: {s}')
+        if violations:
+            print('ERROR: Controllers must not import from core.app at runtime.')
+            for v in violations: print(f'  {v}')
+            sys.exit(1)
+        print('Import boundary check passed.')
+        "
     
     # Run tests (Linux with xvfb)
     - name: Run tests with coverage (Linux)

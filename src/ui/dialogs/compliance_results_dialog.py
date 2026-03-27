@@ -36,13 +36,15 @@ class ComplianceResultsDialog:
         'REVIEW': '?',
     }
 
-    def __init__(self, parent):
+    def __init__(self, parent, document_target=None):
         """Initialize the compliance results dialog.
 
         Args:
             parent: Parent window
+            document_target: Optional narrow interface for document insertion.
         """
         self.parent = parent
+        self._document_target = document_target
         self.analysis_text = ""
         self.metadata = {}
         self.recording_id: Optional[int] = None
@@ -600,11 +602,13 @@ class ComplianceResultsDialog:
             doc_type: Type of document ('soap' or 'letter')
         """
         try:
+            target = self._document_target or self.parent
+
             if doc_type == "soap":
-                target_widget = self.parent.soap_text
+                target_widget = target.soap_text
                 doc_name = "SOAP Note"
             else:
-                target_widget = self.parent.letter_text
+                target_widget = target.letter_text
                 doc_name = "Letter"
 
             # Get current content
@@ -629,7 +633,7 @@ class ComplianceResultsDialog:
 
             # Switch to the appropriate tab
             if doc_type == "soap":
-                self.parent.notebook.select(1)  # SOAP tab
+                target.notebook.select(1)  # SOAP tab
 
             messagebox.showinfo(
                 "Added",

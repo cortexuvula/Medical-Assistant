@@ -11,7 +11,7 @@ Extracted from the main App class to improve maintainability and separation of c
 """
 
 import tkinter as tk
-from typing import TYPE_CHECKING, Tuple, List
+from typing import TYPE_CHECKING, Optional, Tuple, List
 
 from settings import settings_manager
 from utils.structured_logging import get_logger
@@ -23,6 +23,7 @@ from utils.constants import (
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
+    from core.service_registry import ServiceRegistry
 
 logger = get_logger(__name__)
 
@@ -41,15 +42,33 @@ class ConfigController:
     - Transcription fallback notifications
     """
 
-    def __init__(self, app: 'MedicalDictationApp'):
+    def __init__(self, app: 'MedicalDictationApp' = None, *,
+                 registry: Optional['ServiceRegistry'] = None):
         """Initialize the config controller.
 
         Args:
-            app: Reference to the main application instance
+            app: Reference to the main application instance (legacy)
+            registry: Typed service registry (preferred for new code)
+
+        At least one of app or registry must be provided.
+        Protocol-backed services are accessed via registry; UI widgets
+        and Tk methods use the app reference directly.
         """
-        self.app = app
+        self._app = app
+        if registry is not None:
+            self._registry = registry
+        elif app is not None:
+            from core.service_registry import ServiceRegistry
+            self._registry = ServiceRegistry.from_app(app)
+        else:
+            raise ValueError("ConfigController requires either app or registry")
         self._refreshing = False  # For microphone refresh animation
         self._cerebras_hipaa_acknowledged = False
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
     # =========================================================================
     # AI Provider Methods
@@ -207,10 +226,10 @@ class ConfigController:
             settings_manager.set_stt_provider(provider)
 
             # Update the audio handler with the new provider
-            self.app.audio_handler.set_stt_provider(provider)
+            self._registry.audio_handler.set_stt_provider(provider)
 
             # Update status with the new provider info
-            self.app.status_manager.update_provider_info()
+            self._registry.status_manager.update_provider_info()
             self.app.update_status(f"Speech-to-Text provider set to {display_name}")
 
     # =========================================================================
@@ -250,7 +269,7 @@ class ConfigController:
             self.app.stt_combobox.current(0)
             settings_manager.set_stt_provider(self.app._available_stt_providers[0])
             # Update audio handler
-            self.app.audio_handler.set_stt_provider(self.app._available_stt_providers[0])
+            self._registry.audio_handler.set_stt_provider(self.app._available_stt_providers[0])
 
         logger.info(f"Provider dropdowns refreshed. AI: {self.app._ai_display_names}, STT: {self.app._stt_display_names}")
 
@@ -284,13 +303,13 @@ class ConfigController:
         try:
             stt_providers = [STT_GROQ, STT_ELEVENLABS, STT_DEEPGRAM, STT_MODULATE]
             fallback_index = stt_providers.index(fallback_provider)
-            self.app.after(0, lambda: [
-                self.app.status_manager.warning(message),
+            self._registry.after(0, lambda: [
+                self._registry.status_manager.warning(message),
                 self.app.stt_combobox.current(fallback_index)
             ])
         except (ValueError, IndexError):
             # Just show the warning if we can't update the dropdown
-            self.app.after(0, lambda: self.app.status_manager.warning(message))
+            self._registry.after(0, lambda: self._registry.status_manager.warning(message))
 
     # =========================================================================
     # Microphone Selection Handler
@@ -345,7 +364,7 @@ class ConfigController:
             if frame < len(animation_chars) * 2:  # Repeat animation twice
                 if refresh_btn:
                     refresh_btn.config(text=animation_chars[frame % len(animation_chars)])
-                self.app.after(100, lambda: animate_refresh(frame + 1))
+                self._registry.after(100, lambda: animate_refresh(frame + 1))
             else:
                 # Animation complete, perform actual refresh
                 logger.debug("Microphone refresh animation complete, starting refresh")
@@ -401,7 +420,7 @@ class ConfigController:
         animate_refresh()
 
         # Add a fallback cursor reset in case something goes wrong
-        self.app.after(3000, self.reset_cursor_fallback)
+        self._registry.after(3000, self.reset_cursor_fallback)
 
     def _reset_cursor(self) -> None:
         """Reset the cursor to default state."""

@@ -28,6 +28,7 @@ from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
+    from core.service_registry import ServiceRegistry
     import ttkbootstrap as ttk
 
 logger = get_logger(__name__)
@@ -57,13 +58,27 @@ class ProcessingController:
     - FHIR JSON export
     """
 
-    def __init__(self, app: 'MedicalDictationApp'):
+    def __init__(self, app: 'MedicalDictationApp' = None, *,
+                 registry: Optional['ServiceRegistry'] = None):
         """Initialize the processing controller.
 
         Args:
-            app: Reference to the main application instance
+            app: Reference to the main application instance (legacy)
+            registry: Typed service registry (preferred for new code)
         """
-        self.app = app
+        self._app = app
+        if registry is not None:
+            self._registry = registry
+        elif app is not None:
+            from core.service_registry import ServiceRegistry
+            self._registry = ServiceRegistry.from_app(app)
+        else:
+            raise ValueError("ProcessingController requires either app or registry")
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
         # Initialize export handlers (lazy-loaded)
         self._pdf_handler = None
@@ -114,7 +129,7 @@ class ProcessingController:
             patient_name = self.extract_patient_name(context_text) or "Patient"
 
             # Save to database with 'pending' status
-            recording_id = self.app.db.add_recording(
+            recording_id = self._registry.database.add_recording(
                 filename=f"queued_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
                 processing_status='pending',
                 patient_name=patient_name
@@ -143,16 +158,16 @@ class ProcessingController:
             }
 
             # Add to processing queue
-            task_id = self.app.processing_queue.add_recording(task_data)
+            task_id = self._registry.processing_queue.add_recording(task_data)
 
             # Update status
-            self.app.status_manager.info(f"Recording for {patient_name} added to queue")
+            self._registry.status_manager.info(f"Recording for {patient_name} added to queue")
 
             logger.info(f"Queued recording {recording_id} as task {task_id}")
 
         except Exception as e:
             logger.error(f"Failed to queue recording: {str(e)}", exc_info=True)
-            self.app.status_manager.error("Failed to queue recording for processing")
+            self._registry.status_manager.error("Failed to queue recording for processing")
             # Fall back to immediate processing
             self.app.process_soap_recording()
 
@@ -171,7 +186,7 @@ class ProcessingController:
         self.app.notebook.select(0)
 
         # Update status
-        self.app.status_manager.success("Ready for next patient")
+        self._registry.status_manager.success("Ready for next patient")
 
     def extract_patient_name(self, context_text: str) -> Optional[str]:
         """Try to extract patient name from context.
@@ -198,9 +213,9 @@ class ProcessingController:
 
         # Update status
         if new_value:
-            self.app.status_manager.success("Quick Continue Mode enabled - recordings will process in background")
+            self._registry.status_manager.success("Quick Continue Mode enabled - recordings will process in background")
         else:
-            self.app.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
+            self._registry.status_manager.info("Quick Continue Mode disabled - recordings will process immediately")
 
         logger.info(f"Quick Continue Mode set to: {new_value}")
 
@@ -211,8 +226,8 @@ class ProcessingController:
             recording_ids: List of recording IDs to reprocess
         """
         try:
-            if not hasattr(self.app, 'processing_queue') or not self.app.processing_queue:
-                self.app.status_manager.error("Processing queue not available")
+            if not hasattr(self.app, 'processing_queue') or not self._registry.processing_queue:
+                self._registry.status_manager.error("Processing queue not available")
                 return
 
             # Reprocess each recording
@@ -220,7 +235,7 @@ class ProcessingController:
             failed_count = 0
 
             for rec_id in recording_ids:
-                task_id = self.app.processing_queue.reprocess_failed_recording(rec_id)
+                task_id = self._registry.processing_queue.reprocess_failed_recording(rec_id)
                 if task_id:
                     success_count += 1
                     logger.info(f"Recording {rec_id} queued for reprocessing as task {task_id}")
@@ -230,18 +245,18 @@ class ProcessingController:
 
             # Show status
             if success_count > 0:
-                self.app.status_manager.success(
+                self._registry.status_manager.success(
                     f"Queued {success_count} recording{'s' if success_count > 1 else ''} for reprocessing"
                 )
 
             if failed_count > 0:
-                self.app.status_manager.warning(
+                self._registry.status_manager.warning(
                     f"Failed to reprocess {failed_count} recording{'s' if failed_count > 1 else ''}"
                 )
 
         except Exception as e:
             logger.error(f"Error reprocessing recordings: {str(e)}", exc_info=True)
-            self.app.status_manager.error(f"Failed to reprocess recordings: {str(e)}")
+            self._registry.status_manager.error(f"Failed to reprocess recordings: {str(e)}")
 
     # =========================================================================
     # Text Processing Methods (from TextProcessingController)
@@ -288,7 +303,7 @@ class ProcessingController:
             return
 
         # Show progress
-        self.app.status_manager.progress("Refining text...")
+        self._registry.status_manager.progress("Refining text...")
         if self.app.refine_button:
             self.app.refine_button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
@@ -313,7 +328,7 @@ class ProcessingController:
             return
 
         # Show progress
-        self.app.status_manager.progress("Improving text...")
+        self._registry.status_manager.progress("Improving text...")
         if self.app.improve_button:
             self.app.improve_button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
@@ -355,9 +370,9 @@ class ProcessingController:
             widget.delete("1.0", tk.END)
             widget.insert("1.0", new_text)
             widget.edit_separator()  # Mark as separate undo operation
-            self.app.status_manager.success(f"Text {operation}d successfully")
+            self._registry.status_manager.success(f"Text {operation}d successfully")
         else:
-            self.app.status_manager.error(f"Failed to {operation} text: {result.error}")
+            self._registry.status_manager.error(f"Failed to {operation} text: {result.error}")
 
         # Re-enable button
         if operation == "refine" and self.app.refine_button:
@@ -387,7 +402,7 @@ class ProcessingController:
             messagebox.showwarning("Process Text", "There is no text to process.")
             return
 
-        self.app.status_manager.progress("Processing text...")
+        self._registry.status_manager.progress("Processing text...")
         if button:
             button.config(state=DISABLED)
         self.app.progress_bar.pack(side=RIGHT, padx=10)
@@ -406,7 +421,7 @@ class ProcessingController:
                 ))
             except concurrent.futures.TimeoutError:
                 def handle_timeout():
-                    self.app.status_manager.error(f"Timeout processing {processor_type}")
+                    self._registry.status_manager.error(f"Timeout processing {processor_type}")
                     if button:
                         button.config(state=NORMAL)
                     self.app.progress_bar.stop()
@@ -416,7 +431,7 @@ class ProcessingController:
                 logger.error(f"Error processing text: {str(e)}", exc_info=True)
                 error_msg = str(e)  # Capture before closure
                 def handle_error():
-                    self.app.status_manager.error(f"Error processing {processor_type}: {error_msg}")
+                    self._registry.status_manager.error(f"Error processing {processor_type}: {error_msg}")
                     if button:
                         button.config(state=NORMAL)
                     self.app.progress_bar.stop()
@@ -455,7 +470,7 @@ class ProcessingController:
                 # Update database if we identified a field to update
                 if field_name:
                     update_kwargs = {field_name: new_text}
-                    if self.app.db.update_recording(self.app.current_recording_id, **update_kwargs):
+                    if self._registry.database.update_recording(self.app.current_recording_id, **update_kwargs):
                         logger.info(f"Updated recording ID {self.app.current_recording_id} with new {field_name}")
                         success_message = f"{success_message} and saved to database"
                     else:
@@ -463,10 +478,10 @@ class ProcessingController:
             except Exception as e:
                 logger.error(f"Error updating database: {str(e)}", exc_info=True)
 
-        self.app.status_manager.success(success_message)
+        self._registry.status_manager.success(success_message)
         if button:
             button.config(state=NORMAL)
-        self.app.status_manager.show_progress(False)
+        self._registry.status_manager.show_progress(False)
 
         # Trigger document generated event for auto-save
         self.app.event_generate("<<DocumentGenerated>>", when="tail")
@@ -623,11 +638,11 @@ class ProcessingController:
             if audio_data:
                 saved_audio_path = self.app.file_manager.save_audio_file(audio_data, "Save Audio")
                 if saved_audio_path:
-                    self.app.status_manager.success("Text and audio saved successfully")
+                    self._registry.status_manager.success("Text and audio saved successfully")
                 else:
-                    self.app.status_manager.warning("Text saved, but audio save was cancelled")
+                    self._registry.status_manager.warning("Text saved, but audio save was cancelled")
         elif file_path:
-            self.app.status_manager.success("Text saved successfully")
+            self._registry.status_manager.success("Text saved successfully")
 
     def export_as_pdf(self) -> None:
         """Export current document as PDF."""

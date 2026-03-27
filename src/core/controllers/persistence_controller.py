@@ -12,7 +12,7 @@ Extracted from the main App class to improve maintainability and separation of c
 
 from datetime import datetime
 from tkinter import messagebox, LEFT
-from typing import TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from managers.autosave_manager import AutoSaveManager, AutoSaveDataProvider
 from settings import settings_manager
@@ -21,6 +21,7 @@ from utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
+    from core.service_registry import ServiceRegistry
 
 logger = get_logger(__name__)
 
@@ -37,13 +38,27 @@ class PersistenceController:
     - Handling special key events (like space for pause/resume)
     """
 
-    def __init__(self, app: 'MedicalDictationApp'):
+    def __init__(self, app: 'MedicalDictationApp' = None, *,
+                 registry: Optional['ServiceRegistry'] = None):
         """Initialize the persistence controller.
 
         Args:
-            app: Reference to the main application instance
+            app: Reference to the main application instance (legacy)
+            registry: Typed service registry (preferred for new code)
         """
-        self.app = app
+        self._app = app
+        if registry is not None:
+            self._registry = registry
+        elif app is not None:
+            from core.service_registry import ServiceRegistry
+            self._registry = ServiceRegistry.from_app(app)
+        else:
+            raise ValueError("PersistenceController requires either app or registry")
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
     # =========================================================================
     # Auto-Save Methods (from AutoSaveController)
@@ -87,10 +102,10 @@ class PersistenceController:
 
         # Set up callbacks (deferred until status_manager is available)
         def setup_autosave_callbacks():
-            if hasattr(self.app, 'status_manager') and self.app.status_manager:
-                self.app.autosave_manager.on_save_start = lambda: self.app.status_manager.info("Auto-saving...")
-                self.app.autosave_manager.on_save_complete = lambda: self.app.status_manager.success("Auto-save complete")
-                self.app.autosave_manager.on_save_error = lambda e: self.app.status_manager.error(f"Auto-save failed: {e}")
+            if self._registry._status_manager is not None:
+                self.app.autosave_manager.on_save_start = lambda: self._registry.status_manager.info("Auto-saving...")
+                self.app.autosave_manager.on_save_complete = lambda: self._registry.status_manager.success("Auto-save complete")
+                self.app.autosave_manager.on_save_error = lambda e: self._registry.status_manager.error(f"Auto-save failed: {e}")
             else:
                 # Try again after a short delay
                 self.app.after(100, setup_autosave_callbacks)
@@ -168,15 +183,15 @@ class PersistenceController:
                 state = data["recording_state"]
                 self.app.current_recording_id = state.get("current_recording_id")
 
-            if hasattr(self.app, 'status_manager') and self.app.status_manager:
-                self.app.status_manager.success("Auto-save restored successfully")
+            if self._registry._status_manager is not None:
+                self._registry.status_manager.success("Auto-save restored successfully")
             else:
                 logger.info("Auto-save restored successfully")
 
         except Exception as e:
             logger.error(f"Failed to restore from auto-save: {e}")
-            if hasattr(self.app, 'status_manager') and self.app.status_manager:
-                self.app.status_manager.error("Failed to restore auto-save")
+            if self._registry._status_manager is not None:
+                self._registry.status_manager.error("Failed to restore auto-save")
             else:
                 logger.error("Failed to restore auto-save")
 
@@ -194,13 +209,13 @@ class PersistenceController:
     def restore_autosave(self) -> None:
         """Manually restore from auto-save when button is clicked."""
         if not hasattr(self.app, 'has_available_autosave') or not self.app.has_available_autosave:
-            self.app.status_manager.warning("No auto-save data available")
+            self._registry.status_manager.warning("No auto-save data available")
             return
 
         # Load latest auto-save
         saved_data = self.app.autosave_manager.load_latest()
         if not saved_data or "data" not in saved_data:
-            self.app.status_manager.error("Failed to load auto-save data")
+            self._registry.status_manager.error("Failed to load auto-save data")
             self.app.has_available_autosave = False
             self.update_restore_button_visibility()
             return
@@ -219,7 +234,7 @@ class PersistenceController:
             self.app.autosave_manager.clear_saves()
             self.app.has_available_autosave = False
             self.update_restore_button_visibility()
-            self.app.status_manager.success("Auto-save restored successfully")
+            self._registry.status_manager.success("Auto-save restored successfully")
 
     # =========================================================================
     # Keyboard Shortcuts Methods (from KeyboardShortcutsController)

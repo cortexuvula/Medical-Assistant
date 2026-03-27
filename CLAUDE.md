@@ -14,6 +14,40 @@ After any find-and-replace or bulk refactoring operation, always run a grep to v
 
 After modifying import paths or module structure, always run the full test suite AND check that patch paths in tests still match the new module locations.
 
+## Architecture Boundary Conventions
+
+The codebase enforces clean boundaries between components. Follow these rules when adding or modifying code:
+
+### ServiceRegistry (src/core/service_registry.py)
+- **New controllers** must accept `registry: Optional[ServiceRegistry]` in their constructor (dual-mode pattern)
+- Access protocol-backed services (status_manager, recording_manager, database, etc.) via `self._registry`, not `self.app`
+- Widget/Tk operations may still use `self.app` (backward-compatible)
+
+### Protocol Interfaces (src/core/interfaces.py)
+- All protocols are `@runtime_checkable` — add the decorator when creating new protocols
+- Protocol signatures must match concrete implementations
+- `DocumentTargetProtocol` is the narrow interface for dialogs that insert content into documents
+
+### Controller Rules
+- Controllers must NOT import `from core.app import MedicalDictationApp` at runtime — only inside `if TYPE_CHECKING:` blocks
+- This is enforced by CI (import boundary check in tests.yml)
+- Use `ServiceRegistry` for service access, `self.app` only for Tk widget operations
+
+### Dialog Rules
+- **New result dialogs** should accept `document_target` parameter instead of reaching into `self.parent`
+- Use `self._document_target or self.parent` pattern for backward compatibility
+- Base class: `BaseResultsDialog` already supports this via `_get_document_target()`
+
+### File Size Guidelines
+- New files should be under 500 lines
+- Large files should be decomposed using the mixin pattern (see `ProcessingQueue` with 7 mixins as the reference)
+- Static data (dictionaries, prompt templates, code tables) should be in separate `*_data.py` or `*_prompts.py` files
+
+### CI Enforcement
+- **Mypy**: Runs on `interfaces.py` and `service_registry.py` with `--follow-imports=silent`
+- **Import boundary**: Verifies controllers don't import `core.app` at runtime
+- **Tests**: Boundary contract tests in `tests/unit/test_boundary_contracts.py`, `test_dialog_boundaries.py`, `test_controller_boundaries.py`
+
 ## Medication Agent Implementation Summary
 
 The medication agent has been fully integrated into the Medical Assistant application. Key implementation details:

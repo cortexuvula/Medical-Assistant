@@ -210,7 +210,8 @@ class NotebookAnalysisMixin:
                 return
 
             from ui.dialogs.medication_results_dialog import MedicationResultsDialog
-            dialog = MedicationResultsDialog(self.parent)
+            doc_target = getattr(self.parent, 'service_registry', None)
+            dialog = MedicationResultsDialog(self.parent, document_target=doc_target)
             dialog.show_results(
                 result,
                 analysis.get('analysis_type', 'comprehensive'),
@@ -257,7 +258,8 @@ class NotebookAnalysisMixin:
             # Try dedicated dialog first
             try:
                 from ui.dialogs.compliance_results_dialog import ComplianceResultsDialog
-                dialog = ComplianceResultsDialog(self.parent)
+                doc_target = getattr(self.parent, 'service_registry', None)
+                dialog = ComplianceResultsDialog(self.parent, document_target=doc_target)
                 dialog.show_results(result, analysis.get('metadata', {}))
                 return
             except ImportError:

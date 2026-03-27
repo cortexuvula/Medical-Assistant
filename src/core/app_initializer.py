@@ -749,8 +749,28 @@ class AppInitializer:
             self.app.buttons["improve"].config(state=DISABLED)
             self.app.status_manager.warning("Warning: No LLM API keys configured. AI features disabled.")
             
+    def _build_service_registry(self):
+        """Build the typed ServiceRegistry from the initialized app.
+
+        This creates a typed facade over the app's services, enabling
+        components to depend on narrow protocol interfaces instead of
+        the entire app object.
+        """
+        from core.service_registry import ServiceRegistry
+        self.app.service_registry = ServiceRegistry.from_app(self.app)
+
+        # Validate in development mode
+        if os.environ.get('MEDICAL_ASSISTANT_ENV') == 'development':
+            errors = self.app.service_registry.validate()
+            if errors:
+                for error in errors:
+                    logger.warning(f"ServiceRegistry validation: {error}")
+
     def _finalize_setup(self):
         """Complete the application setup."""
+        # Build the service registry after all managers are initialized
+        self._build_service_registry()
+
         self.app.protocol("WM_DELETE_WINDOW", self.app.on_closing)
 
         # Add a list to track all scheduled status updates

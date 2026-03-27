@@ -41,13 +41,15 @@ class DiagnosticResultsDialog(
     - Periodic analysis display (PeriodicMixin)
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, document_target=None):
         """Initialize the diagnostic results dialog.
 
         Args:
             parent: Parent window
+            document_target: Optional narrow interface for document insertion.
         """
         self.parent = parent
+        self._document_target = document_target
         self.analysis_text = ""
         self.source = ""
         self.metadata = {}

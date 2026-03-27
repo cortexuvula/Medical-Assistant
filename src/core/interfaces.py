@@ -11,13 +11,14 @@ Controllers can gradually migrate from direct app reference to using
 these interfaces as their dependencies are extracted.
 """
 
-from typing import Protocol, Optional, Callable, Dict, Any, List, TYPE_CHECKING
+from typing import Protocol, Optional, Callable, Dict, Any, List, TYPE_CHECKING, runtime_checkable
 from datetime import datetime
 
 if TYPE_CHECKING:
     from core.app import MedicalDictationApp
 
 
+@runtime_checkable
 class StatusManagerProtocol(Protocol):
     """Protocol for status manager interface."""
 
@@ -25,7 +26,8 @@ class StatusManagerProtocol(Protocol):
         """Display an info message."""
         ...
 
-    def error(self, message: str) -> None:
+    def error(self, message: str, exception: Optional[Exception] = None,
+              context: Optional[str] = None) -> None:
         """Display an error message."""
         ...
 
@@ -38,6 +40,7 @@ class StatusManagerProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class RecordingManagerProtocol(Protocol):
     """Protocol for recording manager interface."""
 
@@ -59,11 +62,11 @@ class RecordingManagerProtocol(Protocol):
         """Stop the current recording and return data."""
         ...
 
-    def pause_recording(self) -> None:
+    def pause_recording(self) -> bool:
         """Pause the current recording."""
         ...
 
-    def resume_recording(self) -> None:
+    def resume_recording(self) -> bool:
         """Resume a paused recording."""
         ...
 
@@ -72,6 +75,7 @@ class RecordingManagerProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class AudioHandlerProtocol(Protocol):
     """Protocol for audio handler interface."""
 
@@ -97,6 +101,7 @@ class AudioHandlerProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class UIStateManagerProtocol(Protocol):
     """Protocol for UI state manager interface."""
 
@@ -110,19 +115,23 @@ class UIStateManagerProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class DatabaseProtocol(Protocol):
     """Protocol for database interface."""
 
     def add_recording(
         self,
         filename: str,
-        processing_status: str = 'pending',
-        patient_name: str = 'Patient'
+        transcript: Optional[str] = None,
+        soap_note: Optional[str] = None,
+        referral: Optional[str] = None,
+        letter: Optional[str] = None,
+        **kwargs: Any
     ) -> int:
         """Add a new recording to the database."""
         ...
 
-    def update_recording(self, recording_id: int, **kwargs) -> None:
+    def update_recording(self, recording_id: int, **kwargs: Any) -> bool:
         """Update a recording in the database."""
         ...
 
@@ -131,6 +140,7 @@ class DatabaseProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class AutoSaveManagerProtocol(Protocol):
     """Protocol for auto-save manager interface."""
 
@@ -151,6 +161,7 @@ class AutoSaveManagerProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class ProcessingQueueProtocol(Protocol):
     """Protocol for processing queue interface."""
 
@@ -167,21 +178,18 @@ class ProcessingQueueProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class NotificationManagerProtocol(Protocol):
     """Protocol for notification manager interface."""
 
-    def show_info(self, title: str, message: str) -> None:
-        """Show an info notification."""
-        ...
-
-    def show_success(
+    def show_completion(
         self,
         patient_name: str,
         recording_id: int,
         task_id: str,
         processing_time: float
     ) -> None:
-        """Show a success notification."""
+        """Show a completion notification."""
         ...
 
     def show_error(
@@ -193,6 +201,19 @@ class NotificationManagerProtocol(Protocol):
     ) -> None:
         """Show an error notification."""
         ...
+
+
+@runtime_checkable
+class DocumentTargetProtocol(Protocol):
+    """What result dialogs need to add content to documents.
+
+    This narrows the interface from 'entire app' to just the widgets
+    and methods dialogs actually use when adding results to documents.
+    """
+
+    soap_text: Any  # tk.Text widget
+    letter_text: Any  # tk.Text widget
+    notebook: Any  # ttk.Notebook widget
 
 
 # Type aliases for cleaner dependency declarations
@@ -226,6 +247,7 @@ class ControllerDependencies:
         autosave_manager: Optional[AutoSaveManagerProtocol] = None,
         processing_queue: Optional[ProcessingQueueProtocol] = None,
         notification_manager: Optional[NotificationManagerProtocol] = None,
+        document_target: Optional[DocumentTargetProtocol] = None,
         ui_updater: Optional[UIUpdater] = None,
         sound_player: Optional[SoundPlayer] = None,
     ):
@@ -237,6 +259,7 @@ class ControllerDependencies:
         self.autosave_manager = autosave_manager
         self.processing_queue = processing_queue
         self.notification_manager = notification_manager
+        self.document_target = document_target
         self.ui_updater = ui_updater
         self.sound_player = sound_player
 
@@ -262,6 +285,7 @@ class ControllerDependencies:
             autosave_manager=getattr(app, 'autosave_manager', None),
             processing_queue=getattr(app, 'processing_queue', None),
             notification_manager=getattr(app, 'notification_manager', None),
-            ui_updater=lambda recording, caller: app._update_recording_ui_state(recording, caller),
+            document_target=app,  # App satisfies DocumentTargetProtocol
+            ui_updater=lambda recording, caller: app._update_recording_ui_state(recording, caller),  # type: ignore[arg-type]
             sound_player=lambda start: app.play_recording_sound(start=start),
         )
