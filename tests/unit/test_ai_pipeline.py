@@ -50,29 +50,34 @@ class TestProviderFallbackChain:
         assert "gemini" not in FALLBACK_CHAIN
 
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.settings_manager.get_all')
-    def test_primary_success_no_fallback(self, mock_get_all, mock_call):
+    def test_primary_success_no_fallback(self, mock_call):
         """When primary provider succeeds, no fallback is attempted."""
+        import sys
         from ai.providers.router import call_ai
         from utils.exceptions import AIResult
 
-        mock_get_all.return_value = {"ai_provider": "openai"}
+        sm_mod = sys.modules['settings.settings_manager']
+        mock_mgr = MagicMock()
+        mock_mgr.get_all.return_value = {"ai_provider": "openai"}
         mock_call.return_value = AIResult.success("response text")
 
-        result = call_ai("gpt-4", "system", "prompt", 0.5)
+        with patch.object(sm_mod, 'settings_manager', mock_mgr):
+            result = call_ai("gpt-4", "system", "prompt", 0.5)
 
         assert result.is_success
         assert mock_call.call_count == 1  # Only primary, no fallback
 
     @patch('utils.security.get_security_manager')
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.settings_manager.get_all')
-    def test_fallback_on_primary_failure(self, mock_get_all, mock_call, mock_security):
+    def test_fallback_on_primary_failure(self, mock_call, mock_security):
         """When primary fails, fallback providers are tried."""
+        import sys
         from ai.providers.router import call_ai
         from utils.exceptions import AIResult
 
-        mock_get_all.return_value = {"ai_provider": "openai"}
+        sm_mod = sys.modules['settings.settings_manager']
+        mock_mgr = MagicMock()
+        mock_mgr.get_all.return_value = {"ai_provider": "openai"}
 
         # Primary fails, first fallback (openai again) skipped, anthropic succeeds
         mock_call.side_effect = [
@@ -85,23 +90,27 @@ class TestProviderFallbackChain:
         mock_sec.get_api_key.return_value = "sk-ant-test"
         mock_security.return_value = mock_sec
 
-        result = call_ai("gpt-4", "system", "prompt", 0.5)
+        with patch.object(sm_mod, 'settings_manager', mock_mgr):
+            result = call_ai("gpt-4", "system", "prompt", 0.5)
 
         assert result.is_success
         assert result.text == "Anthropic response"
         assert mock_call.call_count == 2
 
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.settings_manager.get_all')
-    def test_explicit_provider_no_fallback(self, mock_get_all, mock_call):
+    def test_explicit_provider_no_fallback(self, mock_call):
         """When provider is explicitly set, no fallback even on failure."""
+        import sys
         from ai.providers.router import call_ai
         from utils.exceptions import AIResult
 
-        mock_get_all.return_value = {"ai_provider": "openai"}
+        sm_mod = sys.modules['settings.settings_manager']
+        mock_mgr = MagicMock()
+        mock_mgr.get_all.return_value = {"ai_provider": "openai"}
         mock_call.return_value = AIResult.failure("Anthropic down")
 
-        result = call_ai("claude-3", "system", "prompt", 0.5, provider="anthropic")
+        with patch.object(sm_mod, 'settings_manager', mock_mgr):
+            result = call_ai("claude-3", "system", "prompt", 0.5, provider="anthropic")
 
         assert result.is_error
         assert mock_call.call_count == 1  # No fallback
