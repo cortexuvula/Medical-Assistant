@@ -50,7 +50,7 @@ class TestProviderFallbackChain:
         assert "gemini" not in FALLBACK_CHAIN
 
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.SettingsManager.get_all')
+    @patch('settings.settings_manager.settings_manager.get_all')
     def test_primary_success_no_fallback(self, mock_get_all, mock_call):
         """When primary provider succeeds, no fallback is attempted."""
         from ai.providers.router import call_ai
@@ -66,7 +66,7 @@ class TestProviderFallbackChain:
 
     @patch('utils.security.get_security_manager')
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.SettingsManager.get_all')
+    @patch('settings.settings_manager.settings_manager.get_all')
     def test_fallback_on_primary_failure(self, mock_get_all, mock_call, mock_security):
         """When primary fails, fallback providers are tried."""
         from ai.providers.router import call_ai
@@ -92,7 +92,7 @@ class TestProviderFallbackChain:
         assert mock_call.call_count == 2
 
     @patch('ai.providers.router._call_provider')
-    @patch('settings.settings_manager.SettingsManager.get_all')
+    @patch('settings.settings_manager.settings_manager.get_all')
     def test_explicit_provider_no_fallback(self, mock_get_all, mock_call):
         """When provider is explicitly set, no fallback even on failure."""
         from ai.providers.router import call_ai
