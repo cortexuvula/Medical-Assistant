@@ -24,7 +24,7 @@ pydub>=0.25.1,<1.0.0  # Audio manipulation
 
 # === UI ===
 ttkbootstrap>=1.10.0,<2.0.0  # Themed tkinter widgets
-Pillow>=10.3.0,<12.0.0  # ttkbootstrap image support (CVE buffer overflow fix)
+Pillow>=12.1.1  # ttkbootstrap image support (CVE-2025 PSD OOB write fix)
 
 # === HTTP & Networking ===
 httpx>=0.25.0,<1.0.0  # HTTP connection pooling
@@ -66,7 +66,7 @@ deep-translator>=1.11.0,<2.0.0  # Multi-provider translation support
 # === Utilities ===
 python-dotenv>=1.0.0,<2.0.0  # Environment variable management
 pyperclip>=1.8.2,<2.0.0  # Clipboard operations
-simpleeval>=0.9.13,<1.0.0  # Safe expression evaluation (replaces unsafe eval)
+simpleeval>=1.0.5  # Safe expression evaluation (CVE-2025 sandbox escape fix)
 concurrent-log-handler>=0.9.1,<1.0.0  # Concurrent-safe log handler
 
 # === Monitoring ===
