@@ -81,10 +81,10 @@ class RecordingController:
         # ========================================
         # Initialize Handlers
         # ========================================
-        self._recovery_handler = RecoveryHandler(app)
-        self._pause_resume_handler = PauseResumeHandler(app, self._state_lock)
-        self._periodic_analysis_handler = PeriodicAnalysisHandler(app)
-        self._finalization_handler = FinalizationHandler(app)
+        self._recovery_handler = RecoveryHandler(self._app)
+        self._pause_resume_handler = PauseResumeHandler(self._app, self._state_lock)
+        self._periodic_analysis_handler = PeriodicAnalysisHandler(self._app)
+        self._finalization_handler = FinalizationHandler(self._app)
 
     # ========================================
     # Recording Properties
