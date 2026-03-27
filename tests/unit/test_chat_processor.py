@@ -682,23 +682,28 @@ class TestMessageProcessing:
 class TestToolSettings:
     """Test tool enable/disable functionality."""
 
-    @patch('src.ai.chat_processor.mcp_manager')
-    @patch('src.ai.chat_processor.settings_manager')
-    def test_enable_tools(self, mock_settings, mock_mcp):
+    @patch('ai.chat_tools_mixin.settings_manager')
+    @patch('ai.chat_processor.settings_manager')
+    def test_enable_tools(self, mock_cp_settings, mock_tools_settings):
         """Test enabling tools."""
-        mock_settings.get_chat_settings.return_value = {'enable_tools': False}
+        mock_cp_settings.get_chat_settings.return_value = {'enable_tools': False}
+        mock_cp_settings.get.return_value = {}
+        mock_tools_settings.get.return_value = {}
 
-        from src.ai.chat_processor import ChatProcessor
+        with patch.dict('sys.modules', {
+            'ai.mcp.mcp_manager': MagicMock(mcp_manager=MagicMock(), health_monitor=MagicMock()),
+            'ai.mcp.mcp_tool_wrapper': MagicMock(register_mcp_tools=MagicMock(return_value=0)),
+        }):
+            from ai.chat_processor import ChatProcessor
+            app = MockApp()
+            processor = ChatProcessor(app)
 
-        app = MockApp()
-        processor = ChatProcessor(app)
-
-        with patch('src.ai.chat_processor.ToolExecutor'):
-            with patch('src.ai.chat_processor.ChatAgent'):
-                processor.set_tools_enabled(True)
+            with patch('ai.tools.tool_executor.ToolExecutor'):
+                with patch('ai.agents.chat.ChatAgent'):
+                    processor.set_tools_enabled(True)
 
         assert processor.use_tools is True
-        mock_settings.set_nested.assert_called()
+        mock_tools_settings.set_nested.assert_called()
 
     @patch('src.ai.chat_processor.mcp_manager')
     @patch('src.ai.chat_processor.ToolExecutor')
@@ -746,35 +751,44 @@ class TestCopyToClipboard:
 class TestMCPIntegration:
     """Test MCP (Model Context Protocol) integration."""
 
-    @patch('src.ai.chat_processor.mcp_manager')
-    @patch('src.ai.chat_processor.register_mcp_tools', return_value=3)
-    @patch('src.ai.chat_processor.settings_manager')
-    def test_mcp_initialization(self, mock_settings, mock_register, mock_mcp):
+    @patch('ai.chat_processor.settings_manager')
+    def test_mcp_initialization(self, mock_settings):
         """Test MCP initialization when enabled."""
         mock_settings.get_chat_settings.return_value = {'enable_tools': False}
         mock_settings.get.return_value = {'enabled': True}
 
-        from src.ai.chat_processor import ChatProcessor
+        # Patch the lazy imports inside _initialize_mcp
+        mock_mcp = MagicMock()
+        mock_register = MagicMock(return_value=3)
 
-        app = MockApp()
-        processor = ChatProcessor(app)
+        with patch.dict('sys.modules', {
+            'ai.mcp.mcp_manager': MagicMock(mcp_manager=mock_mcp, health_monitor=MagicMock()),
+            'ai.mcp.mcp_tool_wrapper': MagicMock(register_mcp_tools=mock_register),
+        }):
+            from ai.chat_processor import ChatProcessor
+            app = MockApp()
+            processor = ChatProcessor(app)
 
         mock_mcp.load_config.assert_called_once()
 
-    @patch('src.ai.chat_processor.mcp_manager')
-    @patch('src.ai.chat_processor.ToolExecutor')
-    @patch('src.ai.chat_processor.ChatAgent')
-    @patch('src.ai.chat_processor.tool_registry')
-    @patch('src.ai.chat_processor.settings_manager')
-    def test_reload_mcp_tools(self, mock_settings, mock_registry, mock_agent, mock_executor, mock_mcp):
+    @patch('ai.chat_processor.settings_manager')
+    def test_reload_mcp_tools(self, mock_settings):
         """Test reloading MCP tools."""
         mock_settings.get_chat_settings.return_value = {'enable_tools': True}
+        mock_settings.get.return_value = {}
 
-        from src.ai.chat_processor import ChatProcessor
+        mock_mcp = MagicMock()
+        mock_registry = MagicMock()
 
-        app = MockApp()
-        processor = ChatProcessor(app)
-        processor.reload_mcp_tools()
+        with patch.dict('sys.modules', {
+            'ai.mcp.mcp_manager': MagicMock(mcp_manager=mock_mcp, health_monitor=MagicMock()),
+            'ai.mcp.mcp_tool_wrapper': MagicMock(register_mcp_tools=MagicMock(return_value=0)),
+            'ai.tools.tool_registry': MagicMock(tool_registry=mock_registry),
+        }):
+            from ai.chat_processor import ChatProcessor
+            app = MockApp()
+            processor = ChatProcessor(app)
+            processor.reload_mcp_tools()
 
         mock_mcp.stop_all.assert_called_once()
         mock_registry.clear_category.assert_called_with("mcp")

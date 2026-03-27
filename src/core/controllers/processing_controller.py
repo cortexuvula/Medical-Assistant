@@ -75,15 +75,15 @@ class ProcessingController:
         else:
             raise ValueError("ProcessingController requires either app or registry")
 
-    @property
-    def app(self):
-        """Backward-compatible access to app for widget/Tk operations."""
-        return self._app
-
         # Initialize export handlers (lazy-loaded)
         self._pdf_handler = None
         self._word_handler = None
         self._fhir_handler = None
+
+    @property
+    def app(self):
+        """Backward-compatible access to app for widget/Tk operations."""
+        return self._app
 
     # =========================================================================
     # Export Handler Properties (lazy initialization)
