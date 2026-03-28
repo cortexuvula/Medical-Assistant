@@ -1,7 +1,7 @@
 [run]
 branch = True
 source = .
-omit = 
+omit =
     */tests/*
     */test_*
     */venv/*
@@ -21,6 +21,24 @@ omit =
     runtime_hook_*.py
     hook-soundcard.py
     download_ffmpeg.py
+    # UI files requiring display server (Tkinter/ttkbootstrap)
+    src/ui/dialogs/*
+    src/ui/chat_ui.py
+    src/ui/workflow_ui.py
+    src/ui/menu_manager.py
+    src/ui/theme_manager.py
+    src/ui/visual_components.py
+    src/ui/components/notebook_tabs.py
+    src/ui/components/notebook_analysis_mixin.py
+    src/ui/components/notebook_rag_mixin.py
+    src/ui/components/record_tab.py
+    src/ui/components/shared_panel_manager.py
+    src/ui/components/sidebar_sections_mixin.py
+    src/ui/components/analysis_panel_formatter.py
+    src/core/app.py
+    src/core/app_initializer.py
+    src/core/app_settings_mixin.py
+    src/core/controllers/window_controller.py
 
 [report]
 # Regexes for lines to exclude from consideration

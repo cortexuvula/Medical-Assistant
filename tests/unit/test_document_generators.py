@@ -255,6 +255,11 @@ class TestDocumentGeneratorComposition:
         # Check for compliance-related method
         pass
 
+    def test_has_soap_qa_mixin(self, document_generators):
+        """Test that SOAPQAGeneratorMixin methods are available."""
+        assert hasattr(document_generators, '_run_soap_qa_to_panel')
+        assert hasattr(document_generators, '_get_soap_qa_widget')
+
 
 class TestBatchProcessingDelegation:
     """Tests for batch processing delegation."""
