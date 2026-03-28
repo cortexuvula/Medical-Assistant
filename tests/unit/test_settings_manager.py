@@ -505,10 +505,17 @@ class TestSettingsManagerPersistence(unittest.TestCase):
         from settings.settings_manager import SettingsManager
         SettingsManager._instance = None
 
-    @patch("settings.settings_manager.SettingsManager._save")
-    def test_save_calls_internal_save(self, mock_save):
-        self.mgr.save()
-        mock_save.assert_called_once()
+    def test_save_calls_internal_save(self):
+        # Use patch.object via sys.modules to avoid shadowing by singleton instance
+        # in settings/__init__.py (same issue as _patch_sm_get_logger).
+        import sys
+        from unittest.mock import patch
+        sm_mod = sys.modules.get("settings.settings_manager")
+        if sm_mod is None:
+            import settings.settings_manager as sm_mod
+        with patch.object(sm_mod.SettingsManager, "_save") as mock_save:
+            self.mgr.save()
+            mock_save.assert_called_once()
 
     @patch("settings.settings.load_settings")
     def test_reload_resets_module_reference(self, mock_load):

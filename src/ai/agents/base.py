@@ -6,18 +6,19 @@ The AICallerProtocol defines the interface, and DefaultAICaller provides the
 standard implementation that lazily loads AI functions.
 """
 
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, TYPE_CHECKING, List
-import json
 import hashlib
+import json
 import time
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from .models import AgentConfig, AgentTask, AgentResponse
-from .ai_caller import AICallerProtocol, get_default_ai_caller
 from utils.structured_logging import get_logger
 
+from .ai_caller import AICallerProtocol, get_default_ai_caller
+from .models import AgentConfig, AgentResponse, AgentTask
+
 if TYPE_CHECKING:
-    from .ai_caller import BaseAICaller
+    pass
 
 
 logger = get_logger(__name__)
@@ -61,20 +62,20 @@ class BaseAgent(ABC):
         # Response cache: {hash: (response, timestamp)}
         self._response_cache: Dict[str, tuple] = {}
         self._cache_enabled = True
-        
+
     @abstractmethod
     def execute(self, task: AgentTask) -> AgentResponse:
         """
         Execute a task and return the response.
-        
+
         Args:
             task: The task to execute
-            
+
         Returns:
             Agent response with result
         """
         pass
-    
+
     @property
     def ai_caller(self) -> AICallerProtocol:
         """Get the AI caller for this agent.
@@ -251,7 +252,7 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.error(f"Error calling AI for agent {self.config.name}: {e}")
             raise
-            
+
     def add_to_history(self, task: AgentTask, response: AgentResponse):
         """Add a task and response to the agent's history.
 
@@ -267,27 +268,27 @@ class BaseAgent(ABC):
             # Keep only the most recent entries
             self.history = self.history[-MAX_AGENT_HISTORY_SIZE:]
             logger.debug(f"Agent {self.config.name}: Pruned history to {MAX_AGENT_HISTORY_SIZE} entries")
-        
+
     def clear_history(self):
         """Clear the agent's history."""
         self.history.clear()
-        
+
     def get_context_from_history(self, max_entries: int = 5) -> str:
         """
         Get context from recent history.
-        
+
         Args:
             max_entries: Maximum number of history entries to include
-            
+
         Returns:
             Formatted context string
         """
         if not self.history:
             return ""
-            
+
         recent_history = self.history[-max_entries:]
         context_parts = []
-        
+
         for entry in recent_history:
             task = entry['task']
             response = entry['response']
@@ -475,7 +476,7 @@ Rules:
         """
         try:
             return self._get_structured_response(prompt, response_schema, **kwargs)
-        except (ValueError, json.JSONDecodeError) as e:
+        except (ValueError, json.JSONDecodeError):
             if fallback_parser:
                 logger.info(
                     f"Agent {self.config.name}: JSON parsing failed, using fallback parser"
