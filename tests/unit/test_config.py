@@ -222,24 +222,24 @@ class TestConfigEnvironmentSelection(unittest.TestCase):
 
     def _make_config_with_env(self, environment=None, env_var=None):
         """Create a Config with mocked dependencies to test environment selection."""
-        patches = {
-            "core.config.get_logger": MagicMock(return_value=MagicMock()),
-            "core.config.data_folder_manager": MagicMock(),
-            "core.config.validate_model_name": MagicMock(return_value=(True, None)),
-        }
+        mock_data_folder = MagicMock()
         # Mock the config_folder as a Path-like object
         mock_config_dir = MagicMock(spec=Path)
         mock_config_dir.mkdir = MagicMock()
         mock_config_dir.__truediv__ = MagicMock(
             return_value=MagicMock(exists=MagicMock(return_value=False))
         )
-        patches["core.config.data_folder_manager"].config_folder = mock_config_dir
+        mock_data_folder.config_folder = mock_config_dir
 
         env_dict = {}
         if env_var:
             env_dict["MEDICAL_ASSISTANT_ENV"] = env_var
 
-        with patch.multiple("core.config", **patches):
+        import sys
+        config_mod = sys.modules["core.config"]
+        with patch.object(config_mod, "get_logger", MagicMock(return_value=MagicMock())), \
+             patch.object(config_mod, "data_folder_manager", mock_data_folder), \
+             patch.object(config_mod, "validate_model_name", MagicMock(return_value=(True, None))):
             with patch.dict(os.environ, env_dict, clear=False):
                 cfg = Config(environment=environment)
                 return cfg

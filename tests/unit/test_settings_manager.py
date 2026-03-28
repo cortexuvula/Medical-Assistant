@@ -13,8 +13,23 @@ Covers:
 - Settings persistence (save/reload)
 """
 
+import sys
 import unittest
 from unittest.mock import patch, MagicMock, PropertyMock
+
+
+def _patch_sm_get_logger():
+    """Patch get_logger on the actual settings_manager module (not the instance).
+
+    settings.__init__.py shadows the submodule name with the singleton instance,
+    so patch("settings.settings_manager.get_logger") resolves to the instance.
+    Use sys.modules to get the real module.
+    """
+    mod = sys.modules.get("settings.settings_manager")
+    if mod is None:
+        import settings.settings_manager  # noqa: F811
+        mod = sys.modules["settings.settings_manager"]
+    return patch.object(mod, "get_logger", return_value=MagicMock())
 
 
 class TestSettingsManagerSingleton(unittest.TestCase):
@@ -27,7 +42,7 @@ class TestSettingsManagerSingleton(unittest.TestCase):
         # Reset singleton for test isolation
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             mgr1 = SettingsManager()
             mgr2 = SettingsManager()
             self.assertIs(mgr1, mgr2)
@@ -41,7 +56,7 @@ class TestSettingsManagerSingleton(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             mgr = SettingsManager()
             first_initialized = mgr._initialized
             self.assertTrue(first_initialized)
@@ -63,7 +78,7 @@ class TestSettingsManagerBasicAccess(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         # Inject a mock settings dict directly
@@ -131,7 +146,7 @@ class TestSettingsManagerNestedAccess(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -211,7 +226,7 @@ class TestSettingsManagerProviderAccessors(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -270,7 +285,7 @@ class TestSettingsManagerAgentAccessors(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -340,7 +355,7 @@ class TestSettingsManagerModelConfig(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -392,7 +407,7 @@ class TestSettingsManagerFeatureFlags(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -444,7 +459,7 @@ class TestSettingsManagerWindowState(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {
@@ -480,7 +495,7 @@ class TestSettingsManagerPersistence(unittest.TestCase):
 
         SettingsManager._instance = None
 
-        with patch("settings.settings_manager.get_logger", return_value=MagicMock()):
+        with _patch_sm_get_logger():
             self.mgr = SettingsManager()
 
         self.mock_settings = {"ai_provider": "openai"}
