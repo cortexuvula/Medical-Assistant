@@ -11,6 +11,7 @@ from tkinter.constants import DISABLED, NORMAL, RIGHT
 from typing import TYPE_CHECKING
 
 from ai.ai import create_soap_note_streaming
+from processing.soap_qa import compare_medications
 from utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -138,6 +139,14 @@ class SOAPGeneratorMixin:
                     # Display ICD validation warnings in panel if any
                     if icd_warnings:
                         self.app.after(0, _safe_run("icd_validation", self._run_icd_validation_to_panel, icd_warnings))
+
+                    # Medication QA: compare transcript medications against SOAP note
+                    try:
+                        soap_qa_warnings = compare_medications(transcript, soap_note)
+                    except Exception as e:
+                        logger.error(f"SOAP QA comparison failed: {e}")
+                        soap_qa_warnings = []
+                    self.app.after(0, _safe_run("soap_qa", self._run_soap_qa_to_panel, soap_qa_warnings))
 
                 self.app.after(0, finalize)
 

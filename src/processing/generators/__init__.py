@@ -30,6 +30,7 @@ from processing.generators.workflow import WorkflowGeneratorMixin
 from processing.generators.compliance import ComplianceGeneratorMixin
 from processing.generators.emotion import EmotionGeneratorMixin
 from processing.generators.icd_validation import ICDValidationGeneratorMixin
+from processing.generators.soap_qa import SOAPQAGeneratorMixin
 
 if TYPE_CHECKING:
     from core.app import MedicalAssistantApp
@@ -46,7 +47,8 @@ class DocumentGenerators(
     WorkflowGeneratorMixin,
     ComplianceGeneratorMixin,
     EmotionGeneratorMixin,
-    ICDValidationGeneratorMixin
+    ICDValidationGeneratorMixin,
+    SOAPQAGeneratorMixin,
 ):
     """Manages medical document generation functionality.
 
@@ -61,6 +63,7 @@ class DocumentGenerators(
     - Clinical guidelines compliance
     - Emotional assessment display
     - ICD code validation warnings
+    - Medication QA comparison
 
     Batch processing methods are delegated to BatchProcessor.
     """
@@ -107,4 +110,5 @@ __all__ = [
     "ComplianceGeneratorMixin",
     "EmotionGeneratorMixin",
     "ICDValidationGeneratorMixin",
+    "SOAPQAGeneratorMixin",
 ]

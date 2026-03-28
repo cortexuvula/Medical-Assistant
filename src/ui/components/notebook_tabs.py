@@ -721,6 +721,48 @@ class NotebookTabs(NotebookRagMixin, NotebookGuidelinesMixin, NotebookAnalysisMi
         text_widgets['icd_validation'] = icd_validation_text
         self.components['icd_validation_text'] = icd_validation_text
 
+        # ----- Tab 6: Medication QA -----
+        soap_qa_tab = ttk.Frame(analysis_notebook)
+        analysis_notebook.add(soap_qa_tab, text="  Medication QA  ")
+
+        # Medication QA header with copy button
+        soap_qa_header = ttk.Frame(soap_qa_tab)
+        soap_qa_header.pack(fill=tk.X, padx=5, pady=3)
+
+        soap_qa_copy_btn = ttk.Button(
+            soap_qa_header,
+            text="Copy",
+            bootstyle="info-outline",
+            command=lambda: self._copy_to_clipboard(soap_qa_text)
+        )
+        soap_qa_copy_btn.pack(side=tk.RIGHT, padx=2)
+
+        # Medication QA scrollbar and text widget
+        soap_qa_content = ttk.Frame(soap_qa_tab)
+        soap_qa_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        soap_qa_scroll = ttk.Scrollbar(soap_qa_content)
+        soap_qa_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        soap_qa_text = tk.Text(
+            soap_qa_content,
+            wrap=tk.WORD,
+            yscrollcommand=soap_qa_scroll.set,
+            state='disabled',
+            height=8
+        )
+        soap_qa_text.pack(fill=tk.BOTH, expand=True)
+        soap_qa_scroll.config(command=soap_qa_text.yview)
+
+        # Initial placeholder message
+        soap_qa_text.config(state='normal')
+        soap_qa_text.insert('1.0', "Medication QA results will appear here after SOAP note generation.")
+        soap_qa_text.config(state='disabled')
+
+        # Store reference
+        text_widgets['soap_qa'] = soap_qa_text
+        self.components['soap_qa_text'] = soap_qa_text
+
         return soap_text
 
     def _copy_to_clipboard(self, text_widget: tk.Text) -> None:
