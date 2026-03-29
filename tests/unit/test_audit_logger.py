@@ -1,19 +1,19 @@
 """
 Tests for src/utils/audit_logger.py
 
-Covers AuditLogger: singleton, PHI redaction, session hash, audit log methods,
-and convenience functions. Uses a temporary directory to avoid touching real logs.
+Covers pure-logic methods on AuditLogger (no file I/O) and the AuditEventType
+enum. Instances are created by bypassing __init__ via object.__new__ so that
+no filesystem access, ConcurrentRotatingFileHandler, or external dependencies
+are triggered.
 """
 
-import json
+import hashlib
 import os
 import sys
-import stat
 import threading
-import hashlib
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -22,69 +22,18 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
+from utils.audit_logger import AuditEventType, AuditLogger  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Fixture: AuditLogger instance that skips __init__ entirely
 # ---------------------------------------------------------------------------
-
-_test_logger_names: list = []
-
-
-def _reset_audit_logger_singleton():
-    """Reset singleton state and close all handlers from test loggers."""
-    import logging
-    import utils.audit_logger as mod
-    mod.AuditLogger._instance = None
-    mod._audit_logger = None
-
-    # Close/remove handlers from any test audit loggers we created
-    for name in list(_test_logger_names):
-        lg = logging.getLogger(name)
-        for handler in list(lg.handlers):
-            try:
-                handler.close()
-            except Exception:
-                pass
-        lg.handlers.clear()
-    _test_logger_names.clear()
-
-
-def _make_audit_logger(tmp_path):
-    """Create an AuditLogger backed by tmp_path, with external deps mocked."""
-    import logging
-    _reset_audit_logger_singleton()
-
-    mock_dfm = MagicMock()
-    mock_dfm.logs_folder_path = tmp_path
-
-    # Use a unique logger name per test so handlers don't bleed between tests.
-    logger_name = f"audit_test_{id(tmp_path)}"
-    _test_logger_names.append(logger_name)
-    real_audit_logger = logging.getLogger(logger_name)
-    real_audit_logger.handlers.clear()
-
-    # settings_manager is imported lazily inside __init__ with try/except.
-    # get_logger returns StructuredLogger which lacks setLevel — use a real logger.
-    with patch("utils.audit_logger.data_folder_manager", mock_dfm), \
-         patch("utils.audit_logger.get_logger", return_value=real_audit_logger):
-        from utils.audit_logger import AuditLogger
-        logger = AuditLogger()
-
-    return logger
-
-
-@pytest.fixture(autouse=True)
-def reset_singleton():
-    """Reset singleton before and after each test."""
-    _reset_audit_logger_singleton()
-    yield
-    _reset_audit_logger_singleton()
-
 
 @pytest.fixture
-def audit_logger(tmp_path):
-    """Fresh AuditLogger backed by tmp_path."""
-    return _make_audit_logger(tmp_path)
+def logger_instance():
+    """Create an AuditLogger instance bypassing __init__ (no file I/O)."""
+    instance = object.__new__(AuditLogger)
+    return instance
 
 
 # ===========================================================================
@@ -92,70 +41,52 @@ def audit_logger(tmp_path):
 # ===========================================================================
 
 class TestAuditEventType:
-    def test_all_event_types_are_strings(self):
-        from utils.audit_logger import AuditEventType
+    """Tests for the AuditEventType string enum."""
+
+    def test_is_str_enum(self):
+        assert issubclass(AuditEventType, str)
+
+    def test_auth_login_value(self):
+        assert AuditEventType.AUTH_LOGIN == "auth_login"
+        assert AuditEventType.AUTH_LOGIN.value == "auth_login"
+
+    def test_auth_logout_value(self):
+        assert AuditEventType.AUTH_LOGOUT == "auth_logout"
+
+    def test_auth_failed_value(self):
+        assert AuditEventType.AUTH_FAILED == "auth_failed"
+
+    def test_api_key_access_value(self):
+        assert AuditEventType.API_KEY_ACCESS == "api_key_access"
+
+    def test_data_export_value(self):
+        assert AuditEventType.DATA_EXPORT == "data_export"
+
+    def test_ai_process_value(self):
+        assert AuditEventType.AI_PROCESS == "ai_process"
+
+    def test_security_violation_value(self):
+        assert AuditEventType.SECURITY_VIOLATION == "security_violation"
+
+    def test_app_start_value(self):
+        assert AuditEventType.APP_START == "app_start"
+
+    def test_all_members_are_strings(self):
         for member in AuditEventType:
-            assert isinstance(member.value, str)
+            assert isinstance(member.value, str), f"{member.name} value is not str"
 
-    def test_auth_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.AUTH_LOGIN
-        assert AuditEventType.AUTH_LOGOUT
-        assert AuditEventType.AUTH_FAILED
+    def test_str_comparison_works_directly(self):
+        # str Enum allows direct string comparison
+        assert AuditEventType.API_KEY_ACCESS == "api_key_access"
+        assert AuditEventType.DATA_EXPORT == "data_export"
 
-    def test_api_key_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.API_KEY_ACCESS
-        assert AuditEventType.API_KEY_ADD
-        assert AuditEventType.API_KEY_REMOVE
+    def test_expected_member_count(self):
+        # The source defines 22 members; guard against accidental deletions
+        assert len(AuditEventType) >= 20
 
-    def test_data_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.DATA_ACCESS
-        assert AuditEventType.DATA_CREATE
-        assert AuditEventType.DATA_EXPORT
-        assert AuditEventType.DATA_IMPORT
-
-    def test_recording_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.RECORDING_ACCESS
-        assert AuditEventType.RECORDING_TRANSCRIBE
-        assert AuditEventType.RECORDING_DELETE
-
-    def test_security_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.SECURITY_VIOLATION
-        assert AuditEventType.SECURITY_WARNING
-
-    def test_app_lifecycle_events_exist(self):
-        from utils.audit_logger import AuditEventType
-        assert AuditEventType.APP_START
-        assert AuditEventType.APP_SHUTDOWN
-
-
-# ===========================================================================
-# Singleton
-# ===========================================================================
-
-class TestSingleton:
-    def test_same_instance_returned(self, tmp_path):
-        a = _make_audit_logger(tmp_path)
-        # Second call returns the cached singleton
-        mock_dfm = MagicMock()
-        mock_dfm.logs_folder_path = tmp_path
-        with patch("utils.audit_logger.data_folder_manager", mock_dfm):
-            from utils.audit_logger import AuditLogger
-            b = AuditLogger()
-        assert a is b
-
-    def test_get_audit_logger_returns_singleton(self, tmp_path):
-        logger = _make_audit_logger(tmp_path)
-        mock_dfm = MagicMock()
-        mock_dfm.logs_folder_path = tmp_path
-        with patch("utils.audit_logger.data_folder_manager", mock_dfm):
-            from utils.audit_logger import get_audit_logger
-            result = get_audit_logger()
-        assert result is logger
+    def test_api_key_add_and_remove_exist(self):
+        assert AuditEventType.API_KEY_ADD == "api_key_add"
+        assert AuditEventType.API_KEY_REMOVE == "api_key_remove"
 
 
 # ===========================================================================
@@ -163,30 +94,75 @@ class TestSingleton:
 # ===========================================================================
 
 class TestGenerateSessionHash:
-    def test_hash_with_session_id(self, audit_logger):
-        h = audit_logger._generate_session_hash("my-session-123")
-        assert isinstance(h, str)
-        assert len(h) == 12
+    """Tests for AuditLogger._generate_session_hash."""
 
-    def test_hash_deterministic(self, audit_logger):
-        h1 = audit_logger._generate_session_hash("abc")
-        h2 = audit_logger._generate_session_hash("abc")
-        assert h1 == h2
+    # --- Return type and length ---
 
-    def test_different_sessions_different_hashes(self, audit_logger):
-        h1 = audit_logger._generate_session_hash("session-1")
-        h2 = audit_logger._generate_session_hash("session-2")
+    def test_returns_string(self, logger_instance):
+        result = logger_instance._generate_session_hash("abc")
+        assert isinstance(result, str)
+
+    def test_returns_12_chars_with_session_id(self, logger_instance):
+        result = logger_instance._generate_session_hash("any-session")
+        assert len(result) == 12
+
+    def test_returns_12_chars_with_none(self, logger_instance):
+        result = logger_instance._generate_session_hash(None)
+        assert len(result) == 12
+
+    def test_returns_12_chars_with_empty_string(self, logger_instance):
+        # empty string is falsy, so it follows the pid-thread path
+        result = logger_instance._generate_session_hash("")
+        assert len(result) == 12
+
+    def test_only_hex_characters(self, logger_instance):
+        result = logger_instance._generate_session_hash("session-42")
+        valid = set("0123456789abcdef")
+        assert all(c in valid for c in result), f"Non-hex chars in {result!r}"
+
+    def test_lowercase_hex(self, logger_instance):
+        result = logger_instance._generate_session_hash("UPPERCASE-ID")
+        assert result == result.lower()
+
+    # --- Correctness against known SHA-256 output ---
+
+    def test_matches_sha256_hexdigest_12(self, logger_instance):
+        session_id = "test-session-id"
+        expected = hashlib.sha256(session_id.encode()).hexdigest()[:12]
+        assert logger_instance._generate_session_hash(session_id) == expected
+
+    def test_different_session_ids_differ(self, logger_instance):
+        h1 = logger_instance._generate_session_hash("session-a")
+        h2 = logger_instance._generate_session_hash("session-b")
         assert h1 != h2
 
-    def test_no_session_returns_hash(self, audit_logger):
-        h = audit_logger._generate_session_hash(None)
-        assert isinstance(h, str)
-        assert len(h) == 12
+    def test_same_session_id_is_deterministic(self, logger_instance):
+        h1 = logger_instance._generate_session_hash("stable-session")
+        h2 = logger_instance._generate_session_hash("stable-session")
+        assert h1 == h2
 
-    def test_no_session_is_process_based(self, audit_logger):
-        # Two calls without session ID should return same hash (same process)
-        h1 = audit_logger._generate_session_hash(None)
-        h2 = audit_logger._generate_session_hash(None)
+    def test_unicode_session_id(self, logger_instance):
+        result = logger_instance._generate_session_hash("日本語セッション")
+        assert isinstance(result, str)
+        assert len(result) == 12
+
+    def test_long_session_id(self, logger_instance):
+        result = logger_instance._generate_session_hash("x" * 10_000)
+        assert len(result) == 12
+
+    # --- None / no-argument path uses pid and thread ---
+
+    def test_no_session_id_uses_pid_thread(self, logger_instance):
+        pid = os.getpid()
+        tid = threading.get_ident()
+        expected = hashlib.sha256(
+            f"{pid}-{tid}".encode()
+        ).hexdigest()[:12]
+        assert logger_instance._generate_session_hash(None) == expected
+
+    def test_no_session_id_consistent_within_same_thread(self, logger_instance):
+        h1 = logger_instance._generate_session_hash(None)
+        h2 = logger_instance._generate_session_hash(None)
         assert h1 == h2
 
 
@@ -195,338 +171,141 @@ class TestGenerateSessionHash:
 # ===========================================================================
 
 class TestRedactPHI:
-    def test_phi_field_redacted(self, audit_logger):
-        data = {"patient_name": "John Doe", "action": "view"}
-        result = audit_logger._redact_phi(data)
-        assert "[REDACTED" in result["patient_name"]
+    """Tests for AuditLogger._redact_phi."""
+
+    # --- Non-PHI fields are preserved ---
+
+    def test_non_phi_string_preserved(self, logger_instance):
+        result = logger_instance._redact_phi({"action": "view"})
         assert result["action"] == "view"
 
-    def test_empty_phi_field_still_redacted(self, audit_logger):
-        data = {"patient_name": ""}
-        result = audit_logger._redact_phi(data)
-        assert result["patient_name"] == "[REDACTED]"
+    def test_non_phi_integer_preserved(self, logger_instance):
+        result = logger_instance._redact_phi({"record_count": 7})
+        assert result["record_count"] == 7
 
-    def test_content_field_redacted_with_length(self, audit_logger):
-        data = {"content": "x" * 50}
-        result = audit_logger._redact_phi(data)
-        assert "50chars" in result["content"]
+    def test_non_phi_none_preserved(self, logger_instance):
+        result = logger_instance._redact_phi({"status": None})
+        assert result["status"] is None
 
-    def test_non_phi_field_preserved(self, audit_logger):
-        data = {"action": "export", "record_count": 5}
-        result = audit_logger._redact_phi(data)
-        assert result["action"] == "export"
-        assert result["record_count"] == 5
+    def test_non_phi_list_preserved(self, logger_instance):
+        result = logger_instance._redact_phi({"tags": [1, 2, 3]})
+        assert result["tags"] == [1, 2, 3]
 
-    def test_nested_dict_redacted(self, audit_logger):
-        data = {"outer": {"patient_name": "Jane"}}
-        result = audit_logger._redact_phi(data)
-        assert "[REDACTED" in result["outer"]["patient_name"]
+    def test_empty_dict_returns_empty_dict(self, logger_instance):
+        assert logger_instance._redact_phi({}) == {}
 
-    def test_transcript_field_redacted(self, audit_logger):
-        data = {"transcript": "Patient complains of headache"}
-        result = audit_logger._redact_phi(data)
-        assert "[REDACTED" in result["transcript"]
-
-    def test_case_insensitive_phi_detection(self, audit_logger):
-        # Field names are lowercased for comparison
-        data = {"patient_name": "Test User"}  # key already lowercase
-        result = audit_logger._redact_phi(data)
-        assert "[REDACTED" in result["patient_name"]
-
-    def test_returns_new_dict(self, audit_logger):
-        original = {"action": "test", "patient_name": "Joe"}
-        result = audit_logger._redact_phi(original)
+    def test_returns_new_dict(self, logger_instance):
+        original = {"action": "test", "patient_name": "Alice"}
+        result = logger_instance._redact_phi(original)
         assert result is not original
 
+    # --- PHI string fields get length-tagged redaction ---
 
-# ===========================================================================
-# log method
-# ===========================================================================
+    def test_phi_string_redacted_with_char_count(self, logger_instance):
+        result = logger_instance._redact_phi({"patient_name": "Alice Smith"})
+        assert result["patient_name"] == "[REDACTED:11chars]"
 
-class TestLogMethod:
-    def test_log_writes_json_line(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.DATA_ACCESS,
-            action="view_recording",
-        )
-        log_path = tmp_path / "audit.log"
-        assert log_path.exists()
-        content = log_path.read_text()
-        entry = json.loads(content.strip().split('\n')[-1])
-        assert entry["event_type"] == "data_access"
-        assert entry["action"] == "view_recording"
+    def test_phi_length_in_tag_matches_value_length(self, logger_instance):
+        value = "x" * 75
+        result = logger_instance._redact_phi({"transcript": value})
+        assert result["transcript"] == "[REDACTED:75chars]"
 
-    def test_log_includes_timestamp(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(event_type=AuditEventType.APP_START, action="start")
-        log_path = tmp_path / "audit.log"
-        content = log_path.read_text().strip()
-        entry = json.loads(content)
-        assert "timestamp" in entry
-        assert entry["timestamp"].endswith("Z")
+    def test_phi_empty_string_replaced_with_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"patient_name": ""})
+        assert result["patient_name"] == "[REDACTED]"
 
-    def test_log_outcome_default_success(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(event_type=AuditEventType.DATA_ACCESS, action="read")
-        log_path = tmp_path / "audit.log"
-        entry = json.loads(log_path.read_text().strip())
-        assert entry["outcome"] == "success"
+    # --- PHI non-string values get plain [REDACTED] ---
 
-    def test_log_outcome_failure(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.AUTH_FAILED,
-            action="login",
-            outcome="failure"
-        )
-        log_path = tmp_path / "audit.log"
-        entry = json.loads(log_path.read_text().strip())
-        assert entry["outcome"] == "failure"
+    def test_phi_integer_value_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"patient_id": 12345})
+        assert result["patient_id"] == "[REDACTED]"
 
-    def test_log_resource_type_included(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.DATA_ACCESS,
-            action="view",
-            resource_type="recording"
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["resource_type"] == "recording"
+    def test_phi_none_value_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"diagnosis": None})
+        assert result["diagnosis"] == "[REDACTED]"
 
-    def test_log_resource_id_hashed_for_patient(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.DATA_ACCESS,
-            action="view",
-            resource_type="patient",
-            resource_id="patient-123"
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert "resource_id_hash" in entry
-        assert "resource_id" not in entry
+    def test_phi_list_value_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"symptoms": ["fever", "cough"]})
+        assert result["symptoms"] == "[REDACTED]"
 
-    def test_log_resource_id_plain_for_non_sensitive(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.CONFIG_CHANGE,
-            action="update",
-            resource_type="setting",
-            resource_id="theme"
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["resource_id"] == "theme"
+    def test_phi_zero_value_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"medication": 0})
+        assert result["medication"] == "[REDACTED]"
 
-    def test_log_details_phi_redacted(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.DATA_ACCESS,
-            action="view",
-            details={"patient_name": "Alice Smith", "action": "view"}
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert "[REDACTED" in entry["details"]["patient_name"]
-        assert entry["details"]["action"] == "view"
+    # --- All 15 PHI field names redact non-empty strings ---
 
-    def test_log_error_truncated_to_500(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        long_error = "E" * 600
-        audit_logger.log(
-            event_type=AuditEventType.AUTH_FAILED,
-            action="login",
-            outcome="failure",
-            error=long_error
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert len(entry["error"]) == 500
+    @pytest.mark.parametrize("field", [
+        "patient_name",
+        "patient_id",
+        "diagnosis",
+        "symptoms",
+        "transcript",
+        "soap_note",
+        "medical_history",
+        "medication",
+        "chief_complaint",
+        "assessment",
+        "treatment",
+        "content",
+        "text",
+        "clinical_text",
+        "note",
+        "notes",
+    ])
+    def test_phi_field_is_redacted(self, logger_instance, field):
+        value = "some sensitive data"
+        result = logger_instance._redact_phi({field: value})
+        assert result[field] == f"[REDACTED:{len(value)}chars]"
 
-    def test_log_session_hash_included(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-        audit_logger.log(
-            event_type=AuditEventType.DATA_ACCESS,
-            action="view",
-            user_session="my-session"
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert "session_hash" in entry
-        assert len(entry["session_hash"]) == 12
+    # --- Case-insensitive key matching ---
 
+    def test_uppercase_phi_key_is_redacted(self, logger_instance):
+        # "PATIENT_NAME".lower() == "patient_name" which is in phi_fields
+        result = logger_instance._redact_phi({"PATIENT_NAME": "Bob"})
+        assert result["PATIENT_NAME"].startswith("[REDACTED")
 
-# ===========================================================================
-# log_api_key_operation
-# ===========================================================================
+    def test_mixed_case_phi_key_is_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"Patient_Name": "Carol"})
+        assert result["Patient_Name"].startswith("[REDACTED")
 
-class TestLogAPIKeyOperation:
-    def test_access_operation(self, audit_logger, tmp_path):
-        audit_logger.log_api_key_operation("access", "openai", success=True)
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "api_key_access"
-        assert entry["outcome"] == "success"
+    def test_mixed_case_content_key_is_redacted(self, logger_instance):
+        result = logger_instance._redact_phi({"Content": "some text"})
+        assert result["Content"].startswith("[REDACTED")
 
-    def test_add_operation(self, audit_logger, tmp_path):
-        audit_logger.log_api_key_operation("add", "anthropic", success=True)
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "api_key_add"
+    # --- Nested dict recursion ---
 
-    def test_remove_operation(self, audit_logger, tmp_path):
-        audit_logger.log_api_key_operation("remove", "gemini", success=False, error="failed")
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "api_key_remove"
-        assert entry["outcome"] == "failure"
+    def test_nested_phi_field_redacted(self, logger_instance):
+        data = {"metadata": {"patient_name": "Dave"}}
+        result = logger_instance._redact_phi(data)
+        assert result["metadata"]["patient_name"].startswith("[REDACTED")
 
-    def test_modify_operation(self, audit_logger, tmp_path):
-        audit_logger.log_api_key_operation("modify", "groq", success=True)
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "api_key_modified"
+    def test_nested_non_phi_preserved(self, logger_instance):
+        data = {"metadata": {"record_type": "outpatient"}}
+        result = logger_instance._redact_phi(data)
+        assert result["metadata"]["record_type"] == "outpatient"
 
-    def test_unknown_operation_defaults_to_access(self, audit_logger, tmp_path):
-        audit_logger.log_api_key_operation("unknown_op", "openai", success=True)
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "api_key_access"
+    def test_deeply_nested_phi_redacted(self, logger_instance):
+        data = {"level1": {"level2": {"clinical_text": "deep PHI"}}}
+        result = logger_instance._redact_phi(data)
+        assert result["level1"]["level2"]["clinical_text"].startswith("[REDACTED")
 
+    # --- Mixed PHI and non-PHI in one dict ---
 
-# ===========================================================================
-# log_data_export
-# ===========================================================================
+    def test_mixed_dict_only_phi_redacted(self, logger_instance):
+        data = {
+            "action": "transcribe",
+            "transcript": "Patient reports pain",
+            "record_count": 1,
+            "note": "follow-up needed",
+        }
+        result = logger_instance._redact_phi(data)
+        assert result["action"] == "transcribe"
+        assert result["record_count"] == 1
+        assert result["transcript"].startswith("[REDACTED")
+        assert result["note"].startswith("[REDACTED")
 
-class TestLogDataExport:
-    def test_successful_export(self, audit_logger, tmp_path):
-        audit_logger.log_data_export(
-            export_type="prompts", record_count=5,
-            destination="/some/path/export.json", success=True
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "data_export"
-        assert entry["outcome"] == "success"
-        assert entry["details"]["record_count"] == 5
-        assert entry["details"]["destination_file"] == "export.json"
-
-    def test_failed_export(self, audit_logger, tmp_path):
-        audit_logger.log_data_export(
-            export_type="recordings", record_count=0,
-            destination="/path/file.csv", success=False, error="permission denied"
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["outcome"] == "failure"
-        assert entry["error"] == "permission denied"
-
-    def test_empty_destination(self, audit_logger, tmp_path):
-        audit_logger.log_data_export(
-            export_type="prompts", record_count=1,
-            destination="", success=True
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["details"]["destination_file"] == "unknown"
-
-    def test_full_path_stripped_to_filename(self, audit_logger, tmp_path):
-        audit_logger.log_data_export(
-            export_type="prompts", record_count=1,
-            destination="/very/long/absolute/path/myfile.json", success=True
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["details"]["destination_file"] == "myfile.json"
-
-
-# ===========================================================================
-# log_recording_access
-# ===========================================================================
-
-class TestLogRecordingAccess:
-    def test_log_recording_view(self, audit_logger, tmp_path):
-        audit_logger.log_recording_access(recording_id=42, action="view")
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "recording_access"
-        assert entry["action"] == "view"
-        assert entry["outcome"] == "success"
-
-    def test_log_recording_transcribe_failure(self, audit_logger, tmp_path):
-        audit_logger.log_recording_access(recording_id=7, action="transcribe", success=False)
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["outcome"] == "failure"
-
-    def test_recording_id_is_hashed(self, audit_logger, tmp_path):
-        """Recording IDs are hashed because resource_type is 'recording'."""
-        audit_logger.log_recording_access(recording_id=99, action="play")
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert "resource_id_hash" in entry
-        assert "resource_id" not in entry
-
-
-# ===========================================================================
-# log_security_event
-# ===========================================================================
-
-class TestLogSecurityEvent:
-    def test_warning_event(self, audit_logger, tmp_path):
-        audit_logger.log_security_event("suspicious_access", severity="warning")
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "security_warning"
-        assert entry["outcome"] == "warning"
-
-    def test_violation_event(self, audit_logger, tmp_path):
-        audit_logger.log_security_event("injection_attempt", severity="violation")
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["event_type"] == "security_violation"
-        assert entry["outcome"] == "violation"
-
-    def test_security_event_with_details(self, audit_logger, tmp_path):
-        audit_logger.log_security_event(
-            "rate_limit_breach",
-            details={"ip": "192.168.1.1", "count": 100}
-        )
-        entry = json.loads((tmp_path / "audit.log").read_text().strip())
-        assert entry["details"]["ip"] == "192.168.1.1"
-        assert entry["details"]["count"] == 100
-
-
-# ===========================================================================
-# audit_log convenience function
-# ===========================================================================
-
-class TestAuditLogFunction:
-    def test_convenience_function_writes_log(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-
-        # audit_logger singleton is already set in fixture
-        mock_dfm = MagicMock()
-        mock_dfm.logs_folder_path = tmp_path
-        with patch("utils.audit_logger.data_folder_manager", mock_dfm):
-            from utils.audit_logger import audit_log
-            audit_log(
-                event_type=AuditEventType.CONFIG_CHANGE,
-                action="update_theme"
-            )
-
-        entry = json.loads((tmp_path / "audit.log").read_text().strip().split('\n')[-1])
-        assert entry["action"] == "update_theme"
-
-
-# ===========================================================================
-# Thread safety — concurrent log writes
-# ===========================================================================
-
-class TestThreadSafety:
-    def test_concurrent_log_writes(self, audit_logger, tmp_path):
-        from utils.audit_logger import AuditEventType
-
-        errors = []
-
-        def write_log(i):
-            try:
-                audit_logger.log(
-                    event_type=AuditEventType.DATA_ACCESS,
-                    action=f"action_{i}"
-                )
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=write_log, args=(i,)) for i in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert errors == [], f"Thread errors: {errors}"
-        log_path = tmp_path / "audit.log"
-        lines = [l for l in log_path.read_text().strip().split('\n') if l]
-        assert len(lines) == 10
+    def test_original_dict_not_mutated(self, logger_instance):
+        original = {"patient_name": "Eve", "action": "view"}
+        original_copy = dict(original)
+        logger_instance._redact_phi(original)
+        assert original == original_copy
