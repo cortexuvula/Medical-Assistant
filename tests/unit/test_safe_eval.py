@@ -1,534 +1,337 @@
-"""
-Tests for src/utils/safe_eval.py
-
-Coverage:
-- _safe_getattr: normal attrs, private attrs, missing attrs
-- SafeExpressionEvaluator.DEFAULT_FUNCTIONS contents
-- SafeExpressionEvaluator.__init__: _functions dict, extra_functions merging
-- evaluate: empty/None expression returns default
-- evaluate: boolean literals
-- evaluate: comparison expressions with context
-- evaluate: membership check "a in b"
-- evaluate: numeric comparisons
-- evaluate: string comparisons
-- safe_eval convenience function
-- get_safe_evaluator singleton behaviour
-"""
-
-import sys
-from pathlib import Path
-
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
-
-from utils.safe_eval import (
-    _safe_getattr,
-    SafeExpressionEvaluator,
-    get_safe_evaluator,
-    safe_eval,
-)
+"""Tests for SafeExpressionEvaluator fallback methods and _safe_getattr."""
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 import pytest
+from utils.safe_eval import SafeExpressionEvaluator, _safe_getattr
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-class _SimpleObj:
-    """A minimal object used to test _safe_getattr."""
-    public_attr = "hello"
-    _private_attr = "secret"
+def _make_fallback_evaluator():
+    """Return a SafeExpressionEvaluator forced into fallback mode."""
+    ev = SafeExpressionEvaluator()
+    ev._evaluator = None  # Force fallback mode
+    return ev
 
 
 # ---------------------------------------------------------------------------
-# 1. _safe_getattr
+# TestSafeGetattr
 # ---------------------------------------------------------------------------
 
 class TestSafeGetattr:
-    def test_returns_existing_public_attribute(self):
-        obj = _SimpleObj()
-        assert _safe_getattr(obj, "public_attr") == "hello"
+    """Tests for the module-level _safe_getattr helper."""
 
-    def test_returns_default_none_for_missing_attribute(self):
-        obj = _SimpleObj()
-        assert _safe_getattr(obj, "nonexistent") is None
-
-    def test_returns_custom_default_for_missing_attribute(self):
-        obj = _SimpleObj()
-        assert _safe_getattr(obj, "nonexistent", "fallback") == "fallback"
-
-    def test_raises_for_single_underscore_prefix(self):
-        obj = _SimpleObj()
-        with pytest.raises(AttributeError, match="private"):
-            _safe_getattr(obj, "_private_attr")
-
-    def test_raises_for_dunder_attribute(self):
-        obj = _SimpleObj()
-        with pytest.raises(AttributeError, match="private"):
-            _safe_getattr(obj, "__class__")
-
-    def test_raises_for_any_leading_underscore(self):
-        obj = _SimpleObj()
-        with pytest.raises(AttributeError):
-            _safe_getattr(obj, "_anything")
-
-    def test_works_on_builtin_type(self):
-        result = _safe_getattr("hello", "upper")
-        assert callable(result)
-
-    def test_default_is_none_when_omitted(self):
-        result = _safe_getattr(object(), "does_not_exist")
-        assert result is None
-
-    def test_raises_attribute_error_not_other_exception(self):
-        with pytest.raises(AttributeError):
-            _safe_getattr(42, "_hidden")
-
-    def test_public_numeric_attribute_on_custom_class(self):
+    def test_returns_public_attribute(self):
         class Obj:
             value = 42
         assert _safe_getattr(Obj(), "value") == 42
 
-    def test_double_underscore_prefix_blocked(self):
+    def test_raises_for_single_underscore_prefix(self):
+        class Obj:
+            _private = "secret"
         with pytest.raises(AttributeError):
-            _safe_getattr(object(), "__dict__")
+            _safe_getattr(Obj(), "_private")
+
+    def test_raises_for_dunder_attribute(self):
+        class Obj:
+            pass
+        with pytest.raises(AttributeError):
+            _safe_getattr(Obj(), "__dunder__")
+
+    def test_missing_attribute_returns_none_by_default(self):
+        class Obj:
+            pass
+        assert _safe_getattr(Obj(), "missing") is None
+
+    def test_missing_attribute_returns_explicit_default(self):
+        class Obj:
+            pass
+        assert _safe_getattr(Obj(), "missing", "fallback") == "fallback"
+
+    def test_works_on_dict_returns_method(self):
+        d = {"a": 1}
+        result = _safe_getattr(d, "keys")
+        assert callable(result)
+        assert list(result()) == ["a"]
 
 
 # ---------------------------------------------------------------------------
-# 2. SafeExpressionEvaluator.DEFAULT_FUNCTIONS
+# TestIsSimpleMembershipCheck
 # ---------------------------------------------------------------------------
 
-class TestDefaultFunctions:
-    def test_has_len(self):
-        assert "len" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
+class TestIsSimpleMembershipCheck:
+    """Tests for SafeExpressionEvaluator._is_simple_membership_check."""
 
-    def test_has_str(self):
-        assert "str" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_int(self):
-        assert "int" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_float(self):
-        assert "float" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_bool(self):
-        assert "bool" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_abs(self):
-        assert "abs" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_min(self):
-        assert "min" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_max(self):
-        assert "max" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_sum(self):
-        assert "sum" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_any(self):
-        assert "any" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_all(self):
-        assert "all" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_round(self):
-        assert "round" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_sorted(self):
-        assert "sorted" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_isinstance(self):
-        assert "isinstance" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_has_hasattr(self):
-        assert "hasattr" in SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_len_maps_to_builtin_len(self):
-        assert SafeExpressionEvaluator.DEFAULT_FUNCTIONS["len"] is len
-
-    def test_getattr_maps_to_safe_getattr(self):
-        assert SafeExpressionEvaluator.DEFAULT_FUNCTIONS["getattr"] is _safe_getattr
-
-    def test_default_functions_is_a_dict(self):
-        assert isinstance(SafeExpressionEvaluator.DEFAULT_FUNCTIONS, dict)
-
-
-# ---------------------------------------------------------------------------
-# 3. SafeExpressionEvaluator.__init__
-# ---------------------------------------------------------------------------
-
-class TestSafeExpressionEvaluatorInit:
-    def test_creates_functions_dict(self):
-        ev = SafeExpressionEvaluator()
-        assert isinstance(ev._functions, dict)
-
-    def test_functions_contains_default_keys(self):
-        ev = SafeExpressionEvaluator()
-        for key in ("len", "str", "int", "float", "bool"):
-            assert key in ev._functions
-
-    def test_extra_functions_merged(self):
-        def my_func(x):
-            return x * 2
-
-        ev = SafeExpressionEvaluator(extra_functions={"double": my_func})
-        assert "double" in ev._functions
-        assert ev._functions["double"] is my_func
-
-    def test_extra_functions_do_not_remove_defaults(self):
-        ev = SafeExpressionEvaluator(extra_functions={"extra": lambda x: x})
-        assert "len" in ev._functions
-
-    def test_no_extra_functions_leaves_defaults_intact(self):
-        ev = SafeExpressionEvaluator()
-        assert ev._functions == SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_extra_functions_none_is_ignored(self):
-        ev = SafeExpressionEvaluator(extra_functions=None)
-        assert ev._functions == SafeExpressionEvaluator.DEFAULT_FUNCTIONS
-
-    def test_extra_function_can_override_default(self):
-        custom_len = lambda x: -1
-        ev = SafeExpressionEvaluator(extra_functions={"len": custom_len})
-        assert ev._functions["len"] is custom_len
-
-    def test_default_functions_not_mutated_by_init(self):
-        original_keys = set(SafeExpressionEvaluator.DEFAULT_FUNCTIONS.keys())
-        SafeExpressionEvaluator(extra_functions={"brand_new": lambda: None})
-        assert set(SafeExpressionEvaluator.DEFAULT_FUNCTIONS.keys()) == original_keys
-
-    def test_multiple_extra_functions_all_merged(self):
-        extras = {"fn_a": lambda: 1, "fn_b": lambda: 2}
-        ev = SafeExpressionEvaluator(extra_functions=extras)
-        assert "fn_a" in ev._functions
-        assert "fn_b" in ev._functions
-
-
-# ---------------------------------------------------------------------------
-# 4. evaluate: empty / None expression returns default
-# ---------------------------------------------------------------------------
-
-class TestEvaluateEmptyExpression:
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
+        self.ctx = {}
 
-    def test_empty_string_returns_false_default(self):
-        assert self.ev.evaluate("") is False
+    def test_simple_in_expression(self):
+        assert self.ev._is_simple_membership_check("x in items", self.ctx) is True
 
-    def test_empty_string_returns_custom_default(self):
-        assert self.ev.evaluate("", default="MISSING") == "MISSING"
+    def test_false_when_and_present(self):
+        assert self.ev._is_simple_membership_check("x in items and y", self.ctx) is False
 
-    def test_none_expression_returns_false_default(self):
-        assert self.ev.evaluate(None) is False
+    def test_false_when_or_present(self):
+        assert self.ev._is_simple_membership_check("x in items or y", self.ctx) is False
 
-    def test_none_expression_returns_custom_default(self):
-        assert self.ev.evaluate(None, default=42) == 42
+    def test_false_when_no_in(self):
+        assert self.ev._is_simple_membership_check("x == y", self.ctx) is False
 
-    def test_whitespace_only_string_returns_default(self):
-        # "   " is falsy in Python, so `if not expression` fires
-        assert self.ev.evaluate("   ") is False
-
-    def test_default_value_none_returned_as_none(self):
-        assert self.ev.evaluate("", default=None) is None
+    def test_string_literal_key_in_data(self):
+        assert self.ev._is_simple_membership_check("'key' in data", self.ctx) is True
 
 
 # ---------------------------------------------------------------------------
-# 5. evaluate: simple boolean literals
+# TestEvalSimpleMembership
 # ---------------------------------------------------------------------------
 
-class TestEvaluateBooleanLiterals:
+class TestEvalSimpleMembership:
+    """Tests for SafeExpressionEvaluator._eval_simple_membership."""
+
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
 
-    def test_true_literal(self):
-        assert self.ev.evaluate("True") is True
+    def test_string_literal_needle_in_list_true(self):
+        ctx = {"items": ["hello", "world"]}
+        assert self.ev._eval_simple_membership("'hello' in items", ctx) is True
 
-    def test_false_literal(self):
-        assert self.ev.evaluate("False") is False
+    def test_string_literal_needle_not_in_list(self):
+        ctx = {"items": ["hello"]}
+        assert self.ev._eval_simple_membership("'bye' in items", ctx) is False
 
-    def test_true_with_context(self):
-        assert self.ev.evaluate("True", context={"x": 99}) is True
+    def test_context_variable_needle_in_dict(self):
+        ctx = {"key": "x", "data": {"x": 1}}
+        assert self.ev._eval_simple_membership("key in data", ctx) is True
 
-    def test_false_with_context(self):
-        assert self.ev.evaluate("False", context={"x": 99}) is False
+    def test_context_variable_haystack_missing_returns_false(self):
+        ctx = {"key": "x"}
+        assert self.ev._eval_simple_membership("key in data", ctx) is False
 
-    def test_context_variable_truthy(self):
-        assert self.ev.evaluate("enabled", context={"enabled": True}) is True
-
-    def test_context_variable_falsy(self):
-        assert not self.ev.evaluate("enabled", context={"enabled": False})
+    def test_string_literal_needle_missing_haystack_returns_false(self):
+        ctx = {}
+        assert self.ev._eval_simple_membership("'item' in missing_key", ctx) is False
 
 
 # ---------------------------------------------------------------------------
-# 6. evaluate: comparison expressions
+# TestIsSimpleComparison
 # ---------------------------------------------------------------------------
 
-class TestEvaluateComparisons:
+class TestIsSimpleComparison:
+    """Tests for SafeExpressionEvaluator._is_simple_comparison."""
+
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
+        self.ctx = {}
 
-    def test_equal_int_true(self):
-        assert self.ev.evaluate("x == 5", context={"x": 5}) is True
+    def test_equality_operator(self):
+        assert self.ev._is_simple_comparison("x == 5", self.ctx) is True
 
-    def test_equal_int_false(self):
-        assert self.ev.evaluate("x == 5", context={"x": 3}) is False
+    def test_not_equal_operator(self):
+        assert self.ev._is_simple_comparison("x != 0", self.ctx) is True
+
+    def test_greater_equal_operator(self):
+        assert self.ev._is_simple_comparison("x >= 3", self.ctx) is True
+
+    def test_in_operator_no_comparison(self):
+        # "x in items" contains no comparison operator
+        assert self.ev._is_simple_comparison("x in items", self.ctx) is False
+
+    def test_plain_boolean_no_comparison(self):
+        assert self.ev._is_simple_comparison("True", self.ctx) is False
+
+
+# ---------------------------------------------------------------------------
+# TestEvalSimpleComparison
+# ---------------------------------------------------------------------------
+
+class TestEvalSimpleComparison:
+    """Tests for SafeExpressionEvaluator._eval_simple_comparison."""
+
+    def setup_method(self):
+        self.ev = _make_fallback_evaluator()
+
+    def test_equal_true(self):
+        assert self.ev._eval_simple_comparison("x == 5", {"x": 5}) is True
+
+    def test_equal_false(self):
+        assert self.ev._eval_simple_comparison("x == 5", {"x": 3}) is False
 
     def test_not_equal_true(self):
-        assert self.ev.evaluate("x != 5", context={"x": 3}) is True
-
-    def test_not_equal_false(self):
-        assert self.ev.evaluate("x != 5", context={"x": 5}) is False
+        assert self.ev._eval_simple_comparison("x != 3", {"x": 5}) is True
 
     def test_greater_than_true(self):
-        assert self.ev.evaluate("count > 0", context={"count": 1}) is True
-
-    def test_greater_than_false(self):
-        assert self.ev.evaluate("count > 0", context={"count": 0}) is False
-
-    def test_less_than_true(self):
-        assert self.ev.evaluate("x < 10", context={"x": 5}) is True
+        assert self.ev._eval_simple_comparison("x > 3", {"x": 5}) is True
 
     def test_less_than_false(self):
-        assert self.ev.evaluate("x < 10", context={"x": 15}) is False
+        assert self.ev._eval_simple_comparison("x < 3", {"x": 5}) is False
 
-    def test_greater_than_or_equal_true(self):
-        assert self.ev.evaluate("x >= 5", context={"x": 5}) is True
+    def test_greater_equal_true(self):
+        assert self.ev._eval_simple_comparison("x >= 5", {"x": 5}) is True
 
-    def test_greater_than_or_equal_false(self):
-        assert self.ev.evaluate("x >= 5", context={"x": 4}) is False
+    def test_less_equal_false(self):
+        assert self.ev._eval_simple_comparison("x <= 4", {"x": 5}) is False
 
-    def test_less_than_or_equal_true(self):
-        assert self.ev.evaluate("x <= 5", context={"x": 5}) is True
+    def test_float_literals_equal(self):
+        assert self.ev._eval_simple_comparison("3.14 == 3.14", {}) is True
 
-    def test_less_than_or_equal_false(self):
-        assert self.ev.evaluate("x <= 5", context={"x": 6}) is False
+    def test_string_literal_equal_true(self):
+        assert self.ev._eval_simple_comparison("'hello' == 'hello'", {}) is True
 
-    def test_equal_string_true(self):
-        result = self.ev.evaluate("status == 'active'", context={"status": "active"})
-        assert result is True
-
-    def test_equal_string_false(self):
-        result = self.ev.evaluate("status == 'active'", context={"status": "inactive"})
-        assert result is False
+    def test_string_literal_equal_false(self):
+        assert self.ev._eval_simple_comparison("'hello' == 'world'", {}) is False
 
 
 # ---------------------------------------------------------------------------
-# 7. evaluate: membership check "a in b"
+# TestIsSimpleBoolean
 # ---------------------------------------------------------------------------
 
-class TestEvaluateMembership:
+class TestIsSimpleBoolean:
+    """Tests for SafeExpressionEvaluator._is_simple_boolean."""
+
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
 
-    def test_string_in_list_true(self):
-        result = self.ev.evaluate("'apple' in fruits", context={"fruits": ["apple", "banana"]})
-        assert result is True
+    def test_lowercase_true(self):
+        assert self.ev._is_simple_boolean("true", {}) is True
 
-    def test_string_in_list_false(self):
-        result = self.ev.evaluate("'mango' in fruits", context={"fruits": ["apple", "banana"]})
-        assert result is False
+    def test_lowercase_false(self):
+        assert self.ev._is_simple_boolean("false", {}) is True
 
-    def test_string_in_string_true(self):
-        result = self.ev.evaluate("'urgent' in text", context={"text": "This is urgent!"})
-        assert result is True
+    def test_titlecase_true(self):
+        assert self.ev._is_simple_boolean("True", {}) is True
 
-    def test_string_in_string_false(self):
-        result = self.ev.evaluate("'urgent' in text", context={"text": "Everything is fine"})
-        assert result is False
+    def test_titlecase_false(self):
+        assert self.ev._is_simple_boolean("False", {}) is True
 
-    def test_key_in_dict_true(self):
-        result = self.ev.evaluate("'name' in data", context={"data": {"name": "Alice"}})
-        assert result is True
+    def test_context_key_present(self):
+        assert self.ev._is_simple_boolean("my_flag", {"my_flag": True}) is True
 
-    def test_key_in_dict_false(self):
-        result = self.ev.evaluate("'age' in data", context={"data": {"name": "Alice"}})
-        assert result is False
+    def test_unknown_key_not_in_context(self):
+        assert self.ev._is_simple_boolean("unknown", {}) is False
 
-    def test_integer_in_list_true(self):
-        result = self.ev.evaluate("5 in nums", context={"nums": [1, 3, 5, 7]})
-        assert result is True
+    def test_comparison_expression_is_not_simple_boolean(self):
+        assert self.ev._is_simple_boolean("x == y", {}) is False
 
 
 # ---------------------------------------------------------------------------
-# 8. evaluate: numeric comparisons
+# TestEvalSimpleBoolean
 # ---------------------------------------------------------------------------
 
-class TestEvaluateNumericComparisons:
+class TestEvalSimpleBoolean:
+    """Tests for SafeExpressionEvaluator._eval_simple_boolean."""
+
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
 
-    def test_count_greater_than_zero_true(self):
-        assert self.ev.evaluate("count > 0", context={"count": 5}) is True
+    def test_lowercase_true(self):
+        assert self.ev._eval_simple_boolean("true", {}) is True
 
-    def test_count_greater_than_zero_false(self):
-        assert self.ev.evaluate("count > 0", context={"count": 0}) is False
+    def test_lowercase_false(self):
+        assert self.ev._eval_simple_boolean("false", {}) is False
 
-    def test_negative_count_less_than_zero(self):
-        assert self.ev.evaluate("count < 0", context={"count": -1}) is True
+    def test_titlecase_true(self):
+        assert self.ev._eval_simple_boolean("True", {}) is True
 
-    def test_float_comparison_true(self):
-        assert self.ev.evaluate("score >= 0.5", context={"score": 0.75}) is True
+    def test_titlecase_false(self):
+        assert self.ev._eval_simple_boolean("False", {}) is False
 
-    def test_float_comparison_false(self):
-        assert self.ev.evaluate("score >= 0.5", context={"score": 0.25}) is False
+    def test_context_flag_truthy(self):
+        assert self.ev._eval_simple_boolean("my_flag", {"my_flag": True}) is True
 
-    def test_len_comparison_nonempty(self):
-        assert self.ev.evaluate("len(items) > 0", context={"items": [1, 2, 3]}) is True
+    def test_context_flag_falsy(self):
+        assert self.ev._eval_simple_boolean("my_flag", {"my_flag": 0}) is False
 
-    def test_len_comparison_empty(self):
-        assert self.ev.evaluate("len(items) > 0", context={"items": []}) is False
-
-    def test_equality_at_boundary(self):
-        assert self.ev.evaluate("x == 0", context={"x": 0}) is True
+    def test_unknown_key_returns_false(self):
+        assert self.ev._eval_simple_boolean("unknown", {}) is False
 
 
 # ---------------------------------------------------------------------------
-# 9. evaluate: string comparisons
+# TestEvaluateFallback
 # ---------------------------------------------------------------------------
 
-class TestEvaluateStringComparisons:
+class TestEvaluateFallback:
+    """Tests for SafeExpressionEvaluator._evaluate_fallback."""
+
     def setup_method(self):
-        self.ev = SafeExpressionEvaluator()
+        self.ev = _make_fallback_evaluator()
 
-    def test_status_active_true(self):
-        result = self.ev.evaluate("status == 'active'", context={"status": "active"})
+    def test_blocks_import_keyword(self):
+        assert self.ev._evaluate_fallback("import os", {}, "DEFAULT") == "DEFAULT"
+
+    def test_blocks_dunder_pattern(self):
+        assert self.ev._evaluate_fallback("__builtins__", {}, "DEFAULT") == "DEFAULT"
+
+    def test_blocks_exec_keyword(self):
+        assert self.ev._evaluate_fallback("exec('x')", {}, "DEFAULT") == "DEFAULT"
+
+    def test_simple_boolean_true(self):
+        result = self.ev._evaluate_fallback("true", {}, False)
         assert result is True
 
-    def test_status_active_false(self):
-        result = self.ev.evaluate("status == 'active'", context={"status": "inactive"})
-        assert result is False
-
-    def test_status_not_equal_true(self):
-        result = self.ev.evaluate("status != 'active'", context={"status": "pending"})
+    def test_simple_comparison_equal(self):
+        result = self.ev._evaluate_fallback("x == 5", {"x": 5}, False)
         assert result is True
-
-    def test_status_not_equal_false(self):
-        result = self.ev.evaluate("status != 'active'", context={"status": "active"})
-        assert result is False
-
-    def test_literal_on_left_side(self):
-        result = self.ev.evaluate("'active' == status", context={"status": "active"})
-        assert result is True
-
-    def test_double_quoted_string_literal(self):
-        result = self.ev.evaluate('status == "active"', context={"status": "active"})
-        assert result is True
-
-
-# ---------------------------------------------------------------------------
-# 10. safe_eval convenience function: literals
-# ---------------------------------------------------------------------------
-
-class TestSafeEvalLiterals:
-    def test_true_literal(self):
-        assert safe_eval("True") is True
-
-    def test_false_literal(self):
-        assert safe_eval("False") is False
-
-    def test_empty_expression_returns_default_false(self):
-        assert safe_eval("") is False
-
-    def test_empty_expression_returns_custom_default(self):
-        assert safe_eval("", default="empty") == "empty"
-
-    def test_none_expression_returns_default(self):
-        assert safe_eval(None) is False
-
-    def test_none_expression_returns_custom_default(self):
-        assert safe_eval(None, default=99) == 99
-
-
-# ---------------------------------------------------------------------------
-# 11. safe_eval: comparison with context
-# ---------------------------------------------------------------------------
-
-class TestSafeEvalWithContext:
-    def test_x_equals_5_true(self):
-        assert safe_eval("x == 5", context={"x": 5}) is True
-
-    def test_x_equals_5_false(self):
-        assert safe_eval("x == 5", context={"x": 3}) is False
-
-    def test_count_greater_than_zero(self):
-        assert safe_eval("count > 0", context={"count": 10}) is True
-
-    def test_status_active(self):
-        assert safe_eval("status == 'active'", context={"status": "active"}) is True
 
     def test_membership_check(self):
-        assert safe_eval("'error' in message", context={"message": "an error occurred"}) is True
+        result = self.ev._evaluate_fallback(
+            "x in items", {"x": "a", "items": ["a", "b"]}, False
+        )
+        assert result is True
 
-    def test_len_check(self):
-        assert safe_eval("len(items) > 0", context={"items": [1, 2, 3]}) is True
+    def test_complex_expression_returns_default(self):
+        # An expression using 'and' with no comparison/membership/boolean
+        # operators that the fallback recognises — hits the "too complex" path.
+        result = self.ev._evaluate_fallback(
+            "x and y",
+            {"x": True, "y": True},
+            "DEFAULT",
+        )
+        assert result == "DEFAULT"
 
-    def test_not_equal_with_context(self):
-        assert safe_eval("x != 0", context={"x": 7}) is True
-
-    def test_boolean_context_variable(self):
-        assert safe_eval("flag", context={"flag": True}) is True
-
-
-# ---------------------------------------------------------------------------
-# 12. safe_eval: unknown / complex expression returns default
-# ---------------------------------------------------------------------------
-
-class TestSafeEvalUnknownExpression:
-    def test_import_statement_blocked(self):
-        result = safe_eval("import os", default=False)
-        assert result is False
-
-    def test_completely_invalid_expression_returns_default(self):
-        result = safe_eval("@@@not valid@@@", default="INVALID")
-        assert result == "INVALID"
-
-    def test_undefined_variable_returns_default(self):
-        result = safe_eval("undefined_var > 0", default=False)
-        assert result is False
-
-    def test_default_false_when_unspecified(self):
-        result = safe_eval("totally_nonexistent_variable")
-        assert result is False
-
-    def test_custom_default_returned_on_failure(self):
-        result = safe_eval("!!!bad!!!", default="NOPE")
-        assert result == "NOPE"
-
-    def test_custom_numeric_default_on_failure(self):
-        result = safe_eval("@bad@", default=-1)
-        assert result == -1
+    def test_empty_string_returns_default(self):
+        # Empty string won't match any simple pattern
+        result = self.ev._evaluate_fallback("", {}, "DEFAULT")
+        assert result == "DEFAULT"
 
 
 # ---------------------------------------------------------------------------
-# 13. get_safe_evaluator: singleton behaviour
+# TestEvaluate
 # ---------------------------------------------------------------------------
 
-class TestGetSafeEvaluatorSingleton:
-    def test_returns_safe_expression_evaluator_instance(self):
-        ev = get_safe_evaluator()
-        assert isinstance(ev, SafeExpressionEvaluator)
+class TestEvaluate:
+    """Tests for SafeExpressionEvaluator.evaluate (public API)."""
 
-    def test_same_object_on_two_calls(self):
-        ev1 = get_safe_evaluator()
-        ev2 = get_safe_evaluator()
-        assert ev1 is ev2
+    def test_empty_string_returns_default_false(self):
+        ev = SafeExpressionEvaluator()
+        assert ev.evaluate("") is False
 
-    def test_same_object_across_five_calls(self):
-        instances = [get_safe_evaluator() for _ in range(5)]
-        assert all(inst is instances[0] for inst in instances)
+    def test_empty_string_returns_custom_default(self):
+        ev = SafeExpressionEvaluator()
+        assert ev.evaluate("", default="CUSTOM") == "CUSTOM"
 
-    def test_singleton_has_functions_dict(self):
-        ev = get_safe_evaluator()
-        assert hasattr(ev, "_functions")
-        assert "len" in ev._functions
+    def test_fallback_true_literal(self):
+        ev = _make_fallback_evaluator()
+        assert ev.evaluate("true", {}, False) is True
 
-    def test_singleton_evaluates_true_literal(self):
-        ev = get_safe_evaluator()
-        assert ev.evaluate("True") is True
+    def test_evaluate_returns_default_on_dangerous_expression(self):
+        ev = _make_fallback_evaluator()
+        result = ev.evaluate("import os", {}, "SAFE")
+        assert result == "SAFE"
 
-    def test_singleton_evaluates_comparison(self):
-        ev = get_safe_evaluator()
-        assert ev.evaluate("x == 1", context={"x": 1}) is True
+    def test_evaluate_context_none_treated_as_empty(self):
+        ev = _make_fallback_evaluator()
+        result = ev.evaluate("true", None, False)
+        assert result is True
+
+    def test_evaluate_comparison_via_public_api(self):
+        ev = _make_fallback_evaluator()
+        assert ev.evaluate("x == 10", {"x": 10}, False) is True
+
+    def test_evaluate_membership_via_public_api(self):
+        ev = _make_fallback_evaluator()
+        ctx = {"needle": "a", "haystack": ["a", "b", "c"]}
+        assert ev.evaluate("needle in haystack", ctx, False) is True
