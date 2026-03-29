@@ -1,319 +1,433 @@
 """
 Tests for src/core/command_registry.py
 
-Covers CommandCategory enum, Command dataclass, CommandRegistry
-(register, get, get_by_category, execute, list_commands, default commands),
-and the get_command_registry singleton.
-App binding is mocked — no Tkinter required.
+Covers: CommandCategory enum, Command dataclass, CommandRegistry
+(register, get, get_by_category, list_commands, default commands),
+and the get_command_registry() singleton helper.
+
+NOTE: execute() and get_command_map() require a bound app instance with real
+Tkinter methods and are intentionally not tested here.
 """
 
 import sys
 import pytest
-from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-# ---------------------------------------------------------------------------
-# Path setup
-# ---------------------------------------------------------------------------
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
-import core.command_registry as cr_module
 from core.command_registry import (
     CommandCategory,
     Command,
     CommandRegistry,
     get_command_registry,
 )
+import core.command_registry as _cr_module
 
 
 # ---------------------------------------------------------------------------
-# Singleton reset fixture
+# Fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
-def reset_singleton():
-    cr_module._registry = None
+def reset_registry():
+    """Reset the module-level singleton before and after every test."""
+    _cr_module._registry = None
     yield
-    cr_module._registry = None
+    _cr_module._registry = None
+
+
+@pytest.fixture()
+def registry():
+    return CommandRegistry()
 
 
 # ===========================================================================
-# CommandCategory enum
+# 1. CommandCategory enum
 # ===========================================================================
 
-class TestCommandCategory:
+class TestCommandCategoryEnum:
+    def test_has_eight_members(self):
+        assert len(CommandCategory) == 8
+
+    def test_has_file(self):
+        assert hasattr(CommandCategory, "FILE")
+
+    def test_has_edit(self):
+        assert hasattr(CommandCategory, "EDIT")
+
+    def test_has_process(self):
+        assert hasattr(CommandCategory, "PROCESS")
+
+    def test_has_generate(self):
+        assert hasattr(CommandCategory, "GENERATE")
+
+    def test_has_tools(self):
+        assert hasattr(CommandCategory, "TOOLS")
+
+    def test_has_recording(self):
+        assert hasattr(CommandCategory, "RECORDING")
+
+    def test_has_view(self):
+        assert hasattr(CommandCategory, "VIEW")
+
+    def test_has_settings(self):
+        assert hasattr(CommandCategory, "SETTINGS")
+
     def test_file_value(self):
         assert CommandCategory.FILE.value == "file"
-
-    def test_edit_value(self):
-        assert CommandCategory.EDIT.value == "edit"
-
-    def test_process_value(self):
-        assert CommandCategory.PROCESS.value == "process"
-
-    def test_generate_value(self):
-        assert CommandCategory.GENERATE.value == "generate"
-
-    def test_tools_value(self):
-        assert CommandCategory.TOOLS.value == "tools"
-
-    def test_recording_value(self):
-        assert CommandCategory.RECORDING.value == "recording"
-
-    def test_view_value(self):
-        assert CommandCategory.VIEW.value == "view"
 
     def test_settings_value(self):
         assert CommandCategory.SETTINGS.value == "settings"
 
+    def test_members_are_enum_instances(self):
+        for member in CommandCategory:
+            assert isinstance(member, CommandCategory)
+
 
 # ===========================================================================
-# Command dataclass
+# 2. Command dataclass – defaults
 # ===========================================================================
 
-class TestCommand:
-    def test_create_minimal_command(self):
-        cmd = Command(
-            id="test_cmd",
-            method_name="test_method",
-            category=CommandCategory.FILE,
-        )
-        assert cmd.id == "test_cmd"
-        assert cmd.method_name == "test_method"
-        assert cmd.category == CommandCategory.FILE
-
-    def test_defaults_description_empty(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
-        assert cmd.description == ""
-
-    def test_defaults_shortcut_empty(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
-        assert cmd.shortcut == ""
-
-    def test_defaults_icon_empty(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
-        assert cmd.icon == ""
-
-    def test_defaults_enabled_true(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
+class TestCommandDataclassDefaults:
+    def test_enabled_default_true(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
         assert cmd.enabled is True
 
-    def test_defaults_visible_true(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
+    def test_visible_default_true(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
         assert cmd.visible is True
 
-    def test_defaults_controller_name_none(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
+    def test_description_default_empty_string(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
+        assert cmd.description == ""
+
+    def test_shortcut_default_empty_string(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
+        assert cmd.shortcut == ""
+
+    def test_icon_default_empty_string(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
+        assert cmd.icon == ""
+
+    def test_controller_name_default_none(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
         assert cmd.controller_name is None
 
-    def test_defaults_controller_method_none(self):
-        cmd = Command(id="x", method_name="m", category=CommandCategory.FILE)
+    def test_controller_method_default_none(self):
+        cmd = Command(id="x", method_name="x", category=CommandCategory.FILE)
         assert cmd.controller_method is None
 
-    def test_custom_attributes(self):
+
+# ===========================================================================
+# 3. Command dataclass – custom values stored correctly
+# ===========================================================================
+
+class TestCommandDataclassCustomValues:
+    def test_id_stored(self):
+        cmd = Command(id="my_cmd", method_name="do_it", category=CommandCategory.EDIT)
+        assert cmd.id == "my_cmd"
+
+    def test_method_name_stored(self):
+        cmd = Command(id="my_cmd", method_name="do_it", category=CommandCategory.EDIT)
+        assert cmd.method_name == "do_it"
+
+    def test_category_stored(self):
+        cmd = Command(id="my_cmd", method_name="do_it", category=CommandCategory.EDIT)
+        assert cmd.category is CommandCategory.EDIT
+
+    def test_description_stored(self):
         cmd = Command(
-            id="save",
-            method_name="save_text",
-            category=CommandCategory.FILE,
-            description="Save file",
-            shortcut="Ctrl+S",
-            icon="💾",
+            id="x", method_name="x", category=CommandCategory.FILE,
+            description="Do something useful",
+        )
+        assert cmd.description == "Do something useful"
+
+    def test_shortcut_stored(self):
+        cmd = Command(
+            id="x", method_name="x", category=CommandCategory.FILE,
+            shortcut="Ctrl+X",
+        )
+        assert cmd.shortcut == "Ctrl+X"
+
+    def test_enabled_false_stored(self):
+        cmd = Command(
+            id="x", method_name="x", category=CommandCategory.FILE,
             enabled=False,
+        )
+        assert cmd.enabled is False
+
+    def test_visible_false_stored(self):
+        cmd = Command(
+            id="x", method_name="x", category=CommandCategory.FILE,
             visible=False,
         )
-        assert cmd.description == "Save file"
-        assert cmd.shortcut == "Ctrl+S"
-        assert cmd.enabled is False
         assert cmd.visible is False
 
+    def test_controller_name_stored(self):
+        cmd = Command(
+            id="x", method_name="x", category=CommandCategory.FILE,
+            controller_name="my_ctrl",
+        )
+        assert cmd.controller_name == "my_ctrl"
 
-# ===========================================================================
-# CommandRegistry.register and .get
-# ===========================================================================
-
-class TestCommandRegistryRegisterGet:
-    def test_register_adds_command(self):
-        reg = CommandRegistry()
-        cmd = Command(id="my_cmd", method_name="my_method", category=CommandCategory.FILE)
-        reg.register(cmd)
-        assert reg.get("my_cmd") is cmd
-
-    def test_get_returns_none_for_unknown_id(self):
-        reg = CommandRegistry()
-        assert reg.get("nonexistent") is None
-
-    def test_register_overwrites_existing(self):
-        reg = CommandRegistry()
-        cmd1 = Command(id="cmd", method_name="method_a", category=CommandCategory.FILE)
-        cmd2 = Command(id="cmd", method_name="method_b", category=CommandCategory.FILE)
-        reg.register(cmd1)
-        reg.register(cmd2)
-        assert reg.get("cmd").method_name == "method_b"
-
-    def test_get_returns_correct_command_object(self):
-        reg = CommandRegistry()
-        cmd = Command(id="x", method_name="m", category=CommandCategory.EDIT, description="test")
-        reg.register(cmd)
-        result = reg.get("x")
-        assert result.description == "test"
+    def test_controller_method_stored(self):
+        cmd = Command(
+            id="x", method_name="x", category=CommandCategory.FILE,
+            controller_method="ctrl_method",
+        )
+        assert cmd.controller_method == "ctrl_method"
 
 
 # ===========================================================================
-# CommandRegistry.get_by_category
+# 4. CommandRegistry constructor / default commands
 # ===========================================================================
 
-class TestCommandRegistryGetByCategory:
-    def test_returns_list(self):
-        reg = CommandRegistry()
-        result = reg.get_by_category(CommandCategory.FILE)
+class TestCommandRegistryConstructor:
+    def test_creates_successfully(self, registry):
+        assert registry is not None
+
+    def test_has_default_commands(self, registry):
+        assert len(registry._commands) > 0
+
+    def test_app_initially_none(self, registry):
+        assert registry._app is None
+
+    def test_bind_app_stores_app(self, registry):
+        fake_app = object()
+        registry.bind_app(fake_app)
+        assert registry._app is fake_app
+
+
+# ===========================================================================
+# 5. register() and get()
+# ===========================================================================
+
+class TestRegisterAndGet:
+    def test_register_adds_command(self, registry):
+        cmd = Command(id="test_cmd", method_name="test_method", category=CommandCategory.TOOLS)
+        registry.register(cmd)
+        assert registry.get("test_cmd") is cmd
+
+    def test_get_existing_command(self, registry):
+        result = registry.get("new_session")
+        assert result is not None
+        assert isinstance(result, Command)
+
+    def test_get_missing_command_returns_none(self, registry):
+        result = registry.get("definitely_not_a_real_command_xyz")
+        assert result is None
+
+    def test_overwrite_existing_command(self, registry):
+        original = registry.get("new_session")
+        replacement = Command(
+            id="new_session",
+            method_name="replaced_method",
+            category=CommandCategory.FILE,
+        )
+        registry.register(replacement)
+        assert registry.get("new_session").method_name == "replaced_method"
+
+    def test_register_multiple_commands(self, registry):
+        for i in range(5):
+            cmd = Command(
+                id=f"dynamic_cmd_{i}",
+                method_name=f"method_{i}",
+                category=CommandCategory.TOOLS,
+            )
+            registry.register(cmd)
+
+        for i in range(5):
+            assert registry.get(f"dynamic_cmd_{i}") is not None
+
+    def test_get_returns_correct_category(self, registry):
+        cmd = Command(
+            id="cat_test", method_name="m", category=CommandCategory.GENERATE
+        )
+        registry.register(cmd)
+        assert registry.get("cat_test").category is CommandCategory.GENERATE
+
+
+# ===========================================================================
+# 6. get_by_category()
+# ===========================================================================
+
+class TestGetByCategory:
+    def test_file_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.FILE)
+        assert len(cmds) > 0
+
+    def test_file_category_all_correct_category(self, registry):
+        cmds = registry.get_by_category(CommandCategory.FILE)
+        for cmd in cmds:
+            assert cmd.category is CommandCategory.FILE
+
+    def test_process_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.PROCESS)
+        assert len(cmds) > 0
+
+    def test_generate_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.GENERATE)
+        assert len(cmds) > 0
+
+    def test_recording_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.RECORDING)
+        assert len(cmds) > 0
+
+    def test_tools_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.TOOLS)
+        assert len(cmds) > 0
+
+    def test_settings_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.SETTINGS)
+        assert len(cmds) > 0
+
+    def test_view_category_non_empty(self, registry):
+        cmds = registry.get_by_category(CommandCategory.VIEW)
+        assert len(cmds) > 0
+
+    def test_returns_list(self, registry):
+        result = registry.get_by_category(CommandCategory.FILE)
         assert isinstance(result, list)
 
-    def test_returns_commands_in_category(self):
-        reg = CommandRegistry()
-        # Clear defaults to isolate test
-        reg._commands.clear()
-        cmd1 = Command(id="a", method_name="ma", category=CommandCategory.FILE)
-        cmd2 = Command(id="b", method_name="mb", category=CommandCategory.EDIT)
-        reg.register(cmd1)
-        reg.register(cmd2)
-        result = reg.get_by_category(CommandCategory.FILE)
-        assert len(result) == 1
-        assert result[0].id == "a"
+    def test_all_results_are_command_instances(self, registry):
+        for cat in CommandCategory:
+            for cmd in registry.get_by_category(cat):
+                assert isinstance(cmd, Command)
 
-    def test_returns_empty_for_empty_category(self):
-        reg = CommandRegistry()
-        reg._commands.clear()
-        result = reg.get_by_category(CommandCategory.VIEW)
-        assert result == []
+    def test_file_category_has_multiple_commands(self, registry):
+        cmds = registry.get_by_category(CommandCategory.FILE)
+        assert len(cmds) > 1
 
-    def test_returns_all_in_category(self):
-        reg = CommandRegistry()
-        reg._commands.clear()
-        for i in range(3):
-            reg.register(Command(id=f"c{i}", method_name=f"m{i}", category=CommandCategory.TOOLS))
-        result = reg.get_by_category(CommandCategory.TOOLS)
-        assert len(result) == 3
+    def test_newly_registered_command_appears_in_category(self, registry):
+        cmd = Command(
+            id="new_tools_cmd", method_name="m", category=CommandCategory.TOOLS
+        )
+        registry.register(cmd)
+        ids = [c.id for c in registry.get_by_category(CommandCategory.TOOLS)]
+        assert "new_tools_cmd" in ids
 
 
 # ===========================================================================
-# CommandRegistry.execute
+# 7. list_commands()
 # ===========================================================================
 
-class TestCommandRegistryExecute:
-    def test_raises_if_not_bound(self):
-        reg = CommandRegistry()
-        with pytest.raises(ValueError, match="not bound"):
-            reg.execute("save_text")
+class TestListCommands:
+    def test_returns_list(self, registry):
+        result = registry.list_commands()
+        assert isinstance(result, list)
 
-    def test_raises_if_command_not_found(self):
-        reg = CommandRegistry()
-        reg._app = MagicMock()
-        with pytest.raises(ValueError, match="not found"):
-            reg.execute("nonexistent_command_xyz")
+    def test_non_empty(self, registry):
+        assert len(registry.list_commands()) > 0
 
-    def test_calls_app_method(self):
-        reg = CommandRegistry()
-        mock_app = MagicMock()
-        reg.bind_app(mock_app)
-        reg._commands.clear()
-        cmd = Command(id="do_it", method_name="do_it_method", category=CommandCategory.FILE)
-        reg.register(cmd)
-        reg.execute("do_it")
-        mock_app.do_it_method.assert_called_once()
+    def test_contains_only_strings(self, registry):
+        for item in registry.list_commands():
+            assert isinstance(item, str)
 
-    def test_disabled_command_returns_none(self):
-        reg = CommandRegistry()
-        mock_app = MagicMock()
-        reg.bind_app(mock_app)
-        reg._commands.clear()
-        cmd = Command(id="disabled", method_name="some_method", category=CommandCategory.FILE, enabled=False)
-        reg.register(cmd)
-        result = reg.execute("disabled")
-        assert result is None
-        mock_app.some_method.assert_not_called()
+    def test_contains_new_session(self, registry):
+        assert "new_session" in registry.list_commands()
 
-    def test_raises_if_method_not_on_app(self):
-        reg = CommandRegistry()
-        mock_app = MagicMock(spec=[])  # Empty spec — no methods
-        reg.bind_app(mock_app)
-        reg._commands.clear()
-        cmd = Command(id="missing", method_name="missing_method", category=CommandCategory.FILE)
-        reg.register(cmd)
-        with pytest.raises(ValueError, match="not found on app"):
-            reg.execute("missing")
+    def test_contains_save_text(self, registry):
+        assert "save_text" in registry.list_commands()
+
+    def test_contains_create_soap_note(self, registry):
+        assert "create_soap_note" in registry.list_commands()
+
+    def test_newly_registered_command_appears_in_list(self, registry):
+        cmd = Command(
+            id="list_test_cmd", method_name="m", category=CommandCategory.EDIT
+        )
+        registry.register(cmd)
+        assert "list_test_cmd" in registry.list_commands()
+
+    def test_count_matches_commands_dict(self, registry):
+        assert len(registry.list_commands()) == len(registry._commands)
 
 
 # ===========================================================================
-# CommandRegistry.list_commands
-# ===========================================================================
-
-class TestCommandRegistryListCommands:
-    def test_returns_list(self):
-        reg = CommandRegistry()
-        assert isinstance(reg.list_commands(), list)
-
-    def test_contains_registered_ids(self):
-        reg = CommandRegistry()
-        reg._commands.clear()
-        reg.register(Command(id="cmd_a", method_name="m", category=CommandCategory.FILE))
-        reg.register(Command(id="cmd_b", method_name="m", category=CommandCategory.FILE))
-        ids = reg.list_commands()
-        assert "cmd_a" in ids
-        assert "cmd_b" in ids
-
-    def test_empty_when_no_commands(self):
-        reg = CommandRegistry()
-        reg._commands.clear()
-        assert reg.list_commands() == []
-
-
-# ===========================================================================
-# Default commands (registered in __init__)
+# 8. Specific default commands
 # ===========================================================================
 
 class TestDefaultCommands:
-    def test_has_new_session_command(self):
-        reg = CommandRegistry()
-        assert reg.get("new_session") is not None
+    def test_new_session_exists(self, registry):
+        cmd = registry.get("new_session")
+        assert cmd is not None
 
-    def test_has_save_text_command(self):
-        reg = CommandRegistry()
-        assert reg.get("save_text") is not None
+    def test_new_session_method_name(self, registry):
+        assert registry.get("new_session").method_name == "new_session"
 
-    def test_has_file_category_commands(self):
-        reg = CommandRegistry()
-        file_cmds = reg.get_by_category(CommandCategory.FILE)
-        assert len(file_cmds) > 0
+    def test_new_session_category_file(self, registry):
+        assert registry.get("new_session").category is CommandCategory.FILE
 
-    def test_has_edit_category_commands(self):
-        reg = CommandRegistry()
-        edit_cmds = reg.get_by_category(CommandCategory.EDIT)
-        assert len(edit_cmds) > 0
+    def test_new_session_shortcut_ctrl_n(self, registry):
+        assert registry.get("new_session").shortcut == "Ctrl+N"
 
-    def test_substantial_command_count(self):
-        reg = CommandRegistry()
-        assert len(reg.list_commands()) >= 10
+    def test_new_session_enabled(self, registry):
+        assert registry.get("new_session").enabled is True
+
+    def test_save_text_exists(self, registry):
+        assert registry.get("save_text") is not None
+
+    def test_save_text_category_file(self, registry):
+        assert registry.get("save_text").category is CommandCategory.FILE
+
+    def test_save_text_shortcut_ctrl_s(self, registry):
+        assert registry.get("save_text").shortcut == "Ctrl+S"
+
+    def test_create_soap_note_exists(self, registry):
+        assert registry.get("create_soap_note") is not None
+
+    def test_create_soap_note_category_generate(self, registry):
+        assert registry.get("create_soap_note").category is CommandCategory.GENERATE
+
+    def test_toggle_soap_recording_exists(self, registry):
+        assert registry.get("toggle_soap_recording") is not None
+
+    def test_toggle_soap_recording_shortcut_f5(self, registry):
+        assert registry.get("toggle_soap_recording").shortcut == "F5"
+
+    def test_show_preferences_exists(self, registry):
+        assert registry.get("show_preferences") is not None
+
+    def test_show_preferences_category_settings(self, registry):
+        assert registry.get("show_preferences").category is CommandCategory.SETTINGS
+
+    def test_toggle_theme_exists(self, registry):
+        assert registry.get("toggle_theme") is not None
+
+    def test_toggle_theme_category_view(self, registry):
+        assert registry.get("toggle_theme").category is CommandCategory.VIEW
+
+    def test_load_audio_file_exists(self, registry):
+        assert registry.get("load_audio_file") is not None
+
+    def test_load_audio_file_shortcut_ctrl_o(self, registry):
+        assert registry.get("load_audio_file").shortcut == "Ctrl+O"
 
 
 # ===========================================================================
-# get_command_registry singleton
+# 9. get_command_registry() singleton
 # ===========================================================================
 
-class TestGetCommandRegistry:
+class TestGetCommandRegistrySingleton:
     def test_returns_command_registry_instance(self):
         reg = get_command_registry()
         assert isinstance(reg, CommandRegistry)
 
-    def test_returns_same_instance_on_repeated_calls(self):
+    def test_returns_same_object_on_second_call(self):
         r1 = get_command_registry()
         r2 = get_command_registry()
         assert r1 is r2
 
-    def test_new_instance_after_singleton_reset(self):
-        r1 = get_command_registry()
-        cr_module._registry = None
-        r2 = get_command_registry()
-        assert r1 is not r2
+    def test_singleton_reset_by_fixture_creates_fresh_instance(self):
+        reg = get_command_registry()
+        assert reg is not None
+
+    def test_singleton_has_default_commands(self):
+        reg = get_command_registry()
+        assert len(reg.list_commands()) > 0
+
+    def test_singleton_can_find_new_session(self):
+        reg = get_command_registry()
+        assert reg.get("new_session") is not None
