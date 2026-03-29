@@ -1,16 +1,20 @@
 """
-Comprehensive tests for ai.agents.registry — ToolRegistry.
+Comprehensive tests for ToolRegistry in src/ai/agents/registry.py.
 
-Covers:
-- Default tool names (all 10 present after __init__)
-- Default tool parameter counts and structure
-- register_tool: add new, overwrite existing, warning on overwrite
-- get_tool: known name, unknown name
-- list_tools: returns copy, mutation isolation, contains all 10 defaults
-- remove_tool: True on existing, False on missing, actually removes
-- get_tools_for_agent: medication (6), diagnostic (3), referral (1), unknown (empty)
-- Case sensitivity: "MEDICATION" lowercased → same result as "medication"
-- Module-level singleton tool_registry exists and is populated
+All methods are pure dict operations with no I/O, so no mocking is needed.
+
+Test classes:
+  TestToolRegistryInit          (6)
+  TestGetTool                   (8)
+  TestListTools                 (5)
+  TestRegisterTool              (8)
+  TestRemoveTool                (8)
+  TestGetToolsForAgent         (12)
+  TestDefaultToolStructure      (8)
+  ── extra parametrized edge-case classes (keeps the existing coverage) ──
+  TestDefaultToolParameterCounts
+  TestCaseSensitivity
+  TestModuleLevelSingleton
 """
 
 import sys
@@ -27,22 +31,8 @@ from ai.agents.models import Tool, ToolParameter
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Constants / helpers
 # ---------------------------------------------------------------------------
-
-def _make_tool(name: str, description: str = "A test tool", num_params: int = 1) -> Tool:
-    """Create a minimal Tool for testing."""
-    params = [
-        ToolParameter(
-            name=f"param_{i}",
-            type="string",
-            description=f"Parameter {i}",
-            required=(i == 0),
-        )
-        for i in range(num_params)
-    ]
-    return Tool(name=name, description=description, parameters=params)
-
 
 ALL_DEFAULT_TOOL_NAMES = [
     "search_icd_codes",
@@ -77,540 +67,472 @@ REFERRAL_TOOL_NAMES = [
 ]
 
 
+@pytest.fixture
+def registry():
+    return ToolRegistry()
+
+
+def make_tool(name="test_tool", description="A test tool", params=None):
+    params = params or []
+    return Tool(name=name, description=description, parameters=params)
+
+
+def make_param(name="p", type_="string", required=True, default=None):
+    return ToolParameter(
+        name=name,
+        type=type_,
+        description=f"Parameter {name}",
+        required=required,
+        default=default,
+    )
+
+
+def _get_param(registry: ToolRegistry, tool_name: str, param_name: str):
+    """Return the named ToolParameter from the named tool, or None."""
+    tool = registry.get_tool(tool_name)
+    assert tool is not None, f"Tool '{tool_name}' not found in registry"
+    for p in tool.parameters:
+        if p.name == param_name:
+            return p
+    return None
+
+
 # ===========================================================================
-# 1. Initialization — default tools present
+# TestToolRegistryInit  (6 tests)
 # ===========================================================================
 
-class TestInitialization:
-    def test_creates_instance(self):
-        registry = ToolRegistry()
-        assert registry is not None
+class TestToolRegistryInit:
+    """Instance creation and initial state."""
 
-    def test_has_internal_tools_dict(self):
-        registry = ToolRegistry()
-        assert hasattr(registry, "_tools")
+    def test_instance_created_without_error(self):
+        reg = ToolRegistry()
+        assert reg is not None
+
+    def test_has_ten_default_tools(self, registry):
+        assert len(registry._tools) == 10
+
+    def test_spot_check_five_default_tool_names_present(self, registry):
+        spot_check = [
+            "search_icd_codes",
+            "calculate_bmi",
+            "format_prescription",
+            "extract_vitals",
+            "lookup_drug_interactions",
+        ]
+        for name in spot_check:
+            assert name in registry._tools, f"Expected default tool '{name}' not found"
+
+    def test_tools_attribute_is_dict(self, registry):
         assert isinstance(registry._tools, dict)
 
-    def test_exactly_10_default_tools(self):
-        registry = ToolRegistry()
-        assert len(registry.list_tools()) == 10
+    def test_list_tools_returns_copy_not_reference(self, registry):
+        copy = registry.list_tools()
+        copy["injected"] = make_tool("injected")
+        assert "injected" not in registry._tools
 
-    @pytest.mark.parametrize("name", ALL_DEFAULT_TOOL_NAMES)
-    def test_each_default_tool_present(self, name):
-        registry = ToolRegistry()
-        assert registry.get_tool(name) is not None, f"Default tool '{name}' missing"
-
-    def test_fresh_instances_are_independent(self):
-        r1 = ToolRegistry()
-        r2 = ToolRegistry()
-        r1.remove_tool("calculate_bmi")
-        assert r2.get_tool("calculate_bmi") is not None
-
-    def test_all_default_tool_values_are_tool_instances(self):
-        registry = ToolRegistry()
+    def test_each_default_tool_is_tool_instance(self, registry):
         for name, tool in registry._tools.items():
-            assert isinstance(tool, Tool), f"_tools['{name}'] is not a Tool"
-
-    def test_default_tools_keys_match_tool_names(self):
-        registry = ToolRegistry()
-        for key, tool in registry._tools.items():
-            assert key == tool.name, f"Key '{key}' does not match tool.name '{tool.name}'"
+            assert isinstance(tool, Tool), (
+                f"Tool '{name}' is {type(tool)}, expected Tool"
+            )
 
 
 # ===========================================================================
-# 2. Default tool parameter counts
+# TestGetTool  (8 tests)
+# ===========================================================================
+
+class TestGetTool:
+    """ToolRegistry.get_tool behaviour."""
+
+    def test_get_tool_returns_correct_tool_for_known_name(self, registry):
+        tool = registry.get_tool("calculate_bmi")
+        assert tool is not None
+        assert tool.name == "calculate_bmi"
+
+    def test_get_tool_returns_none_for_unknown_name(self, registry):
+        assert registry.get_tool("nonexistent_tool") is None
+
+    def test_get_tool_returns_none_for_empty_string(self, registry):
+        assert registry.get_tool("") is None
+
+    def test_get_tool_is_case_sensitive_wrong_case_returns_none(self, registry):
+        assert registry.get_tool("Calculate_BMI") is None
+        assert registry.get_tool("CALCULATE_BMI") is None
+        assert registry.get_tool("Search_ICD_Codes") is None
+
+    def test_get_tool_calculate_bmi_has_correct_name_attribute(self, registry):
+        tool = registry.get_tool("calculate_bmi")
+        assert tool is not None
+        assert tool.name == "calculate_bmi"
+
+    def test_get_tool_search_icd_codes_has_icd_in_description(self, registry):
+        tool = registry.get_tool("search_icd_codes")
+        assert tool is not None
+        assert "ICD" in tool.description or "icd" in tool.description.lower()
+
+    def test_get_tool_after_register_returns_new_tool(self, registry):
+        new_tool = make_tool("brand_new_tool", "Brand new")
+        registry.register_tool(new_tool)
+        result = registry.get_tool("brand_new_tool")
+        assert result is not None
+        assert result.name == "brand_new_tool"
+
+    def test_get_tool_after_remove_returns_none(self, registry):
+        registry.remove_tool("calculate_bmi")
+        assert registry.get_tool("calculate_bmi") is None
+
+
+# ===========================================================================
+# TestListTools  (5 tests)
+# ===========================================================================
+
+class TestListTools:
+    """ToolRegistry.list_tools behaviour."""
+
+    def test_list_tools_has_ten_entries_initially(self, registry):
+        assert len(registry.list_tools()) == 10
+
+    def test_list_tools_returns_dict(self, registry):
+        assert isinstance(registry.list_tools(), dict)
+
+    def test_list_tools_is_a_copy_mutating_does_not_affect_registry(self, registry):
+        listing = registry.list_tools()
+        listing["phantom"] = make_tool("phantom")
+        assert "phantom" not in registry._tools
+
+    def test_list_tools_includes_all_registered_tools_after_register_tool(self, registry):
+        extra = make_tool("extra_tool")
+        registry.register_tool(extra)
+        listing = registry.list_tools()
+        assert "extra_tool" in listing
+
+    def test_list_tools_has_one_fewer_after_remove_tool(self, registry):
+        before = len(registry.list_tools())
+        registry.remove_tool("extract_vitals")
+        after = len(registry.list_tools())
+        assert after == before - 1
+
+
+# ===========================================================================
+# TestRegisterTool  (8 tests)
+# ===========================================================================
+
+class TestRegisterTool:
+    """ToolRegistry.register_tool behaviour."""
+
+    def test_register_tool_adds_new_tool_size_increases_by_one(self, registry):
+        before = len(registry._tools)
+        registry.register_tool(make_tool("new_tool"))
+        assert len(registry._tools) == before + 1
+
+    def test_register_tool_returns_none(self, registry):
+        result = registry.register_tool(make_tool("silent_tool"))
+        assert result is None
+
+    def test_register_tool_overwrites_existing_tool_with_same_name(self, registry):
+        replacement = Tool(
+            name="calculate_bmi",
+            description="Overwritten description",
+            parameters=[],
+        )
+        registry.register_tool(replacement)
+        tool = registry.get_tool("calculate_bmi")
+        assert tool.description == "Overwritten description"
+
+    def test_registered_tool_is_retrievable_by_get_tool(self, registry):
+        t = make_tool("retrievable_tool", "A tool to retrieve")
+        registry.register_tool(t)
+        assert registry.get_tool("retrievable_tool") is t
+
+    def test_register_tool_with_custom_parameters(self, registry):
+        params = [
+            make_param("dose", "string"),
+            make_param("route", "string"),
+        ]
+        t = make_tool("custom_params_tool", "Tool with params", params=params)
+        registry.register_tool(t)
+        result = registry.get_tool("custom_params_tool")
+        assert result is not None
+        param_names = [p.name for p in result.parameters]
+        assert "dose" in param_names
+        assert "route" in param_names
+
+    def test_multiple_register_tool_calls_work_correctly(self, registry):
+        for i in range(5):
+            registry.register_tool(make_tool(f"bulk_tool_{i}"))
+        for i in range(5):
+            assert registry.get_tool(f"bulk_tool_{i}") is not None
+
+    def test_register_tool_with_minimal_tool(self, registry):
+        minimal = Tool(name="minimal", description="min")
+        registry.register_tool(minimal)
+        assert registry.get_tool("minimal") is not None
+
+    def test_overwrite_does_not_duplicate_entry(self, registry):
+        original_size = len(registry._tools)
+        dup = Tool(name="search_icd_codes", description="duplicate", parameters=[])
+        registry.register_tool(dup)
+        assert len(registry._tools) == original_size
+
+
+# ===========================================================================
+# TestRemoveTool  (8 tests)
+# ===========================================================================
+
+class TestRemoveTool:
+    """ToolRegistry.remove_tool behaviour."""
+
+    def test_remove_existing_tool_returns_true(self, registry):
+        assert registry.remove_tool("calculate_bmi") is True
+
+    def test_remove_missing_tool_returns_false(self, registry):
+        assert registry.remove_tool("does_not_exist") is False
+
+    def test_remove_tool_reduces_size_by_one(self, registry):
+        before = len(registry._tools)
+        registry.remove_tool("extract_vitals")
+        assert len(registry._tools) == before - 1
+
+    def test_removed_tool_is_no_longer_retrievable(self, registry):
+        registry.remove_tool("format_referral")
+        assert registry.get_tool("format_referral") is None
+
+    def test_remove_tool_on_empty_registry_returns_false(self):
+        empty_reg = ToolRegistry()
+        for name in ALL_DEFAULT_TOOL_NAMES:
+            empty_reg.remove_tool(name)
+        assert len(empty_reg._tools) == 0
+        assert empty_reg.remove_tool("anything") is False
+
+    def test_remove_tool_twice_returns_false_on_second_call(self, registry):
+        first = registry.remove_tool("search_medications")
+        second = registry.remove_tool("search_medications")
+        assert first is True
+        assert second is False
+
+    def test_remove_calculate_bmi_then_get_returns_none(self, registry):
+        registry.remove_tool("calculate_bmi")
+        assert registry.get_tool("calculate_bmi") is None
+
+    def test_remove_all_default_tools_one_by_one(self, registry):
+        for name in ALL_DEFAULT_TOOL_NAMES:
+            result = registry.remove_tool(name)
+            assert result is True, f"Expected True when removing '{name}'"
+        assert len(registry._tools) == 0
+
+
+# ===========================================================================
+# TestGetToolsForAgent  (12 tests)
+# ===========================================================================
+
+class TestGetToolsForAgent:
+    """ToolRegistry.get_tools_for_agent behaviour."""
+
+    def test_medication_agent_returns_six_tools(self, registry):
+        assert len(registry.get_tools_for_agent("medication")) == 6
+
+    def test_diagnostic_agent_returns_three_tools(self, registry):
+        assert len(registry.get_tools_for_agent("diagnostic")) == 3
+
+    def test_referral_agent_returns_one_tool(self, registry):
+        assert len(registry.get_tools_for_agent("referral")) == 1
+
+    def test_unknown_agent_type_returns_empty_dict(self, registry):
+        assert registry.get_tools_for_agent("unknown_type") == {}
+
+    def test_empty_string_agent_type_returns_empty_dict(self, registry):
+        assert registry.get_tools_for_agent("") == {}
+
+    def test_case_insensitive_medication_uppercase(self, registry):
+        tools = registry.get_tools_for_agent("MEDICATION")
+        assert len(tools) == 6
+
+    def test_case_insensitive_diagnostic_mixed_case(self, registry):
+        tools = registry.get_tools_for_agent("Diagnostic")
+        assert len(tools) == 3
+
+    def test_case_insensitive_referral_mixed_case(self, registry):
+        tools = registry.get_tools_for_agent("Referral")
+        assert len(tools) == 1
+
+    def test_medication_tools_include_lookup_drug_interactions(self, registry):
+        tools = registry.get_tools_for_agent("medication")
+        assert "lookup_drug_interactions" in tools
+
+    def test_diagnostic_tools_include_expected_names(self, registry):
+        tools = registry.get_tools_for_agent("diagnostic")
+        assert "search_icd_codes" in tools
+        assert "extract_vitals" in tools
+        assert "calculate_bmi" in tools
+
+    def test_after_removing_a_medication_tool_get_tools_for_agent_returns_subset(self, registry):
+        registry.remove_tool("lookup_drug_interactions")
+        tools = registry.get_tools_for_agent("medication")
+        assert "lookup_drug_interactions" not in tools
+        assert len(tools) == 5
+
+    def test_result_is_a_dict_with_tool_values(self, registry):
+        tools = registry.get_tools_for_agent("diagnostic")
+        assert isinstance(tools, dict)
+        for key, value in tools.items():
+            assert isinstance(key, str)
+            assert isinstance(value, Tool)
+
+
+# ===========================================================================
+# TestDefaultToolStructure  (8 tests)
+# ===========================================================================
+
+class TestDefaultToolStructure:
+    """Checks parameter-level details of the 10 default tools."""
+
+    def test_search_icd_codes_has_at_least_one_param_named_query(self, registry):
+        param = _get_param(registry, "search_icd_codes", "query")
+        assert param is not None, "Expected parameter 'query' in 'search_icd_codes'"
+
+    def test_calculate_bmi_has_weight_kg_and_height_cm_params(self, registry):
+        weight_param = _get_param(registry, "calculate_bmi", "weight_kg")
+        height_param = _get_param(registry, "calculate_bmi", "height_cm")
+        assert weight_param is not None, "Expected 'weight_kg' in 'calculate_bmi'"
+        assert height_param is not None, "Expected 'height_cm' in 'calculate_bmi'"
+
+    def test_lookup_drug_interactions_medications_param_is_array_type(self, registry):
+        param = _get_param(registry, "lookup_drug_interactions", "medications")
+        assert param is not None
+        assert param.type == "array"
+
+    def test_calculate_dosage_renal_function_default_is_normal(self, registry):
+        param = _get_param(registry, "calculate_dosage", "renal_function")
+        assert param is not None
+        assert param.default == "normal"
+
+    def test_format_prescription_refills_param_required_is_false(self, registry):
+        param = _get_param(registry, "format_prescription", "refills")
+        assert param is not None
+        assert param.required is False
+
+    def test_check_contraindications_patient_allergies_default_is_empty_list(self, registry):
+        param = _get_param(registry, "check_contraindications", "patient_allergies")
+        assert param is not None
+        assert param.default == []
+
+    def test_format_referral_urgency_default_is_routine(self, registry):
+        param = _get_param(registry, "format_referral", "urgency")
+        assert param is not None
+        assert param.default == "routine"
+
+    def test_all_ten_default_tools_have_non_empty_descriptions(self, registry):
+        for name in ALL_DEFAULT_TOOL_NAMES:
+            tool = registry.get_tool(name)
+            assert tool is not None, f"Default tool '{name}' missing"
+            assert tool.description.strip(), f"Tool '{name}' has an empty description"
+
+
+# ===========================================================================
+# Supplementary parametrized tests (preserves coverage from previous version)
 # ===========================================================================
 
 class TestDefaultToolParameterCounts:
-    def test_search_icd_codes_has_2_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_icd_codes")
-        assert len(tool.parameters) == 2
+    """Exact parameter counts for each default tool."""
 
-    def test_lookup_drug_interactions_has_1_param(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("lookup_drug_interactions")
-        assert len(tool.parameters) == 1
+    @pytest.mark.parametrize("tool_name,expected_count", [
+        ("search_icd_codes", 2),
+        ("lookup_drug_interactions", 1),
+        ("search_medications", 3),
+        ("calculate_dosage", 5),
+        ("check_contraindications", 3),
+        ("format_prescription", 8),
+        ("check_duplicate_therapy", 2),
+        ("format_referral", 3),
+        ("extract_vitals", 1),
+        ("calculate_bmi", 2),
+    ])
+    def test_parameter_count(self, registry, tool_name, expected_count):
+        tool = registry.get_tool(tool_name)
+        assert tool is not None
+        assert len(tool.parameters) == expected_count, (
+            f"'{tool_name}': expected {expected_count} params, "
+            f"got {len(tool.parameters)}"
+        )
 
-    def test_search_medications_has_3_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_medications")
-        assert len(tool.parameters) == 3
+    def test_search_icd_codes_query_param_required(self, registry):
+        param = _get_param(registry, "search_icd_codes", "query")
+        assert param.required is True
 
-    def test_calculate_dosage_has_5_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("calculate_dosage")
-        assert len(tool.parameters) == 5
+    def test_search_icd_codes_limit_param_optional_with_default_10(self, registry):
+        param = _get_param(registry, "search_icd_codes", "limit")
+        assert param.required is False
+        assert param.default == 10
 
-    def test_check_contraindications_has_3_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("check_contraindications")
-        assert len(tool.parameters) == 3
-
-    def test_format_prescription_has_8_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("format_prescription")
-        assert len(tool.parameters) == 8
-
-    def test_check_duplicate_therapy_has_2_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("check_duplicate_therapy")
-        assert len(tool.parameters) == 2
-
-    def test_format_referral_has_3_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("format_referral")
-        assert len(tool.parameters) == 3
-
-    def test_extract_vitals_has_1_param(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("extract_vitals")
-        assert len(tool.parameters) == 1
-
-    def test_calculate_bmi_has_2_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("calculate_bmi")
-        assert len(tool.parameters) == 2
-
-    def test_search_icd_codes_query_param_required(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_icd_codes")
-        query_param = next(p for p in tool.parameters if p.name == "query")
-        assert query_param.required is True
-
-    def test_search_icd_codes_limit_param_optional(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_icd_codes")
-        limit_param = next(p for p in tool.parameters if p.name == "limit")
-        assert limit_param.required is False
-
-    def test_search_icd_codes_limit_default_10(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_icd_codes")
-        limit_param = next(p for p in tool.parameters if p.name == "limit")
-        assert limit_param.default == 10
-
-    def test_calculate_bmi_weight_kg_required(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("calculate_bmi")
-        weight_param = next(p for p in tool.parameters if p.name == "weight_kg")
-        assert weight_param.required is True
-
-    def test_calculate_bmi_height_cm_required(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("calculate_bmi")
-        height_param = next(p for p in tool.parameters if p.name == "height_cm")
-        assert height_param.required is True
-
-    def test_calculate_bmi_params_are_number_type(self):
-        registry = ToolRegistry()
+    def test_calculate_bmi_params_are_number_type(self, registry):
         tool = registry.get_tool("calculate_bmi")
         for param in tool.parameters:
-            assert param.type == "number", f"Expected 'number', got '{param.type}'"
+            assert param.type == "number"
 
-    def test_lookup_drug_interactions_medications_is_array(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("lookup_drug_interactions")
-        medications_param = next(p for p in tool.parameters if p.name == "medications")
-        assert medications_param.type == "array"
-
-    def test_check_contraindications_has_array_params(self):
-        registry = ToolRegistry()
+    def test_check_contraindications_has_array_params(self, registry):
         tool = registry.get_tool("check_contraindications")
         array_params = [p for p in tool.parameters if p.type == "array"]
         assert len(array_params) >= 1
 
-    def test_format_prescription_has_required_params(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("format_prescription")
-        required_params = [p for p in tool.parameters if p.required]
-        assert len(required_params) >= 1
-
-    def test_format_referral_urgency_has_default(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("format_referral")
-        urgency_param = next(p for p in tool.parameters if p.name == "urgency")
-        assert urgency_param.default == "routine"
-
-
-# ===========================================================================
-# 3. register_tool
-# ===========================================================================
-
-class TestRegisterTool:
-    def test_register_new_tool_adds_it(self):
-        registry = ToolRegistry()
-        tool = _make_tool("brand_new_tool")
-        registry.register_tool(tool)
-        assert registry.get_tool("brand_new_tool") is not None
-
-    def test_registered_tool_is_same_object(self):
-        registry = ToolRegistry()
-        tool = _make_tool("identity_tool")
-        registry.register_tool(tool)
-        assert registry.get_tool("identity_tool") is tool
-
-    def test_register_increases_count_by_one(self):
-        registry = ToolRegistry()
-        before = len(registry.list_tools())
-        registry.register_tool(_make_tool("count_check_tool"))
-        assert len(registry.list_tools()) == before + 1
-
-    def test_overwrite_existing_updates_description(self):
-        registry = ToolRegistry()
-        old = Tool(name="overwrite_me", description="old", parameters=[])
-        new = Tool(name="overwrite_me", description="new", parameters=[])
-        registry.register_tool(old)
-        registry.register_tool(new)
-        assert registry.get_tool("overwrite_me").description == "new"
-
-    def test_overwrite_does_not_increase_count(self):
-        registry = ToolRegistry()
-        tool_a = Tool(name="stable_name", description="v1", parameters=[])
-        tool_b = Tool(name="stable_name", description="v2", parameters=[])
-        registry.register_tool(tool_a)
-        count_after_first = len(registry.list_tools())
-        registry.register_tool(tool_b)
-        assert len(registry.list_tools()) == count_after_first
-
-    def test_overwrite_logs_warning(self, caplog):
-        registry = ToolRegistry()
-        # "search_icd_codes" already exists after __init__
-        replacement = Tool(name="search_icd_codes", description="replacement", parameters=[])
-        with caplog.at_level(logging.WARNING):
-            registry.register_tool(replacement)
-        assert any("search_icd_codes" in record.message for record in caplog.records)
-
-    def test_register_tool_returns_none(self):
-        registry = ToolRegistry()
-        result = registry.register_tool(_make_tool("void_tool"))
-        assert result is None
-
-    def test_module_level_registry_can_register(self):
-        # The global singleton must be usable
-        initial_count = len(tool_registry.list_tools())
-        tmp_tool = _make_tool("_tmp_singleton_test_tool")
-        tool_registry.register_tool(tmp_tool)
-        assert tool_registry.get_tool("_tmp_singleton_test_tool") is not None
-        # Clean up so other tests are not affected
-        tool_registry.remove_tool("_tmp_singleton_test_tool")
-        assert len(tool_registry.list_tools()) == initial_count
-
-
-# ===========================================================================
-# 4. get_tool
-# ===========================================================================
-
-class TestGetTool:
-    @pytest.mark.parametrize("name", ALL_DEFAULT_TOOL_NAMES)
-    def test_get_each_default_tool_returns_tool(self, name):
-        registry = ToolRegistry()
-        result = registry.get_tool(name)
-        assert result is not None
-        assert isinstance(result, Tool)
-
-    def test_get_unknown_name_returns_none(self):
-        registry = ToolRegistry()
-        assert registry.get_tool("totally_unknown_xyz") is None
-
-    def test_get_empty_string_returns_none(self):
-        registry = ToolRegistry()
-        assert registry.get_tool("") is None
-
-    def test_get_tool_name_attribute_matches(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("extract_vitals")
-        assert tool.name == "extract_vitals"
-
-    def test_get_tool_has_non_empty_description(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_medications")
-        assert isinstance(tool.description, str)
-        assert len(tool.description) > 0
-
-    def test_get_tool_has_parameters_list(self):
-        registry = ToolRegistry()
-        tool = registry.get_tool("search_icd_codes")
-        assert isinstance(tool.parameters, list)
-
-    def test_get_after_register(self):
-        registry = ToolRegistry()
-        registry.register_tool(_make_tool("late_addition"))
-        assert registry.get_tool("late_addition") is not None
-
-    def test_get_after_remove_returns_none(self):
-        registry = ToolRegistry()
-        registry.remove_tool("calculate_bmi")
-        assert registry.get_tool("calculate_bmi") is None
-
-
-# ===========================================================================
-# 5. list_tools
-# ===========================================================================
-
-class TestListTools:
-    def test_returns_dict(self):
-        registry = ToolRegistry()
-        assert isinstance(registry.list_tools(), dict)
-
-    def test_contains_all_10_defaults(self):
-        registry = ToolRegistry()
-        tools = registry.list_tools()
-        for name in ALL_DEFAULT_TOOL_NAMES:
-            assert name in tools
-
-    def test_returns_copy_mutation_does_not_affect_registry(self):
-        registry = ToolRegistry()
-        snapshot = registry.list_tools()
-        snapshot["injected_key"] = _make_tool("injected_key")
-        assert "injected_key" not in registry.list_tools()
-
-    def test_returns_copy_deletion_does_not_affect_registry(self):
-        registry = ToolRegistry()
-        snapshot = registry.list_tools()
-        del snapshot["calculate_bmi"]
-        assert "calculate_bmi" in registry.list_tools()
-
-    def test_all_values_are_tool_instances(self):
-        registry = ToolRegistry()
-        for name, tool in registry.list_tools().items():
-            assert isinstance(tool, Tool)
-
-    def test_keys_equal_tool_names(self):
-        registry = ToolRegistry()
-        for key, tool in registry.list_tools().items():
-            assert key == tool.name
-
-    def test_count_reflects_registered_tools(self):
-        registry = ToolRegistry()
-        registry.register_tool(_make_tool("extra_list_tool"))
-        assert len(registry.list_tools()) == 11
-
-    def test_count_reflects_removed_tools(self):
-        registry = ToolRegistry()
-        registry.remove_tool("extract_vitals")
-        assert len(registry.list_tools()) == 9
-
-
-# ===========================================================================
-# 6. remove_tool
-# ===========================================================================
-
-class TestRemoveTool:
-    def test_remove_existing_returns_true(self):
-        registry = ToolRegistry()
-        assert registry.remove_tool("calculate_bmi") is True
-
-    def test_remove_actually_removes(self):
-        registry = ToolRegistry()
-        registry.remove_tool("calculate_bmi")
-        assert registry.get_tool("calculate_bmi") is None
-
-    def test_remove_missing_returns_false(self):
-        registry = ToolRegistry()
-        assert registry.remove_tool("nonexistent_zzz") is False
-
-    def test_remove_missing_does_not_raise(self):
-        registry = ToolRegistry()
-        try:
-            registry.remove_tool("ghost_tool")
-        except Exception as exc:
-            pytest.fail(f"remove_tool raised unexpectedly: {exc}")
-
-    def test_remove_decreases_count(self):
-        registry = ToolRegistry()
-        before = len(registry.list_tools())
-        registry.remove_tool("extract_vitals")
-        assert len(registry.list_tools()) == before - 1
-
-    def test_remove_twice_second_call_returns_false(self):
-        registry = ToolRegistry()
-        registry.remove_tool("calculate_bmi")
-        assert registry.remove_tool("calculate_bmi") is False
-
-    def test_remove_then_re_register(self):
-        registry = ToolRegistry()
-        registry.remove_tool("format_referral")
-        registry.register_tool(_make_tool("format_referral"))
-        assert registry.get_tool("format_referral") is not None
-
-    @pytest.mark.parametrize("name", ALL_DEFAULT_TOOL_NAMES)
-    def test_remove_each_default_tool(self, name):
-        registry = ToolRegistry()
-        assert registry.remove_tool(name) is True
-        assert registry.get_tool(name) is None
-
-
-# ===========================================================================
-# 7. get_tools_for_agent — "medication" → 6 tools
-# ===========================================================================
-
-class TestGetToolsForAgentMedication:
-    def test_returns_dict(self):
-        registry = ToolRegistry()
-        assert isinstance(registry.get_tools_for_agent("medication"), dict)
-
-    def test_medication_returns_exactly_6_tools(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("medication")
-        assert len(tools) == 6
-
-    @pytest.mark.parametrize("name", MEDICATION_TOOL_NAMES)
-    def test_each_medication_tool_present(self, name):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("medication")
-        assert name in tools, f"Medication tool '{name}' missing"
-
-    def test_medication_tools_are_tool_instances(self):
-        registry = ToolRegistry()
-        for name, tool in registry.get_tools_for_agent("medication").items():
-            assert isinstance(tool, Tool)
-
-    def test_medication_does_not_contain_diagnostic_only_tools(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("medication")
-        assert "search_icd_codes" not in tools
-        assert "extract_vitals" not in tools
-        assert "calculate_bmi" not in tools
-
-    def test_medication_does_not_contain_referral_only_tools(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("medication")
-        assert "format_referral" not in tools
-
-
-# ===========================================================================
-# 8. get_tools_for_agent — "diagnostic" → 3 tools
-# ===========================================================================
-
-class TestGetToolsForAgentDiagnostic:
-    def test_diagnostic_returns_exactly_3_tools(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("diagnostic")
-        assert len(tools) == 3
-
-    @pytest.mark.parametrize("name", DIAGNOSTIC_TOOL_NAMES)
-    def test_each_diagnostic_tool_present(self, name):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("diagnostic")
-        assert name in tools, f"Diagnostic tool '{name}' missing"
-
-    def test_diagnostic_tools_are_tool_instances(self):
-        registry = ToolRegistry()
-        for name, tool in registry.get_tools_for_agent("diagnostic").items():
-            assert isinstance(tool, Tool)
-
-    def test_diagnostic_does_not_contain_medication_only_tools(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("diagnostic")
-        assert "format_prescription" not in tools
-        assert "check_duplicate_therapy" not in tools
-
-
-# ===========================================================================
-# 9. get_tools_for_agent — "referral" → 1 tool
-# ===========================================================================
-
-class TestGetToolsForAgentReferral:
-    def test_referral_returns_exactly_1_tool(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("referral")
-        assert len(tools) == 1
-
-    def test_referral_contains_format_referral(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("referral")
-        assert "format_referral" in tools
-
-    def test_referral_tool_is_tool_instance(self):
-        registry = ToolRegistry()
-        tools = registry.get_tools_for_agent("referral")
-        assert isinstance(tools["format_referral"], Tool)
-
-
-# ===========================================================================
-# 10. get_tools_for_agent — unknown type → empty dict
-# ===========================================================================
-
-class TestGetToolsForAgentUnknown:
-    def test_unknown_type_returns_empty_dict(self):
-        registry = ToolRegistry()
-        assert registry.get_tools_for_agent("unknown_agent_type") == {}
-
-    def test_empty_string_returns_empty_dict(self):
-        registry = ToolRegistry()
-        assert registry.get_tools_for_agent("") == {}
-
-    def test_partial_name_returns_empty_dict(self):
-        registry = ToolRegistry()
-        assert registry.get_tools_for_agent("medic") == {}
-
-    def test_random_name_returns_empty_dict(self):
-        registry = ToolRegistry()
-        assert registry.get_tools_for_agent("xyz_agent_99") == {}
-
-    def test_synopsis_agent_returns_empty_dict(self):
-        # "synopsis" is a valid AgentType enum value but has no tool mapping
-        registry = ToolRegistry()
-        assert registry.get_tools_for_agent("synopsis") == {}
-
-
-# ===========================================================================
-# 11. Case sensitivity
-# ===========================================================================
 
 class TestCaseSensitivity:
-    def test_medication_uppercase_equals_lowercase(self):
-        registry = ToolRegistry()
+    """Verify get_tools_for_agent is case-insensitive; get_tool is case-sensitive."""
+
+    def test_medication_uppercase_equals_lowercase(self, registry):
         lower = registry.get_tools_for_agent("medication")
         upper = registry.get_tools_for_agent("MEDICATION")
         assert set(lower.keys()) == set(upper.keys())
 
-    def test_medication_mixed_case_equals_lowercase(self):
-        registry = ToolRegistry()
-        lower = registry.get_tools_for_agent("medication")
-        mixed = registry.get_tools_for_agent("Medication")
-        assert set(lower.keys()) == set(mixed.keys())
-
-    def test_diagnostic_uppercase_equals_lowercase(self):
-        registry = ToolRegistry()
+    def test_diagnostic_uppercase_equals_lowercase(self, registry):
         lower = registry.get_tools_for_agent("diagnostic")
         upper = registry.get_tools_for_agent("DIAGNOSTIC")
         assert set(lower.keys()) == set(upper.keys())
 
-    def test_referral_uppercase_equals_lowercase(self):
-        registry = ToolRegistry()
+    def test_referral_uppercase_equals_lowercase(self, registry):
         lower = registry.get_tools_for_agent("referral")
         upper = registry.get_tools_for_agent("REFERRAL")
         assert set(lower.keys()) == set(upper.keys())
 
-    def test_get_tool_case_sensitive(self):
-        # Tool names are stored literally; uppercase key must return None
-        registry = ToolRegistry()
-        assert registry.get_tool("Search_ICD_Codes") is None
+    def test_get_tool_case_sensitive_uppercase_returns_none(self, registry):
         assert registry.get_tool("SEARCH_ICD_CODES") is None
+        assert registry.get_tool("Search_ICD_Codes") is None
 
-
-# ===========================================================================
-# 12. Module-level singleton
-# ===========================================================================
 
 class TestModuleLevelSingleton:
-    def test_tool_registry_is_tool_registry_instance(self):
+    """The module-level tool_registry singleton is a fully initialised ToolRegistry."""
+
+    def test_is_tool_registry_instance(self):
         assert isinstance(tool_registry, ToolRegistry)
 
-    def test_tool_registry_has_default_tools(self):
+    def test_has_at_least_ten_default_tools(self):
         assert len(tool_registry.list_tools()) >= 10
 
-    def test_tool_registry_has_search_icd_codes(self):
+    def test_has_search_icd_codes(self):
         assert tool_registry.get_tool("search_icd_codes") is not None
 
-    def test_tool_registry_has_calculate_bmi(self):
+    def test_has_calculate_bmi(self):
         assert tool_registry.get_tool("calculate_bmi") is not None
 
-    def test_tool_registry_get_tools_for_medication(self):
+    def test_medication_tools_count(self):
         tools = tool_registry.get_tools_for_agent("medication")
         assert len(tools) == 6
 
-    def test_tool_registry_list_tools_is_dict(self):
+    def test_list_tools_returns_dict(self):
         assert isinstance(tool_registry.list_tools(), dict)
+
+    def test_register_and_cleanup_does_not_corrupt_singleton(self):
+        initial_count = len(tool_registry.list_tools())
+        tmp = make_tool("_tmp_singleton_test_tool")
+        tool_registry.register_tool(tmp)
+        assert tool_registry.get_tool("_tmp_singleton_test_tool") is not None
+        tool_registry.remove_tool("_tmp_singleton_test_tool")
+        assert len(tool_registry.list_tools()) == initial_count
+
+    def test_overwrite_logs_warning(self, caplog):
+        reg = ToolRegistry()
+        replacement = Tool(
+            name="search_icd_codes", description="replacement", parameters=[]
+        )
+        with caplog.at_level(logging.WARNING):
+            reg.register_tool(replacement)
+        assert any("search_icd_codes" in record.message for record in caplog.records)
