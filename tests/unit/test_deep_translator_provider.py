@@ -18,26 +18,17 @@ from unittest.mock import MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Stub heavy / unavailable dependencies BEFORE importing the module under test
+# Stub ONLY external / unavailable packages BEFORE importing the module under test.
+# Do NOT stub project modules (utils.resilience, utils.security_decorators) —
+# those are real importable modules and stubbing them pollutes other test files.
 # ---------------------------------------------------------------------------
 _STUBS = [
     "deep_translator",
     "deep_translator.exceptions",
-    "utils.resilience",
-    "utils.security_decorators",
 ]
 for _mod in _STUBS:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
-
-# Make resilient_api_call a pass-through decorator so the @resilient_api_call
-# decoration on _make_translation_call does not blow up.
-_resilience_mock = sys.modules["utils.resilience"]
-_resilience_mock.resilient_api_call = lambda *args, **kwargs: (lambda fn: fn)
-
-# Make secure_api_call a pass-through decorator as well.
-_sec_mock = sys.modules["utils.security_decorators"]
-_sec_mock.secure_api_call = lambda *args, **kwargs: (lambda fn: fn)
 
 _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
