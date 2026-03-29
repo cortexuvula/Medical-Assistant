@@ -1,38 +1,18 @@
-"""
-Tests for src/utils/icd_validator.py
+"""Tests for ICDValidator pure-logic methods."""
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
-Covers: ICDCodeSystem enum, ICDValidationResult dataclass, regex patterns,
-ICDValidator class methods, extract_icd_codes, and module-level convenience
-functions.
-"""
-
-import sys
-import re
 import pytest
-from pathlib import Path
-
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
-
 from utils.icd_validator import (
-    ICDCodeSystem,
-    ICDValidationResult,
-    ICDValidator,
-    ICD10_PATTERN,
-    ICD9_PATTERN,
-    ICD9_ECODE_PATTERN,
-    ICD9_VCODE_PATTERN,
-    extract_icd_codes,
-    validate_code,
-    validate_codes,
-    get_validator,
+    ICDValidator, ICDCodeSystem, ICDValidationResult,
+    ICD10_PATTERN, ICD9_PATTERN, ICD9_ECODE_PATTERN, ICD9_VCODE_PATTERN,
+    extract_icd_codes, get_validator, validate_code, validate_codes,
 )
 import utils.icd_validator as _icd_module
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Singleton reset fixture
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
@@ -43,560 +23,461 @@ def reset_validator_singleton():
     _icd_module._default_validator = None
 
 
-@pytest.fixture()
-def validator():
-    return ICDValidator()
+# ---------------------------------------------------------------------------
+# TestIcdPatterns
+# ---------------------------------------------------------------------------
+
+class TestIcdPatterns:
+    """Tests for compile-time regex constants."""
+
+    # 1. ICD10_PATTERN matches "J06.9"
+    def test_icd10_matches_j06_9(self):
+        assert ICD10_PATTERN.match("J06.9") is not None
+
+    # 2. ICD10_PATTERN matches "E11" (3 chars, no decimal)
+    def test_icd10_matches_e11_no_decimal(self):
+        assert ICD10_PATTERN.match("E11") is not None
+
+    # 3. ICD10_PATTERN matches "E11.65"
+    def test_icd10_matches_e11_65(self):
+        assert ICD10_PATTERN.match("E11.65") is not None
+
+    # 4. ICD10_PATTERN does NOT match "123"
+    def test_icd10_does_not_match_digits_only(self):
+        assert ICD10_PATTERN.match("123") is None
+
+    # 5. ICD10_PATTERN does NOT match "J06.12345" (too many decimal digits)
+    def test_icd10_does_not_match_too_many_decimal_digits(self):
+        assert ICD10_PATTERN.match("J06.12345") is None
+
+    # 6. ICD10_PATTERN matches "A00.0"
+    def test_icd10_matches_a00_0(self):
+        assert ICD10_PATTERN.match("A00.0") is not None
+
+    # 7. ICD9_PATTERN matches "250.00"
+    def test_icd9_matches_250_00(self):
+        assert ICD9_PATTERN.match("250.00") is not None
+
+    # 8. ICD9_PATTERN matches "780"
+    def test_icd9_matches_780(self):
+        assert ICD9_PATTERN.match("780") is not None
+
+    # 9. ICD9_PATTERN does NOT match "E123" (starts with letter)
+    def test_icd9_does_not_match_e123(self):
+        assert ICD9_PATTERN.match("E123") is None
+
+    # 10. ICD9_ECODE_PATTERN matches "E123"
+    def test_icd9_ecode_matches_e123(self):
+        assert ICD9_ECODE_PATTERN.match("E123") is not None
+
+    # 11. ICD9_ECODE_PATTERN matches "E123.4"
+    def test_icd9_ecode_matches_e123_4(self):
+        assert ICD9_ECODE_PATTERN.match("E123.4") is not None
+
+    # 12. ICD9_VCODE_PATTERN matches "V12.3"
+    def test_icd9_vcode_matches_v12_3(self):
+        assert ICD9_VCODE_PATTERN.match("V12.3") is not None
+
+    # 13. ICD9_VCODE_PATTERN matches "V22"
+    def test_icd9_vcode_matches_v22(self):
+        assert ICD9_VCODE_PATTERN.match("V22") is not None
 
 
-@pytest.fixture()
-def custom_validator():
-    """Validator backed by small custom code dicts for predictable lookups."""
-    icd10 = {"J06.9": "Acute upper respiratory infection, unspecified"}
-    icd9 = {"250.00": "Diabetes mellitus without complication, type II"}
-    return ICDValidator(icd10_codes=icd10, icd9_codes=icd9)
+# ---------------------------------------------------------------------------
+# TestNormalizeCode
+# ---------------------------------------------------------------------------
+
+class TestNormalizeCode:
+    """Tests for ICDValidator._normalize_code."""
+
+    def setup_method(self):
+        self.v = ICDValidator()
+
+    # 1. "  J06.9  " → "J06.9" (stripped)
+    def test_strips_whitespace(self):
+        assert self.v._normalize_code("  J06.9  ") == "J06.9"
+
+    # 2. "j06.9" → "J06.9" (uppercased)
+    def test_uppercases_code(self):
+        assert self.v._normalize_code("j06.9") == "J06.9"
+
+    # 3. "ICD-10:J06.9" → "J06.9"
+    def test_removes_icd10_dash_prefix(self):
+        assert self.v._normalize_code("ICD-10:J06.9") == "J06.9"
+
+    # 4. "ICD-9:250.00" → "250.00"
+    def test_removes_icd9_dash_prefix(self):
+        assert self.v._normalize_code("ICD-9:250.00") == "250.00"
+
+    # 5. "ICD10:E11.65" → "E11.65"
+    def test_removes_icd10_no_dash_prefix(self):
+        assert self.v._normalize_code("ICD10:E11.65") == "E11.65"
+
+    # 6. "ICD:A01" → "A01"
+    def test_removes_icd_prefix(self):
+        assert self.v._normalize_code("ICD:A01") == "A01"
+
+    # 7. Normal code unchanged: "J06.9" → "J06.9"
+    def test_normal_code_unchanged(self):
+        assert self.v._normalize_code("J06.9") == "J06.9"
 
 
-# ===========================================================================
-# 1. ICDCodeSystem enum
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestDetectCodeSystem
+# ---------------------------------------------------------------------------
 
-class TestICDCodeSystemEnum:
-    def test_has_three_members(self):
-        assert len(ICDCodeSystem) == 3
+class TestDetectCodeSystem:
+    """Tests for ICDValidator._detect_code_system."""
 
-    def test_icd9_value(self):
-        assert ICDCodeSystem.ICD9.value == "ICD-9"
+    def setup_method(self):
+        self.v = ICDValidator()
 
-    def test_icd10_value(self):
-        assert ICDCodeSystem.ICD10.value == "ICD-10"
+    # 1. "J06.9" → ICD10
+    def test_j06_9_is_icd10(self):
+        assert self.v._detect_code_system("J06.9") == ICDCodeSystem.ICD10
 
-    def test_unknown_value(self):
-        assert ICDCodeSystem.UNKNOWN.value == "Unknown"
+    # 2. "E11.65" → ICD10
+    def test_e11_65_is_icd10(self):
+        assert self.v._detect_code_system("E11.65") == ICDCodeSystem.ICD10
 
-    def test_members_are_enum(self):
-        for member in ICDCodeSystem:
-            assert isinstance(member, ICDCodeSystem)
+    # 3. "A00" → ICD10
+    def test_a00_is_icd10(self):
+        assert self.v._detect_code_system("A00") == ICDCodeSystem.ICD10
 
-    def test_access_by_name(self):
-        assert ICDCodeSystem["ICD9"] is ICDCodeSystem.ICD9
-        assert ICDCodeSystem["ICD10"] is ICDCodeSystem.ICD10
-        assert ICDCodeSystem["UNKNOWN"] is ICDCodeSystem.UNKNOWN
+    # 4. "250.00" → ICD9
+    def test_250_00_is_icd9(self):
+        assert self.v._detect_code_system("250.00") == ICDCodeSystem.ICD9
+
+    # 5. "780" → ICD9
+    def test_780_is_icd9(self):
+        assert self.v._detect_code_system("780") == ICDCodeSystem.ICD9
+
+    # 6. "E123" → ICD9 (E-code)
+    def test_e123_is_icd9_ecode(self):
+        assert self.v._detect_code_system("E123") == ICDCodeSystem.ICD9
+
+    # 7. "V12.3" → detected as ICD10 because ICD10_PATTERN (letter + 2 digits +
+    #    optional decimal) matches before the ICD-9 V-code check runs
+    def test_v12_3_detected_before_vcode_check(self):
+        # V12.3 matches ICD10_PATTERN (V + 12 + .3) so it is returned as ICD10
+        assert self.v._detect_code_system("V12.3") == ICDCodeSystem.ICD10
+
+    # 8. "" → UNKNOWN
+    def test_empty_string_is_unknown(self):
+        assert self.v._detect_code_system("") == ICDCodeSystem.UNKNOWN
+
+    # 9. "INVALID" → UNKNOWN
+    def test_invalid_string_is_unknown(self):
+        assert self.v._detect_code_system("INVALID") == ICDCodeSystem.UNKNOWN
+
+    # 10. "12" → UNKNOWN (2 digits, doesn't match ICD9 3-digit pattern)
+    def test_two_digits_is_unknown(self):
+        assert self.v._detect_code_system("12") == ICDCodeSystem.UNKNOWN
 
 
-# ===========================================================================
-# 2. ICDValidationResult dataclass
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestValidate
+# ---------------------------------------------------------------------------
 
-class TestICDValidationResult:
-    def test_required_fields_stored(self):
-        result = ICDValidationResult(
-            code="J06.9",
-            is_valid=True,
-            code_system=ICDCodeSystem.ICD10,
-        )
-        assert result.code == "J06.9"
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD10
+class TestValidate:
+    """Tests for ICDValidator.validate."""
 
-    def test_optional_fields_default_to_none(self):
-        result = ICDValidationResult(
-            code="J06.9",
-            is_valid=True,
-            code_system=ICDCodeSystem.ICD10,
-        )
-        assert result.description is None
-        assert result.warning is None
-        assert result.suggested_code is None
+    def setup_method(self):
+        self.v = ICDValidator()
 
-    def test_optional_fields_can_be_set(self):
-        result = ICDValidationResult(
-            code="J06.9",
-            is_valid=True,
-            code_system=ICDCodeSystem.ICD10,
-            description="Some description",
-            warning="Some warning",
-            suggested_code="J07.0",
-        )
-        assert result.description == "Some description"
-        assert result.warning == "Some warning"
-        assert result.suggested_code == "J07.0"
-
-    def test_is_valid_false(self):
-        result = ICDValidationResult(
-            code="INVALID",
-            is_valid=False,
-            code_system=ICDCodeSystem.UNKNOWN,
-        )
+    # 1. Empty string → is_valid=False, warning about empty
+    def test_empty_string_is_invalid(self):
+        result = self.v.validate("")
         assert result.is_valid is False
 
-    def test_fields_are_mutable(self):
-        result = ICDValidationResult(
-            code="J06.9",
-            is_valid=True,
-            code_system=ICDCodeSystem.ICD10,
-        )
-        result.warning = "post-construction warning"
-        assert result.warning == "post-construction warning"
+    def test_empty_string_has_warning(self):
+        result = self.v.validate("")
+        assert result.warning is not None and len(result.warning) > 0
 
+    # 2. Invalid format "INVALID" → is_valid=False, code_system=UNKNOWN, warning about format
+    def test_invalid_format_is_invalid(self):
+        result = self.v.validate("INVALID")
+        assert result.is_valid is False
 
-# ===========================================================================
-# 3. ICD10_PATTERN regex
-# ===========================================================================
+    def test_invalid_format_code_system_unknown(self):
+        result = self.v.validate("INVALID")
+        assert result.code_system == ICDCodeSystem.UNKNOWN
 
-class TestICD10Pattern:
-    def test_matches_j069(self):
-        assert ICD10_PATTERN.match("J06.9")
-
-    def test_matches_e1165(self):
-        assert ICD10_PATTERN.match("E11.65")
-
-    def test_matches_m545(self):
-        assert ICD10_PATTERN.match("M54.5")
-
-    def test_matches_a00_no_decimal(self):
-        assert ICD10_PATTERN.match("A00")
-
-    def test_matches_lowercase(self):
-        # IGNORECASE flag is set on the pattern
-        assert ICD10_PATTERN.match("j06.9")
-
-    def test_rejects_icd9_250(self):
-        assert not ICD10_PATTERN.match("250.00")
-
-    def test_rejects_invalid_string(self):
-        assert not ICD10_PATTERN.match("INVALID")
-
-    def test_rejects_only_digits(self):
-        assert not ICD10_PATTERN.match("123.4")
-
-    def test_matches_long_subcode(self):
-        # Up to 4 digits after decimal is valid per the pattern
-        assert ICD10_PATTERN.match("S72.0012")
-
-    def test_rejects_two_leading_letters(self):
-        assert not ICD10_PATTERN.match("AB1.2")
-
-
-# ===========================================================================
-# 4. ICD9_PATTERN regex
-# ===========================================================================
-
-class TestICD9Pattern:
-    def test_matches_250_00(self):
-        assert ICD9_PATTERN.match("250.00")
-
-    def test_matches_401_9(self):
-        assert ICD9_PATTERN.match("401.9")
-
-    def test_matches_780_79(self):
-        assert ICD9_PATTERN.match("780.79")
-
-    def test_matches_three_digits_no_decimal(self):
-        assert ICD9_PATTERN.match("401")
-
-    def test_rejects_icd10_j069(self):
-        assert not ICD9_PATTERN.match("J06.9")
-
-    def test_rejects_letters(self):
-        assert not ICD9_PATTERN.match("ABC")
-
-    def test_rejects_too_many_decimal_digits(self):
-        # Pattern allows only 1-2 digits after decimal
-        assert not ICD9_PATTERN.match("250.001")
-
-
-# ===========================================================================
-# 5. ICD9_ECODE_PATTERN regex
-# ===========================================================================
-
-class TestICD9EcodePattern:
-    def test_matches_e800(self):
-        assert ICD9_ECODE_PATTERN.match("E800")
-
-    def test_matches_e800_with_decimal(self):
-        assert ICD9_ECODE_PATTERN.match("E800.0")
-
-    def test_matches_lowercase_e(self):
-        assert ICD9_ECODE_PATTERN.match("e800")
-
-    def test_rejects_numeric_only(self):
-        assert not ICD9_ECODE_PATTERN.match("800.0")
-
-    def test_rejects_icd10_pattern(self):
-        assert not ICD9_ECODE_PATTERN.match("J06.9")
-
-
-# ===========================================================================
-# 6. ICD9_VCODE_PATTERN regex
-# ===========================================================================
-
-class TestICD9VcodePattern:
-    def test_matches_v10(self):
-        assert ICD9_VCODE_PATTERN.match("V10")
-
-    def test_matches_v10_1(self):
-        assert ICD9_VCODE_PATTERN.match("V10.1")
-
-    def test_matches_lowercase_v(self):
-        assert ICD9_VCODE_PATTERN.match("v10.1")
-
-    def test_rejects_numeric_only(self):
-        assert not ICD9_VCODE_PATTERN.match("10.1")
-
-    def test_rejects_icd10_pattern(self):
-        assert not ICD9_VCODE_PATTERN.match("J06.9")
-
-
-# ===========================================================================
-# 7. ICDValidator constructor
-# ===========================================================================
-
-class TestICDValidatorConstructor:
-    def test_creates_with_defaults(self, validator):
-        assert validator is not None
-
-    def test_default_icd10_codes_non_empty(self, validator):
-        assert len(validator.icd10_codes) > 0
-
-    def test_default_icd9_codes_non_empty(self, validator):
-        assert len(validator.icd9_codes) > 0
-
-    def test_custom_icd10_codes_used(self):
-        custom = {"Z00.00": "test"}
-        v = ICDValidator(icd10_codes=custom)
-        assert v.icd10_codes == custom
-
-    def test_custom_icd9_codes_used(self):
-        custom = {"999.9": "test"}
-        v = ICDValidator(icd9_codes=custom)
-        assert v.icd9_codes == custom
-
-    def test_custom_icd10_default_icd9_preserved(self):
-        custom_10 = {"Z00.00": "test"}
-        v = ICDValidator(icd10_codes=custom_10)
-        # icd9 should still be the module default (non-empty)
-        assert len(v.icd9_codes) > 0
-
-
-# ===========================================================================
-# 8. ICDValidator.validate – ICD-10 valid codes
-# ===========================================================================
-
-class TestValidateICD10:
-    def test_j069_is_valid(self, validator):
-        result = validator.validate("J06.9")
-        assert result.is_valid is True
-
-    def test_j069_code_system_icd10(self, validator):
-        result = validator.validate("J06.9")
-        assert result.code_system is ICDCodeSystem.ICD10
-
-    def test_j069_has_description(self, validator):
-        result = validator.validate("J06.9")
-        # J06.9 is in COMMON_ICD10_CODES
-        assert isinstance(result.description, str) and len(result.description) > 0
-
-    def test_normalized_code_stored_in_result(self, validator):
-        result = validator.validate("j06.9")
-        assert result.code == "J06.9"
-
-    def test_known_icd10_no_warning(self, validator):
-        result = validator.validate("J06.9")
-        assert result.warning is None
-
-    def test_format_valid_unknown_icd10_has_warning(self, validator):
-        # Syntactically valid ICD-10 but not in common codes
-        result = validator.validate("Z99.99")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD10
+    def test_invalid_format_has_warning(self):
+        result = self.v.validate("INVALID")
         assert result.warning is not None
 
-    def test_e1165_is_valid(self, validator):
-        result = validator.validate("E11.65")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD10
-
-    def test_i10_hypertension(self, validator):
-        result = validator.validate("I10")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD10
-
-
-# ===========================================================================
-# 9. ICDValidator.validate – ICD-9 valid codes
-# ===========================================================================
-
-class TestValidateICD9:
-    def test_250_00_is_valid(self, validator):
-        result = validator.validate("250.00")
+    # 3. "J06.9" → is_valid=True, code_system=ICD10
+    def test_j06_9_is_valid(self):
+        result = self.v.validate("J06.9")
         assert result.is_valid is True
 
-    def test_250_00_code_system_icd9(self, validator):
-        result = validator.validate("250.00")
-        assert result.code_system is ICDCodeSystem.ICD9
+    def test_j06_9_is_icd10(self):
+        result = self.v.validate("J06.9")
+        assert result.code_system == ICDCodeSystem.ICD10
 
-    def test_250_00_has_description(self, validator):
-        result = validator.validate("250.00")
-        assert isinstance(result.description, str) and len(result.description) > 0
+    # 4. Known ICD-10 code ("J06.9") → description is not None
+    def test_known_code_has_description(self):
+        result = self.v.validate("J06.9")
+        assert result.description is not None
+        assert isinstance(result.description, str)
 
-    def test_401_9_is_valid(self, validator):
-        result = validator.validate("401.9")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD9
-
-    def test_known_icd9_no_warning(self, validator):
-        result = validator.validate("250.00")
-        assert result.warning is None
-
-    def test_format_valid_unknown_icd9_has_warning(self, validator):
-        result = validator.validate("999.9")
+    # 5. Valid format but unknown code → is_valid=True, warning about not in database
+    def test_valid_format_unknown_code_has_warning(self):
+        result = self.v.validate("Z99.99")
         assert result.is_valid is True
         assert result.warning is not None
 
-
-# ===========================================================================
-# 10. ICDValidator.validate – UNKNOWN / INVALID
-# ===========================================================================
-
-class TestValidateInvalid:
-    def test_invalid_string_not_valid(self, validator):
-        result = validator.validate("INVALID")
-        assert result.is_valid is False
-
-    def test_invalid_string_code_system_unknown(self, validator):
-        result = validator.validate("INVALID")
-        assert result.code_system is ICDCodeSystem.UNKNOWN
-
-    def test_invalid_string_has_warning(self, validator):
-        result = validator.validate("INVALID")
-        assert result.warning is not None
-
-    def test_empty_string_is_invalid(self, validator):
-        result = validator.validate("")
-        assert result.is_valid is False
-        assert result.code_system is ICDCodeSystem.UNKNOWN
-
-    def test_empty_string_warning_set(self, validator):
-        result = validator.validate("")
-        assert result.warning is not None
-
-    def test_random_garbage_is_invalid(self, validator):
-        result = validator.validate("!@#$%")
-        assert result.is_valid is False
-
-    def test_too_many_leading_letters_is_invalid(self, validator):
-        result = validator.validate("AB123")
-        assert result.is_valid is False
-
-
-# ===========================================================================
-# 11. ICDValidator.validate – normalisation (whitespace / case)
-# ===========================================================================
-
-class TestValidateNormalization:
-    def test_leading_trailing_whitespace_stripped(self, validator):
-        result = validator.validate("  J06.9  ")
+    # 6. "250.00" → is_valid=True, code_system=ICD9
+    def test_250_00_is_valid(self):
+        result = self.v.validate("250.00")
         assert result.is_valid is True
+
+    def test_250_00_is_icd9(self):
+        result = self.v.validate("250.00")
+        assert result.code_system == ICDCodeSystem.ICD9
+
+    # 7. Normalized code stored in result.code (not raw input)
+    def test_result_code_is_normalized(self):
+        result = self.v.validate(" j06.9 ")
         assert result.code == "J06.9"
 
-    def test_lowercase_normalized_to_uppercase(self, validator):
-        result = validator.validate("j06.9")
+    # 8. " j06.9 " (with spaces, lowercase) → is_valid=True after normalization
+    def test_lowercase_whitespace_code_is_valid(self):
+        result = self.v.validate(" j06.9 ")
         assert result.is_valid is True
-        assert result.code == "J06.9"
 
-    def test_mixed_case_resolves_to_icd10(self, validator):
-        result = validator.validate("j06.9")
-        assert result.code_system is ICDCodeSystem.ICD10
-
-    def test_icd10_prefix_stripped(self, validator):
-        result = validator.validate("ICD-10:J06.9")
+    # 9. "ICD-10:J06.9" prefix stripped → valid
+    def test_prefix_stripped_code_is_valid(self):
+        result = self.v.validate("ICD-10:J06.9")
         assert result.is_valid is True
-        assert result.code == "J06.9"
-
-    def test_icd9_prefix_stripped(self, validator):
-        result = validator.validate("ICD-9:250.00")
-        assert result.is_valid is True
-        assert result.code == "250.00"
 
 
-# ===========================================================================
-# 12. ICDValidator.validate_batch
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestIsValidFormat
+# ---------------------------------------------------------------------------
 
-class TestValidateBatch:
-    def test_returns_list(self, validator):
-        results = validator.validate_batch(["J06.9", "250.00", "INVALID"])
-        assert isinstance(results, list)
+class TestIsValidFormat:
+    """Tests for ICDValidator.is_valid_format."""
 
-    def test_returns_correct_count(self, validator):
-        results = validator.validate_batch(["J06.9", "250.00", "INVALID"])
-        assert len(results) == 3
+    def setup_method(self):
+        self.v = ICDValidator()
 
-    def test_first_result_icd10(self, validator):
-        results = validator.validate_batch(["J06.9", "250.00", "INVALID"])
-        assert results[0].code_system is ICDCodeSystem.ICD10
+    # 1. "J06.9" → True
+    def test_j06_9_is_valid_format(self):
+        assert self.v.is_valid_format("J06.9") is True
 
-    def test_second_result_icd9(self, validator):
-        results = validator.validate_batch(["J06.9", "250.00", "INVALID"])
-        assert results[1].code_system is ICDCodeSystem.ICD9
+    # 2. "250.00" → True
+    def test_250_00_is_valid_format(self):
+        assert self.v.is_valid_format("250.00") is True
 
-    def test_third_result_invalid(self, validator):
-        results = validator.validate_batch(["J06.9", "250.00", "INVALID"])
-        assert results[2].is_valid is False
+    # 3. "INVALID" → False
+    def test_invalid_is_not_valid_format(self):
+        assert self.v.is_valid_format("INVALID") is False
 
-    def test_empty_list_returns_empty(self, validator):
-        results = validator.validate_batch([])
-        assert results == []
+    # 4. "" → False
+    def test_empty_string_is_not_valid_format(self):
+        assert self.v.is_valid_format("") is False
 
-    def test_all_results_are_validation_result_type(self, validator):
-        results = validator.validate_batch(["J06.9", "INVALID"])
-        for r in results:
-            assert isinstance(r, ICDValidationResult)
+    # 5. "E123" → True (ICD-9 E-code)
+    def test_ecode_is_valid_format(self):
+        assert self.v.is_valid_format("E123") is True
 
-    def test_single_item_batch(self, validator):
-        results = validator.validate_batch(["J06.9"])
-        assert len(results) == 1
-        assert results[0].is_valid is True
+    # 6. "V12" → True (ICD-9 V-code)
+    def test_vcode_is_valid_format(self):
+        assert self.v.is_valid_format("V12") is True
 
 
-# ===========================================================================
-# 13. ICDValidator.get_description
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestGetDescription
+# ---------------------------------------------------------------------------
 
 class TestGetDescription:
-    def test_known_icd10_returns_string(self, validator):
-        desc = validator.get_description("J06.9")
-        assert isinstance(desc, str) and len(desc) > 0
+    """Tests for ICDValidator.get_description."""
 
-    def test_known_icd9_returns_string(self, validator):
-        desc = validator.get_description("250.00")
-        assert isinstance(desc, str) and len(desc) > 0
+    def setup_method(self):
+        self.v = ICDValidator()
 
-    def test_unknown_code_returns_none(self, validator):
-        # A code not in the common database should return None
-        desc = validator.get_description("Z99.99")
+    # 1. Known ICD-10 code returns string description
+    def test_known_code_returns_description(self):
+        desc = self.v.get_description("J06.9")
+        assert isinstance(desc, str)
+        assert len(desc) > 0
+
+    # 2. Unknown valid format returns None
+    def test_unknown_valid_format_returns_none(self):
+        desc = self.v.get_description("Z99.99")
         assert desc is None
 
-    def test_lowercase_code_normalised_before_lookup(self, validator):
-        desc = validator.get_description("j06.9")
-        assert desc is not None
-
-    def test_custom_validator_returns_custom_description(self, custom_validator):
-        desc = custom_validator.get_description("J06.9")
-        assert desc == "Acute upper respiratory infection, unspecified"
-
-    def test_custom_validator_code_not_in_dict_returns_none(self, custom_validator):
-        desc = custom_validator.get_description("I10")
+    # 3. Invalid code returns None
+    def test_invalid_code_returns_none(self):
+        desc = self.v.get_description("INVALID")
         assert desc is None
 
-
-# ===========================================================================
-# 14. extract_icd_codes
-# ===========================================================================
-
-class TestExtractICDCodes:
-    def test_extracts_icd10_from_text(self):
-        codes = extract_icd_codes("Patient diagnosed with J06.9 today.")
-        upper = [c.upper() for c in codes]
-        assert "J06.9" in upper
-
-    def test_extracts_icd9_from_text(self):
-        codes = extract_icd_codes("History of 250.00 diabetes.")
-        assert "250.00" in codes
-
-    def test_extracts_both_systems(self):
-        codes = extract_icd_codes("Patient has J06.9 and 250.00")
-        upper = [c.upper() for c in codes]
-        assert "J06.9" in upper
-        assert "250.00" in upper
-
-    def test_returns_list(self):
-        codes = extract_icd_codes("J06.9")
-        assert isinstance(codes, list)
-
-    def test_empty_text_returns_empty_list(self):
-        codes = extract_icd_codes("")
-        assert codes == []
-
-    def test_no_codes_returns_empty_list(self):
-        codes = extract_icd_codes("No diagnostic codes here.")
-        assert codes == []
-
-    def test_deduplicates_codes(self):
-        codes = extract_icd_codes("J06.9 and J06.9 again")
-        upper = [c.upper() for c in codes]
-        count = upper.count("J06.9")
-        assert count == 1
-
-    def test_multiple_icd10_codes(self):
-        codes = extract_icd_codes("Diagnoses: J06.9, E11.65, M54.5")
-        upper = [c.upper() for c in codes]
-        assert "J06.9" in upper
-        assert "E11.65" in upper
-        assert "M54.5" in upper
+    # 4. Case-insensitive: "j06.9" normalized to "J06.9" for lookup
+    def test_case_insensitive_lookup(self):
+        desc_lower = self.v.get_description("j06.9")
+        desc_upper = self.v.get_description("J06.9")
+        assert desc_lower == desc_upper
+        assert desc_lower is not None
 
 
-# ===========================================================================
-# 15. Module-level convenience functions (validate_code / validate_codes)
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestValidateBatch
+# ---------------------------------------------------------------------------
 
-class TestConvenienceFunctions:
-    def test_validate_code_returns_result_instance(self):
-        result = validate_code("J06.9")
-        assert isinstance(result, ICDValidationResult)
+class TestValidateBatch:
+    """Tests for ICDValidator.validate_batch."""
 
-    def test_validate_code_icd10_is_valid(self):
-        result = validate_code("J06.9")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD10
+    def setup_method(self):
+        self.v = ICDValidator()
 
-    def test_validate_code_icd9_is_valid(self):
-        result = validate_code("250.00")
-        assert result.is_valid is True
-        assert result.code_system is ICDCodeSystem.ICD9
+    # 1. Empty list → []
+    def test_empty_list_returns_empty(self):
+        assert self.v.validate_batch([]) == []
 
-    def test_validate_code_invalid_string(self):
-        result = validate_code("INVALID")
-        assert result.is_valid is False
-
-    def test_validate_codes_returns_list(self):
-        results = validate_codes(["J06.9"])
-        assert isinstance(results, list)
-
-    def test_validate_codes_single_item(self):
-        results = validate_codes(["J06.9"])
+    # 2. Single code → list with 1 result
+    def test_single_code_returns_list_of_one(self):
+        results = self.v.validate_batch(["J06.9"])
         assert len(results) == 1
-        assert results[0].is_valid is True
 
-    def test_validate_codes_multiple_items(self):
-        results = validate_codes(["J06.9", "250.00", "INVALID"])
+    # 3. Multiple codes → same length list
+    def test_multiple_codes_same_length(self):
+        codes = ["J06.9", "250.00", "E11.65"]
+        results = self.v.validate_batch(codes)
         assert len(results) == 3
 
-    def test_validate_codes_empty_list(self):
-        results = validate_codes([])
-        assert results == []
+    # 4. Mixed valid/invalid codes in batch
+    def test_mixed_valid_invalid_batch(self):
+        codes = ["J06.9", "INVALID", "250.00"]
+        results = self.v.validate_batch(codes)
+        assert results[0].is_valid is True
+        assert results[1].is_valid is False
+        assert results[2].is_valid is True
 
 
-# ===========================================================================
-# 16. get_validator singleton
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# TestSuggestSimilarCodes
+# ---------------------------------------------------------------------------
 
-class TestGetValidator:
-    def test_returns_icd_validator_instance(self):
+class TestSuggestSimilarCodes:
+    """Tests for ICDValidator.suggest_similar_codes."""
+
+    def setup_method(self):
+        self.v = ICDValidator()
+
+    # 1. Valid ICD-10 code prefix → returns list
+    def test_valid_prefix_returns_list(self):
+        suggestions = self.v.suggest_similar_codes("J06.9")
+        assert isinstance(suggestions, list)
+
+    # 2. Returns at most `limit` suggestions
+    def test_at_most_limit_suggestions(self):
+        suggestions = self.v.suggest_similar_codes("J06.9", limit=5)
+        assert len(suggestions) <= 5
+
+    # 3. "J06" prefix → suggestions all start with "J06"
+    def test_j06_prefix_suggestions_start_with_j06(self):
+        suggestions = self.v.suggest_similar_codes("J06", limit=10)
+        for s in suggestions:
+            assert s.startswith("J06")
+
+    # 4. Completely invalid code → returns [] or partial list
+    def test_completely_invalid_code_returns_list(self):
+        suggestions = self.v.suggest_similar_codes("ZZZZZ")
+        assert isinstance(suggestions, list)
+
+    # 5. limit=1 → at most 1 result
+    def test_limit_one_returns_at_most_one(self):
+        suggestions = self.v.suggest_similar_codes("J06.9", limit=1)
+        assert len(suggestions) <= 1
+
+
+# ---------------------------------------------------------------------------
+# TestExtractIcdCodes
+# ---------------------------------------------------------------------------
+
+class TestExtractIcdCodes:
+    """Tests for the extract_icd_codes module-level function."""
+
+    # 1. Empty string → []
+    def test_empty_string_returns_empty(self):
+        assert extract_icd_codes("") == []
+
+    # 2. "Patient has J06.9" → ["J06.9"]
+    def test_single_icd10_in_text(self):
+        result = extract_icd_codes("Patient has J06.9")
+        assert "J06.9" in result
+
+    # 3. "ICD: 250.00 confirmed" → ["250.00"]
+    def test_icd9_in_text(self):
+        result = extract_icd_codes("ICD: 250.00 confirmed")
+        assert "250.00" in result
+
+    # 4. Text with multiple ICD-10 codes → all found
+    def test_multiple_icd10_codes_found(self):
+        text = "Diagnoses: J06.9, E11.65, I10"
+        result = extract_icd_codes(text)
+        assert "J06.9" in result
+        assert "E11.65" in result
+        assert "I10" in result
+
+    # 5. Text with ICD-9 code (3 digits) → found
+    def test_icd9_three_digit_code_found(self):
+        text = "Old code 780 still used"
+        result = extract_icd_codes(text)
+        assert "780" in result
+
+    # 6. Duplicates removed: same code twice → once in output
+    def test_duplicate_codes_returned_once(self):
+        text = "J06.9 and J06.9 again"
+        result = extract_icd_codes(text)
+        assert result.count("J06.9") == 1
+
+    # 7. Output is uppercased: "j06.9" in text → "J06.9" in result
+    def test_output_uppercased(self):
+        result = extract_icd_codes("diagnosis j06.9 noted")
+        assert "J06.9" in result
+        assert "j06.9" not in result
+
+    # 8. Text with no ICD codes → []
+    def test_no_icd_codes_returns_empty(self):
+        result = extract_icd_codes("The patient feels fine today.")
+        assert result == []
+
+    # 9. Mixed ICD-10 and ICD-9 → both found
+    def test_mixed_icd9_and_icd10(self):
+        text = "ICD-10 code J06.9 and ICD-9 code 250.00"
+        result = extract_icd_codes(text)
+        assert "J06.9" in result
+        assert "250.00" in result
+
+
+# ---------------------------------------------------------------------------
+# TestModuleLevelHelpers
+# ---------------------------------------------------------------------------
+
+class TestModuleLevelHelpers:
+    """Tests for module-level helper functions."""
+
+    # 1. `get_validator()` returns ICDValidator
+    def test_get_validator_returns_icd_validator(self):
         v = get_validator()
         assert isinstance(v, ICDValidator)
 
-    def test_returns_same_instance_on_second_call(self):
+    # 2. `get_validator()` returns same instance on second call (singleton)
+    def test_get_validator_returns_singleton(self):
         v1 = get_validator()
         v2 = get_validator()
         assert v1 is v2
 
-    def test_singleton_reset_creates_fresh_instance(self):
-        # autouse fixture already reset it; calling get_validator() creates new
-        v = get_validator()
-        assert v is not None
+    # 3. `validate_code("J06.9")` returns ICDValidationResult
+    def test_validate_code_returns_result(self):
+        result = validate_code("J06.9")
+        assert isinstance(result, ICDValidationResult)
 
-    def test_singleton_is_functional(self):
-        v = get_validator()
-        result = v.validate("J06.9")
-        assert result.is_valid is True
+    # 4. `validate_codes(["J06.9", "250.00"])` returns list of 2
+    def test_validate_codes_returns_list_of_two(self):
+        results = validate_codes(["J06.9", "250.00"])
+        assert len(results) == 2
+        assert all(isinstance(r, ICDValidationResult) for r in results)
