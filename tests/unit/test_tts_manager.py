@@ -509,10 +509,10 @@ class TestPlayAudioAsync:
 
             self.manager._play_audio_async(mock_audio, "Speaker")
 
-            mock_thread_class.assert_called_once_with(
-                target=self.manager._play_audio_blocking,
-                args=(mock_audio, "Speaker")
-            )
+            mock_thread_class.assert_called_once()
+            # Target is now a _safe_play wrapper closure, not _play_audio_blocking directly
+            target = mock_thread_class.call_args[1].get('target', mock_thread_class.call_args[0][0] if mock_thread_class.call_args[0] else None)
+            assert callable(target)
             assert mock_thread.daemon is True
             mock_thread.start.assert_called_once()
 
