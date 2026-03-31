@@ -233,36 +233,23 @@ class MCPToolWrapper(BaseTool):
 
             # Check rate limits for this server
             if self.server_name in RATE_LIMITS:
-                with rate_limit_lock:
-                    rate_config = RATE_LIMITS[self.server_name]
-                    min_interval = rate_config.get("minimum_interval", 1.0 / rate_config["requests_per_second"])
-                    
-                    current_time = time.time()
-                    
-                    # Check global rate limit for this server
-                    global_last = rate_config.get("global_last_request", 0)
-                    global_time_since_last = current_time - global_last
-                    
-                    if global_time_since_last < min_interval:
-                        wait_time = min_interval - global_time_since_last
-                        logger.info(f"Global rate limiting for {self.server_name}: waiting {wait_time:.2f}s")
-                        time.sleep(wait_time)
+                tool_key = f"{self.server_name}:{self.original_name}"
+                while True:
+                    with rate_limit_lock:
+                        rate_config = RATE_LIMITS[self.server_name]
+                        min_interval = rate_config.get("minimum_interval", 1.0 / rate_config["requests_per_second"])
                         current_time = time.time()
-                    
-                    # Also check per-tool rate limit
-                    tool_key = f"{self.server_name}:{self.original_name}"
-                    last_time = rate_config["last_request_time"].get(tool_key, 0)
-                    time_since_last = current_time - last_time
-                    
-                    # If not enough time has passed for this specific tool, wait
-                    if time_since_last < min_interval:
-                        wait_time = min_interval - time_since_last
-                        logger.info(f"Tool rate limiting: waiting {wait_time:.2f}s before calling {self.original_name}")
-                        time.sleep(wait_time)
-                    
-                    # Update last request times
-                    rate_config["global_last_request"] = time.time()
-                    rate_config["last_request_time"][tool_key] = time.time()
+                        global_last = rate_config.get("global_last_request", 0)
+                        global_wait = min_interval - (current_time - global_last)
+                        last_time = rate_config["last_request_time"].get(tool_key, 0)
+                        tool_wait = min_interval - (current_time - last_time)
+                        wait_time = max(global_wait, tool_wait, 0.0)
+                        if wait_time <= 0:
+                            rate_config["global_last_request"] = current_time
+                            rate_config["last_request_time"][tool_key] = current_time
+                            break
+                    logger.info(f"Rate limiting for {self.server_name}: waiting {wait_time:.2f}s")
+                    time.sleep(wait_time)
             
             # Execute the tool via MCP with retry logic
             logger.info(f"Executing MCP tool {self.original_name} on server {self.server_name}")

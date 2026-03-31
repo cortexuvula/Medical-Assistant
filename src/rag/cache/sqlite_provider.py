@@ -40,6 +40,8 @@ class SQLiteCacheProvider(BaseCacheProvider):
         self._db_path = config.sqlite_path or self._get_default_path()
         self._local = threading.local()
         self._lock = threading.Lock()
+        self._connections: dict = {}
+        self._conn_lock = threading.Lock()
 
         # Stats tracking
         self._hit_count = 0
@@ -73,6 +75,9 @@ class SQLiteCacheProvider(BaseCacheProvider):
             # Enable WAL mode for better concurrency
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            # Track connection for cross-thread cleanup
+            with self._conn_lock:
+                self._connections[threading.get_ident()] = self._local.conn
         return self._local.conn
 
     def _init_db(self):
@@ -415,10 +420,13 @@ class SQLiteCacheProvider(BaseCacheProvider):
             return False
 
     def close(self):
-        """Close database connection."""
-        if hasattr(self._local, "conn") and self._local.conn:
-            try:
-                self._local.conn.close()
-            except Exception:
-                pass
+        """Close all database connections across all threads."""
+        with self._conn_lock:
+            for thread_id, conn in self._connections.items():
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._connections.clear()
+        if hasattr(self._local, "conn"):
             self._local.conn = None

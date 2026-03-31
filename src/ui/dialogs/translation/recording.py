@@ -197,7 +197,7 @@ class RecordingMixin:
                             transcript = self.audio_handler.transcribe_audio_without_prefix(
                                 combined, diarize_override=False
                             )
-                            logger.info(f"Transcription result: '{transcript[:100] if transcript else '(empty)'}...'")
+                            logger.info(f"Transcription result length: {len(transcript) if transcript else 0} chars")
                         finally:
                             # Restore original provider
                             if selected_provider:

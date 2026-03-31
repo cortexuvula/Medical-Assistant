@@ -144,12 +144,19 @@ class SecureKeyStorage:
             salt: Salt bytes to save
         """
         try:
-            with open(self.salt_file, 'wb') as f:
-                f.write(salt)
-
-            # Set restrictive permissions (owner read/write only)
             if os.name == 'posix':
-                os.chmod(self.salt_file, 0o600)
+                # Create file with restrictive permissions from the start
+                # to avoid TOCTOU window where file is world-readable
+                fd = os.open(str(self.salt_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                try:
+                    with os.fdopen(fd, 'wb') as f:
+                        f.write(salt)
+                except Exception:
+                    os.close(fd)
+                    raise
+            else:
+                with open(self.salt_file, 'wb') as f:
+                    f.write(salt)
 
             logger.debug("Salt file saved successfully")
         except Exception as e:
@@ -511,14 +518,20 @@ class SecureKeyStorage:
     def _save_keys(self, keys: Dict[str, Any]) -> None:
         """Save encrypted keys to file."""
         try:
-            # Set restrictive permissions (owner read/write only)
-            with open(self.key_file, 'w') as f:
-                json.dump(keys, f, indent=2)
-
-            # Set file permissions (Unix-like systems)
+            data = json.dumps(keys, indent=2)
             if os.name == 'posix':
-                os.chmod(self.key_file, 0o600)
-
+                # Create file with restrictive permissions from the start
+                # to avoid TOCTOU window where file is world-readable
+                fd = os.open(str(self.key_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                try:
+                    with os.fdopen(fd, 'w') as f:
+                        f.write(data)
+                except Exception:
+                    os.close(fd)
+                    raise
+            else:
+                with open(self.key_file, 'w') as f:
+                    f.write(data)
         except Exception as e:
             logger.error(f"Failed to save keys: {e}")
             raise ConfigurationError(f"Failed to save encrypted keys: {e}")

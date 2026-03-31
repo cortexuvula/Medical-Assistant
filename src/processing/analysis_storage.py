@@ -31,6 +31,7 @@ class AnalysisStorage:
         """Get the database instance."""
         if self._db is None:
             from database.database import Database
+            logger.warning(f"{self.__class__.__name__}: creating local Database instance — prefer passing db= to constructor")
             self._db = Database()
         return self._db
 

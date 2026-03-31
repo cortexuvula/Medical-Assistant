@@ -329,7 +329,10 @@ class NeonVectorStore:
             elif isinstance(metadata_val, dict):
                 metadata = metadata_val
             else:
-                metadata = json.loads(metadata_val)
+                try:
+                    metadata = json.loads(metadata_val)
+                except (json.JSONDecodeError, TypeError):
+                    metadata = {}
 
             results.append(VectorSearchResult(
                 document_id=str(doc_id),
@@ -441,7 +444,10 @@ class NeonVectorStore:
             elif isinstance(metadata_val, dict):
                 metadata = metadata_val
             else:
-                metadata = json.loads(metadata_val)
+                try:
+                    metadata = json.loads(metadata_val)
+                except (json.JSONDecodeError, TypeError):
+                    metadata = {}
 
             results.append({
                 "id": row[0],
@@ -571,7 +577,10 @@ class NeonVectorStore:
             elif isinstance(metadata_val, dict):
                 metadata = metadata_val
             else:
-                metadata = json.loads(metadata_val)
+                try:
+                    metadata = json.loads(metadata_val)
+                except (json.JSONDecodeError, TypeError):
+                    metadata = {}
 
             # Normalize rank to 0-1 range (ts_rank_cd typically < 1)
             normalized_score = min(1.0, float(rank) * 10)

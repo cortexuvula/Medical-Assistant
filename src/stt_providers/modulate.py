@@ -412,7 +412,7 @@ class ModulateProvider(BaseSTTProvider):
                 enable_diarization = settings.get("enable_diarization", True)
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
-                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
+                    self.logger.info(f"Diarized transcript length: {len(transcript)} chars")
                 else:
                     transcript = result.get("text", "")
                     self.logger.warning(f"Diarization skipped in transcribe(): "
@@ -495,7 +495,7 @@ class ModulateProvider(BaseSTTProvider):
                 enable_diarization = settings.get("enable_diarization", True)
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
-                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
+                    self.logger.info(f"Diarized transcript length: {len(transcript)} chars")
                 else:
                     transcript = result.get("text", "")
                     self.logger.warning(f"Diarization skipped in transcribe_with_result(): "
@@ -636,7 +636,7 @@ class ModulateProvider(BaseSTTProvider):
                 # Format transcript with diarization labels
                 if enable_diarization and utterances:
                     transcript = self._format_diarized_transcript(utterances)
-                    self.logger.info(f"Diarized transcript preview: {repr(transcript[:200])}")
+                    self.logger.info(f"Diarized transcript length: {len(transcript)} chars")
                 else:
                     transcript = result.get("text", "")
                     self.logger.warning(f"Diarization skipped in transcribe_file(): "

@@ -927,6 +927,16 @@ class AppInitializer:
                         self.app.after(100, _safe_run("medication_analysis", self.app.document_generators._run_medication_to_panel, soap_note))
                         self.app.after(200, _safe_run("diagnostic_analysis", self.app.document_generators._run_diagnostic_to_panel, soap_note))
                         self.app.after(300, _safe_run("compliance_analysis", self.app.document_generators._run_compliance_to_panel, soap_note))
+
+                        # Medication QA: compare transcript medications against SOAP note
+                        if transcript:
+                            try:
+                                from processing.soap_qa import compare_medications
+                                soap_qa_warnings = compare_medications(transcript, soap_note)
+                            except Exception as e:
+                                logger.error(f"SOAP QA comparison failed: {e}")
+                                soap_qa_warnings = []
+                            self.app.after(400, _safe_run("soap_qa", self.app.document_generators._run_soap_qa_to_panel, soap_qa_warnings))
                 else:
                     skipped_updates.append('soap')
                     logger.info(f"Skipped SOAP update - user has modified content")

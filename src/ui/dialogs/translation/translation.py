@@ -58,7 +58,7 @@ class TranslationMixin:
         Args:
             transcript: Transcribed text
         """
-        logger.info(f"_process_patient_speech called with transcript: '{transcript[:100] if transcript else '(empty)'}...'")
+        logger.info(f"_process_patient_speech called, transcript length: {len(transcript) if transcript else 0} chars")
         # Insert original text
         self.patient_original_text.delete("1.0", tk.END)
         self.patient_original_text.insert("1.0", transcript)

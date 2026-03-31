@@ -24,11 +24,13 @@ logger = get_logger(__name__)
 class MedicationResultsDialog:
     """Dialog for displaying medication analysis results."""
 
-    def __init__(self, parent, document_target=None):
+    def __init__(self, parent, document_target=None, db=None):
         """Initialize the medication results dialog.
 
         Args:
             parent: Parent window
+            document_target: Optional document target for inserting content
+            db: Optional Database instance to reuse (avoids creating a new connection)
         """
         self.parent = parent
         self._document_target = document_target
@@ -42,7 +44,7 @@ class MedicationResultsDialog:
         self.patient_context: Optional[Dict[str, Any]] = None
         self.source_text: str = ""
         self.dialog: Optional[tk.Toplevel] = None
-        self._db: Optional[Database] = None
+        self._db: Optional[Database] = db
         
     def show_results(
         self,
@@ -907,6 +909,7 @@ class MedicationResultsDialog:
     def _get_database(self) -> Database:
         """Get or create database connection."""
         if self._db is None:
+            logger.warning(f"{self.__class__.__name__}: creating local Database instance — prefer passing db= to constructor")
             self._db = Database()
         return self._db
 

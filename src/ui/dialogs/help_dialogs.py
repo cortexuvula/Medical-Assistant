@@ -299,10 +299,13 @@ ElevenLabs, Deepgram, Groq APIs"""
     dialog.update()
 
     def fade_in(alpha=0.0):
-        if alpha < 1.0:
-            alpha += 0.1
-            dialog.attributes('-alpha', alpha)
-            dialog.after(20, lambda: fade_in(alpha))
+        try:
+            if alpha < 1.0:
+                alpha += 0.1
+                dialog.attributes('-alpha', alpha)
+                dialog.after(20, lambda: fade_in(alpha))
+        except tk.TclError:
+            pass  # Dialog was closed during animation
 
     fade_in()
 

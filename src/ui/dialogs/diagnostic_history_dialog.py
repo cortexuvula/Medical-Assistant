@@ -23,22 +23,24 @@ logger = get_logger(__name__)
 class DiagnosticHistoryDialog:
     """Dialog for viewing saved diagnostic analysis history."""
 
-    def __init__(self, parent, on_view_callback=None):
+    def __init__(self, parent, on_view_callback=None, db=None):
         """Initialize the diagnostic history dialog.
 
         Args:
             parent: Parent window
             on_view_callback: Optional callback when viewing an analysis (receives analysis dict)
+            db: Optional Database instance to reuse (avoids creating a new connection)
         """
         self.parent = parent
         self.on_view_callback = on_view_callback
         self.dialog: Optional[tk.Toplevel] = None
-        self._db: Optional[Database] = None
+        self._db: Optional[Database] = db
         self.analyses: List[Dict] = []
 
     def _get_database(self) -> Database:
         """Get or create database connection."""
         if self._db is None:
+            logger.warning(f"{self.__class__.__name__}: creating local Database instance — prefer passing db= to constructor")
             self._db = Database()
         return self._db
 

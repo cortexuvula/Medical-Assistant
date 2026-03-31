@@ -33,7 +33,9 @@ class NotificationManager:
         self.notification_queue: Queue[Dict[str, Any]] = Queue()
         self.active_toasts: List[tk.Toplevel] = []
         self.notification_history: List[Dict[str, Any]] = []
-        
+        self._history_lock = threading.Lock()
+        self._running = True
+
         # Start notification processor thread
         self.processor_thread = threading.Thread(target=self._process_notifications, daemon=True)
         self.processor_thread.start()
@@ -60,9 +62,12 @@ class NotificationManager:
         }
         
         self.notification_queue.put(notification)
-        self.notification_history.append(notification)
-        
-        logger.info(f"Queued completion notification for patient: {patient_name}")
+        with self._history_lock:
+            self.notification_history.append(notification)
+            if len(self.notification_history) > 200:
+                self.notification_history = self.notification_history[-200:]
+
+        logger.info("Queued completion notification", patient_name=patient_name)
     
     def show_error(self, patient_name: str, error_message: str, 
                   recording_id: int, task_id: str):
@@ -84,9 +89,12 @@ class NotificationManager:
         }
         
         self.notification_queue.put(notification)
-        self.notification_history.append(notification)
-        
-        logger.error(f"Queued error notification for patient: {patient_name} - {error_message}")
+        with self._history_lock:
+            self.notification_history.append(notification)
+            if len(self.notification_history) > 200:
+                self.notification_history = self.notification_history[-200:]
+
+        logger.error("Queued error notification", patient_name=patient_name, error_message=error_message)
     
     def show_progress(self, patient_name: str, progress: int, task_id: str):
         """Show progress notification.
@@ -110,14 +118,16 @@ class NotificationManager:
     
     def _process_notifications(self) -> None:
         """Process notifications in background thread."""
-        while True:
+        while self._running:
             try:
                 # Get notification with timeout
                 notification = self.notification_queue.get(timeout=1.0)
-                
+                if not self._running:
+                    break
+
                 # Schedule notification on main thread
                 self.app.after(0, lambda n=notification: self._display_notification(n))
-                
+
             except Empty:
                 continue
             except Exception as e:
@@ -220,10 +230,13 @@ class NotificationManager:
     
     def _fade_in(self, window: tk.Toplevel, alpha: float = 0.0) -> None:
         """Fade in animation for toast."""
-        if alpha < 0.9:
-            alpha += 0.1
-            window.attributes("-alpha", alpha)
-            window.after(20, lambda: self._fade_in(window, alpha))
+        try:
+            if alpha < 0.9:
+                alpha += 0.1
+                window.attributes("-alpha", alpha)
+                window.after(20, lambda: self._fade_in(window, alpha))
+        except tk.TclError:
+            return
     
     def _hide_toast(self, toast: tk.Toplevel) -> None:
         """Hide and destroy toast notification."""
@@ -235,12 +248,15 @@ class NotificationManager:
     
     def _fade_out(self, window: tk.Toplevel, alpha: float = 0.9) -> None:
         """Fade out animation for toast."""
-        if alpha > 0.1:
-            alpha -= 0.1
-            window.attributes("-alpha", alpha)
-            window.after(20, lambda: self._fade_out(window, alpha))
-        else:
-            window.destroy()
+        try:
+            if alpha > 0.1:
+                alpha -= 0.1
+                window.attributes("-alpha", alpha)
+                window.after(20, lambda: self._fade_out(window, alpha))
+            else:
+                window.destroy()
+        except tk.TclError:
+            return
     
     def _show_statusbar_notification(self, notification: Dict[str, Any]) -> None:
         """Show notification in status bar."""
@@ -276,11 +292,13 @@ class NotificationManager:
         Returns:
             List of recent notifications
         """
-        return self.notification_history[-limit:]
+        with self._history_lock:
+            return self.notification_history[-limit:]
     
     def clear_notification_history(self) -> None:
         """Clear notification history."""
-        self.notification_history.clear()
+        with self._history_lock:
+            self.notification_history.clear()
         logger.info("Notification history cleared")
     
     def show_queue_status(self, active_count: int, completed_count: int, failed_count: int) -> None:
@@ -340,10 +358,16 @@ class NotificationManager:
     
     def cleanup(self) -> None:
         """Clean up notification manager resources."""
+        self._running = False
+        self.processor_thread.join(timeout=3.0)
+
         # Clear any remaining toasts
         for toast in self.active_toasts:
-            if toast.winfo_exists():
-                toast.destroy()
+            try:
+                if toast.winfo_exists():
+                    toast.destroy()
+            except tk.TclError:
+                pass
         self.active_toasts.clear()
-        
+
         logger.info("NotificationManager cleaned up")

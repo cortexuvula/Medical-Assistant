@@ -14,6 +14,7 @@ except ImportError:
     pygame = None
     PYGAME_AVAILABLE = False
 
+import os
 import threading
 from typing import Optional, Dict, Any, List
 from pydub import AudioSegment
@@ -244,14 +245,26 @@ class TTSManager:
                 # Export to temporary file for pygame
                 import tempfile
                 self.logger.info("Playing with pygame (no output device specified)")
-                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=True) as temp:
-                    audio.export(temp.name, format='mp3')
-                    pygame.mixer.music.load(temp.name)
+                temp = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+                temp_path = temp.name
+                temp.close()
+                try:
+                    audio.export(temp_path, format='mp3')
+                    pygame.mixer.music.load(temp_path)
                     pygame.mixer.music.play()
 
                     # Wait for playback to complete
                     while pygame.mixer.music.get_busy():
                         pygame.time.Clock().tick(10)
+                finally:
+                    try:
+                        pygame.mixer.music.unload()
+                    except Exception:
+                        pass
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
                 self.logger.info("Pygame playback completed")
             else:
                 # Use pydub playback
@@ -265,13 +278,18 @@ class TTSManager:
     
     def _play_audio_async(self, audio: AudioSegment, output_device: str = None):
         """Play audio asynchronously (non-blocking).
-        
+
         Args:
             audio: AudioSegment to play
             output_device: Specific output device to use
         """
-        # Create thread for playback
-        thread = threading.Thread(target=self._play_audio_blocking, args=(audio, output_device))
+        def _safe_play():
+            try:
+                self._play_audio_blocking(audio, output_device)
+            except Exception as e:
+                self.logger.error(f"Audio playback failed in background: {e}")
+
+        thread = threading.Thread(target=_safe_play)
         thread.daemon = True
         thread.start()
     

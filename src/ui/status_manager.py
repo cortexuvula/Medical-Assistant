@@ -122,7 +122,12 @@ class StatusManager:
         Returns:
             Timer ID for the scheduled update
         """
-        timer_id = self.parent.after(delay_ms, lambda: self.update_status(message, status_type))
+        def _on_fire():
+            if timer_id in self.status_timers:
+                self.status_timers.remove(timer_id)
+            self.update_status(message, status_type)
+
+        timer_id = self.parent.after(delay_ms, _on_fire)
         self.status_timers.append(timer_id)
         return timer_id
     

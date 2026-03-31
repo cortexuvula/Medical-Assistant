@@ -376,18 +376,45 @@ class AutoSaveDataProvider:
     
     @staticmethod
     def create_text_widget_provider(widget, name: str) -> Callable[[], Dict[str, Any]]:
-        """Create a provider for a text widget."""
+        """Create a provider for a text widget. Thread-safe."""
+        def _read_widget() -> Dict[str, Any]:
+            return {
+                "name": name,
+                "content": widget.get("1.0", "end-1c"),
+                "cursor_position": widget.index("insert"),
+            }
+
+        _empty = {"name": name, "content": "", "cursor_position": "1.0"}
+
         def provider():
+            if threading.current_thread() is threading.main_thread():
+                try:
+                    return _read_widget()
+                except (tk.TclError, AttributeError, RuntimeError):
+                    return dict(_empty)
+
+            result_holder: Dict[str, Any] = {}
+            event = threading.Event()
+
+            def _on_main():
+                try:
+                    result_holder["data"] = _read_widget()
+                except (tk.TclError, AttributeError, RuntimeError):
+                    result_holder["data"] = dict(_empty)
+                finally:
+                    event.set()
+
             try:
-                return {
-                    "name": name,
-                    "content": widget.get("1.0", "end-1c"),
-                    "cursor_position": widget.index("insert")
-                }
-            except (tk.TclError, AttributeError, RuntimeError):
-                # Widget may be destroyed or not initialized
-                return {"name": name, "content": "", "cursor_position": "1.0"}
-        
+                widget.after(0, _on_main)
+            except (tk.TclError, RuntimeError):
+                return dict(_empty)
+
+            if not event.wait(timeout=5.0):
+                logger.warning(f"Timeout reading widget '{name}' on main thread")
+                return dict(_empty)
+
+            return result_holder["data"]
+
         return provider
     
     @staticmethod
