@@ -229,7 +229,7 @@ class DefaultAICaller(BaseAICaller):
         elif provider_lower == PROVIDER_ANTHROPIC:
             result = self._call_anthropic(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_OLLAMA:
-            result = self._call_ollama(system_message, prompt, temperature)
+            result = self._call_ollama(system_message, prompt, temperature, model)
         elif provider_lower == PROVIDER_GEMINI:
             result = self._call_gemini(model, system_message, prompt, temperature)
         elif provider_lower == PROVIDER_GROQ:

@@ -237,7 +237,6 @@ class SOAPProcessor:
 
                 # Log success with transcript preview to verify speaker labels
                 logger.info(f"Successfully transcribed audio, length: {len(transcript)} chars")
-                logger.info(f"Transcript preview: {repr(transcript[:200])}")
 
                 # Update transcript tab with the raw transcript
                 schedule_ui_update(self.app, lambda: [
@@ -318,6 +317,16 @@ class SOAPProcessor:
                         if icd_warnings:
                             schedule_ui_update(self.app, lambda w=icd_warnings:
                                 self.app.document_generators._run_icd_validation_to_panel(w))
+
+                        # Medication QA: compare transcript medications against SOAP note
+                        try:
+                            from processing.soap_qa import compare_medications
+                            soap_qa_warnings = compare_medications(transcript, soap_note)
+                        except Exception as e:
+                            logger.error(f"SOAP QA comparison failed: {e}")
+                            soap_qa_warnings = []
+                        schedule_ui_update(self.app, lambda w=soap_qa_warnings:
+                            self.app.document_generators._run_soap_qa_to_panel(w))
 
                         # Display emotion data in panel if available
                         if emotion_data:

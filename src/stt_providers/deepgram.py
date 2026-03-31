@@ -167,7 +167,7 @@ class DeepgramProvider(BaseSTTProvider):
                 if alternatives and "transcript" in alternatives[0]:
                     transcript = alternatives[0]["transcript"]
                     transcript_preview = transcript[:100] + "..." if len(transcript) > 100 else transcript
-                    self.logger.debug(f"Transcript preview: {transcript_preview}")
+                    self.logger.debug(f"Transcript length: {len(transcript)} chars")
             
             self.logger.debug("=================================\n")
             

@@ -94,6 +94,7 @@ class ChatProcessor(ChatContextMixin, ChatToolsMixin, ChatUIMixin):
         self.app = app
         self.is_processing = False
         self.conversation_history = []
+        self._history_lock = threading.Lock()
 
         # Typing indicator state
         self._typing_indicator_mark = None

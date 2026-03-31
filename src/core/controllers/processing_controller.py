@@ -542,8 +542,13 @@ class ProcessingController:
         if (self.app.capitalize_next or not current or current[-1] in ".!?") and text:
             text = text[0].upper() + text[1:]
             self.app.capitalize_next = False
-        self.app.transcript_text.insert(tk.END, (" " if current and current[-1] != "\n" else "") + text)
-        self.app.text_chunks.append(f"chunk_{len(self.app.text_chunks)}")
+        insert_text = (" " if current and current[-1] != "\n" else "") + text
+        start = self.app.transcript_text.index(tk.END + "-1c")
+        self.app.transcript_text.insert(tk.END, insert_text)
+        end = self.app.transcript_text.index(tk.END + "-1c")
+        tag_name = f"chunk_{len(self.app.text_chunks)}"
+        self.app.transcript_text.tag_add(tag_name, start, end)
+        self.app.text_chunks.append(tag_name)
         self.app.transcript_text.see(tk.END)
 
     def scratch_that(self) -> None:

@@ -54,13 +54,14 @@ def _get_first_available_model(session, base_url: str) -> str:
     return ""
 
 
-def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResult:
+def call_ollama(system_message: str, prompt: str, temperature: float, model: str = "") -> AIResult:
     """Call local Ollama API to generate a response.
 
     Args:
         system_message: System message to guide the AI's response
         prompt: User prompt
         temperature: Temperature parameter (0.0 to 1.0)
+        model: Optional model name override. If provided, skips settings lookup.
 
     Returns:
         AIResult: Type-safe result wrapper. Use result.text for content,
@@ -79,11 +80,12 @@ def call_ollama(system_message: str, prompt: str, temperature: float) -> AIResul
     ollama_url = get_ollama_url()
     base_url = ollama_url.rstrip("/")  # Remove trailing slash if present
 
-    # Get model from settings based on the task
-    model_key = get_model_key_for_task(system_message, prompt)
-    model = settings_manager.get_nested(f"{model_key}.ollama_model", "")
+    # Use explicitly passed model, or fall back to settings-based resolution
+    if not model:
+        model_key = get_model_key_for_task(system_message, prompt)
+        model = settings_manager.get_nested(f"{model_key}.ollama_model", "")
 
-    # If no task-specific model configured, use global default or auto-detect
+    # If still no model, use global default or auto-detect
     if not model:
         model = settings_manager.get("ollama_default_model", "")
     if not model:

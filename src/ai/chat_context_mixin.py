@@ -113,9 +113,11 @@ class ChatContextMixin:
             ])
 
         # Add conversation history (last few exchanges)
-        if self.conversation_history:
+        with self._history_lock:
+            history_snapshot = list(self.conversation_history[-6:])
+        if history_snapshot:
             prompt_parts.append("Recent Conversation:")
-            for item in self.conversation_history[-6:]:  # Last 3 exchanges
+            for item in history_snapshot:  # Last 3 exchanges
                 role = item["role"].title()
                 message = item["message"][:200] + "..." if len(item["message"]) > 200 else item["message"]
                 prompt_parts.append(f"{role}: {message}")
@@ -132,31 +134,35 @@ class ChatContextMixin:
 
     def _add_to_history(self, role: str, message: str):
         """Add a message to conversation history."""
-        self.conversation_history.append({
-            "role": role,
-            "message": message,
-            "timestamp": datetime.now().isoformat()
-        })
+        with self._history_lock:
+            self.conversation_history.append({
+                "role": role,
+                "message": message,
+                "timestamp": datetime.now().isoformat()
+            })
 
-        # Keep only recent history
-        if len(self.conversation_history) > self.max_history_items:
-            self.conversation_history = self.conversation_history[-self.max_history_items:]
+            # Keep only recent history
+            if len(self.conversation_history) > self.max_history_items:
+                self.conversation_history = self.conversation_history[-self.max_history_items:]
 
     def clear_history(self):
         """Clear conversation history."""
-        self.conversation_history = []
+        with self._history_lock:
+            self.conversation_history = []
         logger.info("Chat conversation history cleared")
 
     def get_history(self) -> list:
         """Get conversation history."""
-        return self.conversation_history.copy()
+        with self._history_lock:
+            return self.conversation_history.copy()
 
     def get_context_from_history(self, max_entries: int = 5) -> str:
         """Get context from recent conversation history."""
-        if not self.conversation_history:
-            return ""
+        with self._history_lock:
+            if not self.conversation_history:
+                return ""
+            recent_history = list(self.conversation_history[-max_entries:])
 
-        recent_history = self.conversation_history[-max_entries:]
         context_parts = []
 
         for entry in recent_history:

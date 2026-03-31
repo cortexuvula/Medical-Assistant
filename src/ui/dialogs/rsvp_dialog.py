@@ -92,6 +92,7 @@ class RSVPDialog:
         self.current_index = 0
         self.is_playing = False
         self.is_fullscreen = False
+        self._closed = False
         self.timer_id: Optional[str] = None
 
         # Load settings with validation
@@ -704,6 +705,9 @@ class RSVPDialog:
 
     def _display_word(self) -> None:
         """Display current word(s) with ORP highlighting on canvas."""
+        if self._closed:
+            return
+
         # Clear canvas
         self.canvas.delete("all")
 
@@ -1382,8 +1386,12 @@ SETTINGS BUTTONS
 
     def _on_close(self) -> None:
         """Handle dialog close."""
+        self._closed = True
         self.pause()
-        self.dialog.destroy()
+        try:
+            self.dialog.destroy()
+        except tk.TclError:
+            pass
 
 
 __all__ = ["RSVPDialog"]

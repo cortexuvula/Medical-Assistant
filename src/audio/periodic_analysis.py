@@ -162,7 +162,8 @@ class PeriodicAnalyzer:
                 header = f"Analysis #{entry['analysis_number']} (recording time: {formatted_time})"
                 parts.append(f"{header}\n{entry['result_text']}")
 
-            return "\n\n" + "─" * 50 + "\n\n".join(parts)
+            separator = "\n\n" + "─" * 50 + "\n\n"
+            return separator.join(parts)
 
     def clear_history(self) -> None:
         """Clear the analysis history."""

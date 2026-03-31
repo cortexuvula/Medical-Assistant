@@ -178,12 +178,15 @@ class StreamingProgressBar:
 
         def animate():
             nonlocal current
-            if abs(current - target) > 1:
-                current += step
-                self.progressbar['value'] = current
-                self.parent.after(50, animate)
-            else:
-                self.progressbar['value'] = target
+            try:
+                if abs(current - target) > 1:
+                    current += step
+                    self.progressbar['value'] = current
+                    self.parent.after(50, animate)
+                else:
+                    self.progressbar['value'] = target
+            except tk.TclError:
+                pass  # Widget destroyed during animation
 
         animate()
 

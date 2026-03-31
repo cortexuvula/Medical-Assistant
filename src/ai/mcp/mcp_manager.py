@@ -78,13 +78,14 @@ class MCPProtocol:
         self.process = process
         self.server = server  # Reference to store errors
         self.request_id = 0
-        self.response_queue = queue.Queue()
+        self._pending_requests: Dict[int, queue.Queue] = {}
+        self._pending_lock = threading.Lock()
         self.reader_thread = threading.Thread(target=self._read_responses, daemon=True)
         self.reader_thread.start()
         # Start stderr reader to capture errors
         self.stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
         self.stderr_thread.start()
-    
+
     def _read_responses(self):
         """Read responses from the MCP server stdout"""
         try:
@@ -100,14 +101,23 @@ class MCPProtocol:
                 try:
                     response = json.loads(line)
                     logger.debug(f"MCP response: {response}")
-                    self.response_queue.put(response)
+                    resp_id = response.get("id")
+                    with self._pending_lock:
+                        req_queue = self._pending_requests.get(resp_id)
+                    if req_queue is not None:
+                        req_queue.put(response)
+                    else:
+                        logger.warning(f"Received response for unknown request id {resp_id}, discarding")
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON from MCP server: {line}")
         except Exception as e:
             logger.error(f"Error reading MCP responses: {e}")
         finally:
-            # Notify any waiters that the reader has exited so they don't hang forever
-            self.response_queue.put({"error": {"code": -1, "message": "MCP reader thread exited"}})
+            # Notify all pending waiters that the reader has exited so they don't hang forever
+            exit_msg = {"error": {"code": -1, "message": "MCP reader thread exited"}}
+            with self._pending_lock:
+                for req_queue in self._pending_requests.values():
+                    req_queue.put(exit_msg)
     
     def _read_stderr(self):
         """Read stderr output from the MCP server"""
@@ -135,35 +145,41 @@ class MCPProtocol:
         # Check if process is still running
         if self.process.poll() is not None:
             raise Exception(f"MCP server process has terminated with code: {self.process.returncode}")
-            
-        self.request_id += 1
-        request = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "id": self.request_id
-        }
-        if params:
-            request["params"] = params
-        
-        # Send request
-        request_str = json.dumps(request) + "\n"
-        logger.debug(f"Sending MCP request: {request_str.strip()}")
+
+        # Allocate a per-request queue and atomically assign request_id
+        req_queue = queue.Queue()
+        with self._pending_lock:
+            self.request_id += 1
+            current_id = self.request_id
+            self._pending_requests[current_id] = req_queue
+
         try:
-            self.process.stdin.write(request_str)
-            self.process.stdin.flush()
-        except Exception as e:
-            raise Exception(f"Failed to send request to MCP server: {e}")
-        
-        # Wait for response
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            # Check if process terminated while waiting
-            if self.process.poll() is not None:
-                raise Exception(f"MCP server process terminated while waiting for response (code: {self.process.returncode})")
-                
+            request = {
+                "jsonrpc": "2.0",
+                "method": method,
+                "id": current_id
+            }
+            if params:
+                request["params"] = params
+
+            # Send request
+            request_str = json.dumps(request) + "\n"
+            logger.debug(f"Sending MCP request: {request_str.strip()}")
             try:
-                response = self.response_queue.get(timeout=0.1)
-                if response.get("id") == self.request_id:
+                self.process.stdin.write(request_str)
+                self.process.stdin.flush()
+            except Exception as e:
+                raise Exception(f"Failed to send request to MCP server: {e}")
+
+            # Wait for response on our dedicated queue
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                # Check if process terminated while waiting
+                if self.process.poll() is not None:
+                    raise Exception(f"MCP server process terminated while waiting for response (code: {self.process.returncode})")
+
+                try:
+                    response = req_queue.get(timeout=0.1)
                     if "error" in response:
                         error = response['error']
                         # Extract error details
@@ -171,7 +187,7 @@ class MCPProtocol:
                             code = error.get('code', 'Unknown')
                             message = error.get('message', 'Unknown error')
                             data = error.get('data', {})
-                            
+
                             # Check for rate limit error
                             if code == 429 or 'rate' in str(message).lower():
                                 retry_after = data.get('retry_after', 60)
@@ -181,10 +197,14 @@ class MCPProtocol:
                         else:
                             raise Exception(f"MCP error: {error}")
                     return response.get("result")
-            except queue.Empty:
-                continue
-        
-        raise Exception(f"Timeout waiting for MCP response to {method}")
+                except queue.Empty:
+                    continue
+
+            raise Exception(f"Timeout waiting for MCP response to {method}")
+        finally:
+            # Always clean up the per-request queue
+            with self._pending_lock:
+                self._pending_requests.pop(current_id, None)
 
 
 class MCPManager:
@@ -330,27 +350,30 @@ class MCPManager:
     
     def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a tool on an MCP server"""
+        # Hold lock only for server/protocol lookup
         with self._lock:
             server = self.servers.get(server_name)
             if not server or not server.process:
                 raise Exception(f"MCP server {server_name} is not running")
-            
+
             if not server.protocol:
                 raise Exception(f"MCP server {server_name} has no active protocol")
-            
-            try:
-                # Log the request for debugging
-                request_params = {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
-                logger.debug(f"Sending tool call request: {request_params}")
-                
-                result = server.protocol.send_request("tools/call", request_params)
-                return result
-            except Exception as e:
-                logger.error(f"Failed to execute tool {tool_name} on {server_name}: {e}")
-                raise
+
+            protocol = server.protocol
+
+        # Perform the (potentially long) I/O outside the lock
+        try:
+            request_params = {
+                "name": tool_name,
+                "arguments": arguments
+            }
+            logger.debug(f"Sending tool call request: {request_params}")
+
+            result = protocol.send_request("tools/call", request_params)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to execute tool {tool_name} on {server_name}: {e}")
+            raise
     
     def get_all_tools(self) -> List[Tuple[str, Dict[str, Any]]]:
         """Get all available tools from all running servers"""
@@ -475,6 +498,9 @@ class HealthMonitor:
 
     def _check_servers(self) -> None:
         """Check all servers and restart any that have crashed."""
+        crashed_servers = []
+
+        # Hold lock only briefly to detect crashed servers and clean up stale refs
         with self.mcp_manager._lock:
             for name, server in list(self.mcp_manager.servers.items()):
                 if not server.enabled:
@@ -485,17 +511,25 @@ class HealthMonitor:
                     continue
 
                 if server.process.poll() is not None:
-                    # Process has terminated
+                    # Process has terminated — collect name and clean up stale refs
                     exit_code = server.process.returncode
                     logger.warning(f"MCP server '{name}' crashed with exit code {exit_code}")
-                    self._handle_crash(name, server)
+                    server.process = None
+                    server.protocol = None
+                    server.tools = None
+                    crashed_servers.append(name)
 
-    def _handle_crash(self, name: str, server: MCPServer) -> None:
+        # Handle restarts outside the lock
+        for name in crashed_servers:
+            self._handle_crash(name)
+
+    def _handle_crash(self, name: str) -> None:
         """Handle a crashed server with restart logic.
+
+        Does NOT assume any lock is held. start_server acquires its own lock.
 
         Args:
             name: Server name
-            server: Server instance
         """
         attempts = self.restart_attempts.get(name, 0)
 
@@ -507,26 +541,16 @@ class HealthMonitor:
         backoff = 2 ** attempts
         logger.info(f"Attempting to restart MCP server '{name}' in {backoff}s (attempt {attempts + 1}/{self.max_restarts})")
 
-        # Clean up old process
-        server.process = None
-        server.protocol = None
-        server.tools = None
-
-        # Wait with backoff
+        # Wait with backoff (no lock held, so this is safe)
         time.sleep(backoff)
 
         if not self._running:
             return
 
         try:
-            # Release lock temporarily for restart
-            self.mcp_manager._lock.release()
-            try:
-                self.mcp_manager.start_server(name)
-                self.restart_attempts[name] = 0  # Reset on success
-                logger.info(f"Successfully restarted MCP server '{name}'")
-            finally:
-                self.mcp_manager._lock.acquire()
+            self.mcp_manager.start_server(name)
+            self.restart_attempts[name] = 0  # Reset on success
+            logger.info(f"Successfully restarted MCP server '{name}'")
         except Exception as e:
             self.restart_attempts[name] = attempts + 1
             logger.error(f"Failed to restart MCP server '{name}': {e}")

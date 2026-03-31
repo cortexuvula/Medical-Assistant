@@ -23,23 +23,25 @@ logger = get_logger(__name__)
 class DiagnosticComparisonDialog:
     """Dialog for comparing multiple diagnostic analyses side by side."""
 
-    def __init__(self, parent, on_select_callback=None):
+    def __init__(self, parent, on_select_callback=None, db=None):
         """Initialize the diagnostic comparison dialog.
 
         Args:
             parent: Parent window
             on_select_callback: Optional callback when selecting analyses to compare
+            db: Optional Database instance to reuse (avoids creating a new connection)
         """
         self.parent = parent
         self.on_select_callback = on_select_callback
         self.dialog: Optional[tk.Toplevel] = None
-        self._db: Optional[Database] = None
+        self._db: Optional[Database] = db
         self.analyses: List[Dict] = []
         self.selected_analyses: List[Dict] = []
 
     def _get_database(self) -> Database:
         """Get or create database connection."""
         if self._db is None:
+            logger.warning(f"{self.__class__.__name__}: creating local Database instance — prefer passing db= to constructor")
             self._db = Database()
         return self._db
 
