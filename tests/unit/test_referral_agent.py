@@ -7,10 +7,16 @@ Tests cover:
 - Referral type routing
 - Specialty inference from conditions
 - Recipient-aware prompt building
+- Pure-logic methods (no AI calls needed)
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from typing import Optional
+from unittest.mock import Mock, MagicMock, patch
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 from ai.agents.referral import (
     ReferralAgent,
@@ -19,6 +25,23 @@ from ai.agents.referral import (
 )
 from ai.agents.models import AgentConfig, AgentTask, AgentResponse
 from ai.agents.ai_caller import MockAICaller
+
+
+# ---------------------------------------------------------------------------
+# Setup helpers for pure-logic tests (no conftest fixture dependency)
+# ---------------------------------------------------------------------------
+
+def _make_agent():
+    """Create a ReferralAgent with a MagicMock AI caller."""
+    return ReferralAgent(ai_caller=MagicMock())
+
+
+def _make_task(description="test task", input_data=None):
+    """Create a minimal AgentTask."""
+    return AgentTask(
+        task_description=description,
+        input_data=input_data or {}
+    )
 
 
 @pytest.fixture
@@ -492,3 +515,557 @@ class TestDefaultConfig:
     def test_default_config_max_tokens(self):
         """Test max tokens is sufficient for referral letters."""
         assert ReferralAgent.DEFAULT_CONFIG.max_tokens >= 800
+
+
+# ===========================================================================
+# Pure-logic method tests (using _make_agent / _make_task helpers)
+# ===========================================================================
+
+
+class TestDetermineReferralType:
+    """Tests for ReferralAgent._determine_referral_type."""
+
+    def test_urgent_keyword_returns_urgent(self):
+        agent = _make_agent()
+        task = _make_task("urgent referral needed")
+        assert agent._determine_referral_type(task) == "urgent"
+
+    def test_emergency_keyword_returns_urgent(self):
+        agent = _make_agent()
+        task = _make_task("emergency consult required")
+        assert agent._determine_referral_type(task) == "urgent"
+
+    def test_specialist_keyword_returns_specialist(self):
+        agent = _make_agent()
+        task = _make_task("specialist referral for cardiology")
+        assert agent._determine_referral_type(task) == "specialist"
+
+    def test_specialty_keyword_returns_specialist(self):
+        agent = _make_agent()
+        task = _make_task("specialty consultation needed")
+        assert agent._determine_referral_type(task) == "specialist"
+
+    def test_follow_hyphen_up_keyword_returns_follow_up(self):
+        agent = _make_agent()
+        task = _make_task("follow-up appointment required")
+        assert agent._determine_referral_type(task) == "follow_up"
+
+    def test_follow_space_up_keyword_returns_follow_up(self):
+        agent = _make_agent()
+        task = _make_task("follow up visit next month")
+        assert agent._determine_referral_type(task) == "follow_up"
+
+    def test_diagnostic_keyword_returns_diagnostic(self):
+        agent = _make_agent()
+        task = _make_task("diagnostic workup required")
+        assert agent._determine_referral_type(task) == "diagnostic"
+
+    def test_investigation_keyword_returns_diagnostic(self):
+        agent = _make_agent()
+        task = _make_task("investigation needed for liver enzymes")
+        assert agent._determine_referral_type(task) == "diagnostic"
+
+    def test_routine_description_returns_standard(self):
+        agent = _make_agent()
+        task = _make_task("routine referral for patient")
+        assert agent._determine_referral_type(task) == "standard"
+
+    def test_general_consultation_returns_standard(self):
+        agent = _make_agent()
+        task = _make_task("general consultation")
+        assert agent._determine_referral_type(task) == "standard"
+
+    def test_uppercase_urgent_is_case_insensitive(self):
+        agent = _make_agent()
+        task = _make_task("URGENT referral needed today")
+        assert agent._determine_referral_type(task) == "urgent"
+
+    def test_capitalized_emergency_is_case_insensitive(self):
+        agent = _make_agent()
+        task = _make_task("Emergency visit required")
+        assert agent._determine_referral_type(task) == "urgent"
+
+    def test_urgent_takes_priority_over_specialist(self):
+        # "urgent" branch is checked before "specialist" in the if-elif chain
+        agent = _make_agent()
+        task = _make_task("urgent specialist referral")
+        assert agent._determine_referral_type(task) == "urgent"
+
+    def test_empty_description_returns_standard(self):
+        agent = _make_agent()
+        task = _make_task("")
+        assert agent._determine_referral_type(task) == "standard"
+
+    def test_mixed_case_specialist(self):
+        agent = _make_agent()
+        task = _make_task("Specialist consult for endocrinology")
+        assert agent._determine_referral_type(task) == "specialist"
+
+
+class TestExtractUrgencyPure:
+    """Tests for ReferralAgent._extract_urgency (pure-logic, no conftest needed)."""
+
+    def test_urgent_keyword(self):
+        assert _make_agent()._extract_urgency("This is urgent") == "urgent"
+
+    def test_emergency_keyword(self):
+        assert _make_agent()._extract_urgency("Emergency consult needed") == "urgent"
+
+    def test_immediate_keyword(self):
+        assert _make_agent()._extract_urgency("Requires immediate attention") == "urgent"
+
+    def test_stat_keyword(self):
+        assert _make_agent()._extract_urgency("STAT referral required") == "urgent"
+
+    def test_soon_keyword(self):
+        assert _make_agent()._extract_urgency("Please see soon for follow up") == "high"
+
+    def test_expedite_keyword(self):
+        assert _make_agent()._extract_urgency("Please expedite this appointment") == "high"
+
+    def test_priority_keyword(self):
+        assert _make_agent()._extract_urgency("This is a priority case") == "high"
+
+    def test_routine_keyword(self):
+        assert _make_agent()._extract_urgency("Routine follow-up appointment") == "routine"
+
+    def test_elective_keyword(self):
+        assert _make_agent()._extract_urgency("Elective procedure when available") == "routine"
+
+    def test_no_urgency_keywords_returns_standard(self):
+        assert _make_agent()._extract_urgency("General appointment for patient") == "standard"
+
+    def test_empty_string_returns_standard(self):
+        assert _make_agent()._extract_urgency("") == "standard"
+
+    def test_case_insensitive_routine(self):
+        assert _make_agent()._extract_urgency("ROUTINE check-up") == "routine"
+
+    def test_case_insensitive_urgent(self):
+        assert _make_agent()._extract_urgency("URGENT: patient requires attention") == "urgent"
+
+    def test_case_insensitive_stat(self):
+        assert _make_agent()._extract_urgency("Stat labs ordered") == "urgent"
+
+    def test_urgent_takes_priority_over_routine_in_same_text(self):
+        # "urgent" check comes first in the if-elif chain
+        assert _make_agent()._extract_urgency("urgent routine matter") == "urgent"
+
+
+class TestExtractSpecialtyPure:
+    """Tests for ReferralAgent._extract_specialty (pure-logic, no conftest needed)."""
+
+    def test_cardiology_found(self):
+        assert _make_agent()._extract_specialty("Referral to cardiology clinic") == "Cardiology"
+
+    def test_neurology_found(self):
+        assert _make_agent()._extract_specialty("Neurology consultation requested") == "Neurology"
+
+    def test_psychiatry_found(self):
+        assert _make_agent()._extract_specialty("Psychiatry evaluation needed") == "Psychiatry"
+
+    def test_no_specialty_returns_none(self):
+        assert _make_agent()._extract_specialty("No specialty mentioned here") is None
+
+    def test_empty_string_returns_none(self):
+        assert _make_agent()._extract_specialty("") is None
+
+    def test_case_insensitive_dermatology(self):
+        assert _make_agent()._extract_specialty("DERMATOLOGY clinic visit") == "Dermatology"
+
+    def test_oncology_found(self):
+        assert _make_agent()._extract_specialty("Oncology for cancer treatment") == "Oncology"
+
+    def test_urology_found(self):
+        assert _make_agent()._extract_specialty("Urology appointment scheduled") == "Urology"
+
+    def test_gynecology_found(self):
+        assert _make_agent()._extract_specialty("Gynecology referral letter") == "Gynecology"
+
+    def test_emergency_found(self):
+        assert _make_agent()._extract_specialty("Emergency medicine department") == "Emergency"
+
+    def test_gastroenterology_found(self):
+        assert _make_agent()._extract_specialty("Referral to gastroenterology for GI workup") == "Gastroenterology"
+
+    def test_endocrinology_found(self):
+        assert _make_agent()._extract_specialty("Endocrinology follow-up for diabetes") == "Endocrinology"
+
+    def test_rheumatology_found(self):
+        assert _make_agent()._extract_specialty("Rheumatology consultation for arthritis") == "Rheumatology"
+
+    def test_ophthalmology_found(self):
+        assert _make_agent()._extract_specialty("Ophthalmology referral for cataract") == "Ophthalmology"
+
+    def test_orthopedics_found(self):
+        assert _make_agent()._extract_specialty("Orthopedics for fracture management") == "Orthopedics"
+
+    def test_radiology_found(self):
+        assert _make_agent()._extract_specialty("Radiology for imaging studies") == "Radiology"
+
+    def test_result_is_capitalized(self):
+        result = _make_agent()._extract_specialty("neurology consult")
+        assert result == "Neurology"
+        assert result[0].isupper()
+
+
+class TestInferSpecialtyFromConditions:
+    """Tests for ReferralAgent._infer_specialty_from_conditions."""
+
+    def test_none_returns_none(self):
+        assert _make_agent()._infer_specialty_from_conditions(None) is None
+
+    def test_empty_string_returns_none(self):
+        assert _make_agent()._infer_specialty_from_conditions("") is None
+
+    def test_hypertension_maps_to_cardiology(self):
+        assert _make_agent()._infer_specialty_from_conditions("hypertension") == "Cardiology"
+
+    def test_diabetes_maps_to_endocrinology(self):
+        assert _make_agent()._infer_specialty_from_conditions("diabetes") == "Endocrinology"
+
+    def test_asthma_maps_to_pulmonology(self):
+        assert _make_agent()._infer_specialty_from_conditions("asthma") == "Pulmonology"
+
+    def test_depression_maps_to_psychiatry(self):
+        assert _make_agent()._infer_specialty_from_conditions("depression") == "Psychiatry"
+
+    def test_seizure_maps_to_neurology(self):
+        assert _make_agent()._infer_specialty_from_conditions("seizure") == "Neurology"
+
+    def test_kidney_stone_maps_to_urology(self):
+        assert _make_agent()._infer_specialty_from_conditions("kidney stone") == "Urology"
+
+    def test_anemia_maps_to_hematology(self):
+        assert _make_agent()._infer_specialty_from_conditions("anemia") == "Hematology"
+
+    def test_fracture_maps_to_orthopedics(self):
+        assert _make_agent()._infer_specialty_from_conditions("fracture") == "Orthopedics"
+
+    def test_rash_maps_to_dermatology(self):
+        assert _make_agent()._infer_specialty_from_conditions("rash") == "Dermatology"
+
+    def test_cancer_maps_to_oncology(self):
+        assert _make_agent()._infer_specialty_from_conditions("cancer") == "Oncology"
+
+    def test_arthritis_maps_to_rheumatology(self):
+        assert _make_agent()._infer_specialty_from_conditions("arthritis") == "Rheumatology"
+
+    def test_cancer_treatment_returns_oncology(self):
+        # "cancer" is a keyword under oncology; dict insertion order means oncology
+        # wins for text containing "cancer treatment"
+        result = _make_agent()._infer_specialty_from_conditions("cancer treatment")
+        assert result == "Oncology"
+
+    def test_unknown_condition_returns_none(self):
+        assert _make_agent()._infer_specialty_from_conditions("Unknown condition XYZ") is None
+
+    def test_allergy_maps_to_allergy_immunology(self):
+        assert _make_agent()._infer_specialty_from_conditions("allergy") == "Allergy/Immunology"
+
+    def test_gerd_maps_to_gastroenterology(self):
+        assert _make_agent()._infer_specialty_from_conditions("gerd") == "Gastroenterology"
+
+    def test_pregnancy_maps_to_obstetrics_gynecology(self):
+        assert _make_agent()._infer_specialty_from_conditions("pregnancy") == "Obstetrics/Gynecology"
+
+    def test_dvt_maps_to_vascular_surgery(self):
+        assert _make_agent()._infer_specialty_from_conditions("dvt") == "Vascular Surgery"
+
+    def test_insomnia_maps_to_sleep_medicine(self):
+        assert _make_agent()._infer_specialty_from_conditions("insomnia") == "Sleep Medicine"
+
+    def test_case_insensitive_hypertension(self):
+        assert _make_agent()._infer_specialty_from_conditions("Hypertension") == "Cardiology"
+
+    def test_hematuria_maps_to_urology(self):
+        assert _make_agent()._infer_specialty_from_conditions("hematuria") == "Urology"
+
+    def test_uti_maps_to_urology(self):
+        assert _make_agent()._infer_specialty_from_conditions("uti") == "Urology"
+
+    def test_afib_maps_to_cardiology(self):
+        assert _make_agent()._infer_specialty_from_conditions("afib") == "Cardiology"
+
+    def test_migraine_maps_to_neurology(self):
+        assert _make_agent()._infer_specialty_from_conditions("migraine") == "Neurology"
+
+    def test_allergy_wins_before_cardiology_in_insertion_order(self):
+        # allergy/immunology is the first key in the dict; "allergy" should always
+        # map to Allergy/Immunology even when combined with cardiac text
+        result = _make_agent()._infer_specialty_from_conditions("allergy and heart issue")
+        assert result == "Allergy/Immunology"
+
+
+class TestGetReferralRecipientGuidancePure:
+    """Tests for ReferralAgent._get_referral_recipient_guidance (pure-logic)."""
+
+    REQUIRED_KEYS = {"focus", "exclude", "tone", "format", "opening", "closing"}
+
+    def test_specialist_returns_all_required_keys(self):
+        result = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert self.REQUIRED_KEYS.issubset(result.keys())
+
+    def test_specialist_focus_is_non_empty_list(self):
+        result = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert isinstance(result["focus"], list)
+        assert len(result["focus"]) > 0
+
+    def test_specialist_tone_contains_physician_to_physician(self):
+        result = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert "physician-to-physician" in result["tone"].lower()
+
+    def test_gp_backreferral_returns_all_required_keys(self):
+        result = _make_agent()._get_referral_recipient_guidance("gp_backreferral")
+        assert self.REQUIRED_KEYS.issubset(result.keys())
+
+    def test_gp_backreferral_focus_includes_follow_up_requirements(self):
+        result = _make_agent()._get_referral_recipient_guidance("gp_backreferral")
+        combined = " ".join(result["focus"]).lower()
+        assert "follow-up requirements" in combined
+
+    def test_gp_backreferral_tone_contains_handover(self):
+        result = _make_agent()._get_referral_recipient_guidance("gp_backreferral")
+        assert "handover" in result["tone"].lower()
+
+    def test_hospital_returns_all_required_keys(self):
+        result = _make_agent()._get_referral_recipient_guidance("hospital")
+        assert self.REQUIRED_KEYS.issubset(result.keys())
+
+    def test_hospital_tone_contains_actionable(self):
+        result = _make_agent()._get_referral_recipient_guidance("hospital")
+        assert "actionable" in result["tone"].lower()
+
+    def test_diagnostic_returns_all_required_keys(self):
+        result = _make_agent()._get_referral_recipient_guidance("diagnostic")
+        assert self.REQUIRED_KEYS.issubset(result.keys())
+
+    def test_diagnostic_tone_exact_value(self):
+        result = _make_agent()._get_referral_recipient_guidance("diagnostic")
+        assert result["tone"] == "Request form style, clear and specific"
+
+    def test_unknown_type_falls_back_to_specialist(self):
+        unknown = _make_agent()._get_referral_recipient_guidance("nonexistent_type")
+        specialist = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert unknown == specialist
+
+    def test_all_four_types_have_non_empty_focus(self):
+        agent = _make_agent()
+        for rtype in ("specialist", "gp_backreferral", "hospital", "diagnostic"):
+            result = agent._get_referral_recipient_guidance(rtype)
+            assert len(result["focus"]) > 0, f"{rtype} focus is empty"
+
+    def test_all_four_types_have_non_empty_exclude(self):
+        agent = _make_agent()
+        for rtype in ("specialist", "gp_backreferral", "hospital", "diagnostic"):
+            result = agent._get_referral_recipient_guidance(rtype)
+            assert len(result["exclude"]) > 0, f"{rtype} exclude is empty"
+
+    def test_specialist_opening_starts_with_thank_you(self):
+        result = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert result["opening"].startswith("Thank you")
+
+    def test_hospital_opening_contains_requesting_admission(self):
+        result = _make_agent()._get_referral_recipient_guidance("hospital")
+        assert "requesting admission" in result["opening"].lower()
+
+    def test_gp_backreferral_closing_mentions_re_refer(self):
+        result = _make_agent()._get_referral_recipient_guidance("gp_backreferral")
+        assert "re-refer" in result["closing"].lower()
+
+    def test_specialist_closing_mentions_expert_opinion(self):
+        result = _make_agent()._get_referral_recipient_guidance("specialist")
+        assert "expert opinion" in result["closing"].lower()
+
+
+class TestBuildRecipientAwarePrompt:
+    """Tests for ReferralAgent._build_recipient_aware_prompt."""
+
+    # ------------------------------------------------------------------
+    # Helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _prompt(source_text="Patient clinical notes.", conditions="",
+                recipient_type="specialist", urgency="routine",
+                specialty=None, recipient_details=None, context=None):
+        return _make_agent()._build_recipient_aware_prompt(
+            source_text=source_text,
+            conditions=conditions,
+            recipient_type=recipient_type,
+            urgency=urgency,
+            specialty=specialty,
+            recipient_details=recipient_details,
+            context=context,
+        )
+
+    # ------------------------------------------------------------------
+    # Opening / type-specific text
+    # ------------------------------------------------------------------
+
+    def test_specialist_with_specialty_contains_generate_professional_referral_to(self):
+        prompt = self._prompt(recipient_type="specialist", specialty="Cardiology")
+        assert "Generate a professional referral letter to a" in prompt
+
+    def test_specialist_with_specialty_includes_specialty_name(self):
+        prompt = self._prompt(recipient_type="specialist", specialty="Cardiology")
+        assert "Cardiology" in prompt
+
+    def test_gp_backreferral_prompt_contains_back_referral_letter(self):
+        prompt = self._prompt(recipient_type="gp_backreferral")
+        assert "back-referral letter" in prompt
+
+    def test_hospital_prompt_contains_hospital_admission_request(self):
+        prompt = self._prompt(recipient_type="hospital")
+        assert "hospital admission request" in prompt
+
+    def test_diagnostic_prompt_contains_diagnostic_services_request(self):
+        prompt = self._prompt(recipient_type="diagnostic")
+        assert "diagnostic services request" in prompt
+
+    def test_unknown_recipient_type_falls_back_to_generic_referral(self):
+        prompt = self._prompt(recipient_type="unknown_type")
+        assert "Generate a professional referral letter" in prompt
+
+    # ------------------------------------------------------------------
+    # Urgency statements
+    # ------------------------------------------------------------------
+
+    def test_urgency_routine_includes_routine_elective(self):
+        prompt = self._prompt(urgency="routine")
+        assert "routine/elective referral" in prompt
+
+    def test_urgency_urgent_includes_uppercase_urgent(self):
+        prompt = self._prompt(urgency="urgent")
+        assert "URGENT" in prompt
+
+    def test_urgency_emergency_includes_uppercase_emergency(self):
+        prompt = self._prompt(urgency="emergency")
+        assert "EMERGENCY" in prompt
+
+    def test_urgency_soon_includes_2_4_weeks(self):
+        prompt = self._prompt(urgency="soon")
+        assert "2-4 weeks" in prompt
+
+    # ------------------------------------------------------------------
+    # Context
+    # ------------------------------------------------------------------
+
+    def test_context_provided_appears_in_prompt(self):
+        prompt = self._prompt(context="Patient is allergic to penicillin.")
+        assert "Additional Context:" in prompt
+
+    def test_context_none_not_in_prompt(self):
+        prompt = self._prompt(context=None)
+        assert "Additional Context:" not in prompt
+
+    # ------------------------------------------------------------------
+    # Condition focus section
+    # ------------------------------------------------------------------
+
+    def test_conditions_provided_includes_condition_focus_section(self):
+        prompt = self._prompt(conditions="hypertension, diabetes")
+        assert "CONDITION FOCUS:" in prompt
+
+    def test_conditions_empty_no_condition_focus_section(self):
+        prompt = self._prompt(conditions="")
+        assert "CONDITION FOCUS:" not in prompt
+
+    # ------------------------------------------------------------------
+    # Recipient details
+    # ------------------------------------------------------------------
+
+    def test_recipient_details_with_name_includes_name_in_prompt(self):
+        prompt = self._prompt(recipient_details={"name": "Dr. Jane Smith"})
+        assert "Dr. Jane Smith" in prompt
+
+    def test_recipient_details_with_name_and_facility_includes_facility(self):
+        prompt = self._prompt(recipient_details={"name": "Dr. Jane Smith", "facility": "City Hospital"})
+        assert "City Hospital" in prompt
+
+    def test_recipient_details_with_name_includes_do_not_use_placeholder_warning(self):
+        prompt = self._prompt(recipient_details={"name": "Dr. Jane Smith"})
+        assert "DO NOT use placeholder text" in prompt
+
+    def test_no_recipient_details_includes_appropriate_placeholders_guidance(self):
+        prompt = self._prompt(recipient_details=None)
+        assert "appropriate placeholders" in prompt
+
+    # ------------------------------------------------------------------
+    # Source text and structural sections
+    # ------------------------------------------------------------------
+
+    def test_source_text_included_in_prompt(self):
+        source = "Patient has chest pain on exertion."
+        prompt = self._prompt(source_text=source)
+        assert source in prompt
+
+    def test_clinical_information_section_present(self):
+        prompt = self._prompt()
+        assert "Clinical Information:" in prompt
+
+    def test_include_section_present(self):
+        prompt = self._prompt()
+        assert "**INCLUDE (focus on):**" in prompt
+
+    def test_exclude_section_present(self):
+        prompt = self._prompt()
+        assert "**EXCLUDE (do not include):**" in prompt
+
+    # ------------------------------------------------------------------
+    # Guidance opening / closing pass-through in letter structure
+    # ------------------------------------------------------------------
+
+    def test_specialist_opening_thank_you_in_prompt(self):
+        prompt = self._prompt(recipient_type="specialist", specialty="Neurology")
+        assert "Thank you" in prompt
+
+    def test_hospital_opening_requesting_admission_in_prompt(self):
+        prompt = self._prompt(recipient_type="hospital")
+        assert "requesting admission" in prompt.lower()
+
+    def test_gp_backreferral_opening_returning_to_care_in_prompt(self):
+        prompt = self._prompt(recipient_type="gp_backreferral")
+        assert "returning them to your care" in prompt
+
+    def test_diagnostic_opening_perform_investigation_in_prompt(self):
+        prompt = self._prompt(recipient_type="diagnostic")
+        assert "Please perform the following investigation" in prompt
+
+    # ------------------------------------------------------------------
+    # Tone and format guidance pass-through
+    # ------------------------------------------------------------------
+
+    def test_tone_section_in_prompt(self):
+        prompt = self._prompt()
+        assert "**TONE:**" in prompt
+
+    def test_format_section_in_prompt(self):
+        prompt = self._prompt()
+        assert "**FORMAT:**" in prompt
+
+    # ------------------------------------------------------------------
+    # Unknown urgency falls back to routine statement
+    # ------------------------------------------------------------------
+
+    def test_unknown_urgency_falls_back_to_routine_statement(self):
+        prompt = self._prompt(urgency="unknown_level")
+        assert "routine/elective referral" in prompt
+
+    # ------------------------------------------------------------------
+    # Return type and non-empty
+    # ------------------------------------------------------------------
+
+    def test_returns_string(self):
+        assert isinstance(self._prompt(), str)
+
+    def test_prompt_is_non_empty(self):
+        assert len(self._prompt()) > 0
+
+    # ------------------------------------------------------------------
+    # Specialist without specialty falls back to generic opening
+    # ------------------------------------------------------------------
+
+    def test_specialist_without_specialty_still_generates_professional_letter(self):
+        prompt = self._prompt(recipient_type="specialist", specialty=None)
+        assert "Generate a professional referral letter" in prompt

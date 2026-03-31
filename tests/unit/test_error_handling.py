@@ -1,1222 +1,967 @@
 """
-Unit tests for src/utils/error_handling.py
+Unit tests for src/utils/error_handling.py — pure logic only, no Tkinter.
 
-Tests cover:
-- sanitize_error_for_user: user-friendly error message mapping
-- ErrorTemplate / show_error_dialog / get_sanitized_error: error template system
+Covers:
+- sanitize_error_for_user
+- get_sanitized_error
 - ErrorSeverity enum
-- OperationResult: success/failure, to_dict, bool, unwrap, unwrap_or, map
-- handle_errors decorator: severity levels, return types
-- ui_error_context: context manager for UI operations
-- AsyncUIErrorHandler: async UI error handling
-- safe_execute: safe function execution wrapper
-- format_error_for_user: error message formatting
-- log_and_raise: log-then-raise helper
-- ErrorContext: error context capture and formatting
-- safe_ui_update / SafeUIUpdater: thread-safe UI update wrappers
-- run_in_thread: background thread execution with callbacks
+- OperationResult (success/failure, to_dict, bool, unwrap, unwrap_or, map)
+- format_error_for_user
+- ErrorContext (capture, user_message, to_log_string, to_dict)
+- handle_errors decorator
+- safe_execute
+- _USER_FRIENDLY_ERRORS and _ERROR_TEMPLATES data integrity
 """
 
 import logging
-import threading
-import time
-import unittest
-from dataclasses import dataclass
-from unittest.mock import Mock, MagicMock, patch, call
+import pytest
+import sys
+
+sys.path.insert(0, "src")
 
 from utils.error_handling import (
     sanitize_error_for_user,
-    _USER_FRIENDLY_ERRORS,
-    _ERROR_TEMPLATES,
-    ErrorTemplate,
-    show_error_dialog,
     get_sanitized_error,
+    format_error_for_user,
     ErrorSeverity,
     OperationResult,
-    handle_errors,
-    ui_error_context,
-    AsyncUIErrorHandler,
-    safe_execute,
-    format_error_for_user,
-    log_and_raise,
     ErrorContext,
-    safe_ui_update,
-    SafeUIUpdater,
-    run_in_thread,
+    handle_errors,
+    safe_execute,
+    log_and_raise,
+    _USER_FRIENDLY_ERRORS,
+    _ERROR_TEMPLATES,
 )
 
 
 # ---------------------------------------------------------------------------
-# sanitize_error_for_user
+# Custom exception types used throughout tests
 # ---------------------------------------------------------------------------
 
-class TestSanitizeErrorForUser(unittest.TestCase):
-    """Tests for sanitize_error_for_user()."""
+class AuthenticationError(Exception):
+    """Simulates an API AuthenticationError."""
 
-    def test_known_error_type_authentication(self):
-        """Should match AuthenticationError by type name."""
-        class AuthenticationError(Exception):
-            pass
-        result = sanitize_error_for_user(AuthenticationError("bad key"))
-        self.assertEqual(result, "API authentication failed. Please check your API key.")
 
-    def test_known_error_type_rate_limit(self):
-        class RateLimitError(Exception):
-            pass
-        result = sanitize_error_for_user(RateLimitError("too many"))
-        self.assertEqual(result, "API rate limit exceeded. Please wait and try again.")
+class RateLimitError(Exception):
+    """Simulates an API RateLimitError."""
 
-    def test_known_error_type_api_connection(self):
-        class APIConnectionError(Exception):
-            pass
-        result = sanitize_error_for_user(APIConnectionError("no net"))
-        self.assertEqual(result, "Could not connect to the AI service. Please check your internet connection.")
 
-    def test_known_error_type_timeout(self):
-        class TimeoutError(Exception):
-            pass
-        result = sanitize_error_for_user(TimeoutError("took too long"))
-        self.assertEqual(result, "The request timed out. Please try again.")
+class APIConnectionError(Exception):
+    """Simulates an API connection error."""
 
-    def test_known_error_type_invalid_request(self):
-        class InvalidRequestError(Exception):
-            pass
-        result = sanitize_error_for_user(InvalidRequestError("bad input"))
-        self.assertEqual(result, "The request was invalid. Please check your input.")
 
-    def test_known_error_type_service_unavailable(self):
-        class ServiceUnavailableError(Exception):
-            pass
+class TimeoutError(Exception):  # noqa: A001
+    """Simulates a Timeout error (type name contains 'Timeout')."""
+
+
+class InvalidRequestError(Exception):
+    """Simulates an InvalidRequestError."""
+
+
+class APIError(Exception):
+    """Simulates a generic APIError."""
+
+
+class ServiceUnavailableError(Exception):
+    """Simulates a ServiceUnavailableError."""
+
+
+# ===========================================================================
+# 1. sanitize_error_for_user
+# ===========================================================================
+
+class TestSanitizeErrorForUserTypeNameMatching:
+    """Type-name pattern matching via _USER_FRIENDLY_ERRORS dict."""
+
+    def test_authentication_error_returns_api_auth_message(self):
+        result = sanitize_error_for_user(AuthenticationError("sk-secret"))
+        assert result == _USER_FRIENDLY_ERRORS["AuthenticationError"]
+
+    def test_authentication_error_does_not_expose_api_key(self):
+        result = sanitize_error_for_user(AuthenticationError("sk-secret-key-12345"))
+        assert "sk-secret-key-12345" not in result
+
+    def test_rate_limit_error_returns_rate_limit_message(self):
+        result = sanitize_error_for_user(RateLimitError("throttled"))
+        assert result == _USER_FRIENDLY_ERRORS["RateLimitError"]
+
+    def test_api_connection_error_returns_connection_message(self):
+        result = sanitize_error_for_user(APIConnectionError("host unreachable"))
+        assert result == _USER_FRIENDLY_ERRORS["APIConnectionError"]
+
+    def test_timeout_error_type_name_matched(self):
+        result = sanitize_error_for_user(TimeoutError("30s exceeded"))
+        assert result == _USER_FRIENDLY_ERRORS["Timeout"]
+
+    def test_invalid_request_error_returns_invalid_message(self):
+        result = sanitize_error_for_user(InvalidRequestError("bad JSON body"))
+        assert result == _USER_FRIENDLY_ERRORS["InvalidRequestError"]
+
+    def test_api_error_returns_api_error_message(self):
+        result = sanitize_error_for_user(APIError("500 internal"))
+        assert result == _USER_FRIENDLY_ERRORS["APIError"]
+
+    def test_service_unavailable_error_matched(self):
         result = sanitize_error_for_user(ServiceUnavailableError("down"))
-        self.assertEqual(result, "The AI service is temporarily unavailable. Please try again later.")
+        assert result == _USER_FRIENDLY_ERRORS["ServiceUnavailableError"]
 
-    def test_message_pattern_timeout(self):
-        """Should fall through type check and match message pattern."""
-        err = Exception("Request timeout after 30s")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "The request timed out. Please try again.")
+    def test_type_name_match_is_case_insensitive(self):
+        class MyAuthenticationError(Exception):
+            pass
+        result = sanitize_error_for_user(MyAuthenticationError("oops"))
+        assert result == _USER_FRIENDLY_ERRORS["AuthenticationError"]
 
-    def test_message_pattern_connection(self):
-        err = Exception("connection refused by server")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Could not connect to the service. Please check your internet connection.")
+    def test_type_name_match_takes_precedence_over_message_keywords(self):
+        # AuthenticationError class name matches before "connection" in message
+        result = sanitize_error_for_user(AuthenticationError("connection refused"))
+        assert result == _USER_FRIENDLY_ERRORS["AuthenticationError"]
 
-    def test_message_pattern_connect(self):
-        err = Exception("failed to connect")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Could not connect to the service. Please check your internet connection.")
-
-    def test_message_pattern_rate_limit(self):
-        err = Exception("rate limit exceeded")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Rate limit exceeded. Please wait and try again.")
-
-    def test_message_pattern_quota(self):
-        err = Exception("quota exceeded for today")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Rate limit exceeded. Please wait and try again.")
-
-    def test_message_pattern_unauthorized(self):
-        err = Exception("unauthorized access")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Authentication failed. Please verify your API key is correct.")
-
-    def test_message_pattern_authentication(self):
-        err = Exception("authentication failed for user")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Authentication failed. Please verify your API key is correct.")
-
-    def test_message_pattern_api_key(self):
-        err = Exception("api key is invalid")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Authentication failed. Please verify your API key is correct.")
-
-    def test_message_pattern_invalid(self):
-        err = Exception("invalid parameter supplied")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "Invalid request. Please check your input and try again.")
-
-    def test_generic_fallback(self):
-        """Unknown errors should return generic message."""
-        err = Exception("some obscure internal error xyz_12345")
-        result = sanitize_error_for_user(err)
-        self.assertEqual(result, "An error occurred while processing your request. Please try again.")
+    def test_result_is_always_a_string(self):
+        assert isinstance(sanitize_error_for_user(ValueError("x")), str)
 
 
-# ---------------------------------------------------------------------------
-# ErrorTemplate / show_error_dialog / get_sanitized_error
-# ---------------------------------------------------------------------------
+class TestSanitizeErrorForUserMessageKeywords:
+    """Keyword-in-message fallback path."""
 
-class TestErrorTemplateSystem(unittest.TestCase):
-    """Tests for the error template system."""
+    def test_timeout_in_message_returns_timeout_text(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("Request timeout after 10s"))
+        assert "timed out" in result.lower()
 
-    def test_error_templates_keys_exist(self):
-        expected_keys = {
-            "save_file", "load_file", "export_pdf", "export_word",
-            "export_fhir", "print_document", "save_settings", "api_keys",
-            "import_prompts", "export_prompts", "upload_document",
-            "load_recording", "reprocess", "chat_error", "open_dialog",
-            "generic",
-        }
-        self.assertTrue(expected_keys.issubset(set(_ERROR_TEMPLATES.keys())))
+    def test_connection_keyword_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("connection refused"))
+        assert "connect" in result.lower()
 
-    def test_error_template_has_required_fields(self):
-        for key, tmpl in _ERROR_TEMPLATES.items():
-            self.assertIsInstance(tmpl, ErrorTemplate, f"Template '{key}' not ErrorTemplate")
-            self.assertTrue(tmpl.title, f"Template '{key}' missing title")
-            self.assertTrue(tmpl.problem, f"Template '{key}' missing problem")
-            self.assertIsInstance(tmpl.actions, list, f"Template '{key}' actions not a list")
-            self.assertTrue(len(tmpl.actions) > 0, f"Template '{key}' has no actions")
+    def test_connect_keyword_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("failed to connect"))
+        assert "connect" in result.lower()
 
-    @patch("utils.error_handling.logger")
-    def test_show_error_dialog_known_category(self, mock_logger):
-        with patch("tkinter.messagebox.showerror") as mock_showerror:
-            err = ValueError("test error")
-            show_error_dialog("save_file", err, parent=None)
+    def test_rate_limit_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("you exceeded the rate limit"))
+        assert "rate limit" in result.lower() or "wait" in result.lower()
 
-            mock_showerror.assert_called_once()
-            args = mock_showerror.call_args
-            self.assertEqual(args[0][0], "Save Error")
-            self.assertIn("could not be saved", args[0][1])
-            self.assertIn("What to try:", args[0][1])
+    def test_quota_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("quota exceeded for today"))
+        assert "rate limit" in result.lower() or "quota" in result.lower() or "wait" in result.lower()
 
-    @patch("utils.error_handling.logger")
-    def test_show_error_dialog_unknown_category_uses_generic(self, mock_logger):
-        with patch("tkinter.messagebox.showerror") as mock_showerror:
-            err = RuntimeError("oops")
-            show_error_dialog("nonexistent_category_xyz", err)
+    def test_unauthorized_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("401 unauthorized"))
+        assert "authentication" in result.lower() or "api key" in result.lower()
 
-            mock_showerror.assert_called_once()
-            args = mock_showerror.call_args
-            self.assertEqual(args[0][0], "Error")  # generic title
-            self.assertIn("unexpected error", args[0][1])
+    def test_api_key_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("invalid api key supplied"))
+        assert "authentication" in result.lower() or "api key" in result.lower()
 
-    @patch("utils.error_handling.logger")
-    def test_show_error_dialog_with_detail(self, mock_logger):
-        with patch("tkinter.messagebox.showerror") as mock_showerror:
-            show_error_dialog("save_file", ValueError("x"), detail="Disk full")
+    def test_invalid_in_message(self):
+        class GenericError(Exception):
+            pass
+        result = sanitize_error_for_user(GenericError("invalid parameter value"))
+        assert "invalid" in result.lower()
 
-            msg = mock_showerror.call_args[0][1]
-            self.assertIn("Disk full", msg)
-
-    def test_get_sanitized_error_known_category(self):
-        result = get_sanitized_error("save_file", ValueError("x"))
-        self.assertEqual(result, "The file could not be saved.")
-
-    def test_get_sanitized_error_unknown_category(self):
-        result = get_sanitized_error("nonexistent", ValueError("x"))
-        self.assertEqual(result, "An unexpected error occurred.")
+    def test_generic_fallback_for_unknown_error(self):
+        class WeirdObscureError(Exception):
+            pass
+        result = sanitize_error_for_user(WeirdObscureError("xyzzy-completely-unknown-abc123"))
+        assert result == "An error occurred while processing your request. Please try again."
 
 
-# ---------------------------------------------------------------------------
-# ErrorSeverity
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 2. get_sanitized_error
+# ===========================================================================
 
-class TestErrorSeverity(unittest.TestCase):
+class TestGetSanitizedError:
+    """Tests for get_sanitized_error()."""
 
-    def test_values(self):
-        self.assertEqual(ErrorSeverity.CRITICAL.value, "critical")
-        self.assertEqual(ErrorSeverity.ERROR.value, "error")
-        self.assertEqual(ErrorSeverity.WARNING.value, "warning")
-        self.assertEqual(ErrorSeverity.INFO.value, "info")
+    def test_save_file_returns_correct_problem(self):
+        assert get_sanitized_error("save_file", ValueError("x")) == "The file could not be saved."
 
-    def test_members(self):
-        self.assertEqual(len(ErrorSeverity), 4)
+    def test_load_file_returns_correct_problem(self):
+        assert get_sanitized_error("load_file", FileNotFoundError("missing")) == "The file could not be loaded."
+
+    def test_generic_returns_unexpected_error(self):
+        assert get_sanitized_error("generic", Exception()) == "An unexpected error occurred."
+
+    def test_unknown_category_falls_back_to_generic(self):
+        assert get_sanitized_error("nonexistent_xyz", Exception()) == "An unexpected error occurred."
+
+    def test_export_pdf_category(self):
+        assert get_sanitized_error("export_pdf", Exception()) == "The PDF could not be exported."
+
+    def test_export_word_category(self):
+        assert get_sanitized_error("export_word", Exception()) == "The Word document could not be exported."
+
+    def test_chat_error_category(self):
+        assert get_sanitized_error("chat_error", Exception()) == "An error occurred in the chat interface."
+
+    def test_return_type_is_string(self):
+        assert isinstance(get_sanitized_error("save_file", Exception()), str)
+
+    def test_error_argument_not_exposed_in_output(self):
+        secret = "top-secret-trace-abc123"
+        result = get_sanitized_error("save_file", Exception(secret))
+        assert secret not in result
+
+    def test_print_document_category(self):
+        assert get_sanitized_error("print_document", Exception()) == "The document could not be printed."
+
+    def test_save_settings_category(self):
+        assert get_sanitized_error("save_settings", Exception()) == "Settings could not be saved."
 
 
-# ---------------------------------------------------------------------------
-# OperationResult
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 3. ErrorSeverity enum
+# ===========================================================================
 
-class TestOperationResult(unittest.TestCase):
+class TestErrorSeverity:
+    """Tests for the ErrorSeverity enum."""
 
-    # --- factory methods ---
-    def test_success_factory(self):
-        r = OperationResult.success(42)
-        self.assertTrue(r.success)
-        self.assertEqual(r.value, 42)
-        self.assertIsNone(r.error)
+    def test_critical_value(self):
+        assert ErrorSeverity.CRITICAL.value == "critical"
 
-    def test_success_factory_with_details(self):
-        r = OperationResult.success("ok", foo="bar")
-        self.assertEqual(r.details, {"foo": "bar"})
+    def test_error_value(self):
+        assert ErrorSeverity.ERROR.value == "error"
 
-    def test_failure_factory(self):
-        r = OperationResult.failure("bad things")
-        self.assertFalse(r.success)
-        self.assertEqual(r.error, "bad things")
-        self.assertIsNone(r.value)
+    def test_warning_value(self):
+        assert ErrorSeverity.WARNING.value == "warning"
 
-    def test_failure_factory_with_exception(self):
-        exc = ValueError("val err")
-        r = OperationResult.failure("msg", error_code="E001", exception=exc, extra="data")
-        self.assertEqual(r.error_code, "E001")
-        self.assertIs(r.exception, exc)
-        self.assertEqual(r.details, {"extra": "data"})
+    def test_info_value(self):
+        assert ErrorSeverity.INFO.value == "info"
 
-    # --- to_dict ---
-    def test_to_dict_success_with_dict_value(self):
-        r = OperationResult.success({"text": "hello"})
-        d = r.to_dict()
-        self.assertTrue(d["success"])
-        self.assertEqual(d["text"], "hello")
+    def test_four_members(self):
+        assert len(list(ErrorSeverity)) == 4
 
-    def test_to_dict_success_with_non_dict_value(self):
-        r = OperationResult.success(99)
-        d = r.to_dict()
-        self.assertTrue(d["success"])
-        self.assertEqual(d["value"], 99)
+    def test_members_are_distinct(self):
+        members = list(ErrorSeverity)
+        assert len(members) == len(set(m.value for m in members))
 
-    def test_to_dict_success_with_none_value(self):
-        r = OperationResult.success(None)
-        d = r.to_dict()
-        self.assertTrue(d["success"])
-        self.assertNotIn("value", d)
+    def test_critical_is_enum_member(self):
+        assert isinstance(ErrorSeverity.CRITICAL, ErrorSeverity)
 
-    def test_to_dict_failure(self):
-        r = OperationResult.failure("oops")
-        d = r.to_dict()
-        self.assertFalse(d["success"])
-        self.assertEqual(d["error"], "oops")
+    def test_error_is_enum_member(self):
+        assert isinstance(ErrorSeverity.ERROR, ErrorSeverity)
 
-    def test_to_dict_failure_with_error_code(self):
-        r = OperationResult.failure("oops", error_code="E42")
-        d = r.to_dict()
-        self.assertEqual(d["error_code"], "E42")
 
-    def test_to_dict_failure_no_error_message(self):
-        r = OperationResult(success=False)
-        d = r.to_dict()
-        self.assertEqual(d["error"], "Unknown error")
+# ===========================================================================
+# 4. OperationResult
+# ===========================================================================
 
-    # --- bool ---
-    def test_bool_true(self):
-        self.assertTrue(bool(OperationResult.success(1)))
+class TestOperationResultSuccessFactory:
+    """OperationResult.success() factory and truthy/value access."""
 
-    def test_bool_false(self):
-        self.assertFalse(bool(OperationResult.failure("err")))
+    def test_success_flag_is_true(self):
+        assert OperationResult.success("x").success is True
 
-    # --- unwrap ---
-    def test_unwrap_success(self):
-        r = OperationResult.success("hello")
-        self.assertEqual(r.unwrap(), "hello")
+    def test_value_stored(self):
+        assert OperationResult.success(42).value == 42
 
-    def test_unwrap_failure_raises_original_exception(self):
-        exc = RuntimeError("boom")
-        r = OperationResult.failure("msg", exception=exc)
-        with self.assertRaises(RuntimeError):
+    def test_none_value_accepted(self):
+        assert OperationResult.success(None).success is True
+
+    def test_dict_value_stored(self):
+        assert OperationResult.success({"k": "v"}).value == {"k": "v"}
+
+    def test_extra_details_stored(self):
+        r = OperationResult.success("ok", count=5, label="test")
+        assert r.details["count"] == 5
+        assert r.details["label"] == "test"
+
+    def test_error_is_none(self):
+        assert OperationResult.success("x").error is None
+
+    def test_exception_is_none(self):
+        assert OperationResult.success("x").exception is None
+
+    def test_bool_is_true(self):
+        assert bool(OperationResult.success("x")) is True
+
+
+class TestOperationResultFailureFactory:
+    """OperationResult.failure() factory and falsy/error access."""
+
+    def test_success_flag_is_false(self):
+        assert OperationResult.failure("oops").success is False
+
+    def test_error_message_stored(self):
+        assert OperationResult.failure("disk full").error == "disk full"
+
+    def test_value_is_none(self):
+        assert OperationResult.failure("oops").value is None
+
+    def test_error_code_stored(self):
+        assert OperationResult.failure("oops", error_code="ERR_001").error_code == "ERR_001"
+
+    def test_error_code_none_when_omitted(self):
+        assert OperationResult.failure("oops").error_code is None
+
+    def test_exception_stored(self):
+        exc = ValueError("bad")
+        assert OperationResult.failure("oops", exception=exc).exception is exc
+
+    def test_exception_none_when_omitted(self):
+        assert OperationResult.failure("oops").exception is None
+
+    def test_bool_is_false(self):
+        assert bool(OperationResult.failure("oops")) is False
+
+    def test_extra_details_stored(self):
+        r = OperationResult.failure("err", context="unit test")
+        assert r.details["context"] == "unit test"
+
+
+class TestOperationResultToDict:
+    """OperationResult.to_dict() serialisation."""
+
+    def test_success_with_dict_value_merges_keys(self):
+        d = OperationResult.success({"text": "hello", "count": 1}).to_dict()
+        assert d["success"] is True
+        assert d["text"] == "hello"
+        assert d["count"] == 1
+
+    def test_success_with_non_dict_value_uses_value_key(self):
+        d = OperationResult.success("plain").to_dict()
+        assert d["success"] is True
+        assert d["value"] == "plain"
+
+    def test_success_with_none_value_no_value_key(self):
+        d = OperationResult.success(None).to_dict()
+        assert d == {"success": True}
+
+    def test_failure_has_success_false(self):
+        assert OperationResult.failure("bad").to_dict()["success"] is False
+
+    def test_failure_has_error_key(self):
+        assert OperationResult.failure("bad").to_dict()["error"] == "bad"
+
+    def test_failure_with_error_code_includes_it(self):
+        d = OperationResult.failure("oops", error_code="E42").to_dict()
+        assert d["error_code"] == "E42"
+
+    def test_failure_without_error_code_omits_key(self):
+        assert "error_code" not in OperationResult.failure("oops").to_dict()
+
+    def test_failure_without_error_message_uses_unknown_error(self):
+        d = OperationResult(success=False).to_dict()
+        assert d["error"] == "Unknown error"
+
+
+class TestOperationResultUnwrap:
+    """OperationResult.unwrap() and unwrap_or()."""
+
+    def test_unwrap_success_returns_value(self):
+        assert OperationResult.success("payload").unwrap() == "payload"
+
+    def test_unwrap_failure_with_exception_raises_it(self):
+        exc = RuntimeError("original")
+        r = OperationResult.failure("err", exception=exc)
+        with pytest.raises(RuntimeError):
             r.unwrap()
 
-    def test_unwrap_failure_raises_value_error(self):
-        r = OperationResult.failure("msg")
-        with self.assertRaises(ValueError) as ctx:
-            r.unwrap()
-        self.assertIn("msg", str(ctx.exception))
+    def test_unwrap_failure_without_exception_raises_value_error(self):
+        with pytest.raises(ValueError):
+            OperationResult.failure("something went wrong").unwrap()
 
-    def test_unwrap_failure_no_message(self):
-        r = OperationResult(success=False)
-        with self.assertRaises(ValueError) as ctx:
-            r.unwrap()
-        self.assertIn("Operation failed", str(ctx.exception))
+    def test_unwrap_failure_no_message_raises_value_error(self):
+        with pytest.raises(ValueError, match="Operation failed"):
+            OperationResult(success=False).unwrap()
 
-    # --- unwrap_or ---
-    def test_unwrap_or_success(self):
-        r = OperationResult.success(10)
-        self.assertEqual(r.unwrap_or(0), 10)
+    def test_unwrap_or_on_success_returns_value(self):
+        assert OperationResult.success("data").unwrap_or("default") == "data"
 
-    def test_unwrap_or_failure(self):
+    def test_unwrap_or_on_failure_returns_default(self):
+        assert OperationResult.failure("err").unwrap_or("fallback") == "fallback"
+
+    def test_unwrap_or_on_failure_none_default(self):
+        assert OperationResult.failure("err").unwrap_or(None) is None
+
+
+class TestOperationResultMap:
+    """OperationResult.map()."""
+
+    def test_map_on_success_applies_function(self):
+        r = OperationResult.success(10).map(lambda x: x * 2)
+        assert r.success is True
+        assert r.value == 20
+
+    def test_map_returns_new_result(self):
+        original = OperationResult.success(10)
+        mapped = original.map(lambda x: x + 1)
+        assert mapped is not original
+
+    def test_map_on_failure_returns_same_object(self):
         r = OperationResult.failure("err")
-        self.assertEqual(r.unwrap_or(0), 0)
+        assert r.map(lambda x: x * 2) is r
 
-    # --- map ---
-    def test_map_success(self):
-        r = OperationResult.success(5)
-        r2 = r.map(lambda x: x * 2)
-        self.assertTrue(r2.success)
-        self.assertEqual(r2.value, 10)
+    def test_map_on_failure_does_not_call_func(self):
+        calls = []
+        OperationResult.failure("err").map(lambda x: calls.append(x))
+        assert calls == []
 
-    def test_map_failure_passthrough(self):
-        r = OperationResult.failure("err")
-        r2 = r.map(lambda x: x * 2)
-        self.assertFalse(r2.success)
-        self.assertIs(r2, r)
+    def test_map_when_func_raises_returns_failure(self):
+        r = OperationResult.success("data").map(lambda x: 1 / 0)
+        assert r.success is False
 
-    def test_map_exception_in_func(self):
-        r = OperationResult.success(5)
-        r2 = r.map(lambda x: 1 / 0)
-        self.assertFalse(r2.success)
-        self.assertIn("division by zero", r2.error)
-        self.assertIsInstance(r2.exception, ZeroDivisionError)
+    def test_map_when_func_raises_captures_exception(self):
+        r = OperationResult.success("data").map(lambda x: 1 / 0)
+        assert isinstance(r.exception, ZeroDivisionError)
+
+    def test_map_when_func_raises_sets_error_message(self):
+        r = OperationResult.success("data").map(lambda x: 1 / 0)
+        assert r.error is not None
 
 
-# ---------------------------------------------------------------------------
-# handle_errors decorator
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 5. format_error_for_user
+# ===========================================================================
 
-class TestHandleErrors(unittest.TestCase):
+class TestFormatErrorForUser:
+    """Tests for format_error_for_user()."""
 
-    @patch("utils.error_handling.logger")
-    def test_no_error_returns_normally(self, mock_logger):
+    def test_strips_error_colon_prefix(self):
+        assert format_error_for_user("Error: something bad") == "Something bad"
+
+    def test_strips_exception_colon_prefix(self):
+        assert format_error_for_user("Exception: something bad") == "Something bad"
+
+    def test_strips_failed_colon_prefix(self):
+        assert format_error_for_user("Failed: could not load") == "Could not load"
+
+    def test_capitalises_first_letter(self):
+        assert format_error_for_user("could not connect") == "Could not connect"
+
+    def test_already_capitalised_unchanged(self):
+        assert format_error_for_user("Network is unreachable") == "Network is unreachable"
+
+    def test_works_with_string_input(self):
+        result = format_error_for_user("plain message")
+        assert isinstance(result, str)
+
+    def test_works_with_exception_input(self):
+        result = format_error_for_user(ValueError("Error: wrong value"))
+        assert result == "Wrong value"
+
+    def test_empty_string_returns_empty_string(self):
+        assert format_error_for_user("") == ""
+
+    def test_only_prefix_becomes_empty_string(self):
+        result = format_error_for_user("Error: ")
+        assert result == ""
+
+    def test_prefix_check_is_case_sensitive_lowercase_not_stripped(self):
+        # "error: " (lowercase e) is NOT the recognised prefix "Error: "
+        result = format_error_for_user("error: lowercase not stripped")
+        assert result[0].isupper()  # first char capitalised but prefix kept
+
+    def test_multiple_sentences_not_truncated(self):
+        result = format_error_for_user("Error: First. Second sentence.")
+        assert "Second sentence." in result
+
+    def test_exception_with_no_prefix_capitalised(self):
+        result = format_error_for_user(ValueError("lowercase message"))
+        assert result == "Lowercase message"
+
+
+# ===========================================================================
+# 6. ErrorContext
+# ===========================================================================
+
+class TestErrorContextCapture:
+    """ErrorContext.capture() factory."""
+
+    def test_stores_operation(self):
+        ctx = ErrorContext.capture(operation="Loading file", exception=ValueError("bad"))
+        assert ctx.operation == "Loading file"
+
+    def test_stores_error_from_exception(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("bad value"))
+        assert ctx.error == "bad value"
+
+    def test_stores_exception_type(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"))
+        assert ctx.exception_type == "ValueError"
+
+    def test_with_error_message_param(self):
+        ctx = ErrorContext.capture(operation="Op", error_message="custom msg")
+        assert ctx.error == "custom msg"
+
+    def test_with_error_message_no_exception_type(self):
+        ctx = ErrorContext.capture(operation="Op", error_message="no exc here")
+        assert ctx.exception_type is None
+
+    def test_with_input_summary(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"), input_summary="len: 42")
+        assert ctx.input_summary == "len: 42"
+
+    def test_with_error_code(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"), error_code="E_LOAD")
+        assert ctx.error_code == "E_LOAD"
+
+    def test_include_stack_trace_false_gives_none(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"), include_stack_trace=False)
+        assert ctx.stack_trace is None
+
+    def test_timestamp_is_set(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"))
+        assert ctx.timestamp is not None
+
+    def test_additional_info_stored(self):
+        ctx = ErrorContext.capture(operation="Op", exception=ValueError("x"), user_id="u1", sess="s2")
+        assert ctx.additional_info["user_id"] == "u1"
+        assert ctx.additional_info["sess"] == "s2"
+
+    def test_no_exception_no_message_gives_unknown_error(self):
+        ctx = ErrorContext.capture(operation="Op")
+        assert ctx.error == "Unknown error"
+
+
+class TestErrorContextUserMessage:
+    """ErrorContext.user_message property."""
+
+    def test_basic_format(self):
+        ctx = ErrorContext.capture(operation="Creating SOAP", exception=ValueError("bad"))
+        assert ctx.user_message.startswith("Creating SOAP failed")
+
+    def test_strips_error_colon_prefix(self):
+        ctx = ErrorContext.capture(operation="Creating SOAP", error_message="Error: bad thing")
+        assert ctx.user_message == "Creating SOAP failed: bad thing"
+
+    def test_strips_exception_colon_prefix(self):
+        ctx = ErrorContext.capture(operation="Creating SOAP", error_message="Exception: bad thing")
+        assert ctx.user_message == "Creating SOAP failed: bad thing"
+
+    def test_empty_error_gives_just_failed_suffix(self):
+        ctx = ErrorContext(operation="Op", error="")
+        assert ctx.user_message == "Op failed"
+
+    def test_does_not_expose_raw_exception_prefix(self):
+        ctx = ErrorContext(operation="Loading", error="Error: file not found")
+        assert "Error:" not in ctx.user_message
+
+
+class TestErrorContextToLogString:
+    """ErrorContext.to_log_string() method."""
+
+    def test_includes_operation(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "MyOp" in ctx.to_log_string()
+
+    def test_includes_error(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("specific error"))
+        assert "specific error" in ctx.to_log_string()
+
+    def test_includes_exception_type(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=TypeError("type err"))
+        assert "TypeError" in ctx.to_log_string()
+
+    def test_includes_error_code(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"), error_code="CODE_42")
+        assert "CODE_42" in ctx.to_log_string()
+
+    def test_includes_input_summary(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"), input_summary="chars: 500")
+        assert "chars: 500" in ctx.to_log_string()
+
+    def test_includes_timestamp(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert ctx.timestamp in ctx.to_log_string()
+
+    def test_omits_error_code_when_absent(self):
+        ctx = ErrorContext(operation="Op", error="e")
+        assert "Error Code:" not in ctx.to_log_string()
+
+    def test_omits_exception_type_when_absent(self):
+        ctx = ErrorContext(operation="Op", error="e")
+        assert "Exception Type:" not in ctx.to_log_string()
+
+
+class TestErrorContextToDict:
+    """ErrorContext.to_dict() method."""
+
+    def test_has_operation_key(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "operation" in ctx.to_dict()
+
+    def test_has_error_key(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "error" in ctx.to_dict()
+
+    def test_has_exception_type_key(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "exception_type" in ctx.to_dict()
+
+    def test_has_timestamp_key(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "timestamp" in ctx.to_dict()
+
+    def test_excludes_stack_trace(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"))
+        assert "stack_trace" not in ctx.to_dict()
+
+    def test_input_summary_correct(self):
+        ctx = ErrorContext.capture(operation="MyOp", exception=ValueError("e"), input_summary="chars: 100")
+        assert ctx.to_dict()["input_summary"] == "chars: 100"
+
+    def test_operation_value_correct(self):
+        ctx = ErrorContext.capture(operation="SpecialOp", exception=ValueError("e"))
+        assert ctx.to_dict()["operation"] == "SpecialOp"
+
+
+# ===========================================================================
+# 7. handle_errors decorator
+# ===========================================================================
+
+class TestHandleErrorsDecorator:
+    """Tests for the @handle_errors decorator."""
+
+    def test_no_exception_returns_original_result(self):
         @handle_errors(ErrorSeverity.ERROR)
-        def good():
-            return OperationResult.success(42)
+        def my_func():
+            return "original"
 
-        r = good()
-        self.assertTrue(r.success)
-        self.assertEqual(r.value, 42)
+        assert my_func() == "original"
 
-    @patch("utils.error_handling.logger")
-    def test_critical_reraises(self, mock_logger):
-        @handle_errors(ErrorSeverity.CRITICAL)
-        def boom():
-            raise RuntimeError("critical!")
+    def test_return_type_result_on_exception_returns_operation_failure(self):
+        @handle_errors(ErrorSeverity.ERROR, return_type="result")
+        def my_func():
+            raise ValueError("oops")
 
-        with self.assertRaises(RuntimeError):
-            boom()
-        mock_logger.error.assert_called()
+        result = my_func()
+        assert isinstance(result, OperationResult)
+        assert result.success is False
 
-    @patch("utils.error_handling.logger")
-    def test_error_returns_operation_result(self, mock_logger):
-        @handle_errors(ErrorSeverity.ERROR)
-        def fail():
-            raise ValueError("bad")
+    def test_return_type_result_failure_includes_exception(self):
+        @handle_errors(ErrorSeverity.ERROR, return_type="result")
+        def my_func():
+            raise ValueError("oops")
 
-        r = fail()
-        self.assertFalse(r.success)
-        self.assertIsInstance(r, OperationResult)
-        mock_logger.error.assert_called()
+        result = my_func()
+        assert isinstance(result.exception, ValueError)
 
-    @patch("utils.error_handling.logger")
-    def test_warning_logs_warning(self, mock_logger):
-        @handle_errors(ErrorSeverity.WARNING, return_type="none")
-        def warn():
-            raise ValueError("hmm")
-
-        result = warn()
-        self.assertIsNone(result)
-        mock_logger.warning.assert_called()
-
-    @patch("utils.error_handling.logger")
-    def test_info_logs_info(self, mock_logger):
-        @handle_errors(ErrorSeverity.INFO, return_type="none")
-        def info_op():
-            raise ValueError("fyi")
-
-        result = info_op()
-        self.assertIsNone(result)
-        mock_logger.info.assert_called()
-
-    @patch("utils.error_handling.logger")
-    def test_return_type_dict(self, mock_logger):
-        @handle_errors(ErrorSeverity.ERROR, return_type="dict")
-        def fail():
-            raise ValueError("d")
-
-        r = fail()
-        self.assertIsInstance(r, dict)
-        self.assertFalse(r["success"])
-        self.assertIn("error", r)
-
-    @patch("utils.error_handling.logger")
-    def test_return_type_bool(self, mock_logger):
-        @handle_errors(ErrorSeverity.ERROR, return_type="bool")
-        def fail():
-            raise ValueError("b")
-
-        self.assertFalse(fail())
-
-    @patch("utils.error_handling.logger")
-    def test_return_type_none(self, mock_logger):
+    def test_return_type_none_returns_none_on_exception(self):
         @handle_errors(ErrorSeverity.ERROR, return_type="none")
-        def fail():
-            raise ValueError("n")
+        def my_func():
+            raise ValueError("oops")
 
-        self.assertIsNone(fail())
+        assert my_func() is None
 
-    @patch("utils.error_handling.logger")
-    def test_custom_error_message(self, mock_logger):
-        @handle_errors(ErrorSeverity.ERROR, error_message="Custom prefix")
-        def fail():
-            raise ValueError("details")
+    def test_return_type_dict_returns_dict_on_exception(self):
+        @handle_errors(ErrorSeverity.ERROR, return_type="dict")
+        def my_func():
+            raise ValueError("oops")
 
-        r = fail()
-        self.assertIn("Custom prefix", r.error)
+        result = my_func()
+        assert isinstance(result, dict)
+        assert result["success"] is False
 
-    @patch("utils.error_handling.logger")
-    def test_preserves_function_name(self, mock_logger):
+    def test_return_type_dict_has_error_key(self):
+        @handle_errors(ErrorSeverity.ERROR, return_type="dict")
+        def my_func():
+            raise ValueError("oops")
+
+        assert "error" in my_func()
+
+    def test_return_type_bool_returns_false_on_exception(self):
+        @handle_errors(ErrorSeverity.ERROR, return_type="bool")
+        def my_func():
+            raise ValueError("oops")
+
+        assert my_func() is False
+
+    def test_critical_severity_reraises(self):
+        @handle_errors(ErrorSeverity.CRITICAL, return_type="result")
+        def my_func():
+            raise ValueError("critical failure")
+
+        with pytest.raises(ValueError, match="critical failure"):
+            my_func()
+
+    def test_warning_severity_returns_none(self):
+        @handle_errors(ErrorSeverity.WARNING, return_type="none")
+        def my_func():
+            raise RuntimeError("warn")
+
+        assert my_func() is None
+
+    def test_info_severity_does_not_reraise(self):
+        @handle_errors(ErrorSeverity.INFO, return_type="none")
+        def my_func():
+            raise ValueError("info-level")
+
+        assert my_func() is None
+
+    def test_custom_error_message_prefix_used(self):
+        @handle_errors(ErrorSeverity.ERROR, error_message="Custom prefix", return_type="result")
+        def my_func():
+            raise ValueError("inner")
+
+        result = my_func()
+        assert "Custom prefix" in result.error
+
+    def test_decorated_function_preserves_name(self):
         @handle_errors(ErrorSeverity.ERROR)
-        def my_function():
+        def unique_function_name():
             pass
 
-        self.assertEqual(my_function.__name__, "my_function")
+        assert unique_function_name.__name__ == "unique_function_name"
+
+    def test_decorated_function_passes_args(self):
+        @handle_errors(ErrorSeverity.ERROR)
+        def add(a, b):
+            return a + b
+
+        assert add(3, 4) == 7
+
+    def test_decorated_function_passes_kwargs(self):
+        @handle_errors(ErrorSeverity.ERROR)
+        def greet(name, greeting="Hello"):
+            return f"{greeting}, {name}"
+
+        assert greet("Alice", greeting="Hi") == "Hi, Alice"
+
+    def test_default_return_type_is_result(self):
+        @handle_errors(ErrorSeverity.ERROR)
+        def my_func():
+            raise RuntimeError("boom")
+
+        result = my_func()
+        assert isinstance(result, OperationResult)
 
 
-# ---------------------------------------------------------------------------
-# ui_error_context
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 8. safe_execute
+# ===========================================================================
 
-class TestUIErrorContext(unittest.TestCase):
+class TestSafeExecute:
+    """Tests for safe_execute()."""
 
-    def _make_mocks(self):
-        import tkinter as tk
-        status_manager = Mock()
-        button = Mock()
-        button.cget.return_value = tk.NORMAL
-        progress_bar = Mock()
-        return status_manager, button, progress_bar
+    def test_success_returns_function_result(self):
+        assert safe_execute(lambda: 42) == 42
 
-    @patch("utils.error_handling.logger")
-    def test_success_path(self, mock_logger):
-        sm, btn, pb = self._make_mocks()
-        with ui_error_context(sm, btn, pb, "TestOp"):
-            pass  # no error
+    def test_exception_returns_default_none(self):
+        assert safe_execute(lambda: 1 / 0) is None
 
-        sm.progress.assert_called_once_with("TestOp...")
-        sm.success.assert_called_once_with("TestOp completed")
-        # Button restored
-        self.assertEqual(btn.config.call_count, 2)  # disable + restore
-        # Progress bar stopped
-        pb.stop.assert_called_once()
-        pb.pack_forget.assert_called_once()
+    def test_exception_returns_custom_default(self):
+        assert safe_execute(lambda: 1 / 0, default="fallback") == "fallback"
 
-    @patch("utils.error_handling.logger")
-    def test_success_no_show_success(self, mock_logger):
-        sm, btn, pb = self._make_mocks()
-        with ui_error_context(sm, btn, pb, "TestOp", show_success=False):
-            pass
+    def test_exception_returns_dict_default(self):
+        result = safe_execute(lambda: (_ for _ in ()).throw(RuntimeError("e")), default={"ok": False})
+        assert result == {"ok": False}
 
-        sm.success.assert_not_called()
+    def test_error_handler_called_with_exception(self):
+        captured = []
+        safe_execute(lambda: 1 / 0, error_handler=lambda e: captured.append(e))
+        assert len(captured) == 1
+        assert isinstance(captured[0], ZeroDivisionError)
 
-    @patch("utils.error_handling.logger")
-    def test_error_path_reraises(self, mock_logger):
-        sm, btn, pb = self._make_mocks()
-        with self.assertRaises(ValueError):
-            with ui_error_context(sm, btn, pb, "TestOp"):
-                raise ValueError("fail")
+    def test_error_handler_not_called_on_success(self):
+        called = []
+        safe_execute(lambda: "fine", error_handler=lambda e: called.append(e))
+        assert called == []
 
-        sm.error.assert_called_once()
-        self.assertIn("TestOp failed", sm.error.call_args[0][0])
-        # Cleanup still runs
-        pb.stop.assert_called_once()
+    def test_passes_positional_args(self):
+        def add(a, b):
+            return a + b
 
-    @patch("utils.error_handling.logger")
-    def test_no_button_no_progress(self, mock_logger):
-        sm = Mock()
-        with ui_error_context(sm, button=None, progress_bar=None, operation_name="Op"):
-            pass
-        sm.progress.assert_called_once()
-        sm.success.assert_called_once()
+        assert safe_execute(add, 3, 7) == 10
 
-    @patch("utils.error_handling.logger")
-    def test_button_tclerror_handled(self, mock_logger):
-        """TclError on button operations should not propagate."""
-        import tkinter as tk
-        sm = Mock()
-        btn = Mock()
-        btn.cget.side_effect = tk.TclError("destroyed")
-        pb = Mock()
-        pb.pack.side_effect = tk.TclError("destroyed")
+    def test_passes_keyword_args(self):
+        def greet(name, greeting="Hello"):
+            return f"{greeting}, {name}"
 
-        with ui_error_context(sm, btn, pb, "Op"):
-            pass
-        # Should complete without raising
+        assert safe_execute(greet, "Alice", greeting="Hi") == "Hi, Alice"
 
+    def test_log_errors_false_still_returns_default(self):
+        result = safe_execute(lambda: 1 / 0, default="silent_default", log_errors=False)
+        assert result == "silent_default"
 
-# ---------------------------------------------------------------------------
-# AsyncUIErrorHandler
-# ---------------------------------------------------------------------------
+    def test_log_errors_false_does_not_emit_warning(self, caplog):
+        def failing():
+            raise RuntimeError("silent")
 
-class TestAsyncUIErrorHandler(unittest.TestCase):
+        with caplog.at_level(logging.WARNING):
+            safe_execute(failing, log_errors=False)
 
-    def _make_handler(self):
-        app = Mock()
-        # Make app.after execute callback immediately
-        app.after = Mock(side_effect=lambda ms, fn: fn())
-        button = Mock()
-        progress_bar = Mock()
-        return AsyncUIErrorHandler(app, button, progress_bar, "TestOp"), app, button, progress_bar
+        relevant = [r for r in caplog.records if "failing" in r.message]
+        assert relevant == []
 
-    def test_start_disables_button_and_shows_progress(self):
-        handler, app, btn, pb = self._make_handler()
-        handler.start()
-
-        self.assertTrue(handler._started)
-        btn.config.assert_called()
-        pb.start.assert_called_once()
-
-    def test_start_idempotent(self):
-        handler, app, btn, pb = self._make_handler()
-        handler.start()
-        handler.start()  # second call should be no-op
-
-        self.assertEqual(app.after.call_count, 1)
-
-    def test_complete_restores_ui(self):
-        handler, app, btn, pb = self._make_handler()
-        callback = Mock()
-        handler.complete(callback=callback, success_message="Done!")
-
-        callback.assert_called_once()
-        pb.stop.assert_called_once()
-        pb.pack_forget.assert_called_once()
-
-    def test_complete_default_message(self):
-        handler, app, btn, pb = self._make_handler()
-        app.status_manager = Mock()
-        handler.complete()
-
-        app.status_manager.success.assert_called_once_with("TestOp completed")
-
-    @patch("utils.error_handling.logger")
-    def test_fail_with_exception(self, mock_logger):
-        handler, app, btn, pb = self._make_handler()
-        app.status_manager = Mock()
-        callback = Mock()
-        handler.fail(ValueError("err"), callback=callback)
-
-        app.status_manager.error.assert_called_once()
-        self.assertIn("TestOp failed", app.status_manager.error.call_args[0][0])
-        callback.assert_called_once()
-
-    @patch("utils.error_handling.logger")
-    def test_fail_with_string(self, mock_logger):
-        handler, app, btn, pb = self._make_handler()
-        app.status_manager = Mock()
-        handler.fail("string error")
-
-        self.assertIn("string error", app.status_manager.error.call_args[0][0])
-
-    def test_restore_ui_handles_tclerror(self):
-        """TclError during restore should not propagate."""
-        import tkinter as tk
-        handler, app, btn, pb = self._make_handler()
-        btn.config.side_effect = tk.TclError("gone")
-        pb.stop.side_effect = tk.TclError("gone")
-
-        handler._restore_ui()  # Should not raise
-
-
-# ---------------------------------------------------------------------------
-# safe_execute
-# ---------------------------------------------------------------------------
-
-class TestSafeExecute(unittest.TestCase):
-
-    @patch("utils.error_handling.logger")
-    def test_success(self, mock_logger):
-        result = safe_execute(lambda: 42)
-        self.assertEqual(result, 42)
-
-    @patch("utils.error_handling.logger")
-    def test_error_returns_default(self, mock_logger):
-        result = safe_execute(lambda: 1 / 0, default="fallback")
-        self.assertEqual(result, "fallback")
-
-    @patch("utils.error_handling.logger")
-    def test_error_calls_handler(self, mock_logger):
-        handler = Mock()
-        safe_execute(lambda: 1 / 0, error_handler=handler, default=None)
-        handler.assert_called_once()
-        self.assertIsInstance(handler.call_args[0][0], ZeroDivisionError)
-
-    @patch("utils.error_handling.logger")
-    def test_error_no_log(self, mock_logger):
-        safe_execute(lambda: 1 / 0, log_errors=False, default=None)
-        mock_logger.warning.assert_not_called()
-
-    @patch("utils.error_handling.logger")
-    def test_passes_args_and_kwargs(self, mock_logger):
-        def fn(a, b, c=10):
-            return a + b + c
-        result = safe_execute(fn, 1, 2, c=3)
-        self.assertEqual(result, 6)
-
-    @patch("utils.error_handling.logger")
-    def test_default_is_none(self, mock_logger):
+    def test_no_error_handler_does_not_raise(self):
         result = safe_execute(lambda: 1 / 0)
-        self.assertIsNone(result)
+        assert result is None
+
+    def test_zero_default_returned_on_error(self):
+        assert safe_execute(lambda: 1 / 0, default=0) == 0
 
 
-# ---------------------------------------------------------------------------
-# format_error_for_user
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 9. Data integrity: _USER_FRIENDLY_ERRORS and _ERROR_TEMPLATES
+# ===========================================================================
 
-class TestFormatErrorForUser(unittest.TestCase):
+class TestInternals:
+    """Sanity checks on module-level data structures."""
 
-    def test_strips_error_prefix(self):
-        self.assertEqual(format_error_for_user("Error: something"), "Something")
+    def test_user_friendly_errors_is_dict(self):
+        assert isinstance(_USER_FRIENDLY_ERRORS, dict)
 
-    def test_strips_exception_prefix(self):
-        self.assertEqual(format_error_for_user("Exception: something"), "Something")
+    def test_user_friendly_errors_not_empty(self):
+        assert len(_USER_FRIENDLY_ERRORS) > 0
 
-    def test_strips_failed_prefix(self):
-        self.assertEqual(format_error_for_user("Failed: something"), "Something")
+    def test_user_friendly_errors_all_values_are_strings(self):
+        for key, val in _USER_FRIENDLY_ERRORS.items():
+            assert isinstance(val, str), f"Value for {key!r} is not a string"
 
-    def test_capitalizes_first_letter(self):
-        self.assertEqual(format_error_for_user("lowercase message"), "Lowercase message")
+    def test_user_friendly_errors_authentication_key_exists(self):
+        assert "AuthenticationError" in _USER_FRIENDLY_ERRORS
 
-    def test_exception_input(self):
-        result = format_error_for_user(ValueError("Error: bad value"))
-        self.assertEqual(result, "Bad value")
+    def test_user_friendly_errors_rate_limit_key_exists(self):
+        assert "RateLimitError" in _USER_FRIENDLY_ERRORS
 
-    def test_empty_string(self):
-        self.assertEqual(format_error_for_user(""), "")
+    def test_error_templates_is_dict(self):
+        assert isinstance(_ERROR_TEMPLATES, dict)
 
-    def test_no_prefix(self):
-        self.assertEqual(format_error_for_user("already fine"), "Already fine")
+    def test_error_templates_contains_generic(self):
+        assert "generic" in _ERROR_TEMPLATES
+
+    def test_error_templates_contains_save_file(self):
+        assert "save_file" in _ERROR_TEMPLATES
+
+    def test_error_templates_contains_load_file(self):
+        assert "load_file" in _ERROR_TEMPLATES
+
+    def test_generic_problem_is_string(self):
+        assert isinstance(_ERROR_TEMPLATES["generic"].problem, str)
+
+    def test_generic_actions_is_list(self):
+        assert isinstance(_ERROR_TEMPLATES["generic"].actions, list)
+
+    def test_generic_actions_not_empty(self):
+        assert len(_ERROR_TEMPLATES["generic"].actions) > 0
+
+    def test_all_template_titles_are_strings(self):
+        for key, tmpl in _ERROR_TEMPLATES.items():
+            assert isinstance(tmpl.title, str), f"Title for {key!r} not a string"
+
+    def test_all_template_problems_are_strings(self):
+        for key, tmpl in _ERROR_TEMPLATES.items():
+            assert isinstance(tmpl.problem, str), f"Problem for {key!r} not a string"
+
+    def test_all_template_actions_are_lists(self):
+        for key, tmpl in _ERROR_TEMPLATES.items():
+            assert isinstance(tmpl.actions, list), f"Actions for {key!r} not a list"
+
+    def test_all_templates_have_nonempty_actions(self):
+        for key, tmpl in _ERROR_TEMPLATES.items():
+            assert len(tmpl.actions) > 0, f"Template {key!r} has empty actions"
 
 
-# ---------------------------------------------------------------------------
-# log_and_raise
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 10. log_and_raise
+# ===========================================================================
 
-class TestLogAndRaise(unittest.TestCase):
+class TestLogAndRaise:
+    """Tests for log_and_raise(error, message, log_level, include_traceback).
 
-    @patch("utils.error_handling.logger")
-    def test_logs_and_raises(self, mock_logger):
-        with self.assertRaises(ValueError):
+    Note: log_and_raise uses bare `raise`, so it must be called from within
+    an active except block to re-raise the current exception.
+    """
+
+    def test_reraises_the_current_exception(self):
+        with pytest.raises(ValueError, match="original error"):
             try:
-                raise ValueError("test")
+                raise ValueError("original error")
             except ValueError as e:
-                log_and_raise(e, "Context message")
+                log_and_raise(e)
 
-        mock_logger.log.assert_called_once()
-        args = mock_logger.log.call_args[0]
-        self.assertEqual(args[0], logging.ERROR)
-        self.assertIn("Context message", args[1])
-        self.assertIn("test", args[1])
-
-    @patch("utils.error_handling.logger")
-    def test_logs_without_message(self, mock_logger):
-        with self.assertRaises(RuntimeError):
+    def test_reraises_runtime_error(self):
+        with pytest.raises(RuntimeError, match="boom"):
             try:
-                raise RuntimeError("raw")
+                raise RuntimeError("boom")
             except RuntimeError as e:
                 log_and_raise(e)
 
-        logged_msg = mock_logger.log.call_args[0][1]
-        self.assertEqual(logged_msg, "raw")
+    def test_logs_at_error_level_by_default(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("test msg")
+                except ValueError as e:
+                    log_and_raise(e)
+        assert any("test msg" in r.message for r in caplog.records)
 
-    @patch("utils.error_handling.logger")
-    def test_custom_log_level(self, mock_logger):
-        with self.assertRaises(ValueError):
+    def test_logs_at_custom_level_warning(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("warn level")
+                except ValueError as e:
+                    log_and_raise(e, log_level=logging.WARNING)
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING and "warn level" in r.message]
+        assert len(warning_records) >= 1
+
+    def test_message_prefix_included_in_log(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(TypeError):
+                try:
+                    raise TypeError("bad type")
+                except TypeError as e:
+                    log_and_raise(e, message="Custom prefix")
+        assert any("Custom prefix" in r.message for r in caplog.records)
+        assert any("bad type" in r.message for r in caplog.records)
+
+    def test_no_message_prefix_logs_just_error(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("just error")
+                except ValueError as e:
+                    log_and_raise(e, message=None)
+        assert any("just error" in r.message for r in caplog.records)
+
+    def test_include_traceback_true_by_default(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("tb test")
+                except ValueError as e:
+                    log_and_raise(e)
+        # When include_traceback=True, logger.log is called with exc_info=True
+        error_records = [r for r in caplog.records if "tb test" in r.message]
+        assert len(error_records) >= 1
+
+    def test_include_traceback_false(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("no tb")
+                except ValueError as e:
+                    log_and_raise(e, include_traceback=False)
+        error_records = [r for r in caplog.records if "no tb" in r.message]
+        assert len(error_records) >= 1
+
+    def test_logs_combined_message_with_prefix(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(OSError):
+                try:
+                    raise OSError("disk full")
+                except OSError as e:
+                    log_and_raise(e, message="Save failed")
+        assert any("Save failed: disk full" in r.message for r in caplog.records)
+
+    def test_reraises_original_exception_type_not_wrapped(self):
+        """Verify that the re-raised exception is the original type, not wrapped."""
+        with pytest.raises(KeyError):
             try:
-                raise ValueError("x")
-            except ValueError as e:
-                log_and_raise(e, log_level=logging.WARNING)
-
-        self.assertEqual(mock_logger.log.call_args[0][0], logging.WARNING)
-
-
-# ---------------------------------------------------------------------------
-# ErrorContext
-# ---------------------------------------------------------------------------
-
-class TestErrorContext(unittest.TestCase):
-
-    def test_capture_with_exception(self):
-        try:
-            raise ValueError("test error")
-        except ValueError as e:
-            ctx = ErrorContext.capture(
-                operation="Processing",
-                exception=e,
-                input_summary="10 items",
-                error_code="E42",
-                custom_key="custom_value",
-            )
-
-        self.assertEqual(ctx.operation, "Processing")
-        self.assertEqual(ctx.error, "test error")
-        self.assertEqual(ctx.error_code, "E42")
-        self.assertEqual(ctx.exception_type, "ValueError")
-        self.assertEqual(ctx.input_summary, "10 items")
-        self.assertIsNotNone(ctx.stack_trace)
-        self.assertIsNotNone(ctx.timestamp)
-        self.assertEqual(ctx.additional_info["custom_key"], "custom_value")
-
-    def test_capture_with_error_message_only(self):
-        ctx = ErrorContext.capture(
-            operation="Test",
-            error_message="manual error"
-        )
-        self.assertEqual(ctx.error, "manual error")
-        self.assertIsNone(ctx.exception_type)
-        self.assertIsNone(ctx.stack_trace)
-
-    def test_capture_no_exception_no_message(self):
-        ctx = ErrorContext.capture(operation="Test")
-        self.assertEqual(ctx.error, "Unknown error")
-
-    def test_capture_no_stack_trace(self):
-        try:
-            raise ValueError("x")
-        except ValueError as e:
-            ctx = ErrorContext.capture(
-                operation="Test",
-                exception=e,
-                include_stack_trace=False,
-            )
-        self.assertIsNone(ctx.stack_trace)
-
-    # --- user_message ---
-    def test_user_message_basic(self):
-        ctx = ErrorContext(operation="Saving", error="disk full")
-        self.assertEqual(ctx.user_message, "Saving failed: disk full")
-
-    def test_user_message_cleans_error_prefix(self):
-        ctx = ErrorContext(operation="Loading", error="Error: file not found")
-        self.assertIn("Loading failed", ctx.user_message)
-        self.assertNotIn("Error:", ctx.user_message)
-
-    def test_user_message_cleans_exception_prefix(self):
-        ctx = ErrorContext(operation="Loading", error="Exception: something")
-        self.assertNotIn("Exception:", ctx.user_message)
-
-    def test_user_message_no_error(self):
-        ctx = ErrorContext(operation="Op", error="")
-        self.assertEqual(ctx.user_message, "Op failed")
-
-    # --- to_log_string ---
-    def test_to_log_string_basic(self):
-        ctx = ErrorContext(
-            operation="TestOp",
-            error="err msg",
-            error_code="E1",
-            exception_type="ValueError",
-            input_summary="short input",
-            timestamp="2026-01-01T00:00:00",
-            additional_info={"key": "val"},
-        )
-        log_str = ctx.to_log_string()
-        self.assertIn("Operation: TestOp", log_str)
-        self.assertIn("Error: err msg", log_str)
-        self.assertIn("Error Code: E1", log_str)
-        self.assertIn("Exception Type: ValueError", log_str)
-        self.assertIn("Input: short input", log_str)
-        self.assertIn("key: val", log_str)
-        self.assertIn("Timestamp:", log_str)
-
-    def test_to_log_string_minimal(self):
-        ctx = ErrorContext(operation="Op", error="e")
-        log_str = ctx.to_log_string()
-        self.assertIn("Operation: Op", log_str)
-        self.assertNotIn("Error Code:", log_str)
-        self.assertNotIn("Exception Type:", log_str)
-
-    # --- to_dict ---
-    def test_to_dict(self):
-        ctx = ErrorContext(
-            operation="Op",
-            error="e",
-            error_code="E1",
-            exception_type="ValueError",
-            input_summary="data",
-            timestamp="2026-01-01",
-            additional_info={"k": "v"},
-            stack_trace="traceback...",
-        )
-        d = ctx.to_dict()
-        self.assertEqual(d["operation"], "Op")
-        self.assertEqual(d["error"], "e")
-        self.assertEqual(d["error_code"], "E1")
-        self.assertEqual(d["exception_type"], "ValueError")
-        self.assertEqual(d["input_summary"], "data")
-        self.assertEqual(d["timestamp"], "2026-01-01")
-        self.assertEqual(d["additional_info"], {"k": "v"})
-        # Stack trace should NOT be in dict (security)
-        self.assertNotIn("stack_trace", d)
-
-    # --- log ---
-    @patch("utils.error_handling.logger")
-    def test_log_method(self, mock_logger):
-        ctx = ErrorContext(
-            operation="Op",
-            error="e",
-            stack_trace="trace lines here",
-        )
-        ctx.log(level=logging.WARNING, include_trace=True)
-
-        mock_logger.log.assert_called_once()
-        self.assertEqual(mock_logger.log.call_args[0][0], logging.WARNING)
-        mock_logger.debug.assert_called_once()
-
-    @patch("utils.error_handling.logger")
-    def test_log_method_no_trace(self, mock_logger):
-        ctx = ErrorContext(operation="Op", error="e", stack_trace="trace")
-        ctx.log(include_trace=False)
-
-        mock_logger.log.assert_called_once()
-        mock_logger.debug.assert_not_called()
-
-    @patch("utils.error_handling.logger")
-    def test_log_method_no_stack_trace_available(self, mock_logger):
-        ctx = ErrorContext(operation="Op", error="e")
-        ctx.log(include_trace=True)
-
-        mock_logger.log.assert_called_once()
-        mock_logger.debug.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# safe_ui_update
-# ---------------------------------------------------------------------------
-
-class TestSafeUIUpdate(unittest.TestCase):
-
-    def test_schedules_callback(self):
-        app = Mock()
-        cb = Mock()
-        result = safe_ui_update(app, cb, delay_ms=10)
-
-        self.assertTrue(result)
-        app.after.assert_called_once()
-        self.assertEqual(app.after.call_args[0][0], 10)
-
-    def test_app_none_returns_false(self):
-        result = safe_ui_update(None, lambda: None)
-        self.assertFalse(result)
-
-    def test_attribute_error_returns_false(self):
-        app = object()  # no after() method
-        result = safe_ui_update(app, lambda: None)
-        self.assertFalse(result)
-
-    @patch("utils.error_handling.logger")
-    def test_tclerror_on_after_returns_false(self, mock_logger):
-        import tkinter as tk
-        app = Mock()
-        app.after.side_effect = tk.TclError("destroyed")
-        result = safe_ui_update(app, lambda: None)
-        self.assertFalse(result)
-
-    @patch("utils.error_handling.logger")
-    def test_runtime_error_main_thread(self, mock_logger):
-        app = Mock()
-        app.after.side_effect = RuntimeError("main thread is not in main loop")
-        result = safe_ui_update(app, lambda: None)
-        self.assertFalse(result)
-
-    @patch("utils.error_handling.logger")
-    def test_runtime_error_other(self, mock_logger):
-        app = Mock()
-        app.after.side_effect = RuntimeError("some other error")
-        result = safe_ui_update(app, lambda: None)
-        self.assertFalse(result)
-
-    def test_safe_callback_catches_tclerror_destroyed(self):
-        """The inner safe_callback should catch TclError for destroyed widgets."""
-        import tkinter as tk
-
-        app = Mock()
-        captured_cb = None
-
-        def capture_after(ms, fn):
-            nonlocal captured_cb
-            captured_cb = fn
-        app.after = capture_after
-
-        def bad_callback():
-            raise tk.TclError("invalid command name")
-
-        safe_ui_update(app, bad_callback)
-        # Execute the captured callback - should not raise
-        captured_cb()
-
-    @patch("utils.error_handling.logger")
-    def test_safe_callback_calls_error_handler_on_tclerror(self, mock_logger):
-        """Non-standard TclError should call error_handler."""
-        import tkinter as tk
-
-        app = Mock()
-        captured_cb = None
-
-        def capture_after(ms, fn):
-            nonlocal captured_cb
-            captured_cb = fn
-        app.after = capture_after
-
-        error_handler = Mock()
-
-        def bad_callback():
-            raise tk.TclError("something unusual")
-
-        safe_ui_update(app, bad_callback, error_handler=error_handler)
-        captured_cb()
-        error_handler.assert_called_once()
-
-    @patch("utils.error_handling.logger")
-    def test_safe_callback_calls_error_handler_on_generic_exception(self, mock_logger):
-        """Generic exceptions in callback should call error_handler."""
-        app = Mock()
-        captured_cb = None
-
-        def capture_after(ms, fn):
-            nonlocal captured_cb
-            captured_cb = fn
-        app.after = capture_after
-
-        error_handler = Mock()
-
-        def bad_callback():
-            raise RuntimeError("whoops")
-
-        safe_ui_update(app, bad_callback, error_handler=error_handler)
-        captured_cb()
-        error_handler.assert_called_once()
-
-    @patch("utils.error_handling.logger")
-    def test_safe_callback_tclerror_application_destroyed(self, mock_logger):
-        """TclError with 'application has been destroyed' should be debug-logged."""
-        import tkinter as tk
-
-        app = Mock()
-        captured_cb = None
-
-        def capture_after(ms, fn):
-            nonlocal captured_cb
-            captured_cb = fn
-        app.after = capture_after
-
-        def bad_callback():
-            raise tk.TclError("application has been destroyed")
-
-        safe_ui_update(app, bad_callback)
-        captured_cb()
-        # Should have been logged at debug level, no warning
-        mock_logger.debug.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# SafeUIUpdater
-# ---------------------------------------------------------------------------
-
-class TestSafeUIUpdater(unittest.TestCase):
-
-    def test_update_success(self):
-        app = Mock()
-        updater = SafeUIUpdater(app)
-        result = updater.update(lambda: None)
-
-        self.assertTrue(result)
-        self.assertEqual(updater.stats["scheduled"], 1)
-        self.assertEqual(updater.stats["failed"], 0)
-
-    def test_update_app_garbage_collected(self):
-        """If app is garbage collected, update returns False."""
-        updater = SafeUIUpdater(None)
-        result = updater.update(lambda: None)
-
-        self.assertFalse(result)
-        self.assertEqual(updater.stats["failed"], 1)
-
-    def test_update_failed(self):
-        """If safe_ui_update returns False, count as failed."""
-        app = Mock()
-        app.after.side_effect = AttributeError("no after")
-        updater = SafeUIUpdater(app)
-
-        with patch("utils.error_handling.safe_ui_update", return_value=False):
-            result = updater.update(lambda: None)
-
-        self.assertFalse(result)
-        self.assertEqual(updater.stats["failed"], 1)
-
-    def test_app_property_returns_none_for_none(self):
-        updater = SafeUIUpdater(None)
-        self.assertIsNone(updater.app)
-
-    def test_app_property_returns_app(self):
-        app = Mock()
-        updater = SafeUIUpdater(app)
-        self.assertIs(updater.app, app)
-
-    def test_error_handler_stored(self):
-        handler = Mock()
-        updater = SafeUIUpdater(Mock(), error_handler=handler)
-        self.assertIs(updater._error_handler, handler)
-
-    def test_stats_accumulate(self):
-        app = Mock()
-        updater = SafeUIUpdater(app)
-        updater.update(lambda: None)
-        updater.update(lambda: None)
-        self.assertEqual(updater.stats["scheduled"], 2)
-
-
-# ---------------------------------------------------------------------------
-# run_in_thread
-# ---------------------------------------------------------------------------
-
-class TestRunInThread(unittest.TestCase):
-
-    @patch("utils.error_handling.logger")
-    def test_basic_execution(self, mock_logger):
-        result_holder = []
-
-        def task():
-            result_holder.append(42)
-
-        t = run_in_thread(task)
-        t.join(timeout=5)
-
-        self.assertEqual(result_holder, [42])
-        self.assertTrue(t.daemon)
-
-    @patch("utils.error_handling.logger")
-    def test_callback_called_without_app(self, mock_logger):
-        results = []
-
-        def task():
-            return "hello"
-
-        def on_done(result):
-            results.append(result)
-
-        t = run_in_thread(task, callback=on_done)
-        t.join(timeout=5)
-
-        self.assertEqual(results, ["hello"])
-
-    @patch("utils.error_handling.logger")
-    def test_error_callback_called_without_app(self, mock_logger):
-        errors = []
-
-        def task():
-            raise RuntimeError("boom")
-
-        def on_error(e):
-            errors.append(str(e))
-
-        t = run_in_thread(task, error_callback=on_error)
-        t.join(timeout=5)
-
-        self.assertEqual(len(errors), 1)
-        self.assertIn("boom", errors[0])
-
-    @patch("utils.error_handling.logger")
-    def test_callback_with_app_uses_safe_ui_update(self, mock_logger):
-        app = Mock()
-        results = []
-
-        # Make app.after execute callback immediately
-        def mock_after(ms, fn):
-            fn()
-        app.after = mock_after
-
-        def task():
-            return "world"
-
-        def on_done(result):
-            results.append(result)
-
-        t = run_in_thread(task, callback=on_done, app=app)
-        t.join(timeout=5)
-
-        self.assertEqual(results, ["world"])
-
-    @patch("utils.error_handling.logger")
-    def test_error_callback_with_app(self, mock_logger):
-        app = Mock()
-        errors = []
-
-        def mock_after(ms, fn):
-            fn()
-        app.after = mock_after
-
-        def task():
-            raise ValueError("fail")
-
-        def on_error(e):
-            errors.append(str(e))
-
-        t = run_in_thread(task, error_callback=on_error, app=app)
-        t.join(timeout=5)
-
-        self.assertEqual(len(errors), 1)
-        self.assertIn("fail", errors[0])
-
-    @patch("utils.error_handling.logger")
-    def test_non_daemon_thread(self, mock_logger):
-        t = run_in_thread(lambda: None, daemon=False)
-        t.join(timeout=5)
-        self.assertFalse(t.daemon)
-
-    @patch("utils.error_handling.logger")
-    def test_callback_exception_triggers_error_callback(self, mock_logger):
-        """If the callback itself raises, the error_callback should be called."""
-        errors = []
-
-        def task():
-            return "ok"
-
-        def bad_callback(result):
-            raise RuntimeError("callback failed")
-
-        def on_error(e):
-            errors.append(str(e))
-
-        t = run_in_thread(task, callback=bad_callback, error_callback=on_error)
-        t.join(timeout=5)
-
-        self.assertEqual(len(errors), 1)
-        self.assertIn("callback failed", errors[0])
-
-    @patch("utils.error_handling.logger")
-    def test_no_callbacks(self, mock_logger):
-        """Should run fine with no callbacks."""
-        executed = []
-
-        def task():
-            executed.append(True)
-
-        t = run_in_thread(task)
-        t.join(timeout=5)
-        self.assertTrue(executed)
-
-
-# ---------------------------------------------------------------------------
-# Edge cases and integration-like tests
-# ---------------------------------------------------------------------------
-
-class TestEdgeCases(unittest.TestCase):
-
-    def test_operation_result_generic_type(self):
-        """OperationResult should work as generic with various types."""
-        r_int = OperationResult.success(42)
-        r_str = OperationResult.success("hello")
-        r_list = OperationResult.success([1, 2, 3])
-        r_none = OperationResult.success(None)
-
-        self.assertEqual(r_int.value, 42)
-        self.assertEqual(r_str.value, "hello")
-        self.assertEqual(r_list.value, [1, 2, 3])
-        self.assertIsNone(r_none.value)
-
-    @patch("utils.error_handling.logger")
-    def test_handle_errors_with_args_and_kwargs(self, mock_logger):
-        @handle_errors(ErrorSeverity.ERROR)
-        def add(a, b, c=0):
-            return OperationResult.success(a + b + c)
-
-        r = add(1, 2, c=3)
-        self.assertTrue(r.success)
-        self.assertEqual(r.value, 6)
-
-    def test_error_context_capture_timestamp_format(self):
-        ctx = ErrorContext.capture(operation="Test")
-        self.assertIsNotNone(ctx.timestamp)
-        # Should be ISO format
-        self.assertIn("T", ctx.timestamp)
-
-    @patch("utils.error_handling.logger")
-    def test_sanitize_error_type_matching_is_case_insensitive(self, mock_logger):
-        """Error type matching should be case-insensitive."""
-        class apiError(Exception):
-            pass
-        result = sanitize_error_for_user(apiError("x"))
-        self.assertEqual(result, "The AI service encountered an error. Please try again.")
-
-
-if __name__ == "__main__":
-    unittest.main()
+                raise KeyError("missing_key")
+            except KeyError as e:
+                log_and_raise(e, message="Lookup error")

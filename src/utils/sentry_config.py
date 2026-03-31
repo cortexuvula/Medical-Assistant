@@ -9,9 +9,10 @@ single source of truth for what constitutes sensitive data.
 """
 
 import os
-import logging
 
-logger = logging.getLogger(__name__)
+from utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _scrub_data(data: dict) -> dict:

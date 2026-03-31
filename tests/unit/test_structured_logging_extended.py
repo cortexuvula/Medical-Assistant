@@ -514,23 +514,36 @@ class TestGetLogLevelFromString(unittest.TestCase):
 class TestConfigureLogging(unittest.TestCase):
     """Tests for configure_logging()."""
 
+    def setUp(self):
+        """Save root logger state and clear handlers so basicConfig takes effect."""
+        self.root = logging.getLogger()
+        self._saved_handlers = self.root.handlers[:]
+        self._saved_level = self.root.level
+        self.root.handlers.clear()
+
+    def tearDown(self):
+        """Restore root logger state."""
+        self.root.handlers[:] = self._saved_handlers
+        self.root.setLevel(self._saved_level)
+
     def test_configure_with_explicit_level(self):
-        """Should not raise and should configure root logger."""
+        """Should configure root logger to the specified level."""
         configure_logging(level=logging.WARNING)
-        root = logging.getLogger()
-        self.assertEqual(root.level, logging.WARNING)
+        self.assertEqual(self.root.level, logging.WARNING)
 
     def test_configure_json_format(self):
-        """JSON format should set minimal formatter."""
+        """JSON format should set minimal formatter on root handlers."""
         configure_logging(level=logging.INFO, json_format=True)
-        root = logging.getLogger()
         # At least one handler should have a minimal format
         found_minimal = False
-        for handler in root.handlers:
-            if handler.formatter and handler.formatter._fmt == "%(message)s":
-                found_minimal = True
-                break
-        self.assertTrue(found_minimal)
+        for handler in self.root.handlers:
+            fmt = handler.formatter
+            if fmt is not None:
+                # Check the format string (access via public format method)
+                if fmt.format(logging.LogRecord("n", 0, "", 0, "test", (), None)) == "test":
+                    found_minimal = True
+                    break
+        self.assertTrue(found_minimal, "No handler with minimal '%(message)s' format found")
 
 
 class TestSensitiveFieldsCoverage(unittest.TestCase):

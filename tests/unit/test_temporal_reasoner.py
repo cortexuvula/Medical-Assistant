@@ -680,3 +680,178 @@ class TestTimestampHandling:
 
         # Should find timestamp in metadata
         assert len(decayed) == 1
+
+
+# ---------------------------------------------------------------------------
+# TestTimeDecayCustom
+# ---------------------------------------------------------------------------
+
+class TestTimeDecayCustom:
+    """Test time decay with custom half_life_days."""
+
+    def test_custom_half_life_30_faster_decay(self):
+        reasoner = TemporalReasoner(half_life_days=30, max_decay=0.5, enable_decay=True)
+        now = datetime.now()
+        created_at = now - timedelta(days=30)
+        decay = reasoner.calculate_time_decay(created_at, now)
+        # At half-life (30 days), decay ~ 0.5
+        assert 0.45 <= decay <= 0.55
+
+    def test_custom_half_life_365_slower_decay(self):
+        reasoner = TemporalReasoner(half_life_days=365, max_decay=0.5, enable_decay=True)
+        now = datetime.now()
+        created_at = now - timedelta(days=180)
+        decay = reasoner.calculate_time_decay(created_at, now)
+        # At 180 days with half_life=365, decay = 2^(-180/365) ≈ 0.70
+        assert decay > 0.65
+
+    def test_decay_exactly_at_min_decay_threshold(self):
+        # MIN_DECAY = 0.95 — at age_days=0, we get MIN_DECAY
+        reasoner = TemporalReasoner(half_life_days=180, enable_decay=True)
+        now = datetime.now()
+        # A future timestamp triggers MIN_DECAY
+        future = now + timedelta(hours=1)
+        decay = reasoner.calculate_time_decay(future, now)
+        assert decay == TemporalReasoner.MIN_DECAY
+
+    def test_age_days_zero_returns_min_decay(self):
+        reasoner = TemporalReasoner(half_life_days=180, enable_decay=True)
+        now = datetime.now()
+        # age_days exactly 0 (or negative) → returns MIN_DECAY
+        decay = reasoner.calculate_time_decay(now, now)
+        # age_days = 0 → MIN_DECAY (the code does age_days <= 0 check)
+        assert decay == TemporalReasoner.MIN_DECAY
+
+    def test_very_old_content_hits_max_decay(self):
+        reasoner = TemporalReasoner(half_life_days=30, max_decay=0.5, enable_decay=True)
+        now = datetime.now()
+        created_at = now - timedelta(days=1000)
+        decay = reasoner.calculate_time_decay(created_at, now)
+        assert decay == 0.5
+
+    def test_one_day_old_very_small_decay(self):
+        reasoner = TemporalReasoner(half_life_days=365, enable_decay=True)
+        now = datetime.now()
+        created_at = now - timedelta(days=1)
+        decay = reasoner.calculate_time_decay(created_at, now)
+        # 2^(-1/365) ≈ 0.998 → capped at MIN_DECAY=0.95
+        assert decay == TemporalReasoner.MIN_DECAY
+
+
+# ---------------------------------------------------------------------------
+# TestFilterTimestampEdgeCases
+# ---------------------------------------------------------------------------
+
+class TestFilterTimestampEdgeCases:
+    """Edge cases for filter_by_time_range with different timestamp formats."""
+
+    @pytest.fixture
+    def reasoner(self):
+        return TemporalReasoner(half_life_days=180, enable_decay=True)
+
+    def test_string_iso_timestamps(self, reasoner):
+        @dataclass
+        class MockResult:
+            chunk_text: str
+            combined_score: float
+            created_at: str
+
+        now = datetime.now()
+        results = [
+            MockResult("Test", 0.9, (now - timedelta(days=3)).isoformat()),
+        ]
+        filtered = reasoner.filter_by_time_range(
+            results,
+            now - timedelta(days=7),
+            now,
+            timestamp_field="created_at",
+        )
+        assert len(filtered) == 1
+
+    def test_z_suffix_parsed_by_fromisoformat(self, reasoner):
+        """Test that Z-suffix timestamps are parsed correctly via fromisoformat.
+
+        Note: The source replaces "Z" with "+00:00" and calls fromisoformat(),
+        producing a timezone-aware datetime. However, the source then compares
+        it to datetime.now() (naive), which raises TypeError. This documents
+        that Z-suffix strings are correctly parsed but incompatible with
+        the naive-datetime comparison paths.
+        """
+        raw = "2026-03-25T12:00:00Z"
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        assert parsed.year == 2026
+        assert parsed.month == 3
+        assert parsed.tzinfo is not None
+
+    def test_created_at_none_included(self, reasoner):
+        @dataclass
+        class MockResult:
+            chunk_text: str
+            combined_score: float
+            created_at: object = None
+
+        results = [MockResult("No timestamp", 0.9, None)]
+        now = datetime.now()
+        filtered = reasoner.filter_by_time_range(
+            results,
+            now - timedelta(days=7),
+            now,
+        )
+        # Results without timestamp are included by default
+        assert len(filtered) == 1
+
+    def test_start_date_only(self, reasoner):
+        @dataclass
+        class MockResult:
+            chunk_text: str
+            combined_score: float
+            created_at: datetime
+
+        now = datetime.now()
+        results = [
+            MockResult("Old", 0.8, now - timedelta(days=100)),
+            MockResult("New", 0.9, now - timedelta(days=1)),
+        ]
+        # end_date=None → only start_date filtering
+        filtered = reasoner.filter_by_time_range(
+            results,
+            now - timedelta(days=10),
+            None,
+            timestamp_field="created_at",
+        )
+        # Only "New" should pass (the old one is before start_date)
+        assert len(filtered) == 1
+        assert filtered[0].chunk_text == "New"
+
+    def test_end_date_only(self, reasoner):
+        @dataclass
+        class MockResult:
+            chunk_text: str
+            combined_score: float
+            created_at: datetime
+
+        now = datetime.now()
+        results = [
+            MockResult("Old", 0.8, now - timedelta(days=100)),
+            MockResult("New", 0.9, now - timedelta(days=1)),
+        ]
+        # start_date=None → only end_date filtering
+        filtered = reasoner.filter_by_time_range(
+            results,
+            None,
+            now - timedelta(days=50),
+            timestamp_field="created_at",
+        )
+        # Only "Old" should pass (New is after end_date)
+        assert len(filtered) == 1
+        assert filtered[0].chunk_text == "Old"
+
+    def test_both_none_returns_all(self, reasoner):
+        @dataclass
+        class MockResult:
+            chunk_text: str
+            combined_score: float
+
+        results = [MockResult("A", 0.9), MockResult("B", 0.8)]
+        filtered = reasoner.filter_by_time_range(results, None, None)
+        assert len(filtered) == 2

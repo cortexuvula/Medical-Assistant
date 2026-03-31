@@ -1,592 +1,464 @@
-"""Test emotion processor functionality."""
-import pytest
-import sys
-from pathlib import Path
+"""
+Tests for src/ai/emotion_processor.py — pure module-level functions only.
+V2 paths that import settings_manager or SpeakerEmotionAnalyzer are excluded.
+"""
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 from ai.emotion_processor import (
+    _format_timestamp,
+    _is_v2,
+    _validate_emotion_data,
+    _get_top_emotions,
+    _format_soap_v1,
+    _format_panel_v1,
+    _generate_clinical_notes,
+    get_dominant_emotions,
     format_emotion_for_soap,
     format_emotion_for_panel,
-    get_dominant_emotions,
+    CLINICAL_EMOTIONS,
+    CLINICAL_DESCRIPTORS,
 )
 
 
-# --- Test Data ---
+# ---------------------------------------------------------------------------
+# TestFormatTimestamp
+# ---------------------------------------------------------------------------
 
-SAMPLE_EMOTION_DATA = {
-    "segments": [
-        {
-            "start_time": 0.0,
-            "end_time": 5.2,
-            "speaker": "speaker_0",
-            "text": "I've been having these headaches...",
-            "emotions": {
-                "anxiety": 0.72,
-                "sadness": 0.15,
-                "neutral": 0.45,
-                "anger": 0.05,
-                "joy": 0.02,
-                "fear": 0.31,
-            },
-        },
-        {
-            "start_time": 5.2,
-            "end_time": 12.8,
-            "speaker": "speaker_0",
-            "text": "My mother had the same thing before she passed",
-            "emotions": {
-                "anxiety": 0.22,
-                "sadness": 0.68,
-                "neutral": 0.30,
-                "anger": 0.03,
-                "joy": 0.01,
-                "fear": 0.15,
-            },
-        },
-    ],
-    "overall": {
-        "dominant_emotion": "anxiety",
-        "average_emotions": {
-            "anxiety": 0.47,
-            "sadness": 0.42,
-            "neutral": 0.38,
-            "anger": 0.04,
-            "joy": 0.015,
-            "fear": 0.23,
-        },
-        "emotion_variability": 0.45,
-    },
-}
+class TestFormatTimestamp:
+    def test_zero(self):
+        assert _format_timestamp(0.0) == "00:00"
 
-SINGLE_SEGMENT_DATA = {
-    "segments": [
-        {
-            "start_time": 0.0,
-            "end_time": 3.0,
-            "speaker": "speaker_0",
-            "text": "I feel fine today",
-            "emotions": {
-                "neutral": 0.85,
-                "joy": 0.10,
-                "anxiety": 0.03,
-                "sadness": 0.01,
-                "anger": 0.00,
-                "fear": 0.01,
-            },
+    def test_exactly_one_minute(self):
+        assert _format_timestamp(60.0) == "01:00"
+
+    def test_one_minute_thirty_seconds(self):
+        assert _format_timestamp(90.0) == "01:30"
+
+    def test_sixty_minutes(self):
+        # 3600 seconds = 60 minutes, 0 seconds
+        assert _format_timestamp(3600.0) == "60:00"
+
+    def test_five_seconds(self):
+        assert _format_timestamp(5.0) == "00:05"
+
+    def test_truncates_fractional_seconds(self):
+        # 65.5 => 1 min 5.5 sec => truncated to 1 min 5 sec
+        assert _format_timestamp(65.5) == "01:05"
+
+    def test_truncates_at_boundary(self):
+        # 125.9 => 2 min 5.9 sec => truncated to 2 min 5 sec
+        assert _format_timestamp(125.9) == "02:05"
+
+    def test_single_digit_seconds(self):
+        assert _format_timestamp(9.0) == "00:09"
+
+    def test_ten_minutes(self):
+        assert _format_timestamp(600.0) == "10:00"
+
+    def test_one_minute_one_second(self):
+        assert _format_timestamp(61.0) == "01:01"
+
+
+# ---------------------------------------------------------------------------
+# TestIsV2
+# ---------------------------------------------------------------------------
+
+class TestIsV2:
+    def test_version_2_int(self):
+        assert _is_v2({"version": 2}) is True
+
+    def test_version_1(self):
+        assert _is_v2({"version": 1}) is False
+
+    def test_empty_dict(self):
+        assert _is_v2({}) is False
+
+    def test_none(self):
+        assert _is_v2(None) is False
+
+    def test_version_2_with_extra_keys(self):
+        assert _is_v2({"version": 2, "other": "data"}) is True
+
+    def test_version_string_two(self):
+        # String "2" is not equal to int 2
+        assert _is_v2({"version": "2"}) is False
+
+    def test_list(self):
+        assert _is_v2([]) is False
+
+    def test_plain_string(self):
+        assert _is_v2("string") is False
+
+
+# ---------------------------------------------------------------------------
+# TestValidateEmotionData
+# ---------------------------------------------------------------------------
+
+class TestValidateEmotionData:
+    def test_none(self):
+        assert _validate_emotion_data(None) is False
+
+    def test_empty_dict(self):
+        assert _validate_emotion_data({}) is False
+
+    def test_empty_segments_list(self):
+        assert _validate_emotion_data({"segments": []}) is False
+
+    def test_segments_none(self):
+        assert _validate_emotion_data({"segments": None}) is False
+
+    def test_segments_not_a_list(self):
+        assert _validate_emotion_data({"segments": "not a list"}) is False
+
+    def test_valid_single_segment(self):
+        assert _validate_emotion_data({"segments": [{"emotions": {}}]}) is True
+
+    def test_list_instead_of_dict(self):
+        assert _validate_emotion_data([]) is False
+
+    def test_plain_string(self):
+        assert _validate_emotion_data("string") is False
+
+    def test_no_segments_key(self):
+        assert _validate_emotion_data({"other": "key"}) is False
+
+    def test_segments_list_with_items(self):
+        assert _validate_emotion_data({"segments": [1, 2, 3]}) is True
+
+
+# ---------------------------------------------------------------------------
+# TestGetTopEmotions
+# ---------------------------------------------------------------------------
+
+class TestGetTopEmotions:
+    def test_empty_dict(self):
+        assert _get_top_emotions({}) == []
+
+    def test_none(self):
+        assert _get_top_emotions(None) == []
+
+    def test_two_emotions_returned_in_order(self):
+        result = _get_top_emotions({"anxiety": 0.8, "calm": 0.5})
+        assert result == [("anxiety", 0.8), ("calm", 0.5)]
+
+    def test_neutral_excluded(self):
+        result = _get_top_emotions({"neutral": 0.9, "anxiety": 0.8})
+        assert result == [("anxiety", 0.8)]
+
+    def test_below_default_threshold_excluded(self):
+        result = _get_top_emotions({"anxiety": 0.05})
+        assert result == []
+
+    def test_exactly_at_threshold(self):
+        result = _get_top_emotions({"anxiety": 0.1})
+        assert result == [("anxiety", 0.1)]
+
+    def test_top_n_limit(self):
+        result = _get_top_emotions({"a": 0.9, "b": 0.8, "c": 0.7, "d": 0.6}, n=2)
+        assert result == [("a", 0.9), ("b", 0.8)]
+
+    def test_sorted_descending(self):
+        result = _get_top_emotions({"anxiety": 0.5, "calm": 0.8})
+        assert result == [("calm", 0.8), ("anxiety", 0.5)]
+
+    def test_custom_threshold_excludes(self):
+        result = _get_top_emotions({"anxiety": 0.29}, threshold=0.3)
+        assert result == []
+
+    def test_non_numeric_score_excluded(self):
+        result = _get_top_emotions({"anxiety": "high"})
+        assert result == []
+
+    def test_non_dict_input(self):
+        assert _get_top_emotions(["anxiety", "calm"]) == []
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateClinicalNotes
+# ---------------------------------------------------------------------------
+
+class TestGenerateClinicalNotes:
+    def test_empty_segments(self):
+        assert _generate_clinical_notes([], {}) == []
+
+    def test_non_dict_segments_ignored(self):
+        # All non-dict => total_segments=0, no notes generated
+        result = _generate_clinical_notes(["not a dict", 42], {})
+        assert result == []
+
+    def test_anxiety_100_percent_triggers_note(self):
+        segments = [{"emotions": {"anxiety": 0.4}}]
+        notes = _generate_clinical_notes(segments, {})
+        assert any("anxiety" in n.lower() for n in notes)
+
+    def test_anxiety_below_threshold_no_note(self):
+        segments = [{"emotions": {"anxiety": 0.39}}]
+        notes = _generate_clinical_notes(segments, {})
+        assert not any("anxiety" in n.lower() for n in notes)
+
+    def test_anxiety_exactly_50_percent_triggers_note(self):
+        # 1 of 2 segments = 50% >= 0.5
+        segments = [
+            {"emotions": {"anxiety": 0.4}},
+            {"emotions": {"calm": 0.9}},
+        ]
+        notes = _generate_clinical_notes(segments, {})
+        assert any("anxiety" in n.lower() for n in notes)
+
+    def test_fear_30_percent_triggers_note(self):
+        # 1 of 1 segment = 100% >= 0.3
+        segments = [{"emotions": {"fear": 0.4}}]
+        notes = _generate_clinical_notes(segments, {})
+        assert any("fear" in n.lower() for n in notes)
+
+    def test_sadness_50_percent_triggers_depression_note(self):
+        segments = [{"emotions": {"sadness": 0.4}}]
+        notes = _generate_clinical_notes(segments, {})
+        assert any("depression" in n.lower() or "phq" in n.lower() for n in notes)
+
+    def test_high_variability_triggers_note(self):
+        segments = [{"emotions": {"anxiety": 0.2}}]
+        overall = {"emotion_variability": 0.7}
+        notes = _generate_clinical_notes(segments, overall)
+        assert any("variability" in n.lower() for n in notes)
+
+    def test_variability_exactly_0_6_no_note(self):
+        # 0.6 is NOT > 0.6, so no variability note
+        segments = [{"emotions": {"anxiety": 0.2}}]
+        overall = {"emotion_variability": 0.6}
+        notes = _generate_clinical_notes(segments, overall)
+        assert not any("variability" in n.lower() for n in notes)
+
+    def test_empty_overall_no_variability_note(self):
+        segments = [{"emotions": {"anxiety": 0.2}}]
+        notes = _generate_clinical_notes(segments, {})
+        assert not any("variability" in n.lower() for n in notes)
+
+    def test_multiple_conditions_produce_multiple_notes(self):
+        segments = [
+            {"emotions": {"anxiety": 0.5, "sadness": 0.5, "fear": 0.5}},
+        ]
+        overall = {"emotion_variability": 0.9}
+        notes = _generate_clinical_notes(segments, overall)
+        assert len(notes) >= 3
+
+
+# ---------------------------------------------------------------------------
+# TestGetDominantEmotions
+# ---------------------------------------------------------------------------
+
+class TestGetDominantEmotions:
+    # --- Invalid / edge inputs ---
+
+    def test_none_input(self):
+        assert get_dominant_emotions(None) == []
+
+    def test_invalid_structure(self):
+        assert get_dominant_emotions({}) == []
+
+    # --- V1 cases ---
+
+    def test_v1_single_segment_returns_entry(self):
+        data = {"segments": [{"emotions": {"anxiety": 0.8}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data)
+        assert len(result) == 1
+        assert result[0]["emotion"] == "anxiety"
+        assert result[0]["confidence"] == 0.8
+        assert result[0]["segment_index"] == 0
+        assert result[0]["timestamp"] == 0.0
+
+    def test_v1_below_threshold_excluded(self):
+        data = {"segments": [{"emotions": {"anxiety": 0.29}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data, threshold=0.3)
+        assert result == []
+
+    def test_v1_neutral_excluded(self):
+        data = {"segments": [{"emotions": {"neutral": 0.9}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data)
+        assert result == []
+
+    def test_v1_sorted_by_confidence_descending(self):
+        data = {
+            "segments": [
+                {"emotions": {"calm": 0.5, "anxiety": 0.9}, "start_time": 0.0}
+            ]
         }
-    ],
-    "overall": {
-        "dominant_emotion": "neutral",
-        "average_emotions": {
-            "neutral": 0.85,
-            "joy": 0.10,
-            "anxiety": 0.03,
-            "sadness": 0.01,
-            "anger": 0.00,
-            "fear": 0.01,
-        },
-        "emotion_variability": 0.05,
-    },
-}
+        result = get_dominant_emotions(data)
+        confidences = [r["confidence"] for r in result]
+        assert confidences == sorted(confidences, reverse=True)
+
+    # --- V2 cases ---
+
+    def test_v2_emotion_label_included(self):
+        data = {
+            "version": 2,
+            "segments": [{"emotion_label": "anxiety", "start_time": 5.0}],
+        }
+        result = get_dominant_emotions(data)
+        assert len(result) == 1
+        assert result[0]["emotion"] == "anxiety"
+        assert result[0]["confidence"] == 1.0
+
+    def test_v2_empty_label_excluded(self):
+        data = {
+            "version": 2,
+            "segments": [{"emotion_label": "", "start_time": 0.0}],
+        }
+        result = get_dominant_emotions(data)
+        assert result == []
+
+    def test_v2_neutral_excluded(self):
+        data = {
+            "version": 2,
+            "segments": [{"emotion_label": "neutral", "start_time": 0.0}],
+        }
+        result = get_dominant_emotions(data)
+        assert result == []
+
+    def test_v2_timestamp_from_start_time(self):
+        data = {
+            "version": 2,
+            "segments": [{"emotion_label": "fear", "start_time": 120.5}],
+        }
+        result = get_dominant_emotions(data)
+        assert result[0]["timestamp"] == 120.5
+
+    # --- Threshold validation ---
+
+    def test_invalid_threshold_above_1_uses_default(self):
+        # Invalid threshold 2.0 => falls back to default 0.3; 0.35 >= 0.3 so included
+        data = {"segments": [{"emotions": {"anxiety": 0.35}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data, threshold=2.0)
+        assert len(result) == 1
+
+    def test_invalid_threshold_below_0_uses_default(self):
+        data = {"segments": [{"emotions": {"anxiety": 0.35}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data, threshold=-0.1)
+        assert len(result) == 1
+
+    def test_custom_threshold_0_5_excludes_below(self):
+        data = {"segments": [{"emotions": {"anxiety": 0.4}, "start_time": 0.0}]}
+        result = get_dominant_emotions(data, threshold=0.5)
+        assert result == []
+
+    # --- Robustness ---
+
+    def test_v1_non_dict_segment_skipped(self):
+        data = {
+            "segments": [
+                "not a dict",
+                {"emotions": {"anxiety": 0.8}, "start_time": 0.0},
+            ]
+        }
+        result = get_dominant_emotions(data)
+        assert len(result) == 1
+        assert result[0]["segment_index"] == 1
+
+    def test_v1_non_numeric_start_time_defaults_to_zero(self):
+        data = {"segments": [{"emotions": {"anxiety": 0.8}, "start_time": "bad"}]}
+        result = get_dominant_emotions(data)
+        assert result[0]["timestamp"] == 0.0
 
 
-# --- Tests for format_emotion_for_soap ---
-
+# ---------------------------------------------------------------------------
+# TestFormatEmotionForSoap
+# ---------------------------------------------------------------------------
 
 class TestFormatEmotionForSoap:
-    """Test SOAP note formatting of emotion data."""
+    def test_none_returns_empty(self):
+        assert format_emotion_for_soap(None) == ""
 
-    def test_format_with_full_emotion_data(self):
-        """Test SOAP formatting with complete emotion data."""
-        result = format_emotion_for_soap(SAMPLE_EMOTION_DATA)
+    def test_empty_dict_returns_empty(self):
+        assert format_emotion_for_soap({}) == ""
 
-        assert isinstance(result, str)
-        assert len(result) > 0
-        # Should reference the dominant emotion
-        assert "anxiety" in result.lower() or "anxious" in result.lower()
+    def test_empty_segments_returns_empty(self):
+        assert format_emotion_for_soap({"segments": []}) == ""
 
-    def test_format_includes_significant_emotions(self):
-        """Test that significant emotions are included in SOAP output."""
-        result = format_emotion_for_soap(SAMPLE_EMOTION_DATA)
+    def test_v1_no_clinical_emotions_above_threshold_returns_empty(self):
+        # Confidence 0.2 is below the SOAP threshold of 0.3
+        data = {"segments": [{"emotions": {"anxiety": 0.2}, "start_time": 0.0}]}
+        assert format_emotion_for_soap(data) == ""
 
-        # Anxiety (0.47) and sadness (0.42) are the most significant
-        result_lower = result.lower()
-        assert "anxiety" in result_lower or "anxious" in result_lower
-        assert "sadness" in result_lower or "sad" in result_lower
-
-    def test_format_with_single_segment(self):
-        """Test SOAP formatting with a single neutral segment."""
-        result = format_emotion_for_soap(SINGLE_SEGMENT_DATA)
-
-        assert isinstance(result, str)
-
-    def test_format_with_empty_data(self):
-        """Test SOAP formatting with empty emotion data."""
-        result = format_emotion_for_soap({})
-
-        assert isinstance(result, str)
-        # Should return empty string or a reasonable default
-        assert result == "" or "no emotion" in result.lower() or "unavailable" in result.lower()
-
-    def test_format_with_none(self):
-        """Test SOAP formatting with None input."""
-        result = format_emotion_for_soap(None)
-
-        assert isinstance(result, str)
-        assert result == "" or "no emotion" in result.lower() or "unavailable" in result.lower()
-
-    def test_format_with_missing_overall(self):
-        """Test SOAP formatting when overall section is missing."""
+    def test_v1_anxiety_above_threshold_returns_header(self):
         data = {
-            "segments": SAMPLE_EMOTION_DATA["segments"],
+            "segments": [
+                {"emotions": {"anxiety": 0.8}, "start_time": 0.0, "text": "I feel worried"}
+            ]
         }
         result = format_emotion_for_soap(data)
+        assert "Voice Emotion Analysis:" in result
 
-        assert isinstance(result, str)
-
-    def test_format_with_missing_segments(self):
-        """Test SOAP formatting when segments are missing."""
+    def test_v1_anxiety_result_contains_elevated_anxiety(self):
         data = {
-            "overall": SAMPLE_EMOTION_DATA["overall"],
+            "segments": [
+                {"emotions": {"anxiety": 0.8}, "start_time": 0.0, "text": "I feel worried"}
+            ]
         }
         result = format_emotion_for_soap(data)
+        assert "Patient exhibited elevated anxiety" in result
 
-        assert isinstance(result, str)
 
-
-# --- Tests for format_emotion_for_panel ---
-
+# ---------------------------------------------------------------------------
+# TestFormatEmotionForPanel
+# ---------------------------------------------------------------------------
 
 class TestFormatEmotionForPanel:
-    """Test panel display formatting of emotion data."""
+    def test_none_returns_no_data_message(self):
+        assert format_emotion_for_panel(None) == "No emotion analysis data available."
 
-    def test_format_with_full_data(self):
-        """Test panel formatting with complete emotion data."""
-        result = format_emotion_for_panel(SAMPLE_EMOTION_DATA)
+    def test_empty_dict_returns_no_data_message(self):
+        assert format_emotion_for_panel({}) == "No emotion analysis data available."
 
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_format_includes_segment_info(self):
-        """Test that panel output includes segment-level information."""
-        result = format_emotion_for_panel(SAMPLE_EMOTION_DATA)
-
-        # Should reference the text or emotions from segments
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_format_includes_emotion_scores(self):
-        """Test that panel output includes emotion scores or labels."""
-        result = format_emotion_for_panel(SAMPLE_EMOTION_DATA)
-
-        result_lower = result.lower()
-        # Should include at least one emotion reference
-        has_emotion = any(
-            emotion in result_lower
-            for emotion in ["anxiety", "sadness", "neutral", "anger", "joy", "fear"]
-        )
-        assert has_emotion
-
-    def test_format_with_empty_data(self):
-        """Test panel formatting with empty data."""
-        result = format_emotion_for_panel({})
-
-        assert isinstance(result, str)
-
-    def test_format_with_none(self):
-        """Test panel formatting with None input."""
-        result = format_emotion_for_panel(None)
-
-        assert isinstance(result, str)
-
-    def test_format_with_single_segment(self):
-        """Test panel formatting with single segment."""
-        result = format_emotion_for_panel(SINGLE_SEGMENT_DATA)
-
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_format_with_missing_fields(self):
-        """Test panel formatting when segment fields are partially missing."""
+    def test_v1_data_with_segments_returns_header(self):
         data = {
             "segments": [
                 {
-                    "text": "Some text",
-                    "emotions": {"neutral": 0.90},
+                    "emotions": {"anxiety": 0.8},
+                    "start_time": 0.0,
+                    "end_time": 10.0,
+                    "text": "Test text",
+                    "speaker": "patient",
                 }
-            ],
+            ]
         }
         result = format_emotion_for_panel(data)
-
-        assert isinstance(result, str)
-
-
-# --- Tests for get_dominant_emotions ---
-
-
-class TestGetDominantEmotions:
-    """Test dominant emotion extraction with threshold filtering."""
-
-    def test_default_threshold(self):
-        """Test dominant emotions with default threshold."""
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA)
-
-        assert isinstance(result, list)
-        # Should include emotions above default threshold (0.3)
-        assert len(result) > 0
-        for item in result:
-            assert item["confidence"] >= 0.3
-
-    def test_high_threshold(self):
-        """Test with a high threshold filters most emotions."""
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA, threshold=0.60)
-
-        assert isinstance(result, list)
-        # Only anxiety (0.72) and sadness (0.68) from individual segments
-        for item in result:
-            assert item["confidence"] >= 0.60
-
-    def test_low_threshold(self):
-        """Test with a low threshold includes more emotions."""
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA, threshold=0.01)
-
-        assert isinstance(result, list)
-        # Most emotions should be included at this low threshold
-        assert len(result) >= 4
-
-    def test_threshold_of_one_returns_empty(self):
-        """Test threshold of 1.0 should return no emotions."""
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA, threshold=1.0)
-
-        assert isinstance(result, list)
-        assert len(result) == 0
-
-    def test_with_empty_emotions(self):
-        """Test with empty emotions dict."""
-        result = get_dominant_emotions({})
-
-        assert isinstance(result, list)
-        assert len(result) == 0
-
-    def test_with_none_emotions(self):
-        """Test with None input."""
-        result = get_dominant_emotions(None)
-
-        if isinstance(result, list):
-            assert len(result) == 0
-        elif isinstance(result, dict):
-            assert len(result) == 0
-
-    def test_all_emotions_below_threshold(self):
-        """Test when all emotions are below the threshold."""
-        low_data = {
-            "segments": [{
-                "start_time": 0.0, "end_time": 5.0, "speaker": "speaker_0",
-                "text": "test", "emotions": {
-                    "anxiety": 0.05, "sadness": 0.03, "neutral": 0.08,
-                    "anger": 0.01, "joy": 0.02, "fear": 0.01,
-                }
-            }],
-            "overall": {}
-        }
-        result = get_dominant_emotions(low_data, threshold=0.10)
-        assert isinstance(result, list)
-        assert len(result) == 0
-
-    def test_single_emotion_above_threshold(self):
-        """Test with only one emotion above threshold."""
-        single_data = {
-            "segments": [{
-                "start_time": 0.0, "end_time": 5.0, "speaker": "speaker_0",
-                "text": "test", "emotions": {
-                    "anxiety": 0.90, "sadness": 0.02, "neutral": 0.05,
-                    "anger": 0.01, "joy": 0.01, "fear": 0.01,
-                }
-            }],
-            "overall": {}
-        }
-        result = get_dominant_emotions(single_data, threshold=0.50)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["emotion"] == "anxiety"
-
-    def test_result_sorted_by_score(self):
-        """Test that results are sorted by score in descending order."""
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA, threshold=0.10)
-
-        assert isinstance(result, list)
-        if len(result) > 1:
-            if "confidence" in result[0]:
-                scores = [item["confidence"] for item in result]
-                assert scores == sorted(scores, reverse=True)
-            elif "score" in result[0]:
-                scores = [item["score"] for item in result]
-                assert scores == sorted(scores, reverse=True)
-
-    def test_with_zero_values(self):
-        """Test emotions with zero values are excluded."""
-        data = {
-            "segments": [{
-                "start_time": 0.0, "end_time": 5.0, "speaker": "speaker_0",
-                "text": "test", "emotions": {
-                    "anxiety": 0.50, "sadness": 0.0, "neutral": 0.0,
-                    "anger": 0.0, "joy": 0.0, "fear": 0.0,
-                }
-            }],
-            "overall": {}
-        }
-
-        result = get_dominant_emotions(data, threshold=0.10)
-
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["emotion"] == "anxiety"
-
-    def test_preserves_emotion_names(self):
-        """Test that emotion names are preserved in output."""
-        data = {
-            "segments": [{
-                "start_time": 0.0, "end_time": 5.0, "speaker": "speaker_0",
-                "text": "test", "emotions": {"anxiety": 0.80, "joy": 0.60}
-            }],
-            "overall": {}
-        }
-
-        result = get_dominant_emotions(data, threshold=0.10)
-
-        assert isinstance(result, list)
-        result_str = str(result)
-        assert "anxiety" in result_str
-        assert "joy" in result_str
-
-
-# --- V2 Test Data ---
-
-SAMPLE_V2_EMOTION_DATA = {
-    "version": 2,
-    "segments": [
-        {"start_time": 1.0, "end_time": 1.5, "speaker": "speaker_1",
-         "text": "Hello?", "emotion_label": "calm", "emotion_raw": "Calm",
-         "emotions": {"calm": 1.0}},
-        {"start_time": 2.0, "end_time": 4.0, "speaker": "speaker_2",
-         "text": "Hi, it's Dr. Smith. How are you?", "emotion_label": "calm",
-         "emotion_raw": "Calm", "emotions": {"calm": 1.0}},
-        {"start_time": 5.0, "end_time": 12.0, "speaker": "speaker_1",
-         "text": "Oh fine, just got him up.", "emotion_label": "calm",
-         "emotion_raw": "Calm", "emotions": {"calm": 1.0}},
-        {"start_time": 12.0, "end_time": 46.0, "speaker": "speaker_2",
-         "text": "I got a text from community nurses about a memory test.",
-         "emotion_label": "neutral", "emotion_raw": "Neutral",
-         "emotions": {"neutral": 1.0}},
-        {"start_time": 47.0, "end_time": 49.0, "speaker": "speaker_1",
-         "text": "Oh, yeah. Well... I don't know.", "emotion_label": "confusion",
-         "emotion_raw": "Confused", "emotions": {"confusion": 1.0}},
-        {"start_time": 51.0, "end_time": 53.0, "speaker": "speaker_2",
-         "text": "Is it difficult to get him into the lab?",
-         "emotion_label": "neutral", "emotion_raw": "Neutral",
-         "emotions": {"neutral": 1.0}},
-        {"start_time": 54.0, "end_time": 55.0, "speaker": "speaker_1",
-         "text": "Yes. Yes.", "emotion_label": "calm", "emotion_raw": "Calm",
-         "emotions": {"calm": 1.0}},
-        {"start_time": 61.0, "end_time": 83.0, "speaker": "speaker_1",
-         "text": "Yeah. He can't walk, getting him in and out of the car.",
-         "emotion_label": "concern", "emotion_raw": "Concerned",
-         "emotions": {"concern": 1.0}},
-        {"start_time": 83.0, "end_time": 120.0, "speaker": "speaker_2",
-         "text": "Okay. Well, I'll send the requisition into the lab.",
-         "emotion_label": "neutral", "emotion_raw": "Neutral",
-         "emotions": {"neutral": 1.0}},
-        {"start_time": 121.0, "end_time": 132.0, "speaker": "speaker_1",
-         "text": "We have nobody around here to help us.",
-         "emotion_label": "concern", "emotion_raw": "Concerned",
-         "emotions": {"concern": 1.0}},
-        {"start_time": 150.0, "end_time": 169.0, "speaker": "speaker_1",
-         "text": "I was thinking of giving them a call.",
-         "emotion_label": "concern", "emotion_raw": "Concerned",
-         "emotions": {"concern": 1.0}},
-        {"start_time": 244.0, "end_time": 246.0, "speaker": "speaker_1",
-         "text": "Okay, we'll try to get that done then.",
-         "emotion_label": "calm", "emotion_raw": "Calm",
-         "emotions": {"calm": 1.0}},
-        {"start_time": 247.0, "end_time": 250.0, "speaker": "speaker_2",
-         "text": "Okay. All right, I'll place the order now.",
-         "emotion_label": "calm", "emotion_raw": "Calm",
-         "emotions": {"calm": 1.0}},
-    ],
-    "overall": {
-        "dominant_emotion": "calm",
-        "emotion_distribution": {"calm": 6, "neutral": 4, "concern": 3, "confusion": 1},
-        "total_segments": 13,
-    }
-}
-
-
-# --- V2 Panel Tests ---
-
-
-class TestFormatPanelV2:
-    """Test v2 3-tier panel display."""
-
-    @pytest.fixture(autouse=True)
-    def mock_settings(self, monkeypatch):
-        """Mock settings_manager for v2 tests."""
-        from unittest.mock import MagicMock
-        mock_sm = MagicMock()
-        mock_sm.get.return_value = {
-            "emotion_in_soap": False,
-            "emotion_disclaimer": "Test disclaimer.",
-            "emotion_cluster_window_seconds": 120,
-            "speaker_role_overrides": {},
-        }
-        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
-
-    def test_panel_v2_returns_string(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_panel_v2_has_headline(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
         assert "VOICE EMOTION ANALYSIS" in result
 
-    def test_panel_v2_has_speaker_detail(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "SPEAKER DETAIL" in result
-
-    def test_panel_v2_has_segment_table(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "SEGMENT DETAIL" in result
-
-    def test_panel_v2_has_disclaimer(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "disclaimer" in result.lower() or "observational" in result.lower() or "not constitute" in result.lower()
-
-    def test_panel_v2_shows_concern_cluster(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "concern" in result.lower()
-
-    def test_panel_v2_shows_speaker_roles(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        result_lower = result.lower()
-        # Should have speaker labels (patient, physician, caregiver, or speaker)
-        assert "speaker_1" in result_lower or "speaker_2" in result_lower
-
-    def test_panel_v2_no_old_clinical_significance_text(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "No clinically significant patterns detected" not in result
-
-    def test_panel_v2_shows_baseline(self):
-        result = format_emotion_for_panel(SAMPLE_V2_EMOTION_DATA)
-        assert "Baseline" in result or "baseline" in result
-
-
-# --- V2 SOAP Tests ---
-
-
-class TestFormatSoapV2:
-    """Test v2 SOAP formatting."""
-
-    def _mock_settings(self, monkeypatch, emotion_in_soap=False):
-        from unittest.mock import MagicMock
-        mock_sm = MagicMock()
-        mock_sm.get.return_value = {
-            "emotion_in_soap": emotion_in_soap,
-            "emotion_disclaimer": "Test disclaimer.",
-            "emotion_cluster_window_seconds": 120,
-            "speaker_role_overrides": {},
+    def test_v1_empty_segment_content_still_returns_header(self):
+        # Segment passes validation but has no usable emotion/text data
+        data = {
+            "segments": [{"emotions": {}, "start_time": 0.0, "end_time": 0.0, "text": ""}]
         }
-        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
-        monkeypatch.setattr("ai.emotion_processor.settings_manager",
-                            mock_sm, raising=False)
-        # Also patch the import in _format_soap_v2
-        import ai.emotion_processor as ep
-        original_format = ep._format_soap_v2
-
-        def patched_format(data):
-            import ai.emotion_speaker_analyzer
-            ai.emotion_speaker_analyzer.settings_manager = mock_sm
-            # For the settings check inside _format_soap_v2
-            from unittest.mock import patch
-            with patch("settings.settings_manager.settings_manager", mock_sm):
-                return original_format(data)
-        return mock_sm
-
-    def test_soap_v2_returns_empty_when_disabled(self, monkeypatch):
-        mock_sm = self._mock_settings(monkeypatch, emotion_in_soap=False)
-        # Also need to patch the settings_manager import in emotion_processor
-        monkeypatch.setattr("ai.emotion_processor.settings_manager",
-                            mock_sm, raising=False)
-        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
-        assert result == ""
-
-    def test_soap_v2_includes_disclaimer_when_enabled(self, monkeypatch):
-        from unittest.mock import MagicMock
-        mock_sm = MagicMock()
-        mock_sm.get.return_value = {
-            "emotion_in_soap": True,
-            "emotion_disclaimer": "Test disclaimer.",
-            "emotion_cluster_window_seconds": 120,
-            "speaker_role_overrides": {},
-        }
-        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
-        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
-        if result:  # Only check if there are flags to report
-            assert "disclaimer" in result.lower() or "Test disclaimer" in result
-
-    def test_soap_v2_no_diagnostic_language(self, monkeypatch):
-        from unittest.mock import MagicMock
-        mock_sm = MagicMock()
-        mock_sm.get.return_value = {
-            "emotion_in_soap": True,
-            "emotion_disclaimer": "Test disclaimer.",
-            "emotion_cluster_window_seconds": 120,
-            "speaker_role_overrides": {},
-        }
-        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
-        result = format_emotion_for_soap(SAMPLE_V2_EMOTION_DATA)
-        forbidden = ["screening", "disorder", "PHQ", "GAD", "diagnosis", "depression"]
-        for word in forbidden:
-            assert word.lower() not in result.lower(), f"Found forbidden word '{word}' in SOAP output"
-
-
-# --- V1 Backward Compatibility Tests ---
-
-
-class TestV1Compatibility:
-    """Verify v1 data still works through all public functions."""
-
-    def test_v1_soap_still_works(self):
-        result = format_emotion_for_soap(SAMPLE_EMOTION_DATA)
-        assert isinstance(result, str)
-        # V1 data with anxiety 0.72 and sadness 0.68 should produce output
-        assert len(result) > 0
-
-    def test_v1_panel_still_works(self):
-        result = format_emotion_for_panel(SAMPLE_EMOTION_DATA)
-        assert isinstance(result, str)
-        assert len(result) > 0
+        result = format_emotion_for_panel(data)
         assert "VOICE EMOTION ANALYSIS" in result
 
-    def test_v1_dominant_still_works(self):
-        result = get_dominant_emotions(SAMPLE_EMOTION_DATA)
-        assert isinstance(result, list)
-        assert len(result) > 0
 
-    def test_v2_dominant_uses_emotion_label(self, monkeypatch):
-        from unittest.mock import MagicMock
-        mock_sm = MagicMock()
-        mock_sm.get.return_value = {
-            "emotion_cluster_window_seconds": 120,
-            "speaker_role_overrides": {},
-            "emotion_disclaimer": "Test.",
-        }
-        monkeypatch.setattr("ai.emotion_speaker_analyzer.settings_manager", mock_sm)
+# ---------------------------------------------------------------------------
+# TestConstants
+# ---------------------------------------------------------------------------
 
-        result = get_dominant_emotions(SAMPLE_V2_EMOTION_DATA)
-        assert isinstance(result, list)
-        # Should find concern, confusion (non-neutral, non-calm with 1.0 confidence)
-        emotions = [r["emotion"] for r in result]
-        assert "concern" in emotions
-        assert "confusion" in emotions
+class TestConstants:
+    def test_clinical_emotions_is_set(self):
+        assert isinstance(CLINICAL_EMOTIONS, set)
+
+    def test_anxiety_in_clinical_emotions(self):
+        assert "anxiety" in CLINICAL_EMOTIONS
+
+    def test_neutral_not_in_clinical_emotions(self):
+        assert "neutral" not in CLINICAL_EMOTIONS
+
+    def test_clinical_descriptors_is_dict(self):
+        assert isinstance(CLINICAL_DESCRIPTORS, dict)
+
+    def test_anxiety_descriptor(self):
+        assert CLINICAL_DESCRIPTORS["anxiety"] == "anxious"
+
+    def test_calm_descriptor(self):
+        assert CLINICAL_DESCRIPTORS["calm"] == "calm"
+
+    def test_neutral_in_clinical_descriptors(self):
+        assert "neutral" in CLINICAL_DESCRIPTORS

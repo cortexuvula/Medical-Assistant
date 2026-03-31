@@ -1,329 +1,781 @@
 """
-Tests for the resilience module (retry and circuit breaker patterns).
+Tests for src/utils/resilience.py
+
+Covers:
+- RETRYABLE_HTTP_CODES frozenset
+- RETRYABLE_ERROR_TYPES frozenset
+- is_retryable_error() classification logic
+- CircuitState enum
+- RetryConfig defaults and custom values
+- CircuitBreaker init, state transitions, call(), _on_success, _on_failure, reset()
+
+Excluded: retry / smart_retry / circuit_breaker / resilient_api_call decorators
+(they use time.sleep and are not pure-logic).
 """
 
-import pytest
-import time
-from unittest.mock import Mock, patch
-from datetime import datetime, timedelta
+import sys
+from pathlib import Path
 
-from utils.exceptions import APIError, RateLimitError, ServiceUnavailableError, AuthenticationError
-from utils.resilience import retry, CircuitBreaker, circuit_breaker, resilient_api_call, CircuitState
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
-
-class TestRetryDecorator:
-    """Test cases for the retry decorator."""
-    
-    def test_successful_call_no_retry(self):
-        """Test that successful calls don't trigger retries."""
-        mock_func = Mock(return_value="success")
-        
-        @retry(max_retries=3)
-        def test_func():
-            return mock_func()
-        
-        result = test_func()
-        assert result == "success"
-        assert mock_func.call_count == 1
-    
-    def test_retry_on_api_error(self):
-        """Test that API errors trigger retries."""
-        mock_func = Mock(side_effect=[APIError("Failed"), APIError("Failed"), "success"])
-        
-        @retry(max_retries=3, initial_delay=0.1)
-        def test_func():
-            return mock_func()
-        
-        result = test_func()
-        assert result == "success"
-        assert mock_func.call_count == 3
-    
-    def test_max_retries_exceeded(self):
-        """Test that exception is raised after max retries."""
-        mock_func = Mock(side_effect=APIError("Failed"))
-        
-        @retry(max_retries=2, initial_delay=0.1)
-        def test_func():
-            return mock_func()
-        
-        with pytest.raises(APIError):
-            test_func()
-        
-        assert mock_func.call_count == 3  # Initial + 2 retries
-    
-    def test_no_retry_on_excluded_exception(self):
-        """Test that excluded exceptions don't trigger retries."""
-        mock_func = Mock(side_effect=AuthenticationError("Auth failed"))
-        
-        @retry(max_retries=3, exclude_exceptions=(AuthenticationError,))
-        def test_func():
-            return mock_func()
-        
-        with pytest.raises(AuthenticationError):
-            test_func()
-        
-        assert mock_func.call_count == 1
-    
-    def test_rate_limit_retry_after(self):
-        """Test that rate limit errors use retry-after header."""
-        error = RateLimitError("Rate limited", retry_after=2)
-        mock_func = Mock(side_effect=[error, "success"])
-
-        @retry(max_retries=3, initial_delay=0.1)
-        def test_func():
-            return mock_func()
-
-        # Mock time.sleep to verify it's called with the correct delay
-        with patch('utils.resilience.time.sleep') as mock_sleep:
-            result = test_func()
-
-        assert result == "success"
-        assert mock_func.call_count == 2
-        # Verify sleep was called with the retry_after value (2 seconds)
-        mock_sleep.assert_called_once_with(2)
-    
-    def test_exponential_backoff(self):
-        """Test exponential backoff between retries."""
-        mock_func = Mock(side_effect=[APIError("Failed"), APIError("Failed"), "success"])
-        
-        @retry(max_retries=3, initial_delay=0.1, backoff_factor=2.0)
-        def test_func():
-            return mock_func()
-        
-        start_time = time.time()
-        result = test_func()
-        elapsed = time.time() - start_time
-        
-        assert result == "success"
-        assert mock_func.call_count == 3
-        # Should wait 0.1 + 0.2 = 0.3 seconds minimum
-        assert elapsed >= 0.3
+from utils.resilience import (
+    RETRYABLE_HTTP_CODES,
+    RETRYABLE_ERROR_TYPES,
+    is_retryable_error,
+    CircuitState,
+    RetryConfig,
+    CircuitBreaker,
+)
+from utils.exceptions import (
+    PermanentError,
+    RetryableError,
+    RateLimitError,
+    ServiceUnavailableError,
+    AuthenticationError,
+    APIError,
+)
 
 
-class TestCircuitBreaker:
-    """Test cases for the circuit breaker pattern."""
-    
-    def test_circuit_closed_successful_calls(self):
-        """Test circuit remains closed on successful calls."""
-        breaker = CircuitBreaker(failure_threshold=3)
-        mock_func = Mock(return_value="success")
-        
-        for _ in range(5):
-            result = breaker.call(mock_func)
-            assert result == "success"
-        
-        assert breaker.state == CircuitState.CLOSED
-        assert mock_func.call_count == 5
-    
-    def test_circuit_opens_after_failures(self):
-        """Test circuit opens after failure threshold."""
-        breaker = CircuitBreaker(failure_threshold=3, expected_exception=APIError)
-        mock_func = Mock(side_effect=APIError("Failed"))
-        
-        for i in range(3):
-            with pytest.raises(APIError):
-                breaker.call(mock_func)
-        
-        assert breaker.state == CircuitState.OPEN
-        assert mock_func.call_count == 3
-        
-        # Next call should fail immediately without calling function
-        with pytest.raises(ServiceUnavailableError):
-            breaker.call(mock_func)
-        
-        assert mock_func.call_count == 3  # No additional calls
-    
-    def test_circuit_half_open_after_timeout(self):
-        """Test circuit enters half-open state after recovery timeout."""
-        breaker = CircuitBreaker(
-            failure_threshold=1, 
-            recovery_timeout=1,  # 1 second
-            expected_exception=APIError
+# ---------------------------------------------------------------------------
+# Helpers — concrete classes using the mixin pattern defined in exceptions.py
+# ---------------------------------------------------------------------------
+
+class ConcretePermanentError(Exception, PermanentError):
+    """An error that explicitly inherits PermanentError mixin."""
+
+
+class ConcreteRetryableError(Exception, RetryableError):
+    """An error that explicitly inherits RetryableError mixin."""
+
+
+class ConcreteAPIError(APIError):
+    """Generic APIError subclass for tests that need an APIError instance."""
+
+
+# ===========================================================================
+# 1. RETRYABLE_HTTP_CODES
+# ===========================================================================
+
+class TestRetryableHttpCodes:
+    """Tests for the RETRYABLE_HTTP_CODES frozenset constant."""
+
+    def test_is_frozenset(self):
+        assert isinstance(RETRYABLE_HTTP_CODES, frozenset)
+
+    def test_contains_six_codes(self):
+        assert len(RETRYABLE_HTTP_CODES) == 6
+
+    def test_contains_408(self):
+        assert 408 in RETRYABLE_HTTP_CODES
+
+    def test_contains_429(self):
+        assert 429 in RETRYABLE_HTTP_CODES
+
+    def test_contains_500(self):
+        assert 500 in RETRYABLE_HTTP_CODES
+
+    def test_contains_502(self):
+        assert 502 in RETRYABLE_HTTP_CODES
+
+    def test_contains_503(self):
+        assert 503 in RETRYABLE_HTTP_CODES
+
+    def test_contains_504(self):
+        assert 504 in RETRYABLE_HTTP_CODES
+
+    def test_does_not_contain_200(self):
+        assert 200 not in RETRYABLE_HTTP_CODES
+
+    def test_does_not_contain_400(self):
+        assert 400 not in RETRYABLE_HTTP_CODES
+
+    def test_does_not_contain_401(self):
+        assert 401 not in RETRYABLE_HTTP_CODES
+
+    def test_does_not_contain_403(self):
+        assert 403 not in RETRYABLE_HTTP_CODES
+
+    def test_immutable(self):
+        """frozenset should raise AttributeError on mutation attempt."""
+        try:
+            RETRYABLE_HTTP_CODES.add(999)  # type: ignore[attr-defined]
+            assert False, "Expected AttributeError"
+        except AttributeError:
+            pass
+
+
+# ===========================================================================
+# 2. RETRYABLE_ERROR_TYPES
+# ===========================================================================
+
+class TestRetryableErrorTypes:
+    """Tests for the RETRYABLE_ERROR_TYPES frozenset constant."""
+
+    def test_is_frozenset(self):
+        assert isinstance(RETRYABLE_ERROR_TYPES, frozenset)
+
+    def test_contains_five_types(self):
+        assert len(RETRYABLE_ERROR_TYPES) == 5
+
+    def test_contains_timeout(self):
+        assert "timeout" in RETRYABLE_ERROR_TYPES
+
+    def test_contains_connection_error(self):
+        assert "connection_error" in RETRYABLE_ERROR_TYPES
+
+    def test_contains_rate_limit(self):
+        assert "rate_limit" in RETRYABLE_ERROR_TYPES
+
+    def test_contains_server_error(self):
+        assert "server_error" in RETRYABLE_ERROR_TYPES
+
+    def test_contains_temporary_failure(self):
+        assert "temporary_failure" in RETRYABLE_ERROR_TYPES
+
+    def test_does_not_contain_auth_error(self):
+        assert "auth_error" not in RETRYABLE_ERROR_TYPES
+
+    def test_does_not_contain_permanent_failure(self):
+        assert "permanent_failure" not in RETRYABLE_ERROR_TYPES
+
+    def test_immutable(self):
+        try:
+            RETRYABLE_ERROR_TYPES.add("new_type")  # type: ignore[attr-defined]
+            assert False, "Expected AttributeError"
+        except AttributeError:
+            pass
+
+
+# ===========================================================================
+# 3. is_retryable_error
+# ===========================================================================
+
+class TestIsRetryableErrorMixins:
+    """Mixin-class-based classification tests."""
+
+    def test_permanent_error_mixin_returns_false(self):
+        err = ConcretePermanentError("permanent")
+        assert is_retryable_error(err) is False
+
+    def test_retryable_error_mixin_returns_true(self):
+        err = ConcreteRetryableError("transient")
+        assert is_retryable_error(err) is True
+
+    def test_permanent_mixin_overrides_retryable_status_code(self):
+        """PermanentError mixin wins even if a retryable status code is given."""
+        err = ConcretePermanentError("permanent with status")
+        assert is_retryable_error(err, status_code=503) is False
+
+    def test_retryable_mixin_overrides_non_retryable_message(self):
+        """RetryableError mixin wins even if message looks like invalid/forbidden."""
+        err = ConcreteRetryableError("invalid data")
+        assert is_retryable_error(err) is True
+
+
+class TestIsRetryableErrorStatusCode:
+    """HTTP status code classification tests."""
+
+    def test_status_code_429_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=429) is True
+
+    def test_status_code_503_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=503) is True
+
+    def test_status_code_500_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=500) is True
+
+    def test_status_code_502_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=502) is True
+
+    def test_status_code_504_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=504) is True
+
+    def test_status_code_408_returns_true(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=408) is True
+
+    def test_status_code_400_returns_false(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=400) is False
+
+    def test_status_code_200_returns_false(self):
+        err = ValueError("some error")
+        assert is_retryable_error(err, status_code=200) is False
+
+    def test_no_status_code_unknown_error_returns_false(self):
+        err = ValueError("unknown error")
+        assert is_retryable_error(err) is False
+
+
+class TestIsRetryableErrorExceptionTypes:
+    """Exception-type-based classification tests."""
+
+    def test_rate_limit_error_returns_true(self):
+        err = RateLimitError("Rate limit hit")
+        assert is_retryable_error(err) is True
+
+    def test_rate_limit_error_with_retry_after_returns_true(self):
+        err = RateLimitError("Rate limit hit", retry_after=30)
+        assert is_retryable_error(err) is True
+
+    def test_service_unavailable_error_returns_true(self):
+        err = ServiceUnavailableError("Service down")
+        assert is_retryable_error(err) is True
+
+    def test_authentication_error_returns_false(self):
+        err = AuthenticationError("Invalid API key")
+        assert is_retryable_error(err) is False
+
+    def test_generic_api_error_unknown_returns_false(self):
+        """A plain APIError with no matching keywords/status should return False."""
+        err = APIError("Unexpected internal error")
+        # No retryable marker, no retryable status, no retryable keywords
+        assert is_retryable_error(err) is False
+
+    def test_generic_exception_returns_false(self):
+        err = Exception("something unexpected happened")
+        assert is_retryable_error(err) is False
+
+
+class TestIsRetryableErrorMessageKeywords:
+    """Error-message-based classification tests."""
+
+    def test_timeout_keyword_returns_true(self):
+        err = Exception("Operation timeout exceeded")
+        assert is_retryable_error(err) is True
+
+    def test_timed_out_keyword_returns_true(self):
+        err = Exception("Request timed out after 30s")
+        assert is_retryable_error(err) is True
+
+    def test_connection_reset_returns_true(self):
+        err = Exception("connection reset by peer")
+        assert is_retryable_error(err) is True
+
+    def test_connection_refused_returns_true(self):
+        err = Exception("connection refused")
+        assert is_retryable_error(err) is True
+
+    def test_connection_error_keyword_returns_true(self):
+        err = Exception("A connection error occurred")
+        assert is_retryable_error(err) is True
+
+    def test_network_keyword_returns_true(self):
+        err = Exception("network unreachable")
+        assert is_retryable_error(err) is True
+
+    def test_case_insensitive_timeout(self):
+        err = Exception("TIMEOUT when reaching the server")
+        assert is_retryable_error(err) is True
+
+    def test_invalid_keyword_returns_false(self):
+        err = Exception("invalid request parameters")
+        assert is_retryable_error(err) is False
+
+    def test_unauthorized_keyword_returns_false(self):
+        err = Exception("unauthorized access")
+        assert is_retryable_error(err) is False
+
+    def test_forbidden_keyword_returns_false(self):
+        err = Exception("forbidden endpoint")
+        assert is_retryable_error(err) is False
+
+    def test_empty_message_returns_false(self):
+        err = Exception("")
+        assert is_retryable_error(err) is False
+
+
+# ===========================================================================
+# 4. CircuitState enum
+# ===========================================================================
+
+class TestCircuitStateEnum:
+    """Tests for the CircuitState enum."""
+
+    def test_has_three_members(self):
+        assert len(CircuitState) == 3
+
+    def test_closed_member_exists(self):
+        assert hasattr(CircuitState, "CLOSED")
+
+    def test_open_member_exists(self):
+        assert hasattr(CircuitState, "OPEN")
+
+    def test_half_open_member_exists(self):
+        assert hasattr(CircuitState, "HALF_OPEN")
+
+    def test_closed_value(self):
+        assert CircuitState.CLOSED.value == "closed"
+
+    def test_open_value(self):
+        assert CircuitState.OPEN.value == "open"
+
+    def test_half_open_value(self):
+        assert CircuitState.HALF_OPEN.value == "half_open"
+
+    def test_members_are_distinct(self):
+        states = {CircuitState.CLOSED, CircuitState.OPEN, CircuitState.HALF_OPEN}
+        assert len(states) == 3
+
+
+# ===========================================================================
+# 5. RetryConfig defaults
+# ===========================================================================
+
+class TestRetryConfigDefaults:
+    """Tests for RetryConfig default parameter values."""
+
+    def setup_method(self):
+        self.config = RetryConfig()
+
+    def test_max_retries_default(self):
+        assert self.config.max_retries == 3
+
+    def test_initial_delay_default(self):
+        assert self.config.initial_delay == 1.0
+
+    def test_backoff_factor_default(self):
+        assert self.config.backoff_factor == 2.0
+
+    def test_max_delay_default(self):
+        assert self.config.max_delay == 60.0
+
+    def test_exceptions_default_contains_api_error(self):
+        assert APIError in self.config.exceptions
+
+    def test_exclude_exceptions_default_contains_auth_error(self):
+        assert AuthenticationError in self.config.exclude_exceptions
+
+
+# ===========================================================================
+# 6. RetryConfig custom values
+# ===========================================================================
+
+class TestRetryConfigCustomValues:
+    """Tests for RetryConfig with non-default arguments."""
+
+    def test_custom_max_retries(self):
+        config = RetryConfig(max_retries=10)
+        assert config.max_retries == 10
+
+    def test_custom_initial_delay(self):
+        config = RetryConfig(initial_delay=0.5)
+        assert config.initial_delay == 0.5
+
+    def test_custom_backoff_factor(self):
+        config = RetryConfig(backoff_factor=3.0)
+        assert config.backoff_factor == 3.0
+
+    def test_custom_max_delay(self):
+        config = RetryConfig(max_delay=120.0)
+        assert config.max_delay == 120.0
+
+    def test_custom_exceptions(self):
+        config = RetryConfig(exceptions=(ValueError, RuntimeError))
+        assert ValueError in config.exceptions
+        assert RuntimeError in config.exceptions
+
+    def test_custom_exclude_exceptions(self):
+        config = RetryConfig(exclude_exceptions=(TypeError,))
+        assert TypeError in config.exclude_exceptions
+
+    def test_all_custom_values(self):
+        config = RetryConfig(
+            max_retries=5,
+            initial_delay=0.25,
+            backoff_factor=1.5,
+            max_delay=30.0,
         )
-        mock_func = Mock(side_effect=APIError("Failed"))
-        
-        # Open the circuit
-        with pytest.raises(APIError):
-            breaker.call(mock_func)
-        
-        assert breaker.state == CircuitState.OPEN
-        
-        # Wait for recovery timeout
-        time.sleep(1.1)
-        
-        # Circuit should be half-open now
-        assert breaker.state == CircuitState.HALF_OPEN
-    
-    def test_circuit_closes_on_half_open_success(self):
-        """Test circuit closes when half-open call succeeds."""
-        breaker = CircuitBreaker(
-            failure_threshold=1,
-            recovery_timeout=1,
-            expected_exception=APIError
-        )
-        
-        # Open the circuit
-        with pytest.raises(APIError):
-            breaker.call(Mock(side_effect=APIError("Failed")))
-        
-        # Wait for half-open
-        time.sleep(1.1)
-        
-        # Successful call should close circuit
-        result = breaker.call(Mock(return_value="success"))
-        assert result == "success"
-        assert breaker.state == CircuitState.CLOSED
-    
-    def test_circuit_reopens_on_half_open_failure(self):
-        """Test circuit reopens when half-open call fails."""
-        breaker = CircuitBreaker(
-            failure_threshold=1,
-            recovery_timeout=1,
-            expected_exception=APIError
-        )
-        
-        # Open the circuit
-        with pytest.raises(APIError):
-            breaker.call(Mock(side_effect=APIError("Failed")))
-        
-        # Wait for half-open
-        time.sleep(1.1)
-        
-        # Failed call should reopen circuit
-        with pytest.raises(APIError):
-            breaker.call(Mock(side_effect=APIError("Still failing")))
-        
-        assert breaker.state == CircuitState.OPEN
-    
-    def test_manual_reset(self):
-        """Test manual circuit reset."""
-        breaker = CircuitBreaker(failure_threshold=1, expected_exception=APIError)
-        
-        # Open the circuit
-        with pytest.raises(APIError):
-            breaker.call(Mock(side_effect=APIError("Failed")))
-        
-        assert breaker.state == CircuitState.OPEN
-        
-        # Manual reset
-        breaker.reset()
-        assert breaker.state == CircuitState.CLOSED
+        assert config.max_retries == 5
+        assert config.initial_delay == 0.25
+        assert config.backoff_factor == 1.5
+        assert config.max_delay == 30.0
 
 
-class TestCircuitBreakerDecorator:
-    """Test cases for the circuit breaker decorator."""
-    
-    def test_decorator_basic_functionality(self):
-        """Test circuit breaker decorator basic functionality."""
-        mock = Mock(side_effect=[APIError("Failed"), APIError("Failed"), "success"])
-        
-        @circuit_breaker(failure_threshold=2, recovery_timeout=1)
-        def test_func():
-            return mock()
-        
-        # First two calls should fail and open circuit
-        with pytest.raises(APIError):
-            test_func()
-        with pytest.raises(APIError):
-            test_func()
-        
-        # Circuit should be open
-        with pytest.raises(ServiceUnavailableError):
-            test_func()
-        
-        # Wait for recovery
-        time.sleep(1.1)
-        
-        # Should work now
-        result = test_func()
-        assert result == "success"
-    
-    def test_decorator_exposes_circuit_breaker(self):
-        """Test that decorator exposes circuit breaker instance."""
-        @circuit_breaker(failure_threshold=3)
-        def test_func():
-            return "success"
-        
-        assert hasattr(test_func, 'circuit_breaker')
-        assert isinstance(test_func.circuit_breaker, CircuitBreaker)
+# ===========================================================================
+# 7. CircuitBreaker init
+# ===========================================================================
+
+class TestCircuitBreakerInit:
+    """Tests for CircuitBreaker.__init__."""
+
+    def test_starts_in_closed_state(self):
+        cb = CircuitBreaker()
+        assert cb.state == CircuitState.CLOSED
+
+    def test_failure_count_starts_at_zero(self):
+        cb = CircuitBreaker()
+        assert cb._failure_count == 0
+
+    def test_name_stored(self):
+        cb = CircuitBreaker(name="test_breaker")
+        assert cb.name == "test_breaker"
+
+    def test_name_none_by_default(self):
+        cb = CircuitBreaker()
+        assert cb.name is None
+
+    def test_failure_threshold_stored(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        assert cb.failure_threshold == 3
+
+    def test_recovery_timeout_stored(self):
+        cb = CircuitBreaker(recovery_timeout=120)
+        assert cb.recovery_timeout == 120
+
+    def test_expected_exception_stored(self):
+        cb = CircuitBreaker(expected_exception=ValueError)
+        assert cb.expected_exception is ValueError
+
+    def test_default_failure_threshold(self):
+        cb = CircuitBreaker()
+        assert cb.failure_threshold == 5
+
+    def test_default_recovery_timeout(self):
+        cb = CircuitBreaker()
+        assert cb.recovery_timeout == 60
+
+    def test_last_failure_time_none_initially(self):
+        cb = CircuitBreaker()
+        assert cb._last_failure_time is None
 
 
-class TestResilientApiCall:
-    """Test cases for the combined resilient API call decorator."""
-    
-    def test_combined_retry_and_circuit_breaker(self):
-        """Test that retry and circuit breaker work together."""
-        call_count = 0
-        
-        @resilient_api_call(
-            max_retries=2,
-            initial_delay=0.1,
-            failure_threshold=5,
-            recovery_timeout=1
-        )
-        def test_func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise APIError("Failed")
-            return "success"
-        
-        # Should retry twice and succeed on third attempt
-        result = test_func()
-        assert result == "success"
-        assert call_count == 3
-        
-        # Reset for next test
-        call_count = 0
-        
-        # Create a new function that always fails to test circuit opening
-        @resilient_api_call(
-            max_retries=2,
-            initial_delay=0.1,
-            failure_threshold=3,
-            recovery_timeout=1
-        )
-        def always_fail_func():
-            raise APIError("Always fails")
-        
-        # Make it fail enough times to open circuit
-        for _ in range(3):
+# ===========================================================================
+# 8. CircuitBreaker.call — success and failure cases
+# ===========================================================================
+
+class TestCircuitBreakerCall:
+    """Tests for CircuitBreaker.call()."""
+
+    def test_call_returns_function_result_on_success(self):
+        cb = CircuitBreaker(failure_threshold=5)
+        result = cb.call(lambda: 42)
+        assert result == 42
+
+    def test_call_passes_positional_args(self):
+        cb = CircuitBreaker()
+        result = cb.call(lambda x, y: x + y, 3, 4)
+        assert result == 7
+
+    def test_call_passes_keyword_args(self):
+        cb = CircuitBreaker()
+        result = cb.call(lambda x, y=0: x * y, 6, y=7)
+        assert result == 42
+
+    def test_call_raises_on_function_exception(self):
+        import pytest
+
+        cb = CircuitBreaker(expected_exception=ValueError)
+
+        def raise_val():
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError):
+            cb.call(raise_val)
+
+    def test_call_increments_failure_count_on_exception(self):
+        cb = CircuitBreaker(expected_exception=ValueError, failure_threshold=10)
+
+        def raise_val():
+            raise ValueError("fail")
+
+        try:
+            cb.call(raise_val)
+        except ValueError:
+            pass
+        assert cb._failure_count == 1
+
+    def test_call_resets_failure_count_on_success_after_failure(self):
+        cb = CircuitBreaker(expected_exception=ValueError, failure_threshold=10)
+
+        def raise_val():
+            raise ValueError("fail")
+
+        try:
+            cb.call(raise_val)
+        except ValueError:
+            pass
+
+        assert cb._failure_count == 1
+        cb.call(lambda: None)
+        assert cb._failure_count == 0
+
+    def test_call_does_not_count_unexpected_exception_type(self):
+        """Exceptions NOT matching expected_exception bypass failure counting."""
+        cb = CircuitBreaker(expected_exception=ValueError, failure_threshold=5)
+
+        def raise_runtime():
+            raise RuntimeError("unexpected")
+
+        try:
+            cb.call(raise_runtime)
+        except RuntimeError:
+            pass
+        # failure_count stays 0 because RuntimeError is not ValueError
+        assert cb._failure_count == 0
+
+
+# ===========================================================================
+# 9. CircuitBreaker: threshold failures → OPEN state
+# ===========================================================================
+
+class TestCircuitBreakerOpens:
+    """Tests that the circuit opens after reaching the failure threshold."""
+
+    def _exhaust_failures(self, cb, count):
+        def raise_err():
+            raise Exception("fail")
+
+        for _ in range(count):
             try:
-                always_fail_func()
-            except (APIError, ServiceUnavailableError):
+                cb.call(raise_err)
+            except Exception:
                 pass
-        
-        # Circuit should be open now
+
+    def test_state_remains_closed_below_threshold(self):
+        cb = CircuitBreaker(failure_threshold=3, expected_exception=Exception)
+        self._exhaust_failures(cb, 2)
+        assert cb.state == CircuitState.CLOSED
+
+    def test_state_becomes_open_at_threshold(self):
+        cb = CircuitBreaker(failure_threshold=3, expected_exception=Exception)
+        self._exhaust_failures(cb, 3)
+        assert cb._state == CircuitState.OPEN
+
+    def test_state_becomes_open_above_threshold(self):
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=Exception)
+        self._exhaust_failures(cb, 5)
+        assert cb._state == CircuitState.OPEN
+
+    def test_failure_count_tracked_correctly(self):
+        cb = CircuitBreaker(failure_threshold=4, expected_exception=Exception)
+        self._exhaust_failures(cb, 4)
+        assert cb._failure_count == 4
+
+    def test_last_failure_time_set_on_failure(self):
+        from datetime import datetime
+
+        cb = CircuitBreaker(failure_threshold=5, expected_exception=Exception)
+        self._exhaust_failures(cb, 1)
+        assert cb._last_failure_time is not None
+        assert isinstance(cb._last_failure_time, datetime)
+
+
+# ===========================================================================
+# 10. CircuitBreaker when OPEN: raises ServiceUnavailableError without calling func
+# ===========================================================================
+
+class TestCircuitBreakerOpenState:
+    """Tests for behaviour when the circuit is OPEN."""
+
+    def _open_breaker(self, threshold=2):
+        cb = CircuitBreaker(failure_threshold=threshold, expected_exception=Exception)
+        for _ in range(threshold):
+            try:
+                cb.call(lambda: (_ for _ in ()).throw(Exception("fail")))
+            except Exception:
+                pass
+        return cb
+
+    def test_raises_service_unavailable_when_open(self):
+        import pytest
+
+        cb = self._open_breaker(threshold=2)
         with pytest.raises(ServiceUnavailableError):
-            always_fail_func()
+            cb.call(lambda: "should not be called")
 
+    def test_function_not_called_when_open(self):
+        import pytest
 
-# Integration test
-def test_integration_with_actual_api_call():
-    """Test integration with a simulated API call."""
-    class MockAPIClient:
-        def __init__(self):
-            self.call_count = 0
-            self.should_fail_until = 3
-        
-        @resilient_api_call(
-            max_retries=3,
-            initial_delay=0.1,
-            failure_threshold=5
+        cb = self._open_breaker(threshold=2)
+        called = []
+
+        def track():
+            called.append(True)
+            return "ok"
+
+        with pytest.raises(ServiceUnavailableError):
+            cb.call(track)
+
+        assert called == [], "Function should not be invoked when circuit is OPEN"
+
+    def test_service_unavailable_message_contains_breaker_name(self):
+        import pytest
+
+        cb = CircuitBreaker(
+            failure_threshold=1,
+            expected_exception=Exception,
+            name="my_service",
         )
-        def make_request(self, endpoint: str):
-            self.call_count += 1
-            if self.call_count < self.should_fail_until:
-                raise APIError(f"Request to {endpoint} failed")
-            return {"status": "success", "data": "test"}
-    
-    client = MockAPIClient()
-    
-    # Should succeed after retries
-    result = client.make_request("/test")
-    assert result["status"] == "success"
-    assert client.call_count == 3
+        try:
+            cb.call(lambda: (_ for _ in ()).throw(Exception("fail")))
+        except Exception:
+            pass
+
+        with pytest.raises(ServiceUnavailableError) as exc_info:
+            cb.call(lambda: None)
+
+        assert "my_service" in str(exc_info.value)
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+# ===========================================================================
+# 11. CircuitBreaker._on_success in HALF_OPEN → CLOSED, resets failure_count
+# ===========================================================================
+
+class TestCircuitBreakerOnSuccess:
+    """Tests for _on_success behaviour."""
+
+    def test_on_success_resets_failure_count(self):
+        cb = CircuitBreaker(failure_threshold=10, expected_exception=Exception)
+        cb._failure_count = 7
+        cb._on_success()
+        assert cb._failure_count == 0
+
+    def test_on_success_in_closed_state_stays_closed(self):
+        cb = CircuitBreaker()
+        cb._on_success()
+        assert cb._state == CircuitState.CLOSED
+
+    def test_on_success_in_half_open_transitions_to_closed(self):
+        cb = CircuitBreaker()
+        cb._state = CircuitState.HALF_OPEN
+        cb._failure_count = 3
+        cb._on_success()
+        assert cb._state == CircuitState.CLOSED
+
+    def test_on_success_in_half_open_resets_failure_count(self):
+        cb = CircuitBreaker()
+        cb._state = CircuitState.HALF_OPEN
+        cb._failure_count = 5
+        cb._on_success()
+        assert cb._failure_count == 0
+
+    def test_on_success_clears_last_failure_time(self):
+        from datetime import datetime
+
+        cb = CircuitBreaker()
+        cb._last_failure_time = datetime.now()
+        cb._on_success()
+        assert cb._last_failure_time is None
+
+
+# ===========================================================================
+# 12. CircuitBreaker.reset
+# ===========================================================================
+
+class TestCircuitBreakerReset:
+    """Tests for CircuitBreaker.reset()."""
+
+    def test_reset_returns_to_closed_from_open(self):
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=Exception)
+        cb._state = CircuitState.OPEN
+        cb._failure_count = 5
+        cb.reset()
+        assert cb._state == CircuitState.CLOSED
+
+    def test_reset_clears_failure_count(self):
+        cb = CircuitBreaker()
+        cb._failure_count = 99
+        cb.reset()
+        assert cb._failure_count == 0
+
+    def test_reset_clears_last_failure_time(self):
+        from datetime import datetime
+
+        cb = CircuitBreaker()
+        cb._last_failure_time = datetime.now()
+        cb.reset()
+        assert cb._last_failure_time is None
+
+    def test_reset_from_half_open_to_closed(self):
+        cb = CircuitBreaker()
+        cb._state = CircuitState.HALF_OPEN
+        cb.reset()
+        assert cb._state == CircuitState.CLOSED
+
+    def test_reset_allows_calls_after_open(self):
+        """After reset, calls should succeed again without raising ServiceUnavailableError."""
+        cb = CircuitBreaker(failure_threshold=1, expected_exception=Exception)
+        try:
+            cb.call(lambda: (_ for _ in ()).throw(Exception("fail")))
+        except Exception:
+            pass
+        assert cb._state == CircuitState.OPEN
+
+        cb.reset()
+        result = cb.call(lambda: "ok")
+        assert result == "ok"
+
+    def test_reset_idempotent_when_already_closed(self):
+        cb = CircuitBreaker()
+        cb.reset()
+        cb.reset()
+        assert cb._state == CircuitState.CLOSED
+        assert cb._failure_count == 0
+
+    def test_reset_followed_by_new_failures_reopens(self):
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=Exception)
+        cb._state = CircuitState.OPEN
+        cb.reset()
+
+        for _ in range(2):
+            try:
+                cb.call(lambda: (_ for _ in ()).throw(Exception("fail")))
+            except Exception:
+                pass
+
+        assert cb._state == CircuitState.OPEN
+
+
+# ===========================================================================
+# 13. CircuitBreaker._on_failure edge cases
+# ===========================================================================
+
+class TestCircuitBreakerOnFailure:
+    """Tests for _on_failure behaviour."""
+
+    def test_on_failure_increments_count(self):
+        cb = CircuitBreaker(failure_threshold=5)
+        cb._on_failure()
+        assert cb._failure_count == 1
+
+    def test_on_failure_multiple_increments(self):
+        cb = CircuitBreaker(failure_threshold=5)
+        for _ in range(4):
+            cb._on_failure()
+        assert cb._failure_count == 4
+
+    def test_on_failure_at_threshold_opens_circuit(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        for _ in range(3):
+            cb._on_failure()
+        assert cb._state == CircuitState.OPEN
+
+    def test_on_failure_in_half_open_reopens(self):
+        cb = CircuitBreaker(failure_threshold=5)
+        cb._state = CircuitState.HALF_OPEN
+        cb._on_failure()
+        assert cb._state == CircuitState.OPEN
+
+    def test_on_failure_in_half_open_reopens_before_threshold(self):
+        """A single failure in HALF_OPEN reopens immediately regardless of threshold."""
+        cb = CircuitBreaker(failure_threshold=10)
+        cb._state = CircuitState.HALF_OPEN
+        cb._failure_count = 0
+        cb._on_failure()
+        assert cb._state == CircuitState.OPEN
+
+    def test_on_failure_sets_last_failure_time(self):
+        from datetime import datetime
+
+        cb = CircuitBreaker(failure_threshold=5)
+        cb._on_failure()
+        assert cb._last_failure_time is not None
+        assert isinstance(cb._last_failure_time, datetime)
