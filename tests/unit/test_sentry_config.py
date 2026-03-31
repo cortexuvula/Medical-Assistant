@@ -26,7 +26,6 @@ from utils.sentry_config import (
     _get_release_version,
 )
 
-_SENTINEL = object()  # unique marker for "key was not in sys.modules"
 
 
 # ===========================================================================
@@ -271,55 +270,69 @@ class TestInitSentry:
             result = init_sentry()
         assert result is False
 
-    @pytest.fixture(autouse=True)
-    def _mock_sentry_env(self):
-        """Ensure each test gets a clean sentry_sdk mock in sys.modules."""
-        self.mock_sentry = MagicMock()
-        # Save and restore any real sentry_sdk to avoid cross-test pollution
-        saved = sys.modules.get("sentry_sdk", _SENTINEL)
-        sys.modules["sentry_sdk"] = self.mock_sentry
-        yield
-        if saved is _SENTINEL:
-            sys.modules.pop("sentry_sdk", None)
-        else:
-            sys.modules["sentry_sdk"] = saved
+    def _run_with_mock_sentry(self, env_dict, mock_sentry=None, clear_env=False):
+        """Run init_sentry with a mocked sentry_sdk.init, regardless of whether
+        the real sentry_sdk is installed or not.
+
+        Uses builtins.__import__ to intercept 'import sentry_sdk' inside
+        init_sentry() and return our mock. This works whether sentry_sdk is
+        installed (CI ubuntu) or not (local/macOS).
+        """
+        import builtins
+        if mock_sentry is None:
+            mock_sentry = MagicMock()
+        self.mock_sentry = mock_sentry
+        real_import = builtins.__import__
+
+        def _fake_import(name, *args, **kwargs):
+            if name == "sentry_sdk":
+                return self.mock_sentry
+            return real_import(name, *args, **kwargs)
+
+        with patch.dict(os.environ, env_dict, clear=clear_env), \
+             patch("builtins.__import__", side_effect=_fake_import):
+            return init_sentry()
 
     def test_valid_dsn_initializes_sentry(self):
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
-            result = init_sentry()
+        result = self._run_with_mock_sentry({"SENTRY_DSN": "https://fake@sentry.io/123"})
         assert result is True
         self.mock_sentry.init.assert_called_once()
 
     def test_sentry_not_installed_returns_false(self):
-        sys.modules["sentry_sdk"] = None  # triggers ImportError on `import`
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
+        import builtins
+        real_import = builtins.__import__
+
+        def _fail_import(name, *args, **kwargs):
+            if name == "sentry_sdk":
+                raise ImportError("No module named 'sentry_sdk'")
+            return real_import(name, *args, **kwargs)
+
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
+             patch("builtins.__import__", side_effect=_fail_import):
             result = init_sentry()
         assert result is False
 
     def test_sentry_init_exception_returns_false(self):
-        self.mock_sentry.init.side_effect = Exception("init failed")
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
-            result = init_sentry()
+        mock = MagicMock()
+        mock.init.side_effect = Exception("init failed")
+        result = self._run_with_mock_sentry({"SENTRY_DSN": "https://fake@sentry.io/123"}, mock_sentry=mock)
         assert result is False
 
     def test_environment_default(self):
-        env = {k: v for k, v in os.environ.items() if k != "MEDICAL_ASSISTANT_ENV"}
-        env["SENTRY_DSN"] = "https://fake@sentry.io/123"
-        with patch.dict(os.environ, env, clear=True):
-            init_sentry()
+        # Use clear=True to ensure MEDICAL_ASSISTANT_ENV is not inherited
+        env = {"SENTRY_DSN": "https://fake@sentry.io/123"}
+        self._run_with_mock_sentry(env, clear_env=True)
         call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["environment"] == "production"
 
     def test_environment_override(self):
         env = {"SENTRY_DSN": "https://fake@sentry.io/123", "MEDICAL_ASSISTANT_ENV": "staging"}
-        with patch.dict(os.environ, env):
-            init_sentry()
+        self._run_with_mock_sentry(env, clear_env=True)
         call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["environment"] == "staging"
 
     def test_phi_protection_flags(self):
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
-            init_sentry()
+        self._run_with_mock_sentry({"SENTRY_DSN": "https://fake@sentry.io/123"})
         call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["send_default_pii"] is False
         assert call_kwargs["before_send"] is _before_send
