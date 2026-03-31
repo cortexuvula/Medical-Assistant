@@ -456,3 +456,122 @@ class TestSingletonAndHelpers:
     def test_expand_medical_query_empty_string(self):
         result = expand_medical_query("")
         assert isinstance(result, QueryExpansion)
+
+
+# ===========================================================================
+# TestMultiWordAbbreviations
+# ===========================================================================
+
+class TestMultiWordAbbreviations:
+    """Test multi-word keys in dictionaries."""
+
+    def test_c_diff_exists_in_abbreviations(self):
+        assert "c diff" in MEDICAL_ABBREVIATIONS
+
+    def test_c_diff_expands_to_clostridioides(self):
+        expansions = MEDICAL_ABBREVIATIONS["c diff"]
+        assert any("clostridioides" in e.lower() or "clostridium" in e.lower()
+                    for e in expansions)
+
+    def test_bidirectional_abbreviation_to_synonym(self):
+        # "mi" → "myocardial infarction" (abbreviation)
+        # "myocardial infarction" has synonyms like "heart attack"
+        e = _expander()
+        result = e.expand_query("mi")
+        all_terms = result.get_all_search_terms()
+        # Should contain "myocardial infarction" from abbreviation expansion
+        assert any("myocardial infarction" in t.lower() for t in all_terms)
+
+    def test_n_v_abbreviation_exists(self):
+        assert "n/v" in MEDICAL_ABBREVIATIONS
+
+    def test_heart_attack_is_synonym_key(self):
+        assert "heart attack" in MEDICAL_SYNONYMS
+
+
+# ===========================================================================
+# TestOverlappingSynonyms
+# ===========================================================================
+
+class TestOverlappingSynonyms:
+    """Test overlapping synonym expansion behavior."""
+
+    def test_low_back_pain_contains_back_pain_key(self):
+        # "back pain" is in MEDICAL_SYNONYMS
+        assert "back pain" in MEDICAL_SYNONYMS
+        e = _expander()
+        result = e.expand_query("low back pain")
+        # Should find "back pain" as a substring match in full_query
+        assert "back pain" in result.synonym_expansions
+
+    def test_repeated_terms_no_duplicate_expansions(self):
+        e = _expander()
+        result = e.expand_query("pain pain pain")
+        # "pain" should appear in synonyms only once as a key
+        terms = result.expanded_terms
+        lower_terms = [t.lower() for t in terms]
+        assert len(lower_terms) == len(set(lower_terms))
+
+    def test_chest_pain_expands_both_as_phrase(self):
+        e = _expander()
+        result = e.expand_query("chest pain")
+        # "chest pain" is a key in MEDICAL_SYNONYMS
+        assert "chest pain" in result.synonym_expansions
+
+    def test_original_not_in_expanded_terms(self):
+        e = _expander()
+        result = e.expand_query("headache")
+        lower_expanded = [t.lower() for t in result.expanded_terms]
+        assert "headache" not in lower_expanded
+
+
+# ===========================================================================
+# TestExpansionLimits
+# ===========================================================================
+
+class TestExpansionLimits:
+    """Test expansion with very long queries and limits."""
+
+    def test_very_long_query_max_5_expansion_terms(self):
+        # Build a 25-word query
+        words = [f"word{i}" for i in range(25)]
+        query = " ".join(words)
+        e = _expander(max_expansion_terms=5)
+        result = e.expand_query(query)
+        # No medical terms → no expansions
+        assert result.expanded_terms == []
+
+    def test_long_medical_query_limited_expansion(self):
+        e = _expander(max_expansion_terms=2)
+        result = e.expand_query("htn dm copd")
+        # Each abbreviation limited to 2 expansions max
+        for terms in result.abbreviation_expansions.values():
+            assert len(terms) <= 2
+
+    def test_query_already_expanded_form(self):
+        e = _expander()
+        result = e.expand_query("hypertension")
+        # "hypertension" is a full term → should get abbreviation "htn" back
+        assert "hypertension" in result.abbreviation_expansions
+        assert "htn" in result.abbreviation_expansions["hypertension"]
+
+    def test_expanded_query_string_max_6_parts(self):
+        # _build_expanded_query limits to original + 5 terms
+        e = _expander()
+        terms = [f"term{i}" for i in range(10)]
+        result = e._build_expanded_query("original", terms)
+        parts = result.split()
+        assert len(parts) <= 6
+
+    def test_max_expansion_terms_1(self):
+        e = _expander(max_expansion_terms=1)
+        result = e.expand_query("mi")
+        # "mi" has multiple expansions but limited to 1
+        if "mi" in result.abbreviation_expansions:
+            assert len(result.abbreviation_expansions["mi"]) <= 1
+
+    def test_empty_query_no_expansions(self):
+        e = _expander()
+        result = e.expand_query("")
+        assert result.expanded_terms == []
+        assert result.expanded_query == ""

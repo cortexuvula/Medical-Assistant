@@ -342,3 +342,195 @@ class TestClearCache:
         mgr = _manager()
         mgr.clear_cache()
         mgr.clear_cache()  # Double-clear is safe
+
+
+# ===========================================================================
+# _calculate_boost boundary testing
+# ===========================================================================
+
+class TestCalculateBoostBoundary:
+    """Extensive boundary testing of _calculate_boost."""
+
+    def setup_method(self):
+        self.mgr = _manager()
+        self.MAX = RAGFeedbackManager.MAX_BOOST
+
+    def test_single_upvote_zero_down_zero_flags(self):
+        result = self.mgr._calculate_boost(1, 0, 0)
+        # net_score = 1/1 = 1.0, confidence = min(1.0, 1/3) = 1/3
+        # flag_penalty = 1.0
+        # boost = 1.0 * 0.3 * (1/3) * 1.0 = 0.1
+        assert result > 0.0
+        assert result == pytest.approx(1.0 * self.MAX * (1 / 3), abs=1e-9)
+
+    def test_zero_upvotes_one_downvote_zero_flags(self):
+        result = self.mgr._calculate_boost(0, 1, 0)
+        # net_score = -1.0, confidence = 1/3
+        # boost = -1.0 * 0.3 * (1/3) = -0.1
+        assert result < 0.0
+        assert result == pytest.approx(-1.0 * self.MAX * (1 / 3), abs=1e-9)
+
+    def test_many_flags_saturates_penalty_near_zero(self):
+        # 3 upvotes, 0 downvotes, 100 flags
+        result = self.mgr._calculate_boost(3, 0, 100)
+        # total = 3, flag_penalty = 1.0 - 100*0.5/3 = very negative → clamped to 0.0
+        # boost = ... * 0.0 = 0.0
+        assert result == pytest.approx(0.0)
+
+    def test_confidence_growth_count_1(self):
+        # count=1 → confidence = 1/3
+        result = self.mgr._calculate_boost(1, 0, 0)
+        expected_conf = 1 / 3
+        assert result == pytest.approx(1.0 * self.MAX * expected_conf, abs=1e-9)
+
+    def test_confidence_growth_count_3_full(self):
+        # count=3 → confidence = min(1.0, 3/3) = 1.0
+        result = self.mgr._calculate_boost(3, 0, 0)
+        expected_conf = 1.0
+        assert result == pytest.approx(1.0 * self.MAX * expected_conf, abs=1e-9)
+
+    def test_confidence_growth_count_2(self):
+        # count=2 → confidence = 2/3
+        result = self.mgr._calculate_boost(2, 0, 0)
+        expected_conf = 2 / 3
+        assert result == pytest.approx(1.0 * self.MAX * expected_conf, abs=1e-9)
+
+    def test_all_zeros_returns_zero(self):
+        assert self.mgr._calculate_boost(0, 0, 0) == pytest.approx(0.0)
+
+    def test_max_boost_cap(self):
+        # Even with extreme inputs, should not exceed MAX_BOOST
+        result = self.mgr._calculate_boost(1000, 0, 0)
+        assert result <= self.MAX
+        assert result == pytest.approx(self.MAX)
+
+    def test_negative_max_boost_cap(self):
+        result = self.mgr._calculate_boost(0, 1000, 0)
+        assert result >= -self.MAX
+        assert result == pytest.approx(-self.MAX)
+
+    def test_flags_reduce_positive_boost(self):
+        no_flags = self.mgr._calculate_boost(3, 0, 0)
+        with_flag = self.mgr._calculate_boost(3, 0, 1)
+        assert with_flag < no_flags
+
+    def test_flags_reduce_negative_boost_magnitude(self):
+        no_flags = self.mgr._calculate_boost(0, 3, 0)
+        with_flag = self.mgr._calculate_boost(0, 3, 1)
+        # flags reduce overall magnitude: with_flag closer to 0
+        assert abs(with_flag) < abs(no_flags)
+
+    def test_balanced_votes_zero(self):
+        result = self.mgr._calculate_boost(5, 5, 0)
+        assert result == pytest.approx(0.0)
+
+    def test_slightly_positive(self):
+        # 3 up, 2 down → net = 1/5 = 0.2, confidence = 5/3 capped at 1.0
+        result = self.mgr._calculate_boost(3, 2, 0)
+        expected = 0.2 * self.MAX * 1.0
+        assert result == pytest.approx(expected, abs=1e-9)
+
+    def test_slightly_negative(self):
+        # 2 up, 3 down → net = -1/5 = -0.2, confidence = 1.0
+        result = self.mgr._calculate_boost(2, 3, 0)
+        expected = -0.2 * self.MAX * 1.0
+        assert result == pytest.approx(expected, abs=1e-9)
+
+
+# ===========================================================================
+# Feedback with mocked DB
+# ===========================================================================
+
+class TestFeedbackWithMockedDb:
+    """Mock the database for record_feedback, get_boost, apply_boosts."""
+
+    def _mock_db(self):
+        from unittest.mock import Mock
+        db = Mock()
+        return db
+
+    def test_record_feedback_success_path(self):
+        db = self._mock_db()
+        db.fetchone.return_value = (1, 0, 0)  # upvotes, downvotes, flags
+        mgr = RAGFeedbackManager(db_manager=db)
+        result = mgr.record_feedback(
+            document_id="doc-1", chunk_index=0,
+            feedback_type=FeedbackType.UPVOTE,
+            query_text="test", session_id="s1",
+            original_score=0.8,
+        )
+        assert result is True
+
+    def test_record_feedback_db_exception_returns_false(self):
+        db = self._mock_db()
+        db.execute.side_effect = Exception("DB error")
+        mgr = RAGFeedbackManager(db_manager=db)
+        result = mgr.record_feedback(
+            document_id="doc-1", chunk_index=0,
+            feedback_type=FeedbackType.UPVOTE,
+            query_text="test", session_id="s1",
+            original_score=0.8,
+        )
+        assert result is False
+
+    def test_get_boost_cache_hit(self):
+        mgr = _manager()
+        cached_boost = _boost(doc_id="doc-1", chunk=0, boost=0.15)
+        mgr._boost_cache[("doc-1", 0)] = cached_boost
+        result = mgr.get_boost("doc-1", 0)
+        assert result is cached_boost
+
+    def test_get_boost_cache_miss_no_db(self):
+        mgr = _manager()
+        result = mgr.get_boost("doc-1", 0)
+        # No db → returns default boost
+        assert result.boost_factor == 0.0
+        assert result.confidence == 0.0
+
+    def test_get_boost_cache_miss_queries_db(self):
+        db = self._mock_db()
+        db.fetchone.side_effect = [
+            (3, 1, 0.15),  # aggregates
+            (0,),          # flag count
+        ]
+        mgr = RAGFeedbackManager(db_manager=db)
+        result = mgr.get_boost("doc-1", 0)
+        assert result.upvotes == 3
+        assert result.downvotes == 1
+        assert result.boost_factor == pytest.approx(0.15)
+
+    def test_apply_boosts_modifies_scores(self):
+        mgr = _manager()
+        # Pre-cache a boost
+        mgr._boost_cache[("d", 0)] = _boost(doc_id="d", chunk=0, boost=0.1, conf=1.0)
+        r = _FakeResult("d", 0, 0.5)
+        result = mgr.apply_boosts([r])
+        # Score should be adjusted: 0.5 + 0.1 * 1.0 = 0.6
+        assert result[0].combined_score == pytest.approx(0.6)
+
+    def test_apply_boosts_sets_feedback_boost(self):
+        mgr = _manager()
+        mgr._boost_cache[("d", 0)] = _boost(doc_id="d", chunk=0, boost=0.2, conf=0.5)
+        r = _FakeResult("d", 0, 0.5)
+        mgr.apply_boosts([r])
+        assert r.feedback_boost == pytest.approx(0.2)
+
+    def test_get_boost_db_exception_returns_default(self):
+        db = self._mock_db()
+        db.fetchone.side_effect = Exception("DB down")
+        mgr = RAGFeedbackManager(db_manager=db)
+        result = mgr.get_boost("doc-1", 0)
+        assert result.boost_factor == 0.0
+
+    def test_record_feedback_invalidates_cache(self):
+        db = self._mock_db()
+        db.fetchone.return_value = (1, 0, 0)
+        mgr = RAGFeedbackManager(db_manager=db)
+        mgr._boost_cache[("doc-1", 0)] = _boost()
+        mgr.record_feedback(
+            document_id="doc-1", chunk_index=0,
+            feedback_type=FeedbackType.UPVOTE,
+            query_text="test", session_id="s1",
+            original_score=0.8,
+        )
+        assert ("doc-1", 0) not in mgr._boost_cache

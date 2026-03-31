@@ -998,3 +998,284 @@ class TestGraphDataSearch:
         # "Aspirin" → a,s,p,i,r,i,n → no 'e'. "Fever" → f,e,v,e,r → yes. "Hypertension" → yes
         assert self.n2 in result
         assert self.n3 in result
+
+
+# ---------------------------------------------------------------------------
+# TestRelationshipConfidenceEdgeCases
+# ---------------------------------------------------------------------------
+
+class TestRelationshipConfidenceEdgeCases:
+    """Edge cases for RelationshipConfidenceCalculator.calculate_confidence."""
+
+    def setup_method(self):
+        self.calc = RelationshipConfidenceCalculator()
+
+    # -- HIGH_EVIDENCE_TYPES with 0 evidence → 0.9x penalty --
+
+    def test_treats_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("treats", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    def test_causes_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("causes", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    def test_contraindicated_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("contraindicated", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    def test_interacts_with_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("interacts_with", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    def test_increases_risk_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("increases_risk", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    def test_decreases_risk_zero_evidence_penalty(self):
+        result = self.calc.calculate_confidence("decreases_risk", "", "explicit", 0)
+        assert result == pytest.approx(0.95 * 0.9, abs=1e-9)
+
+    # -- Short text (<50 chars) vs long text quality bonus --
+
+    def test_short_text_small_quality_bonus(self):
+        # 30-char text → text_quality = min(0.1, 30/1000) = 0.03
+        result = self.calc.calculate_confidence("relates_to", "x" * 30, "inferred", 0)
+        assert result == pytest.approx(0.70 + 0.03, abs=1e-9)
+
+    def test_long_text_full_quality_bonus(self):
+        # 500-char text → text_quality = min(0.1, 500/1000) = 0.1
+        result = self.calc.calculate_confidence("relates_to", "x" * 500, "inferred", 0)
+        assert result == pytest.approx(0.70 + 0.1, abs=1e-9)
+
+    def test_50_char_text_quality(self):
+        # 50-char text → text_quality = min(0.1, 50/1000) = 0.05
+        result = self.calc.calculate_confidence("relates_to", "x" * 50, "inferred", 0)
+        assert result == pytest.approx(0.70 + 0.05, abs=1e-9)
+
+    # -- Extraction method base scores --
+
+    def test_explicit_extraction_method_base(self):
+        result = self.calc.calculate_confidence("relates_to", "", "explicit", 0)
+        assert result == pytest.approx(0.95, abs=1e-9)
+
+    def test_inferred_extraction_method_base(self):
+        result = self.calc.calculate_confidence("relates_to", "", "inferred", 0)
+        assert result == pytest.approx(0.70, abs=1e-9)
+
+    def test_aggregated_extraction_method_base(self):
+        result = self.calc.calculate_confidence("relates_to", "", "aggregated", 0)
+        assert result == pytest.approx(0.85, abs=1e-9)
+
+    def test_user_validated_extraction_method_base(self):
+        result = self.calc.calculate_confidence("relates_to", "", "user_validated", 0)
+        assert result == pytest.approx(0.99, abs=1e-9)
+
+    # -- Unknown method defaults to 0.5 --
+
+    def test_llm_extracted_unknown_method_defaults_to_0_5(self):
+        # "llm_extracted" is NOT in BASE_CONFIDENCE → defaults to 0.5
+        result = self.calc.calculate_confidence("relates_to", "", "llm_extracted", 0)
+        assert result == pytest.approx(0.5, abs=1e-9)
+
+    def test_imported_unknown_method_defaults_to_0_5(self):
+        # "imported" is NOT in BASE_CONFIDENCE → defaults to 0.5
+        result = self.calc.calculate_confidence("relates_to", "", "imported", 0)
+        assert result == pytest.approx(0.5, abs=1e-9)
+
+    def test_random_method_defaults_to_0_5(self):
+        result = self.calc.calculate_confidence("relates_to", "", "some_random_method", 0)
+        assert result == pytest.approx(0.5, abs=1e-9)
+
+    # -- Combined: high-evidence + unknown method + short text = lowest possible --
+
+    def test_combined_lowest_confidence(self):
+        # "treats" (HIGH_EVIDENCE) + unknown method (0.5) + evidence_count=0 → penalty
+        # base = 0.5 * 0.9 = 0.45, evidence_boost = 0, type_boost = 0, text_quality = 0
+        result = self.calc.calculate_confidence("treats", "", "unknown_method", 0)
+        assert result == pytest.approx(0.5 * 0.9, abs=1e-9)
+
+    def test_combined_high_evidence_inferred_short_text(self):
+        # "causes" + "inferred" (0.70) + evidence_count=0 → 0.70 * 0.9 = 0.63
+        # short text (10 chars) → text_quality = min(0.1, 10/1000) = 0.01
+        result = self.calc.calculate_confidence("causes", "x" * 10, "inferred", 0)
+        assert result == pytest.approx(0.70 * 0.9 + 0.01, abs=1e-9)
+
+    def test_none_evidence_text_is_empty_string_branch(self):
+        # Empty string evidence → text_quality = 0.0
+        result = self.calc.calculate_confidence("relates_to", "", "explicit", 0)
+        assert result == pytest.approx(0.95, abs=1e-9)
+
+    def test_none_evidence_text_passes_as_empty(self):
+        # None evidence text should be handled (falsy check)
+        result = self.calc.calculate_confidence("relates_to", None, "explicit", 0)
+        assert result == pytest.approx(0.95, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# TestReliabilityScoreIntegration
+# ---------------------------------------------------------------------------
+
+class TestReliabilityScoreIntegration:
+    """Test GraphEdge.reliability_score with various combinations."""
+
+    def test_evidence_count_10_capped_at_factor_1(self):
+        # evidence_factor = min(1.0, 10/3) = 1.0
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", evidence_count=10)
+        expected = 1.0 * (0.5 + 0.3 * 1.0 + 0.2 * 0.5)  # no last_seen
+        assert edge.reliability_score == pytest.approx(expected, abs=1e-6)
+
+    def test_last_seen_today_full_recency(self):
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", last_seen=datetime.now())
+        days_old = (datetime.now() - edge.last_seen).days
+        recency = max(0.5, 1.0 - days_old / 365)
+        expected = 1.0 * (0.5 + 0.3 * (1 / 3) + 0.2 * recency)
+        assert edge.reliability_score == pytest.approx(expected, abs=1e-3)
+
+    def test_last_seen_two_years_ago_low_recency(self):
+        two_years_ago = datetime.now() - timedelta(days=730)
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", last_seen=two_years_ago)
+        days_old = (datetime.now() - two_years_ago).days
+        recency = max(0.5, 1.0 - days_old / 365)
+        # days_old ~ 730 → 1.0 - 730/365 = 1.0 - 2.0 = -1.0 → capped at 0.5
+        assert recency == pytest.approx(0.5, abs=0.01)
+        expected = 1.0 * (0.5 + 0.3 * (1 / 3) + 0.2 * 0.5)
+        assert edge.reliability_score == pytest.approx(expected, abs=1e-3)
+
+    def test_last_seen_none_uses_default_recency(self):
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", last_seen=None)
+        # Default recency_factor = 0.5
+        expected = 1.0 * (0.5 + 0.3 * (1 / 3) + 0.2 * 0.5)
+        assert edge.reliability_score == pytest.approx(expected, abs=1e-6)
+
+    def test_formula_components(self):
+        # evidence_count=2, confidence=0.8, last_seen=now
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", confidence=0.8,
+                         evidence_count=2, last_seen=datetime.now())
+        ev_factor = min(1.0, 2 / 3)
+        recency = max(0.5, 1.0 - 0 / 365)  # ~1.0
+        expected = 0.8 * (0.5 + 0.3 * ev_factor + 0.2 * recency)
+        assert edge.reliability_score == pytest.approx(expected, abs=1e-3)
+
+    def test_zero_confidence_gives_zero_reliability(self):
+        edge = GraphEdge(id="e1", source_id="n1", target_id="n2",
+                         relationship_type="X", confidence=0.0)
+        assert edge.reliability_score == pytest.approx(0.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# TestMergeConfidenceEdgeCases
+# ---------------------------------------------------------------------------
+
+class TestMergeConfidenceEdgeCases:
+    """Edge cases for merge_confidence."""
+
+    def setup_method(self):
+        self.calc = RelationshipConfidenceCalculator()
+
+    def test_two_high_confidences_result_higher_than_either(self):
+        # existing=0.8, new=0.9, existing_count=1
+        # weighted = (0.8 + 0.9) / 2 = 0.85; boost = 0.05
+        # result = 0.9 → higher than 0.8
+        result = self.calc.merge_confidence(0.8, 0.9, 1)
+        assert result > 0.8  # corroboration makes it higher than existing
+
+    def test_result_never_exceeds_1(self):
+        result = self.calc.merge_confidence(0.99, 0.99, 10)
+        assert result <= 1.0
+
+    def test_result_capped_at_1_high_boost(self):
+        result = self.calc.merge_confidence(0.95, 0.95, 5)
+        assert result <= 1.0
+
+    def test_merging_many_edges_accumulates_evidence(self):
+        # Simulate merging 5 edges one by one
+        calc = self.calc
+        conf = 0.7
+        for count in range(1, 6):
+            conf = calc.merge_confidence(conf, 0.7, count)
+        # Confidence should be higher than the original 0.7
+        assert conf > 0.7
+        # And should still be <= 1.0
+        assert conf <= 1.0
+
+    def test_two_identical_confidences(self):
+        # existing=0.6, new=0.6, existing_count=1
+        # weighted = (0.6 + 0.6) / 2 = 0.6; boost = 0.05
+        result = self.calc.merge_confidence(0.6, 0.6, 1)
+        assert result == pytest.approx(0.6 + 0.05, abs=1e-9)
+
+    def test_low_existing_high_new(self):
+        result = self.calc.merge_confidence(0.3, 0.9, 1)
+        weighted = (0.3 + 0.9) / 2  # 0.6
+        assert result == pytest.approx(weighted + 0.05, abs=1e-9)
+
+    def test_high_existing_low_new(self):
+        result = self.calc.merge_confidence(0.9, 0.3, 1)
+        weighted = (0.9 + 0.3) / 2  # 0.6
+        assert result == pytest.approx(weighted + 0.05, abs=1e-9)
+
+    def test_zero_existing_count(self):
+        # Just returns new_confidence (no boost)
+        result = self.calc.merge_confidence(0.5, 0.8, 0)
+        assert result == pytest.approx(0.8, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# TestEntityTypeFuzzyMatchExtended
+# ---------------------------------------------------------------------------
+
+class TestEntityTypeFuzzyMatchExtended:
+    """Additional fuzzy matching cases for EntityType.from_string."""
+
+    def test_medications_plural_returns_unknown(self):
+        # "medications" → direct match for "medication" fails (extra 's'),
+        # fuzzy keys: "drug" not in "medications", "medicine" not in "medications"
+        # → returns UNKNOWN
+        assert EntityType.from_string("medications") == EntityType.UNKNOWN
+
+    def test_symptoms_plural_contains_sign(self):
+        # "symptoms" → direct match fails, but fuzzy: "sign" IS in "symptoms"? No.
+        # Actually "sign" is NOT a substring of "symptoms". Let's check actual behavior.
+        result = EntityType.from_string("symptoms")
+        # Check what actually happens: direct match fails,
+        # fuzzy loop: "presentation" in "symptoms"? no. "sign" in "symptoms"? no.
+        # "finding" in "symptoms"? no. → UNKNOWN
+        assert result == EntityType.UNKNOWN
+
+    def test_drug_maps_to_medication(self):
+        assert EntityType.from_string("drug") == EntityType.MEDICATION
+
+    def test_disease_maps_to_condition(self):
+        assert EntityType.from_string("disease") == EntityType.CONDITION
+
+    def test_lab_maps_to_lab_test(self):
+        assert EntityType.from_string("lab") == EntityType.LAB_TEST
+
+    def test_test_maps_to_lab_test(self):
+        assert EntityType.from_string("test") == EntityType.LAB_TEST
+
+    def test_completely_unknown_returns_none_equivalent(self):
+        # "xylophone" has none of the fuzzy keys
+        assert EntityType.from_string("xylophone") == EntityType.UNKNOWN
+
+    def test_numeric_string_returns_unknown(self):
+        assert EntityType.from_string("12345") == EntityType.UNKNOWN
+
+    def test_special_chars_returns_unknown(self):
+        assert EntityType.from_string("@#$%") == EntityType.UNKNOWN
+
+    def test_mixed_fuzzy_and_direct(self):
+        # "laboratory_test" contains "test" and "lab" → first match wins
+        result = EntityType.from_string("laboratory_test")
+        assert result == EntityType.LAB_TEST
+
+    def test_organ_damage(self):
+        # "organ damage" contains "organ" → ANATOMY
+        result = EntityType.from_string("organ damage")
+        assert result == EntityType.ANATOMY

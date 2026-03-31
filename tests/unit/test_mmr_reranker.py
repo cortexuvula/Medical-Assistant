@@ -425,3 +425,175 @@ class TestSingletonAndHelpers:
         results = [_result(combined_score=0.9 - i * 0.1) for i in range(10)]
         out = rerank_with_mmr(results, top_k=3)
         assert len(out) == 3
+
+
+# ===========================================================================
+# TestEmbeddingBasedRerank
+# ===========================================================================
+
+class TestEmbeddingBasedRerank:
+    """Tests for embedding-based rerank with actual embeddings."""
+
+    def setup_method(self):
+        self.r = MMRReranker(_config(mmr_lambda=0.7))
+
+    def test_query_embedding_and_result_embeddings(self):
+        results = [
+            _result("doc a", combined_score=0.9, embedding=[1.0, 0.0, 0.0]),
+            _result("doc b", combined_score=0.8, embedding=[0.0, 1.0, 0.0]),
+            _result("doc c", combined_score=0.7, embedding=[0.0, 0.0, 1.0]),
+            _result("doc d", combined_score=0.6, embedding=[1.0, 0.0, 0.0]),
+        ]
+        query_emb = [1.0, 0.0, 0.0]
+        out = self.r.rerank(results, query_embedding=query_emb, top_k=3)
+        assert len(out) == 3
+        # First should be highest combined score (doc a)
+        assert out[0].combined_score == pytest.approx(0.9)
+
+    def test_mixed_some_have_embeddings_some_dont(self):
+        # If not ALL results have embeddings, falls back to text-based
+        results = [
+            _result("doc a", combined_score=0.9, embedding=[1.0, 0.0]),
+            _result("doc b text only", combined_score=0.8, embedding=None),
+            _result("doc c", combined_score=0.7, embedding=[0.0, 1.0]),
+            _result("doc d text only too", combined_score=0.6, embedding=None),
+        ]
+        out = self.r.rerank(results, top_k=3)
+        assert len(out) == 3
+        # Should work (falls back to text-based)
+        for r in out:
+            assert r.mmr_score is not None
+
+    def test_identical_embeddings_diversifies_by_mmr(self):
+        # All same embedding → MMR will penalize similarity
+        results = [
+            _result("identical a", combined_score=0.9, embedding=[1.0, 0.0]),
+            _result("identical b", combined_score=0.8, embedding=[1.0, 0.0]),
+            _result("identical c", combined_score=0.7, embedding=[1.0, 0.0]),
+            _result("identical d", combined_score=0.6, embedding=[1.0, 0.0]),
+        ]
+        out = self.r.rerank(results, top_k=3)
+        assert len(out) == 3
+        # First should still be highest score
+        assert out[0].combined_score == pytest.approx(0.9)
+
+    def test_diverse_embeddings_get_selected(self):
+        r1 = _result("doc1", combined_score=0.9, embedding=[1.0, 0.0])
+        r2 = _result("doc2", combined_score=0.85, embedding=[1.0, 0.01])  # very similar to r1
+        r3 = _result("doc3", combined_score=0.5, embedding=[0.0, 1.0])   # orthogonal
+        results = [r1, r2, r3]
+        out = self.r.rerank(results, top_k=2)
+        # First: r1 (highest), second: r3 should beat r2 due to diversity
+        assert out[0] is r1
+        assert out[1] is r3
+
+
+# ===========================================================================
+# TestLambdaSensitivity
+# ===========================================================================
+
+class TestLambdaSensitivity:
+    """Test that lambda parameter affects selection ordering."""
+
+    def test_lambda_0_pure_diversity(self):
+        r = MMRReranker(_config(mmr_lambda=0.0))
+        # With lambda=0, MMR = -max_sim → pure diversity
+        results = [
+            _result("cat", combined_score=0.9, embedding=[1.0, 0.0]),
+            _result("cat similar", combined_score=0.85, embedding=[0.99, 0.14]),
+            _result("dog", combined_score=0.5, embedding=[0.0, 1.0]),
+            _result("bird", combined_score=0.3, embedding=[-1.0, 0.0]),
+        ]
+        out = r.rerank(results, top_k=3)
+        assert len(out) == 3
+        # With pure diversity, after first pick, it should prefer maximally different
+
+    def test_lambda_1_pure_relevance(self):
+        r = MMRReranker(_config(mmr_lambda=1.0))
+        # With lambda=1.0, MMR = relevance → just pick by score
+        results = [
+            _result("a", combined_score=0.9, embedding=[1.0, 0.0]),
+            _result("b", combined_score=0.8, embedding=[1.0, 0.0]),
+            _result("c", combined_score=0.7, embedding=[0.0, 1.0]),
+            _result("d", combined_score=0.6, embedding=[0.0, 1.0]),
+        ]
+        out = r.rerank(results, top_k=3)
+        # Should be in descending score order
+        assert out[0].combined_score == pytest.approx(0.9)
+        assert out[1].combined_score == pytest.approx(0.8)
+        assert out[2].combined_score == pytest.approx(0.7)
+
+    def test_lambda_0_5_balanced(self):
+        r = MMRReranker(_config(mmr_lambda=0.5))
+        results = [
+            _result("aspirin info", combined_score=0.9, embedding=[1.0, 0.0]),
+            _result("aspirin copy", combined_score=0.85, embedding=[0.99, 0.14]),
+            _result("metformin info", combined_score=0.7, embedding=[0.0, 1.0]),
+            _result("another topic", combined_score=0.6, embedding=[-1.0, 0.0]),
+        ]
+        out = r.rerank(results, top_k=3)
+        assert len(out) == 3
+        # First should be highest
+        assert out[0].combined_score == pytest.approx(0.9)
+
+
+# ===========================================================================
+# TestDiversityScoreEdge
+# ===========================================================================
+
+class TestDiversityScoreEdge:
+    """Edge cases for calculate_diversity_score."""
+
+    def setup_method(self):
+        self.r = MMRReranker(_config())
+
+    def test_three_identical_text_low_diversity(self):
+        results = [
+            _result("same text here"),
+            _result("same text here"),
+            _result("same text here"),
+        ]
+        score = self.r.calculate_diversity_score(results)
+        # All identical → avg_similarity=1.0 → diversity=0.0
+        assert score == pytest.approx(0.0)
+
+    def test_single_result_score_1(self):
+        score = self.r.calculate_diversity_score([_result("only one")])
+        assert score == pytest.approx(1.0)
+
+    def test_two_maximally_different_text_results(self):
+        results = [
+            _result("alpha beta gamma"),
+            _result("one two three"),
+        ]
+        score = self.r.calculate_diversity_score(results)
+        # Disjoint words → jaccard=0 → diversity=1.0
+        assert score == pytest.approx(1.0)
+
+    def test_two_maximally_different_embeddings(self):
+        r1 = _result(embedding=[1.0, 0.0, 0.0])
+        r2 = _result(embedding=[0.0, 1.0, 0.0])
+        score = self.r.calculate_diversity_score([r1, r2])
+        # cos = 0 → diversity = 1.0
+        assert score == pytest.approx(1.0)
+
+    def test_three_orthogonal_embeddings(self):
+        r1 = _result(embedding=[1.0, 0.0, 0.0])
+        r2 = _result(embedding=[0.0, 1.0, 0.0])
+        r3 = _result(embedding=[0.0, 0.0, 1.0])
+        score = self.r.calculate_diversity_score([r1, r2, r3])
+        # All pairwise cos = 0 → avg = 0 → diversity = 1.0
+        assert score == pytest.approx(1.0)
+
+    def test_diversity_between_0_and_1(self):
+        results = [
+            _result("aspirin medication pain"),
+            _result("aspirin drug fever"),
+        ]
+        score = self.r.calculate_diversity_score(results)
+        # Partial overlap → 0 < score < 1
+        assert 0.0 < score < 1.0
+
+    def test_empty_list_returns_1(self):
+        score = self.r.calculate_diversity_score([])
+        assert score == pytest.approx(1.0)

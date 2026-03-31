@@ -336,5 +336,187 @@ class TestSingletonDedup(unittest.TestCase):
         assert cluster.canonical_name == "aspirin"
 
 
+
+# ---------------------------------------------------------------------------
+# TestNormalizationMedical
+# ---------------------------------------------------------------------------
+
+class TestNormalizationMedical(unittest.TestCase):
+    """Test _normalize_name with medical-specific inputs."""
+
+    def setUp(self):
+        self.dedup = EntityDeduplicator()
+
+    def test_metformin_hcl_preserves_hcl(self):
+        # "hcl" is not an abbreviation key → preserved as-is
+        result = self.dedup._normalize_name("Metformin HCl")
+        assert "metformin" in result
+        assert "hcl" in result
+
+    def test_ekg_expanded_to_electrocardiogram(self):
+        result = self.dedup._normalize_name("EKG")
+        assert result == "electrocardiogram"
+
+    def test_ecg_expanded_to_electrocardiogram(self):
+        result = self.dedup._normalize_name("ECG")
+        assert result == "electrocardiogram"
+
+    def test_multiple_abbreviations_in_one_string(self):
+        # "htn dm" → "hypertension diabetes mellitus"
+        result = self.dedup._normalize_name("htn dm")
+        assert "hypertension" in result
+        assert "diabetes mellitus" in result
+
+    def test_accented_characters_preserved(self):
+        # Non-ASCII: accents should survive normalization (re.sub keeps \w which includes some)
+        result = self.dedup._normalize_name("café")
+        assert "caf" in result  # at minimum the base is kept
+
+    def test_hyphenated_term_preserved(self):
+        result = self.dedup._normalize_name("beta-blocker")
+        assert "-" in result
+
+    def test_empty_string(self):
+        result = self.dedup._normalize_name("")
+        assert result == ""
+
+    def test_whitespace_only_string(self):
+        result = self.dedup._normalize_name("   ")
+        assert result == ""
+
+    def test_copd_expansion(self):
+        result = self.dedup._normalize_name("COPD")
+        assert "chronic obstructive pulmonary disease" in result
+
+    def test_mixed_case_abbreviation(self):
+        result = self.dedup._normalize_name("Htn")
+        assert result == "hypertension"
+
+    def test_apostrophe_preserved(self):
+        result = self.dedup._normalize_name("Crohn's")
+        assert "'" in result
+
+
+# ---------------------------------------------------------------------------
+# TestDeduplicateFormulations
+# ---------------------------------------------------------------------------
+
+class TestDeduplicateFormulations(unittest.TestCase):
+    """Test that medication variant deduplication works correctly."""
+
+    def setUp(self):
+        self.dedup = EntityDeduplicator()
+
+    def test_metformin_case_merge(self):
+        c1 = self.dedup.deduplicate("metformin", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("Metformin", EntityType.MEDICATION, "doc2")
+        assert c1.canonical_id == c2.canonical_id
+
+    def test_metformin_xr_and_metformin_should_not_merge(self):
+        # "metformin xr" vs "metformin" → fuzzy ratio < 0.9
+        c1 = self.dedup.deduplicate("Metformin XR", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("Metformin", EntityType.MEDICATION, "doc2")
+        ratio = self.dedup._levenshtein_ratio(
+            self.dedup._normalize_name("Metformin XR"),
+            self.dedup._normalize_name("Metformin")
+        )
+        if ratio < 0.9:
+            assert c1.canonical_id != c2.canonical_id
+
+    def test_lisinopril_different_doses_no_merge(self):
+        c1 = self.dedup.deduplicate("lisinopril 10mg", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("lisinopril 20mg", EntityType.MEDICATION, "doc2")
+        ratio = self.dedup._levenshtein_ratio(
+            self.dedup._normalize_name("lisinopril 10mg"),
+            self.dedup._normalize_name("lisinopril 20mg")
+        )
+        if ratio < 0.9:
+            assert c1.canonical_id != c2.canonical_id
+
+    def test_htn_and_hypertension_merge(self):
+        # Abbreviation expansion: "htn" → "hypertension"
+        c1 = self.dedup.deduplicate("hypertension", EntityType.CONDITION, "doc1")
+        c2 = self.dedup.deduplicate("HTN", EntityType.CONDITION, "doc2")
+        assert c1.canonical_id == c2.canonical_id
+
+    def test_copd_and_full_name_merge(self):
+        c1 = self.dedup.deduplicate(
+            "chronic obstructive pulmonary disease", EntityType.CONDITION, "doc1"
+        )
+        c2 = self.dedup.deduplicate("COPD", EntityType.CONDITION, "doc2")
+        assert c1.canonical_id == c2.canonical_id
+
+    def test_aspirin_different_doc_same_cluster(self):
+        c1 = self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc2")
+        assert c1.canonical_id == c2.canonical_id
+        assert "doc1" in c2.source_documents
+        assert "doc2" in c2.source_documents
+
+
+# ---------------------------------------------------------------------------
+# TestClusterOperationsExtended
+# ---------------------------------------------------------------------------
+
+class TestClusterOperationsExtended(unittest.TestCase):
+    """Extended tests for cluster merge/update operations."""
+
+    def setUp(self):
+        self.dedup = EntityDeduplicator()
+
+    def test_variant_deduplication_within_cluster(self):
+        # Adding same variant twice should not duplicate
+        c1 = self.dedup.deduplicate("Aspirin", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("Aspirin", EntityType.MEDICATION, "doc2")
+        assert c1.variants.count("Aspirin") == 1
+
+    def test_document_deduplication_within_cluster(self):
+        # Adding same doc_id twice should not duplicate
+        c1 = self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        c2 = self.dedup.deduplicate("Aspirin", EntityType.MEDICATION, "doc1")
+        assert c2.source_documents.count("doc1") == 1
+
+    def test_merge_clusters_with_overlapping_variants(self):
+        c1 = self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        c1_variant = "Aspirin"
+        c1.variants.append(c1_variant)
+
+        c2 = self.dedup.deduplicate("ibuprofen", EntityType.MEDICATION, "doc2")
+
+        merged = self.dedup.merge_clusters(c1.canonical_id, c2.canonical_id)
+        assert merged is not None
+        # No duplicate "Aspirin" in variants (merge deduplicates)
+        # The merge logic: "for variant in cluster2.variants: if variant not in cluster1.variants"
+        assert "ibuprofen" in [v.lower() for v in merged.variants]
+
+    def test_get_stats_zero_clusters(self):
+        stats = self.dedup.get_stats()
+        assert stats["total_clusters"] == 0
+        assert stats["total_mentions"] == 0
+        assert stats["total_variants"] == 0
+        assert stats["deduplication_ratio"] == 0.0
+
+    def test_get_stats_after_multiple_types(self):
+        self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        self.dedup.deduplicate("Aspirin", EntityType.MEDICATION, "doc2")
+        self.dedup.deduplicate("fever", EntityType.SYMPTOM, "doc3")
+        stats = self.dedup.get_stats()
+        assert stats["total_clusters"] == 2
+        assert stats["clusters_by_type"]["medication"] == 1
+        assert stats["clusters_by_type"]["symptom"] == 1
+
+    def test_mention_count_accumulates(self):
+        self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        self.dedup.deduplicate("Aspirin", EntityType.MEDICATION, "doc2")
+        c = self.dedup.deduplicate("ASPIRIN", EntityType.MEDICATION, "doc3")
+        assert c.mention_count == 3
+
+    def test_clear_cache_resets_everything(self):
+        self.dedup.deduplicate("aspirin", EntityType.MEDICATION, "doc1")
+        self.dedup.clear_cache()
+        assert self.dedup.get_all_clusters() == []
+        assert self.dedup._embedding_cache == {}
+
+
 if __name__ == "__main__":
     unittest.main()

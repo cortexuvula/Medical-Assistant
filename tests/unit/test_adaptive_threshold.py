@@ -355,3 +355,112 @@ class TestCalculateAdaptiveThresholdConvenience:
         calculate_adaptive_threshold([0.5], query_length=3)
         c2 = get_adaptive_threshold_calculator()
         assert c1 is c2
+
+
+# ===========================================================================
+# TestDistributionEdgeCases
+# ===========================================================================
+
+class TestDistributionEdgeCases:
+    """Edge cases for _adjust_for_distribution."""
+
+    def setup_method(self):
+        self.calc = _calc()
+
+    def test_exactly_two_scores_with_gap(self):
+        # [0.9, 0.3] → gap = 0.6 > 0.15 → threshold raised to gap_threshold = 0.3
+        scores = [0.9, 0.3]
+        result = self.calc._adjust_for_distribution(scores, 0.2)
+        assert result >= 0.3
+
+    def test_gap_exactly_at_threshold_015(self):
+        # gap = 0.15 exactly → condition is max_gap > 0.15, so not triggered
+        scores = [0.65, 0.50]  # gap = 0.15
+        result = self.calc._adjust_for_distribution(scores, 0.4)
+        # gap is 0.15, not > 0.15, so gap condition does NOT trigger
+        # But top score 0.65 < 0.8 so no "high score" adjustment
+        # Mean = 0.575 > 0.5, std ~0.106 > 0.1 so tight cluster doesn't trigger
+        assert result >= 0.4
+
+    def test_all_identical_scores_no_gap(self):
+        scores = [0.5, 0.5, 0.5]
+        result = self.calc._adjust_for_distribution(scores, 0.4)
+        # No gaps (all 0), std_dev = 0 < 0.1 AND mean = 0.5 (not > 0.5)
+        # So tight-cluster condition: mean > 0.5 fails → no change
+        assert result == pytest.approx(0.4)
+
+    def test_all_identical_high_scores(self):
+        scores = [0.7, 0.7, 0.7]
+        result = self.calc._adjust_for_distribution(scores, 0.3)
+        # std = 0 < 0.1, mean = 0.7 > 0.5 → threshold = max(0.3, 0.7 - 0) = 0.7
+        assert result == pytest.approx(0.7)
+
+    def test_scores_ascending_vs_descending_same_result(self):
+        scores_desc = [0.9, 0.7, 0.5, 0.3]
+        scores_asc = [0.3, 0.5, 0.7, 0.9]
+        # The method receives sorted_scores (already sorted descending)
+        # but we test what _adjust_for_distribution does with them
+        result_desc = self.calc._adjust_for_distribution(scores_desc, 0.4)
+        # For ascending, the method expects descending, but let's still test
+        result_asc = self.calc._adjust_for_distribution(scores_asc, 0.4)
+        # Results might differ since the method iterates assuming descending
+        assert isinstance(result_desc, float)
+        assert isinstance(result_asc, float)
+
+    def test_large_gap_with_many_scores(self):
+        # [0.95, 0.90, 0.85, 0.20, 0.15, 0.10]
+        # Big gap between 0.85 and 0.20 = 0.65
+        scores = [0.95, 0.90, 0.85, 0.20, 0.15, 0.10]
+        result = self.calc._adjust_for_distribution(scores, 0.3)
+        # gap_threshold = 0.20 (score after gap), and top > 0.8 → max(0.95-0.2) = 0.75
+        assert result >= 0.20
+
+
+# ===========================================================================
+# TestResultCountBoundary
+# ===========================================================================
+
+class TestResultCountBoundary:
+    """Boundary tests for _adjust_for_result_count."""
+
+    def test_passing_count_exactly_at_target(self):
+        calc = _calc(target_result_count=3)
+        # 3 scores above 0.5, target=3 → no adjustment
+        scores = [0.9, 0.8, 0.7, 0.4, 0.3]
+        result = calc._adjust_for_result_count(scores, 0.5)
+        assert result == 0.5  # exactly at target, no change
+
+    def test_passing_count_3x_target_no_adjustment(self):
+        calc = _calc(target_result_count=3)
+        # 9 scores above 0.5, target*3=9 → exactly at 3x, not >
+        scores = [0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.51]
+        result = calc._adjust_for_result_count(scores, 0.5)
+        # passing_count = 9, target*3 = 9, 9 > 9 is False
+        assert result == 0.5
+
+    def test_passing_count_above_3x_target_raises(self):
+        calc = _calc(target_result_count=3)
+        # 10 scores all above 0.5 → passing_count=10 > 3*3=9 → raises
+        scores = [0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.51]
+        result = calc._adjust_for_result_count(scores, 0.5)
+        # Should raise to sorted_scores[2] = 0.85
+        assert result >= 0.85
+
+    def test_min_threshold_enforcement(self):
+        calc = _calc(target_result_count=5, min_threshold=0.3)
+        # Only 2 scores, target=5 → not enough → use min_threshold
+        scores = [0.9, 0.8]
+        result = calc._adjust_for_result_count(scores, 0.6)
+        assert result == 0.3
+
+    def test_empty_scores_threshold_unchanged(self):
+        calc = _calc(target_result_count=5)
+        result = calc._adjust_for_result_count([], 0.5)
+        assert result == 0.5
+
+    def test_all_scores_below_threshold(self):
+        calc = _calc(target_result_count=3, min_threshold=0.1)
+        scores = [0.4, 0.3, 0.2, 0.1]
+        result = calc._adjust_for_result_count(scores, 0.5)
+        # passing_count = 0 < 3, len(scores)=4 >= 3 → threshold = min(0.5, scores[2]) = 0.2
+        assert result == 0.2

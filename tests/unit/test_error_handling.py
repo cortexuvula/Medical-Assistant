@@ -28,6 +28,7 @@ from utils.error_handling import (
     ErrorContext,
     handle_errors,
     safe_execute,
+    log_and_raise,
     _USER_FRIENDLY_ERRORS,
     _ERROR_TEMPLATES,
 )
@@ -862,3 +863,105 @@ class TestInternals:
     def test_all_templates_have_nonempty_actions(self):
         for key, tmpl in _ERROR_TEMPLATES.items():
             assert len(tmpl.actions) > 0, f"Template {key!r} has empty actions"
+
+
+# ===========================================================================
+# 10. log_and_raise
+# ===========================================================================
+
+class TestLogAndRaise:
+    """Tests for log_and_raise(error, message, log_level, include_traceback).
+
+    Note: log_and_raise uses bare `raise`, so it must be called from within
+    an active except block to re-raise the current exception.
+    """
+
+    def test_reraises_the_current_exception(self):
+        with pytest.raises(ValueError, match="original error"):
+            try:
+                raise ValueError("original error")
+            except ValueError as e:
+                log_and_raise(e)
+
+    def test_reraises_runtime_error(self):
+        with pytest.raises(RuntimeError, match="boom"):
+            try:
+                raise RuntimeError("boom")
+            except RuntimeError as e:
+                log_and_raise(e)
+
+    def test_logs_at_error_level_by_default(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("test msg")
+                except ValueError as e:
+                    log_and_raise(e)
+        assert any("test msg" in r.message for r in caplog.records)
+
+    def test_logs_at_custom_level_warning(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("warn level")
+                except ValueError as e:
+                    log_and_raise(e, log_level=logging.WARNING)
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING and "warn level" in r.message]
+        assert len(warning_records) >= 1
+
+    def test_message_prefix_included_in_log(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(TypeError):
+                try:
+                    raise TypeError("bad type")
+                except TypeError as e:
+                    log_and_raise(e, message="Custom prefix")
+        assert any("Custom prefix" in r.message for r in caplog.records)
+        assert any("bad type" in r.message for r in caplog.records)
+
+    def test_no_message_prefix_logs_just_error(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("just error")
+                except ValueError as e:
+                    log_and_raise(e, message=None)
+        assert any("just error" in r.message for r in caplog.records)
+
+    def test_include_traceback_true_by_default(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("tb test")
+                except ValueError as e:
+                    log_and_raise(e)
+        # When include_traceback=True, logger.log is called with exc_info=True
+        error_records = [r for r in caplog.records if "tb test" in r.message]
+        assert len(error_records) >= 1
+
+    def test_include_traceback_false(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(ValueError):
+                try:
+                    raise ValueError("no tb")
+                except ValueError as e:
+                    log_and_raise(e, include_traceback=False)
+        error_records = [r for r in caplog.records if "no tb" in r.message]
+        assert len(error_records) >= 1
+
+    def test_logs_combined_message_with_prefix(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(OSError):
+                try:
+                    raise OSError("disk full")
+                except OSError as e:
+                    log_and_raise(e, message="Save failed")
+        assert any("Save failed: disk full" in r.message for r in caplog.records)
+
+    def test_reraises_original_exception_type_not_wrapped(self):
+        """Verify that the re-raised exception is the original type, not wrapped."""
+        with pytest.raises(KeyError):
+            try:
+                raise KeyError("missing_key")
+            except KeyError as e:
+                log_and_raise(e, message="Lookup error")
