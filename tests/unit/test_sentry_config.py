@@ -26,6 +26,8 @@ from utils.sentry_config import (
     _get_release_version,
 )
 
+_SENTINEL = object()  # unique marker for "key was not in sys.modules"
+
 
 # ===========================================================================
 # _scrub_data
@@ -269,53 +271,56 @@ class TestInitSentry:
             result = init_sentry()
         assert result is False
 
+    @pytest.fixture(autouse=True)
+    def _mock_sentry_env(self):
+        """Ensure each test gets a clean sentry_sdk mock in sys.modules."""
+        self.mock_sentry = MagicMock()
+        # Save and restore any real sentry_sdk to avoid cross-test pollution
+        saved = sys.modules.get("sentry_sdk", _SENTINEL)
+        sys.modules["sentry_sdk"] = self.mock_sentry
+        yield
+        if saved is _SENTINEL:
+            sys.modules.pop("sentry_sdk", None)
+        else:
+            sys.modules["sentry_sdk"] = saved
+
     def test_valid_dsn_initializes_sentry(self):
-        mock_sentry = MagicMock()
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
             result = init_sentry()
         assert result is True
-        mock_sentry.init.assert_called_once()
+        self.mock_sentry.init.assert_called_once()
 
     def test_sentry_not_installed_returns_false(self):
+        sys.modules["sentry_sdk"] = None  # triggers ImportError on `import`
         with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
-            with patch.dict("sys.modules", {"sentry_sdk": None}):
-                result = init_sentry()
+            result = init_sentry()
         assert result is False
 
     def test_sentry_init_exception_returns_false(self):
-        mock_sentry = MagicMock()
-        mock_sentry.init.side_effect = Exception("init failed")
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+        self.mock_sentry.init.side_effect = Exception("init failed")
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
             result = init_sentry()
         assert result is False
 
     def test_environment_default(self):
-        mock_sentry = MagicMock()
         env = {k: v for k, v in os.environ.items() if k != "MEDICAL_ASSISTANT_ENV"}
         env["SENTRY_DSN"] = "https://fake@sentry.io/123"
-        with patch.dict(os.environ, env, clear=True), \
-             patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+        with patch.dict(os.environ, env, clear=True):
             init_sentry()
-        call_kwargs = mock_sentry.init.call_args[1]
+        call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["environment"] == "production"
 
     def test_environment_override(self):
-        mock_sentry = MagicMock()
         env = {"SENTRY_DSN": "https://fake@sentry.io/123", "MEDICAL_ASSISTANT_ENV": "staging"}
-        with patch.dict(os.environ, env), \
-             patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+        with patch.dict(os.environ, env):
             init_sentry()
-        call_kwargs = mock_sentry.init.call_args[1]
+        call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["environment"] == "staging"
 
     def test_phi_protection_flags(self):
-        mock_sentry = MagicMock()
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}):
             init_sentry()
-        call_kwargs = mock_sentry.init.call_args[1]
+        call_kwargs = self.mock_sentry.init.call_args[1]
         assert call_kwargs["send_default_pii"] is False
         assert call_kwargs["before_send"] is _before_send
         assert call_kwargs["before_send_transaction"] is _before_send_transaction
