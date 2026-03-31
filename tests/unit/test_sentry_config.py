@@ -26,6 +26,14 @@ from utils.sentry_config import (
     _get_release_version,
 )
 
+# Pre-import sentry_sdk so it's in sys.modules before any test runs.
+# This ensures patch("sentry_sdk.init") works reliably.
+try:
+    import sentry_sdk as _sentry_sdk
+    _HAS_SENTRY = True
+except ImportError:
+    _HAS_SENTRY = False
+
 
 
 # ===========================================================================
@@ -270,17 +278,10 @@ class TestInitSentry:
             result = init_sentry()
         assert result is False
 
+    @pytest.mark.skipif(not _HAS_SENTRY, reason="sentry_sdk not installed")
     def test_valid_dsn_initializes_sentry(self):
-        # Patch sentry_sdk.init directly — works whether the real package is
-        # installed (CI ubuntu) or available as a stub. The `import sentry_sdk`
-        # inside init_sentry() resolves to the real module; we just mock .init().
-        try:
-            import sentry_sdk as _real_sdk
-            target = "sentry_sdk.init"
-        except ImportError:
-            pytest.skip("sentry_sdk not installed")
         with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch(target) as mock_init:
+             patch.object(_sentry_sdk, "init") as mock_init:
             result = init_sentry()
         assert result is True
         mock_init.assert_called_once()
@@ -299,51 +300,35 @@ class TestInitSentry:
             result = init_sentry()
         assert result is False
 
+    @pytest.mark.skipif(not _HAS_SENTRY, reason="sentry_sdk not installed")
     def test_sentry_init_exception_returns_false(self):
-        try:
-            import sentry_sdk as _real_sdk
-            target = "sentry_sdk.init"
-        except ImportError:
-            pytest.skip("sentry_sdk not installed")
         with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch(target, side_effect=Exception("init failed")):
+             patch.object(_sentry_sdk, "init", side_effect=Exception("init failed")):
             result = init_sentry()
         assert result is False
 
+    @pytest.mark.skipif(not _HAS_SENTRY, reason="sentry_sdk not installed")
     def test_environment_default(self):
-        try:
-            import sentry_sdk as _real_sdk
-            target = "sentry_sdk.init"
-        except ImportError:
-            pytest.skip("sentry_sdk not installed")
         env = {"SENTRY_DSN": "https://fake@sentry.io/123"}
         with patch.dict(os.environ, env, clear=True), \
-             patch(target) as mock_init:
+             patch.object(_sentry_sdk, "init") as mock_init:
             init_sentry()
         call_kwargs = mock_init.call_args[1]
         assert call_kwargs["environment"] == "production"
 
+    @pytest.mark.skipif(not _HAS_SENTRY, reason="sentry_sdk not installed")
     def test_environment_override(self):
-        try:
-            import sentry_sdk as _real_sdk
-            target = "sentry_sdk.init"
-        except ImportError:
-            pytest.skip("sentry_sdk not installed")
         env = {"SENTRY_DSN": "https://fake@sentry.io/123", "MEDICAL_ASSISTANT_ENV": "staging"}
         with patch.dict(os.environ, env, clear=True), \
-             patch(target) as mock_init:
+             patch.object(_sentry_sdk, "init") as mock_init:
             init_sentry()
         call_kwargs = mock_init.call_args[1]
         assert call_kwargs["environment"] == "staging"
 
+    @pytest.mark.skipif(not _HAS_SENTRY, reason="sentry_sdk not installed")
     def test_phi_protection_flags(self):
-        try:
-            import sentry_sdk as _real_sdk
-            target = "sentry_sdk.init"
-        except ImportError:
-            pytest.skip("sentry_sdk not installed")
         with patch.dict(os.environ, {"SENTRY_DSN": "https://fake@sentry.io/123"}), \
-             patch(target) as mock_init:
+             patch.object(_sentry_sdk, "init") as mock_init:
             init_sentry()
         call_kwargs = mock_init.call_args[1]
         assert call_kwargs["send_default_pii"] is False
