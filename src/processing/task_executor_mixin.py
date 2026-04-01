@@ -139,6 +139,7 @@ class TaskExecutorMixin:
                     'soap_note': results.get("soap_note", ""),
                     'referral': results.get("referral", ""),
                     'letter': results.get("letter", ""),
+                    'audio_path': recording_data.get("audio_path", ""),
                     'completed_at': datetime.now()
                 }
 

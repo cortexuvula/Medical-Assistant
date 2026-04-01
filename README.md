@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-Medical Assistant is a comprehensive desktop application for medical documentation, designed to transcribe and refine spoken medical notes. It leverages multiple AI providers (OpenAI, Anthropic/Claude, Google Gemini, Groq, Cerebras, and Ollama) with a modular, mixin-based architecture (~150K LOC across 400+ modules) for efficient audio-to-text conversion, clinical note generation, and intelligent medical analysis.
+Medical Assistant is a comprehensive desktop application for medical documentation, designed to transcribe and refine spoken medical notes. It leverages multiple AI providers (OpenAI, Anthropic/Claude, Google Gemini, Groq, Cerebras, and Ollama) with a modular, mixin-based architecture (~150K LOC across 420+ modules) for efficient audio-to-text conversion, clinical note generation, and intelligent medical analysis.
 
 ## Table of Contents
 
@@ -40,7 +40,7 @@ Medical Assistant is a comprehensive desktop application for medical documentati
 
 | Feature | Description |
 |---------|-------------|
-| **Workflow-Based Interface** | Modern task-oriented design with 5 main workflow tabs (Record, Process, Generate, Recordings, Chat) plus 6 text editor tabs |
+| **Workflow-Based Interface** | Sidebar navigation with 8 sections (Record, SOAP Note, Referral, Letter, Chat, RAG, Recordings, Analysis) plus 6 text editor tabs and 6 SOAP analysis sub-tabs |
 | **Unified Preferences** | Comprehensive settings dialog (`Ctrl+,`) with tabbed interface for API keys, audio settings, AI models, prompts, and storage |
 | **AI-Powered Chat** | ChatGPT-style interface with context-aware suggestions for interacting with your medical notes |
 | **RAG Document Search** | Hybrid vector + keyword search with medical query expansion, adaptive thresholds, and MMR diversity |
@@ -155,20 +155,20 @@ Real-time medical translation for multilingual patient consultations:
 
 ### Technical Features
 
-- **Mixin-Based Architecture:** Large classes decomposed into focused mixins (AudioHandler: 5 mixins, ProcessingQueue: 3 mixins, RagProcessor: 4 mixins) with Protocol contracts
+- **Mixin-Based Architecture:** Large classes decomposed into focused mixins (AudioHandler: 5 mixins, ProcessingQueue: 7 mixins, RagProcessor: 4 mixins) with Protocol contracts
 - **Type Safety:** TypedDict definitions for processing queue tasks, chat context, and guideline batches; runtime-checkable AppProtocol for mixin boundaries
 - **Secure API Key Storage:** Fernet encryption with PBKDF2 key derivation, per-installation salt, machine-specific keys, legacy salt migration
 - **Security Decorators:** Rate limiting, input sanitization with prompt injection detection, and secure API call wrappers
 - **PHI Redaction:** Automatic redaction of 60+ sensitive field types in application logs and audit trail
 - **Audit Logging:** Append-only HIPAA-compliant audit log tracking API key access, data exports, and recording operations
-- **Database Storage:** SQLite with FTS5 full-text search, versioned migrations (8+ versions), connection pooling with health checks
+- **Database Storage:** SQLite with FTS5 full-text search, versioned migrations (17 versions), connection pooling with health checks
 - **Resilient API Calls:** Circuit breaker pattern, exponential backoff, automatic retry, and STT provider failover chain
 - **Export Functionality:** Export recordings and documents in PDF, DOCX, and text formats
 - **FHIR Support:** Export clinical data in HL7 FHIR R4 format (Patient, Encounter, Condition, Observation, MedicationStatement, DocumentReference)
 - **Performance Optimizations:** HTTP/2 support, connection pooling, thread pool executors, background processing queue with priority scheduling
 - **Import Guards:** Optional dependencies (pygame, soundcard, fhir.resources, docx, reportlab) guarded with availability flags
 - **Cross-Platform:** Windows, macOS, and Linux with platform-specific optimizations
-- **Comprehensive Test Suite:** 1,850+ tests (unit + integration) with 50%+ critical path coverage
+- **Comprehensive Test Suite:** 4,100+ tests (unit + integration) with 50%+ critical path coverage
 - **Modern UI/UX:** Built with Tkinter and ttkbootstrap featuring animations, visual indicators, dark/light themes
 
 ---
@@ -340,47 +340,36 @@ Executables are output to the `dist/` directory.
 python main.py
 ```
 
-### Main Workflow Tabs
+### Sidebar Navigation
 
-#### 1. Record Tab
-- **Start Recording:** Click the record button or press the keyboard shortcut
-- **Visual Feedback:** Real-time waveform display and timer
-- **Pause/Resume:** Pause recordings without losing progress
-- **Advanced Analysis:** Enable checkbox for real-time differential diagnosis every 2 minutes
-- **Microphone Selection:** Choose input device from dropdown
+The sidebar provides quick access to all application sections:
 
-#### 2. Process Tab
-- **Refine Text:** Clean up transcribed text with AI assistance
-- **Improve Text:** Enhance clarity and medical terminology
-- **Undo/Redo:** Full history with `Ctrl+Z` / `Ctrl+Y`
-- **File Operations:** Save, export, and manage documents
-
-#### 3. Generate Tab
-
-| Button | Function |
-|--------|----------|
-| **SOAP Note** | Generate structured clinical notes with ICD-9/10 codes |
+| Section | Description |
+|---------|-------------|
+| **Record** | Start/stop/pause recordings with waveform display, timer, microphone selection, and optional real-time differential diagnosis every 2 minutes |
+| **SOAP Note** | View and edit generated SOAP notes with 6 analysis sub-tabs (Medication Analysis, Differential Diagnosis, Clinical Guidelines, Emotional Assessment, ICD Validation, Medication QA) |
 | **Referral** | Create professional referral letters with address book integration |
 | **Letter** | Generate formal medical correspondence (patient, employer, insurance) |
-| **Diagnostic Analysis** | Analyze symptoms and generate differential diagnoses |
-| **Medication Analysis** | Extract medications, check interactions, validate dosing |
-| **Extract Clinical Data** | Extract structured data (vitals, labs, medications) |
-| **Clinical Workflow** | Step-by-step clinical process guidance |
+| **Chat** | AI chat interface with context-aware suggestions, uses current document as context (`Ctrl+/` to focus) |
+| **RAG** | Hybrid document search with medical query expansion, knowledge graph visualization, and clinical guidelines |
+| **Recordings** | Search, filter, and manage recordings with status indicators and batch processing |
+| **Analysis** | Advanced analysis tools: diagnostic analysis, medication analysis, data extraction, clinical workflows |
 
-#### 4. Recordings Tab
-- **Search & Filter:** Find recordings by date, content, or status
-- **Status Indicators:**
-  - ✓ Documents generated
-  - — Not yet processed
-  - 🔄 Processing in progress
-  - ❌ Error occurred
-- **Batch Processing:** Select multiple recordings for bulk operations
-- **Export:** Export recordings and documents in various formats
+### Text Editor Tabs
 
-#### 5. Chat Tab
-- **AI Chat Interface:** Ask questions about your notes or get clinical suggestions
-- **Context-Aware:** Automatically uses current document as context
-- **Quick Focus:** Press `Ctrl+/` to focus chat input
+Six editor tabs display and allow editing of content: **Transcript**, **SOAP Note**, **Referral**, **Letter**, **Chat**, and **RAG**.
+
+### Tools (Sidebar)
+
+| Tool | Function |
+|------|----------|
+| **Refine Text** | Clean up transcribed text with AI assistance |
+| **Improve Text** | Enhance clarity and medical terminology |
+| **Medication** | Extract medications, check interactions, validate dosing |
+| **Diagnostic** | Analyze symptoms and generate differential diagnoses |
+| **Workflow** | Step-by-step clinical process guidance |
+| **Translation** | Bidirectional medical translation assistant |
+| **Data Extract** | Extract structured data (vitals, labs, medications) |
 
 ### Context Panel
 
@@ -564,15 +553,18 @@ Medical Assistant supports HL7 FHIR R4 for healthcare interoperability:
 ```
 Medical-Assistant/
 ├── main.py                    # Application entry point
-├── src/                       # ~150K LOC across 400+ modules
+├── src/                       # ~150K LOC across 420+ modules
 │   ├── ai/                    # AI providers and processors
-│   │   ├── agents/            # 10 specialized AI agents
+│   │   ├── agents/            # 8 specialized AI agents
 │   │   │   ├── base.py        # Base agent with caching, validation
 │   │   │   ├── medication.py  # Drug interactions, dosing
 │   │   │   ├── diagnostic.py  # Differential diagnosis
 │   │   │   ├── compliance.py  # Documentation audit
 │   │   │   ├── workflow.py    # Clinical workflows
 │   │   │   ├── chat.py        # Conversational with tool use
+│   │   │   ├── synopsis.py    # SOAP note summarization
+│   │   │   ├── referral.py    # Referral letter generation
+│   │   │   ├── data_extraction.py # Structured clinical data extraction
 │   │   │   └── models.py      # AgentConfig, AgentTask, AgentResponse
 │   │   ├── providers/         # Modular AI provider implementations
 │   │   │   ├── openai_provider.py
@@ -601,31 +593,44 @@ Medical-Assistant/
 │   │   └── periodic_analysis.py
 │   ├── core/                   # Application core
 │   │   ├── app.py             # Main application class
+│   │   ├── interfaces.py      # Runtime-checkable Protocol definitions
+│   │   ├── service_registry.py # Dependency injection registry
 │   │   ├── protocols.py       # AppProtocol for mixin contracts
 │   │   ├── app_initializer.py
+│   │   ├── controllers/       # 5 controllers (processing, recording, persistence, config, window)
+│   │   ├── handlers/          # 4 handlers (finalization, pause/resume, periodic analysis, recovery)
 │   │   ├── env_schema.py      # 35 env vars documented
 │   │   └── config.py
 │   ├── database/               # Data persistence
 │   │   ├── database.py        # Database with file-level security
-│   │   ├── db_migrations.py   # 8+ versioned schema migrations
+│   │   ├── db_migrations.py   # 17 versioned schema migrations
 │   │   ├── db_pool.py         # Connection pooling with health checks
 │   │   └── mixins/            # Query mixins (recordings, queue, diagnostics)
 │   ├── exporters/              # Document export
 │   │   ├── fhir_exporter.py   # HL7 FHIR R4
 │   │   ├── docx_exporter.py   # Word documents
 │   │   └── rag_exporter.py    # RAG document export
-│   ├── managers/               # Singleton managers
+│   ├── managers/               # 15 singleton managers
 │   │   ├── agent_manager.py
 │   │   ├── api_key_manager.py
-│   │   └── translation_manager.py
+│   │   ├── notification_manager.py
+│   │   ├── vocabulary_manager.py
+│   │   ├── tts_manager.py
+│   │   ├── autosave_manager.py
+│   │   ├── translation_manager.py
+│   │   └── ...                # + file, log, data_folder, recipient, RAG managers
 │   ├── processing/             # Document processing
-│   │   ├── processing_queue.py # Queue facade (3 mixins)
+│   │   ├── processing_queue.py # Queue facade (7 mixins)
 │   │   ├── queue_types.py     # TypedDict task definitions
 │   │   ├── task_executor_mixin.py
 │   │   ├── task_lifecycle_mixin.py
 │   │   ├── notification_mixin.py
-│   │   └── generators/        # SOAP, referral, letter, diagnostic, etc.
-│   ├── rag/                    # RAG subsystem (40 modules)
+│   │   ├── batch_processing_mixin.py
+│   │   ├── reprocessing_mixin.py
+│   │   ├── document_generation_mixin.py
+│   │   ├── guidelines_processing_mixin.py
+│   │   └── generators/        # 12 generators (SOAP, referral, letter, diagnostic, medication, compliance, etc.)
+│   ├── rag/                    # RAG subsystem (46 modules)
 │   │   ├── hybrid_retriever.py
 │   │   ├── streaming_retriever.py
 │   │   ├── query_expander.py   # Medical term expansion
@@ -654,7 +659,7 @@ Medical-Assistant/
 │   │   ├── chat_ui.py         # Chat interface
 │   │   ├── menu_manager.py    # Application menus
 │   │   ├── theme_manager.py   # Dark/light themes
-│   │   ├── dialogs/           # 25+ dialog windows
+│   │   ├── dialogs/           # 80+ dialog windows
 │   │   └── components/        # Reusable UI components
 │   └── utils/                  # Utilities
 │       ├── security.py        # SecurityManager facade
@@ -664,7 +669,7 @@ Medical-Assistant/
 │       ├── audit_logger.py    # HIPAA-compliant audit trail
 │       └── structured_logging.py  # PHI redaction in logs
 ├── config/                     # Configuration files
-├── tests/                      # 1,850+ tests
+├── tests/                      # 4,100+ tests
 │   ├── unit/                  # Component tests
 │   └── integration/           # End-to-end tests
 └── scripts/                    # Build scripts (Windows, macOS, Linux)
@@ -675,7 +680,7 @@ Medical-Assistant/
 | Pattern | Usage |
 |---------|-------|
 | **Mixin/Facade** | Large classes decomposed into focused mixins; facades preserve backward compatibility |
-| **Protocol Contracts** | `AppProtocol` defines the ~50 attributes mixins expect from the app object |
+| **Protocol Contracts** | `AppProtocol` and runtime-checkable interfaces define the contracts mixins and controllers expect |
 | **TypedDict Schemas** | `ProcessingTask`, `ChatContextData`, `BatchTaskStatus` etc. for type-safe dict structures |
 | **Provider Pattern** | All AI, STT, and TTS providers inherit from base classes for consistent interfaces |
 | **Singleton Managers** | Agent, translation, and API key managers ensure single instances |
@@ -683,6 +688,8 @@ Medical-Assistant/
 | **Security Decorators** | Rate limiting and input sanitization applied via decorators |
 | **Migration System** | Database schema evolution with versioned migrations |
 | **Observer Pattern** | UI updates via event-driven architecture with thread-safe scheduling |
+| **Service Registry** | Dependency injection via `ServiceRegistry` decouples controllers from the main app class |
+| **Controller Pattern** | 5 controllers (processing, recording, persistence, config, window) encapsulate domain logic |
 | **Queue System** | Background processing with priority, stale task eviction, and batch tracking |
 
 ### Data Flow
@@ -690,7 +697,7 @@ Medical-Assistant/
 ```
 Audio Input → STT Provider (failover chain) → Transcript → AI Processing → Document Generation
                   ↓                                              ↓
-           Emotion Data*                                  Agent System (10 agents)
+           Emotion Data*                                  Agent System (8 agents)
                   ↓                                              ↓
            SOAP Integration                         Database Storage → Export (PDF/DOCX/FHIR)
                                                          ↓
@@ -727,19 +734,24 @@ PYTHONPATH=src pytest tests/unit/test_processing_queue.py
 PYTHONPATH=src pytest tests/unit/test_stt_providers/
 ```
 
-### Test Suite (1,850+ tests)
+### Test Suite (4,100+ tests)
 
 | Suite | Tests | Coverage |
 |-------|-------|----------|
-| **Audio & Recording** | 101 | Audio handler, prefix caching, mixin decomposition |
+| **Validation & Config** | 300+ | Input validation, settings roundtrip, configuration |
+| **Exporters** | 137 | PDF, DOCX, FHIR R4, RAG export |
+| **Error Handling** | 127 | Structured errors, recovery, logging |
+| **AI & Chat** | 150+ | Chat processor, base agent, medication prompts |
+| **Audio & Recording** | 100+ | Audio handler, prefix caching, mixin decomposition |
 | **STT Providers** | 150+ | Deepgram, ElevenLabs, Groq, Modulate, Whisper, failover |
 | **Processing Queue** | 90+ | Task lifecycle, batch processing, stale eviction, thread safety |
+| **RAG & Documents** | 140+ | Document CRUD, hybrid search, query expansion, RAG processor |
 | **Security** | 50+ | Encryption, key migration, validation, rate limiting |
-| **Exporters** | 137 | PDF, DOCX, FHIR R4, RAG export |
-| **RAG & Documents** | 57 | Document CRUD, hybrid search, query expansion |
+| **Differential & NER** | 170+ | Differential tracker, medical NER, state machine |
 | **Letter Generation** | 50 | All letter types, edge cases, template rendering |
 | **Periodic Analysis** | 57 | Timer management, segment extraction, cleanup |
-| **TTS & Translation** | 77 | Provider management, safe methods, fallbacks |
+| **TTS & Translation** | 115+ | Provider management, safe methods, fallbacks, sessions |
+| **Structured Logging** | 79 | PHI redaction, log formatting |
 | **Integration** | 29 | Settings roundtrip, API key crypto, DB migrations |
 
 ### CI/CD

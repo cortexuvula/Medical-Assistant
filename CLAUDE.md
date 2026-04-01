@@ -70,7 +70,7 @@ pip install -r requirements-dev.txt  # dev/testing
 ## Key Architecture
 
 - **Entry Point**: `main.py` → `src/core/app.py` → `src/ui/workflow_ui.py`
-- **UI**: 5 workflow tabs (Record, Process, Generate, Recordings, Chat) + 5 text editor tabs
+- **UI**: Sidebar with 8 nav sections (Record, SOAP Note, Referral, Letter, Chat, RAG, Recordings, Analysis) + 6 text editor tabs + 6 SOAP analysis sub-tabs
 - **Audio Pipeline**: `src/audio/` → STT provider → `src/ai/ai_processor.py`
 - **Data Flow**: Recording → Transcript → AI Processing → SOAP/Referral/Letter
 - **Database**: SQLite with versioned migrations in `src/database/db_migrations.py`
