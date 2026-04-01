@@ -808,13 +808,14 @@ class AppInitializer:
         """Handle queue processing completion."""
         logger.info(f"Processing completed for task {task_id}")
         
-        # Update database with results
+        # Update database with completion status only.
+        # Note: transcript, soap_note, referral, and letter are already saved
+        # individually by task_executor_mixin during processing. Re-writing them
+        # here caused audio_path to be overwritten with '' (missing from result dict)
+        # and risked race conditions with UI reads between writes.
         if result.get('success'):
             self.app.db.update_recording(
                 recording_data['recording_id'],
-                transcript=result.get('transcript', ''),
-                soap_note=result.get('soap_note', ''),
-                audio_path=result.get('audio_path', ''),
                 processing_status='completed',
                 processing_completed_at=result.get('completed_at')
             )
@@ -941,8 +942,14 @@ class AppInitializer:
                     skipped_updates.append('soap')
                     logger.info(f"Skipped SOAP update - user has modified content")
 
-            # Update current recording ID
+            # Update current recording ID — set BOTH private (_current_recording_id,
+            # used by can_update_tab_from_background) AND public (current_recording_id,
+            # used by generators/soap.py and soap_processor.py to decide whether to
+            # UPDATE an existing row or INSERT a new one). Missing the public attribute
+            # caused generators to create duplicate database rows.
             self.app._current_recording_id = recording_id
+            self.app.current_recording_id = recording_id
+            self.app.selected_recording_id = recording_id
 
             # Update status with info about skipped updates
             if skipped_updates:
